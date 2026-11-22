@@ -20,18 +20,28 @@ file(GLOB ENGINE_SRC ${ROOT}/engine/*.c)
 list(REMOVE_ITEM ENGINE_SRC ${ROOT}/engine/snd_null.c)
 
 # QuakeC compiled to C from the player's own progs.dat (never committed).
-# Without the pak, qc2c writes an empty table and the interpreter runs.
+# Opt-in: translating the data is a derivative work, which the shareware
+# licence forbids (docs/lessons.md L39). Turn it on only with registered or
+# retail data. Off, qc2c writes an empty table and id's interpreter runs.
+option(QOG_AOT "compile QuakeC to C from data/id1 (registered/retail data only)" OFF)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(QOG_PAK ${ROOT}/data/id1/pak0.pak)
 set(PROGS_AOT ${CMAKE_BINARY_DIR}/progs_aot.c)
-set(_pak_dep "")
-if(EXISTS ${QOG_PAK})
-    set(_pak_dep ${QOG_PAK})
+if(QOG_AOT)
+    set(_pak_dep "")
+    if(EXISTS ${QOG_PAK})
+        set(_pak_dep ${QOG_PAK})
+    endif()
+    add_custom_command(OUTPUT ${PROGS_AOT}
+        COMMAND ${Python3_EXECUTABLE} ${ROOT}/tools/qc2c.py --pak ${QOG_PAK} -o ${PROGS_AOT}
+        DEPENDS ${ROOT}/tools/qc2c.py ${_pak_dep}
+        COMMENT "Compiling QuakeC to C")
+else()
+    add_custom_command(OUTPUT ${PROGS_AOT}
+        COMMAND ${Python3_EXECUTABLE} ${ROOT}/tools/qc2c.py --stub -o ${PROGS_AOT}
+        DEPENDS ${ROOT}/tools/qc2c.py
+        COMMENT "QuakeC: interpreter (QOG_AOT is off)")
 endif()
-add_custom_command(OUTPUT ${PROGS_AOT}
-    COMMAND ${Python3_EXECUTABLE} ${ROOT}/tools/qc2c.py --pak ${QOG_PAK} -o ${PROGS_AOT}
-    DEPENDS ${ROOT}/tools/qc2c.py ${_pak_dep}
-    COMMENT "Compiling QuakeC to C")
 
 add_executable(quakeog_pc
     ${ENGINE_SRC}
