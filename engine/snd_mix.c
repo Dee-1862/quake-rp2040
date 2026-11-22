@@ -357,6 +357,21 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 		
 	lscale = snd_scaletable[ch->leftvol >> 3];
 	rscale = snd_scaletable[ch->rightvol >> 3];
+
+	if (sc->flash)
+	{	// QuakeOG: unsigned samples in flash; flipping the top bit gives the
+		// same signed byte ResampleSfx would have stored (u - 128)
+		sfx = sc->flash + ch->pos;
+		for (i=0 ; i<count ; i++)
+		{
+			data = sfx[i] ^ 0x80;
+			paintbuffer[i].left += lscale[data];
+			paintbuffer[i].right += rscale[data];
+		}
+		ch->pos += count;
+		return;
+	}
+
 	sfx = (signed char *)sc->data + ch->pos;
 
 	for (i=0 ; i<count ; i++)

@@ -116,6 +116,32 @@ sfxcache_t *S_LoadSound (sfx_t *s)
 
 //	Con_Printf ("loading %s\n",namebuffer);
 
+	// QuakeOG: a sound that is already 8-bit mono at the mixing rate needs
+	// no conversion beyond the sign, which the mixer applies as it reads, so
+	// it is played in place from flash and only the header is cached.
+	{
+		int		flen;
+		byte	*f = COM_FlashFile (namebuffer, &flen);
+		if (f)
+		{
+			info = GetWavinfo (s->name, f, flen);
+			if (info.channels == 1 && info.width == 1 && info.rate == shm->speed
+				&& info.samples > 0)
+			{
+				sc = Cache_Alloc (&s->cache, sizeof(sfxcache_t), s->name);
+				if (!sc)
+					return NULL;
+				sc->length = info.samples;
+				sc->loopstart = info.loopstart;
+				sc->speed = info.rate;
+				sc->width = 1;
+				sc->stereo = 0;
+				sc->flash = f + info.dataofs;
+				return sc;
+			}
+		}
+	}
+
 	data = COM_LoadStackFile(namebuffer, stackbuf, sizeof(stackbuf));
 
 	if (!data)
@@ -145,6 +171,7 @@ sfxcache_t *S_LoadSound (sfx_t *s)
 	sc->speed = info.rate;
 	sc->width = info.width;
 	sc->stereo = info.channels;
+	sc->flash = NULL;
 
 	ResampleSfx (s, sc->speed, sc->width, data + info.dataofs);
 

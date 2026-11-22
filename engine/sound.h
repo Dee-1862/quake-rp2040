@@ -46,6 +46,7 @@ typedef struct
 	int 	speed;
 	int 	width;
 	int 	stereo;
+	byte	*flash;			// QuakeOG: unsigned 8-bit samples read in place from flash, or NULL
 	byte	data[1];		// variable sized
 } sfxcache_t;
 
