@@ -61,7 +61,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     _CRT_SECURE_NO_WARNINGS
     QOG_DEFAULT_BASEDIR="${ROOT}/data"
     QOG_SHOT_DIR="${CMAKE_BINARY_DIR}/shots"
-    QOG_SINGLE_PLAYER)              # one client slot, loopback sockets only
+    QOG_SINGLE_PLAYER               # one client slot, loopback sockets only
+    QOG_EDICT_MARGIN=128)           # edicts per map: entity blocks + clients + this
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

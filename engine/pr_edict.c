@@ -101,7 +101,7 @@ edict_t *ED_Alloc (void)
 		}
 	}
 	
-	if (i == MAX_EDICTS)
+	if (i == sv.max_edicts)	// QuakeOG: was MAX_EDICTS, wrong once the array is sized per map
 		Sys_Error ("ED_Alloc: no free edicts");
 		
 	sv.num_edicts++;

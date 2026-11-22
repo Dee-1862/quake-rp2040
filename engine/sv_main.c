@@ -1034,6 +1034,73 @@ void SV_SaveSpawnparms (void)
 
 /*
 ================
+SV_EdictsForMap
+
+QuakeOG: how many edicts this map needs: one per entity block in its entity
+lump (worldspawn becomes edict 0), the client slots, and QOG_EDICT_MARGIN
+for what play spawns (missiles, gibs, dropped items), capped at id's
+MAX_EDICTS. Without QOG_EDICT_MARGIN it is id's fixed MAX_EDICTS.
+================
+*/
+static int	sv_edictestimate;	// QuakeOG: entities expected to survive spawning
+
+int SV_EdictsForMap (char *entities)
+{
+#ifdef QOG_EDICT_MARGIN
+	int		n = 0;
+	char	*data = entities;
+	char	classname[64], key[64];
+	qboolean	targetname;
+
+	// Count the entity blocks, minus the ones id's QuakeC frees while
+	// spawning (misc.qc): "light" without a targetname removes itself,
+	// torches and flames become static entities, and info_null removes
+	// itself. The PC checks this estimate against the real count after
+	// spawn (SV_SpawnServer prints both with developer 1).
+	while (data)
+	{
+		data = COM_Parse (data);	// reads only, the lump may be in flash
+		if (!data || strcmp (com_token, "{"))
+			continue;
+		classname[0] = 0;
+		targetname = false;
+		while ((data = COM_Parse (data)) != NULL && strcmp (com_token, "}"))
+		{
+			Q_strncpy (key, com_token, sizeof(key) - 1);
+			key[sizeof(key) - 1] = 0;
+			data = COM_Parse (data);
+			if (!data)
+				break;
+			if (!strcmp (key, "classname"))
+			{
+				Q_strncpy (classname, com_token, sizeof(classname) - 1);
+				classname[sizeof(classname) - 1] = 0;
+			}
+			else if (!strcmp (key, "targetname"))
+				targetname = true;
+		}
+		if ((!strcmp (classname, "light") && !targetname)
+			|| !strcmp (classname, "light_torch_small_walltorch")
+			|| !strcmp (classname, "light_flame_large_yellow")
+			|| !strcmp (classname, "light_flame_small_yellow")
+			|| !strcmp (classname, "light_flame_small_white")
+			|| !strcmp (classname, "info_null"))
+			continue;
+		n++;
+	}
+	sv_edictestimate = n;
+	n += svs.maxclients + QOG_EDICT_MARGIN;
+	if (n > MAX_EDICTS)
+		n = MAX_EDICTS;
+	Con_DPrintf ("%i edicts for this map\n", n);
+	return n;
+#else
+	return MAX_EDICTS;
+#endif
+}
+
+/*
+================
 SV_SpawnServer
 
 This is called at the start of each level
@@ -1096,9 +1163,8 @@ void SV_SpawnServer (char *server)
 	PR_LoadProgs ();
 
 // allocate server memory
-	sv.max_edicts = MAX_EDICTS;
-	
-	sv.edicts = Hunk_AllocName (sv.max_edicts*pr_edict_size, "edicts");
+	// QuakeOG: the edicts are allocated once the world has loaded, below,
+	// so the array can be sized for this map
 
 	sv.datagram.maxsize = sizeof(sv.datagram_buf);
 	sv.datagram.cursize = 0;
@@ -1111,14 +1177,6 @@ void SV_SpawnServer (char *server)
 	sv.signon.maxsize = sizeof(sv.signon_buf);
 	sv.signon.cursize = 0;
 	sv.signon.data = sv.signon_buf;
-	
-// leave slots at start for clients only
-	sv.num_edicts = svs.maxclients+1;
-	for (i=0 ; i<svs.maxclients ; i++)
-	{
-		ent = EDICT_NUM(i+1);
-		svs.clients[i].edict = ent;
-	}
 	
 	sv.state = ss_loading;
 	sv.paused = false;
@@ -1135,7 +1193,18 @@ void SV_SpawnServer (char *server)
 		return;
 	}
 	sv.models[1] = sv.worldmodel;
-	
+
+	sv.max_edicts = SV_EdictsForMap (sv.worldmodel->entities);
+	sv.edicts = Hunk_AllocName (sv.max_edicts*pr_edict_size, "edicts");
+
+// leave slots at start for clients only
+	sv.num_edicts = svs.maxclients+1;
+	for (i=0 ; i<svs.maxclients ; i++)
+	{
+		ent = EDICT_NUM(i+1);
+		svs.clients[i].edict = ent;
+	}
+
 //
 // clear world interaction links
 //
@@ -1176,6 +1245,16 @@ void SV_SpawnServer (char *server)
 	pr_global_struct->serverflags = svs.serverflags;
 	
 	ED_LoadFromFile (sv.worldmodel->entities);
+#ifdef QOG_EDICT_MARGIN
+	{	// QuakeOG: how good the estimate was (developer 1)
+		int i, live = 0;
+		for (i=0 ; i<sv.num_edicts ; i++)
+			if (!EDICT_NUM(i)->free)
+				live++;
+		Con_DPrintf ("edicts: estimated %i, live after spawn %i, high water %i, array %i\n",
+			sv_edictestimate + 1 + svs.maxclients, live, sv.num_edicts, sv.max_edicts);
+	}
+#endif
 
 	sv.active = true;
 
