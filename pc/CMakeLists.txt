@@ -25,6 +25,7 @@ add_executable(quakeog_pc
     ${ROOT}/port/pc/sys_pc.c
     ${ROOT}/port/pc/vid_pc.c
     ${ROOT}/port/common/qog_mem.c
+    ${ROOT}/port/common/qog_aim.c
     ${ROOT}/platform/qog_input.c)
 target_include_directories(quakeog_pc PRIVATE
     ${ROOT}/engine ${ROOT}/port/common ${ROOT}/platform)

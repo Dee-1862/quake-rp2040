@@ -15,6 +15,7 @@
 #include "d_local.h"
 #include "qog_input.h"
 #include "qog_mem.h"
+#include "qog_aim.h"
 
 #ifndef QOG_PC_W
 #define QOG_PC_W 320
@@ -230,6 +231,7 @@ void VID_Init(unsigned char *palette) {
     VID_SetPalette(palette);
     qog_input_reset(&s_board_state);
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
+    qog_aim_register();
     qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer) + surfcache_size);
 
     WNDCLASSA wc = {0};

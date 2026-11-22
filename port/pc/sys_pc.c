@@ -28,6 +28,7 @@ See the GNU General Public License for more details.
 #include <stdio.h>
 #include "quakedef.h"
 #include "qog_mem.h"
+#include "qog_aim.h"
 
 #ifndef QOG_DEFAULT_BASEDIR
 #define QOG_DEFAULT_BASEDIR "."
@@ -165,12 +166,18 @@ int main(int argc, char **argv) {
     printf("QuakeOG PC: basedir %s, hunk %d KB\n", parms.basedir, heap_kb);
     Host_Init(&parms);   /* qog_mem is registered from VID_Init: commands must exist before init ends */
 
+    int frame = 0;
     double oldtime = Sys_FloatTime();
     for (;;) {
         double newtime = Sys_FloatTime();
         double dt = newtime - oldtime;
         if (dt < 0.001) { Sleep(1); continue; }
+        qog_aim_update(newtime);
         Host_Frame((float)dt);
+        /* host_framecount only advances on frames that really ran (Host_Frame
+           skips calls to cap the rate), and the first real one runs quake.rc
+           and config.cfg. A plain call counter fired too early. */
+        if (!frame && host_framecount >= 1) { frame = 1; qog_aim_apply_defaults(); }
         oldtime = newtime;
     }
 }
