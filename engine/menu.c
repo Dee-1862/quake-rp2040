@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 #include "quakedef.h"
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 #include "winquake.h"
 #endif
 
@@ -913,7 +913,7 @@ void M_Net_Draw (void)
 	}
 	else
 	{
-#ifdef _WIN32
+#ifdef ID_WIN32
 		p = NULL;
 #else
 		p = Draw_CachePic ("gfx/dim_modm.lmp");
@@ -931,7 +931,7 @@ void M_Net_Draw (void)
 	}
 	else
 	{
-#ifdef _WIN32
+#ifdef ID_WIN32
 		p = NULL;
 #else
 		p = Draw_CachePic ("gfx/dim_drct.lmp");
@@ -1036,7 +1036,7 @@ again:
 //=============================================================================
 /* OPTIONS MENU */
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 #define	OPTIONS_ITEMS	14
 #else
 #define	OPTIONS_ITEMS	13
@@ -1052,7 +1052,7 @@ void M_Menu_Options_f (void)
 	m_state = m_options;
 	m_entersound = true;
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	if ((options_cursor == 13) && (modestate != MS_WINDOWED))
 	{
 		options_cursor = 0;
@@ -1092,7 +1092,7 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("sensitivity", sensitivity.value);
 		break;
 	case 6:	// music volume
-#ifdef _WIN32
+#ifdef ID_WIN32
 		bgmvolume.value += dir * 1.0;
 #else
 		bgmvolume.value += dir * 0.1;
@@ -1137,7 +1137,7 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("lookstrafe", !lookstrafe.value);
 		break;
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	case 13:	// _windowed_mouse
 		Cvar_SetValue ("_windowed_mouse", !_windowed_mouse.value);
 		break;
@@ -1223,7 +1223,7 @@ void M_Options_Draw (void)
 	if (vid_menudrawfn)
 		M_Print (16, 128, "         Video Options");
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	if (modestate == MS_WINDOWED)
 	{
 		M_Print (16, 136, "             Use Mouse");
@@ -1298,7 +1298,7 @@ void M_Options_Key (int k)
 			options_cursor = 0;
 	}
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	if ((options_cursor == 13) && (modestate != MS_WINDOWED))
 	{
 		if (k == K_UPARROW)
@@ -1580,7 +1580,7 @@ int		msgNumber;
 int		m_quit_prevstate;
 qboolean	wasInMenus;
 
-#ifndef	_WIN32
+#ifndef	ID_WIN32
 char *quitMessage [] = 
 {
 /* .........1.........2.... */
@@ -1681,7 +1681,7 @@ void M_Quit_Draw (void)
 		m_state = m_quit;
 	}
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	M_DrawTextBox (0, 0, 38, 23);
 	M_PrintWhite (16, 12,  "  Quake version 1.09 by id Software\n\n");
 	M_PrintWhite (16, 28,  "Programming        Art \n");

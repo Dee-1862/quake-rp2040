@@ -1432,7 +1432,7 @@ int COM_FindFile (char *filename, int *handle, FILE **file)
 				strcpy (cachepath, netpath);
 			else
 			{	
-#if defined(_WIN32)
+#if defined(ID_WIN32)
 				if ((strlen(netpath) < 2) || (netpath[1] != ':'))
 					sprintf (cachepath,"%s%s", com_cachedir, netpath);
 				else

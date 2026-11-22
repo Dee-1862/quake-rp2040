@@ -548,7 +548,7 @@ void Draw_ConsoleBackground (int lines)
 	conback = Draw_CachePic ("gfx/conback.lmp");
 
 // hack the version number directly into the pic
-#ifdef _WIN32
+#ifdef ID_WIN32
 	sprintf (ver, "(WinQuake) %4.2f", (float)VERSION);
 	dest = conback->data + 320*186 + 320 - 11 - 8*strlen(ver);
 #elif defined(X11)

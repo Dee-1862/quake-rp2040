@@ -23,7 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #pragma warning(disable : 4136)     // X86
 #pragma warning(disable : 4051)     // ALPHA
   
-#ifdef _WIN32
+#ifdef ID_WIN32
 #include <windows.h>
 #endif
 
@@ -34,7 +34,7 @@ void GL_BeginRendering (int *x, int *y, int *width, int *height);
 void GL_EndRendering (void);
 
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 // Function prototypes for the Texture Object Extension routines
 typedef GLboolean (APIENTRY *ARETEXRESFUNCPTR)(GLsizei, const GLuint *,
                     const GLboolean *);
@@ -72,7 +72,7 @@ extern glvert_t glv;
 
 extern	int glx, gly, glwidth, glheight;
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 extern	PROC glArrayElementEXT;
 extern	PROC glColorPointerEXT;
 extern	PROC glTexturePointerEXT;
@@ -236,7 +236,7 @@ void GL_Bind (int texnum);
 #define    TEXTURE0_SGIS				0x835E
 #define    TEXTURE1_SGIS				0x835F
 
-#ifndef _WIN32
+#ifndef ID_WIN32
 #define APIENTRY /* */
 #endif
 

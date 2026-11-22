@@ -23,7 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //#define GLQUAKE	1
 
-#if defined(_WIN32) && !defined(WINDED)
+#if defined(ID_WIN32) && !defined(WINDED)
 
 #if defined(_M_IX86)
 #define __i386__	1

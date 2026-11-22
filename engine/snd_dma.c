@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 #include "winquake.h"
 #endif
 
@@ -147,7 +147,7 @@ void S_Startup (void)
 
 		if (!rc)
 		{
-#ifndef	_WIN32
+#ifndef	ID_WIN32
 			Con_Printf("S_Startup: SNDDMA_Init failed.\n");
 #endif
 			sound_started = 0;
@@ -560,7 +560,7 @@ void S_ClearBuffer (void)
 {
 	int		clear;
 		
-#ifdef _WIN32
+#ifdef ID_WIN32
 	if (!sound_started || !shm || (!shm->buffer && !pDSBuf))
 #else
 	if (!sound_started || !shm || !shm->buffer)
@@ -572,7 +572,7 @@ void S_ClearBuffer (void)
 	else
 		clear = 0;
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	if (pDSBuf)
 	{
 		DWORD	dwSize;
@@ -844,7 +844,7 @@ void GetSoundtime(void)
 void S_ExtraUpdate (void)
 {
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 	IN_Accumulate ();
 #endif
 
@@ -877,7 +877,7 @@ void S_Update_(void)
 	if (endtime - soundtime > samps)
 		endtime = soundtime + samps;
 
-#ifdef _WIN32
+#ifdef ID_WIN32
 // if the buffer was lost or stopped, restore it and/or restart it
 	{
 		DWORD	dwStatus;
