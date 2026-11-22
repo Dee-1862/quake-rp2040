@@ -64,4 +64,10 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L25. Commit message rules (user):** a one-line title, a bullet-point body, no em dashes, no semicolons, no colons, and no assistant attribution anywhere in code, comments or commits.
 
+**L26. Smart App Control (Windows 11) blocks freshly built, unsigned exes.** The first PC build ran once, then rebuilds were refused ("An Application Control policy has blocked this file", Code Integrity event 3077/3118). Every rebuild has a new hash with no reputation. Don't try to work around it: it's the user's security setting. Options are in docs/game-data.md. Firmware work is unaffected, since that code runs on the board.
+
+**L27. The shareware data was extracted without running any 1996 code.** `quake106.zip` (MD5 `8cee4d03…1357`) holds `resource.1`, an LHA self-extracting DOS exe. A pure-Python lh5 decoder read it as data and checked each member's CRC-16. Result: `pak0.pak`, 18,689,235 bytes, MD5 `5906e599…3abb`. Never run `deice.exe` or the SFX itself.
+
+**L28. Engine console commands must be registered during `Host_Init`** (`Cmd_AddCommand` errors once `host_initialized` is set). Register port commands from `VID_Init`. Scripted runs end with `qog_quit`, because `quit` can open a confirmation menu and hang.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
