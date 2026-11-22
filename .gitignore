@@ -1,0 +1,20 @@
+build/
+build-*/
+*.uf2
+*.elf
+*.bin
+*.map
+__pycache__/
+
+# Reference repos are cloned, not vendored. See README "Setup".
+third_party/
+
+# id Software's game data is never committed. Bring your own pak files.
+*.pak
+*.PAK
+data/
+qogdata*
+.venv/
+
+# Personal planning page, kept local
+QuakeOG Port Plan.html
