@@ -70,4 +70,8 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L28. Engine console commands must be registered during `Host_Init`** (`Cmd_AddCommand` errors once `host_initialized` is set). Register port commands from `VID_Init`. Scripted runs end with `qog_quit`, because `quit` can open a confirmation menu and hang.
 
+**L29. To override a saved setting, wait for `host_framecount >= 1`.** `Host_Frame` skips its first calls to cap the frame rate, and the first frame that really runs executes `quake.rc` and then `config.cfg`. A plain call counter fired too early, before the config. `Cbuf_AddText` queued the command behind everything `quake.rc` stuffs in, including any scripted quit. Verify through the saved `config.cfg`, not a `+cvar` query on the command line, which runs inside `quake.rc` before late settings apply.
+
+**L30. id ships with the crosshair off.** With buttons only, the crosshair and slow-start turning (fine aim) are what make aiming possible. Keep both in `port/common/` so every port gets them.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
