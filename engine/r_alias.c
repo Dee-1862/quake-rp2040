@@ -304,7 +304,7 @@ void R_AliasPreparePoints (void)
 //
 	r_affinetridesc.numtriangles = 1;
 
-	ptri = (mtriangle_t *)((byte *)paliashdr + paliashdr->triangles);
+	ptri = (mtriangle_t *)ALIAS_BULK (paliashdr, paliashdr->triangles);
 	for (i=0 ; i<pmdl->numtris ; i++, ptri++)
 	{
 		pfv[0] = &pfinalverts[ptri->vertindex[0]];
@@ -547,7 +547,7 @@ void R_AliasPrepareUnclippedPoints (void)
 
 	r_affinetridesc.pfinalverts = pfinalverts;
 	r_affinetridesc.ptriangles = (mtriangle_t *)
-			((byte *)paliashdr + paliashdr->triangles);
+			ALIAS_BULK (paliashdr, paliashdr->triangles);
 	r_affinetridesc.numtriangles = pmdl->numtris;
 
 	D_PolysetDraw ();
@@ -603,7 +603,7 @@ void R_AliasSetupSkin (void)
 	}
 
 	r_affinetridesc.pskindesc = pskindesc;
-	r_affinetridesc.pskin = (void *)((byte *)paliashdr + pskindesc->skin);
+	r_affinetridesc.pskin = (void *)ALIAS_BULK (paliashdr, pskindesc->skin);
 	r_affinetridesc.skinwidth = a_skinwidth;
 	r_affinetridesc.seamfixupX16 =  (a_skinwidth >> 1) << 16;
 	r_affinetridesc.skinheight = pmdl->skinheight;
@@ -666,7 +666,7 @@ void R_AliasSetupFrame (void)
 	if (paliashdr->frames[frame].type == ALIAS_SINGLE)
 	{
 		r_apverts = (trivertx_t *)
-				((byte *)paliashdr + paliashdr->frames[frame].frame);
+				ALIAS_BULK (paliashdr, paliashdr->frames[frame].frame);
 		return;
 	}
 	
@@ -691,7 +691,7 @@ void R_AliasSetupFrame (void)
 	}
 
 	r_apverts = (trivertx_t *)
-				((byte *)paliashdr + paliasgroup->frames[i].frame);
+				ALIAS_BULK (paliashdr, paliasgroup->frames[i].frame);
 }
 
 

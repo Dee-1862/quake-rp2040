@@ -281,16 +281,18 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 //
 // load the file
 //
-	// QuakeOG: brush models (maps) are used from the read-only flash image
-	// when the port provides one. Alias and sprite models still load into the
-	// cache for now.
+	// QuakeOG: brush models (maps) and alias models are used from the
+	// read-only flash image when the port provides one (alias models keep
+	// only their header and descriptors in the cache). Sprites still load
+	// into the cache for now.
 	buf = NULL;
 	mod_inflash = false;
 	{
 		int		flen;
 		byte	*f = COM_FlashFile (mod->name, &flen);
-		if (f && LittleLong (*(unsigned *)f) != IDPOLYHEADER
-			&& LittleLong (*(unsigned *)f) != IDSPRITEHEADER)
+		if (f && !(((int)f) & 3)
+			&& LittleLong (*(unsigned *)f) != IDSPRITEHEADER
+			&& (LittleLong (*(unsigned *)f) != IDPOLYHEADER || r_pixbytes == 1))
 		{
 			buf = (unsigned *)f;
 			mod_inflash = true;
@@ -1320,6 +1322,11 @@ void * Mod_LoadAliasFrame (void * pin, int *pframeindex, int numv,
 	}
 
 	pinframe = (trivertx_t *)(pdaliasframe + 1);
+	if (pheader->flashbase)
+	{	// QuakeOG: vertices are bytes in the same layout, read them in place
+		*pframeindex = (byte *)pinframe - pheader->flashbase;
+		return (void *)(pinframe + numv);
+	}
 	pframe = Hunk_AllocName (numv * sizeof(*pframe), loadname);
 
 	*pframeindex = (byte *)pframe - (byte *)pheader;
@@ -1420,8 +1427,13 @@ void * Mod_LoadAliasSkin (void * pin, int *pskinindex, int skinsize,
 	byte	*pskin, *pinskin;
 	unsigned short	*pusskin;
 
-	pskin = Hunk_AllocName (skinsize * r_pixbytes, loadname);
 	pinskin = (byte *)pin;
+	if (pheader->flashbase)
+	{	// QuakeOG: 8-bit pixels, read them in place (flash is only used when r_pixbytes is 1)
+		*pskinindex = pinskin - pheader->flashbase;
+		return (void *)(pinskin + skinsize);
+	}
+	pskin = Hunk_AllocName (skinsize * r_pixbytes, loadname);
 	*pskinindex = (byte *)pskin - (byte *)pheader;
 
 	if (r_pixbytes == 1)
@@ -1539,10 +1551,12 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	size = 	sizeof (aliashdr_t) + (LittleLong (pinmodel->numframes) - 1) *
 			 sizeof (pheader->frames[0]) +
 			sizeof (mdl_t) +
-			LittleLong (pinmodel->numverts) * sizeof (stvert_t) +
-			LittleLong (pinmodel->numtris) * sizeof (mtriangle_t);
+			LittleLong (pinmodel->numverts) * sizeof (stvert_t);
+	if (!mod_inflash)	// QuakeOG: from flash the triangles are read in place
+		size += LittleLong (pinmodel->numtris) * sizeof (mtriangle_t);
 
 	pheader = Hunk_AllocName (size, loadname);
+	pheader->flashbase = mod_inflash ? (byte *)buffer : NULL;
 	pmodel = (mdl_t *) ((byte *)&pheader[1] +
 			(LittleLong (pinmodel->numframes) - 1) *
 			 sizeof (pheader->frames[0]));
@@ -1655,8 +1669,18 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 	ptri = (mtriangle_t *)&pstverts[pmodel->numverts];
 	pintriangles = (dtriangle_t *)&pinstverts[pmodel->numverts];
 
+	if (pheader->flashbase)
+	{	// QuakeOG: dtriangle_t and mtriangle_t are the same four ints
+		if (((int)pintriangles) & 3)
+			Sys_Error ("%s: triangles not 4-byte aligned in flash", mod->name);
+		pheader->triangles = (byte *)pintriangles - pheader->flashbase;
+	}
+	else
+	{
 	pheader->triangles = (byte *)ptri - (byte *)pheader;
+	}
 
+	if (!pheader->flashbase)
 	for (i=0 ; i<pmodel->numtris ; i++)
 	{
 		int		j;

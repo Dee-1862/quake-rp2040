@@ -277,8 +277,17 @@ typedef struct {
 	int					stverts;
 	int					skindesc;
 	int					triangles;
+	// QuakeOG: when the model was loaded from flash, the bulk data (frame
+	// vertices, skin pixels, triangles) stays there and those offsets are
+	// relative to flashbase, an absolute pointer that stays valid when the
+	// cache moves this header. NULL: everything is relative to the header.
+	byte				*flashbase;
 	maliasframedesc_t	frames[1];
 } aliashdr_t;
+
+// QuakeOG: address of frame vertices, skin pixels or triangles
+#define ALIAS_BULK(hdr, ofs) \
+	(((hdr)->flashbase ? (hdr)->flashbase : (byte *)(hdr)) + (ofs))
 
 //===================================================================
 
