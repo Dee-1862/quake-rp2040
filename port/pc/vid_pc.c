@@ -28,8 +28,20 @@
 viddef_t vid;
 unsigned short d_8to16table[256];
 unsigned d_8to24table[256];
-void (*vid_menudrawfn)(void);
-void (*vid_menukeyfn)(int key);
+
+/* id's Options > Video menu calls these unconditionally; NULL crashed the
+   game. The mode is fixed on this port (and on the board), so just say so. */
+void M_Menu_Options_f(void);
+static void vid_menu_draw(void) {
+    Draw_String(8 * 8, 6 * 8, "Video mode is fixed:");
+    Draw_String(8 * 8, 8 * 8, "320x200, 8-bit");
+    Draw_String(8 * 8, 11 * 8, "Press ESC to go back");
+}
+static void vid_menu_key(int key) {
+    if (key == K_ESCAPE) M_Menu_Options_f();
+}
+void (*vid_menudrawfn)(void) = vid_menu_draw;
+void (*vid_menukeyfn)(int key) = vid_menu_key;
 
 static byte  vid_buffer[QOG_PC_W * QOG_PC_H];
 static short zbuffer[QOG_PC_W * QOG_PC_H];
@@ -264,6 +276,10 @@ void VID_Init(unsigned char *palette) {
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
     qog_aim_register();
     Cmd_AddCommand("qog_shot", cmd_qog_shot);
+    {
+        extern void qog_manifest_register(void);
+        qog_manifest_register();
+    }
     qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer) + surfcache_size);
 
     WNDCLASSA wc = {0};

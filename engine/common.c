@@ -1398,6 +1398,8 @@ int COM_FindFile (char *filename, int *handle, FILE **file)
 			for (i=0 ; i<pak->numfiles ; i++)
 				if (!strcmp (pak->files[i].name, filename))
 				{       // found it!
+					if (com_fileopened)
+						com_fileopened (filename);	// QuakeOG: asset manifests
 					Sys_Printf ("PackFile: %s : %s\n",pak->filename, filename);
 					if (handle)
 					{
@@ -1709,6 +1711,10 @@ way (no image, or a loose file earlier in the search path wins) and the
 caller should load it normally.
 ============
 */
+// QuakeOG: if set, called with the name of every file found in a pack, so a
+// port can record which files a session really uses (asset manifests).
+void (*com_fileopened) (char *path);
+
 byte *COM_FlashFile (char *path, int *length)
 {
 	searchpath_t    *search;
@@ -1726,6 +1732,8 @@ byte *COM_FlashFile (char *path, int *length)
 				{
 					if (!pak->flash)
 						return NULL;
+					if (com_fileopened)
+						com_fileopened (path);
 					if (length)
 						*length = pak->files[i].filelen;
 					return pak->flash + pak->files[i].flashpos;

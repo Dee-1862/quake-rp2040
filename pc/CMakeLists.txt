@@ -39,6 +39,7 @@ add_executable(quakeog_pc
     ${ROOT}/port/pc/sys_pc.c
     ${ROOT}/port/pc/vid_pc.c
     ${ROOT}/port/pc/snd_pc.c
+    ${ROOT}/port/pc/manifest_pc.c
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_aim.c
     ${ROOT}/port/common/qog_rand.c
