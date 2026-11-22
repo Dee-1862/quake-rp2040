@@ -94,4 +94,8 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L40. Opening Options > Video crashed the PC port**, because id's menu calls `vid_menudrawfn` without checking for NULL. Every port must supply that hook (and `vid_menukeyfn`).
 
+**L41. With real sound, demo frames are no longer repeatable.** id's channel picking depends on how far the audio device has played, and it consumes `rand()`, which shifts particle placement. Compare renders with `-nosound`. Compare against a build of the previous commit made in a separate `git worktree`, so uncommitted work stays put.
+
+**L42. A worktree build of an older commit uses that commit's build settings.** Building the pre-opt-in commit regenerated the QuakeC translation from the shareware. Check for derived files after any reference build and delete them.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.

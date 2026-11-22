@@ -26,6 +26,8 @@ Done means:
 
 ## Next actions, in order
 
+**Blocked on game data:** the next big RAM step (baking the now read-only map structures into flash, about 640 KB) and fitting data to the board both produce derived data. The shareware licence forbids that, so they wait for registered or retail data (Steam or GOG) in `data/id1/`. Engine-only work continues meanwhile: entity records, static tables, gfx.wad, particles, net buffers, and the RP2040 port layer.
+
 0. **User:** put `pak0.pak` in `data\id1\` (`game-data.md`). Run the PC build, check that E1M1 plays, and try board mode (F12).
 0b. Measure the dynamic RAM for E1M1 with `-heapsize` stepping down (`ram-meter.md`). Then shrink the biggest static items one commit at a time, starting with `cl_entities` and `mod_known`.
 
