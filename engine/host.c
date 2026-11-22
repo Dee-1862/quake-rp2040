@@ -190,8 +190,10 @@ void	Host_FindMaxClients (void)
 		svs.maxclients = MAX_SCOREBOARD;
 
 	svs.maxclientslimit = svs.maxclients;
+#ifndef QOG_SINGLE_PLAYER	// QuakeOG: one client slot and two loopback sockets, not four and five
 	if (svs.maxclientslimit < 4)
 		svs.maxclientslimit = 4;
+#endif
 	svs.clients = Hunk_AllocName (svs.maxclientslimit*sizeof(client_t), "clients");
 
 	if (svs.maxclients > 1)
