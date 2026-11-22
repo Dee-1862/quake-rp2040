@@ -45,7 +45,8 @@ client_static_t	cls;
 client_state_t	cl;
 // FIXME: put these on hunk?
 efrag_t			cl_efrags[MAX_EFRAGS];
-entity_t		cl_entities[MAX_EDICTS];
+entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level in CL_ClearState
+int				cl_max_edicts;
 entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 dlight_t		cl_dlights[MAX_DLIGHTS];
@@ -73,7 +74,10 @@ void CL_ClearState (void)
 
 // clear other arrays	
 	memset (cl_efrags, 0, sizeof(cl_efrags));
-	memset (cl_entities, 0, sizeof(cl_entities));
+	// QuakeOG: sized per level on the hunk (zeroed). With a local server the
+	// client never sees an entity number past the server's array.
+	cl_max_edicts = sv.active ? sv.max_edicts : MAX_EDICTS;
+	cl_entities = Hunk_AllocName (cl_max_edicts * sizeof(entity_t), "cl_ents");
 	memset (cl_dlights, 0, sizeof(cl_dlights));
 	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
 	memset (cl_temp_entities, 0, sizeof(cl_temp_entities));

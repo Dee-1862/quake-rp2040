@@ -80,7 +80,7 @@ entity_t	*CL_EntityNum (int num)
 {
 	if (num >= cl.num_entities)
 	{
-		if (num >= MAX_EDICTS)
+		if (num >= cl_max_edicts)	// QuakeOG: was MAX_EDICTS, the array is sized per level
 			Host_Error ("CL_EntityNum: %i is an invalid number",num);
 		while (cl.num_entities<=num)
 		{

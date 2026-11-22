@@ -126,7 +126,7 @@ static void cmd_qog_shot(void) {
     fwrite(s_bmi.pal, pal_bytes, 1, f);
     fwrite(vid_buffer, img, 1, f);
     fclose(f);
-    Con_Printf("qog_shot: wrote %s\n", path);
+    Con_Printf("qog_shot: wrote %s (frame %d, cl.time %.3f, realtime %.3f)\n", path, host_framecount, cl.time, realtime);
 }
 
 /* ---- keyboard -------------------------------------------------------- */
@@ -290,7 +290,10 @@ void VID_Init(unsigned char *palette) {
     RegisterClassA(&wc);
     RECT r = { 0, 0, QOG_PC_W * WIN_SCALE, QOG_PC_H * WIN_SCALE };
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
-    s_wnd = CreateWindowA("QuakeOGPC", "QuakeOG PC", WS_OVERLAPPEDWINDOW | WS_VISIBLE, CW_USEDEFAULT,
+    /* -hidden: scripted test runs render and take screenshots without
+       opening a visible window on the user's desktop. */
+    const DWORD vis = COM_CheckParm("-hidden") ? 0 : WS_VISIBLE;
+    s_wnd = CreateWindowA("QuakeOGPC", "QuakeOG PC", WS_OVERLAPPEDWINDOW | vis, CW_USEDEFAULT,
                           CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, NULL, NULL, wc.hInstance, NULL);
     if (!s_wnd) Sys_Error("could not create the window");
 }
