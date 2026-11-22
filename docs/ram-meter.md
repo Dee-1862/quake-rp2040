@@ -75,11 +75,18 @@ The total is about **24× over budget**, which is roughly where MG24Quake starte
 | Baseline, unmodified id engine | ≈ 5,886 | | |
 | Level data read in place from flash | 5,091 | −795 | E1M1 loads. Read-only flash pages caught no writes |
 | No surface cache, per-pixel lighting | 4,492 | −599 | Same frame as id: 96.3% of pixels identical, the rest within 5/255 |
-| QuakeC compiled to C, `progs.dat` and aligned map arrays in flash | **≈ 3,923** | −569 | State hashes identical to id's interpreter after 21 s of E1M1, monsters included |
+| QuakeC compiled to C, `progs.dat` and aligned map arrays in flash | ≈ 3,923 | −569 | State hashes identical to id's interpreter after 21 s of E1M1, monsters included |
+| Alias models' frames, skins and triangles read in place from flash | ≈ 2,611 | −1,312 | Demo 1 frames byte-identical with and without flash, at three points |
+| Real sound switched on (+1,306 KB of sounds, +77 KB mixer) | (≈ 3,994) | (+1,383) | Sound plays through the Windows wave output |
+| Sounds played in place from flash | **≈ 2,759** | −1,235 | Mixer reads give the same values for all 256 byte patterns. Demo 1 runs 400 frames |
+
+With sound included, the comparable baseline would have been about 7,270 KB, **so about 62% is gone**. The two 22 kHz lightning-gun sounds (41 KB) are the only ones still converted. The board's converter should pre-convert them.
 
 Now (E1M1): hunk low 1,848 KB (map structures 781, edicts 513, gfx.wad 110, particles 88, net sockets 81, zone 48, QuakeC globals 45), cache 1,419 KB (models and sounds), video 189 KB, static 435 KB. **One third of the total gone so far, with gameplay proven unchanged.**
 
-Next targets, biggest first: the model and sound cache (1,419 KB → read from flash), edicts (513 KB → per-class sizes), static tables (435 KB), and the map structures (781 KB → split into a read-only part in flash and a small mutable part in RAM).
+Now (E1M1 with sound): hunk low 1,882 KB, cache 155 KB (console background 63, lightning sounds 41, model headers), video 189 KB, static 478 KB.
+
+Next targets, biggest first: the map structures (781 KB → split into a read-only part in flash and a small mutable part in RAM), edicts (513 KB → per-class sizes), static tables (478 KB, including the mixer's 32 KB volume table), `gfx.wad` (110 KB → flash), particles (88 KB) and net sockets (81 KB).
 
 ## How to use it
 

@@ -84,4 +84,10 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L35. Prove each RAM cut with a test that would catch a regression:** the read-only pages catch writes, `qog_shot` plus a pixel diff checks rendering, and state hashes against `-noaot`/`-noflash` check game logic.
 
+**L36. id's cache can move blocks (`Cache_Move`), which is why model data uses offsets relative to the header.** Data left in flash needs an absolute base pointer stored in the header (`aliashdr_t.flashbase`). Group descriptors stay header-relative because they live in the cache block. Check every `(byte *)paliashdr + …` site for which kind it is.
+
+**L37. Mix at the rate the data is stored at (11,025 Hz for Quake)**, so sounds need no resampling and can be read in place. Any conversion should happen on the PC in the converter, not on the board. Only two shareware sounds (lightning gun, 22 kHz 16-bit) don't qualify.
+
+**L38. Run scripted tests with `+volume 0` now that the PC build has real sound.** The mixer still runs, so the code paths are exercised, but the tests stay silent.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
