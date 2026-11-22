@@ -36,6 +36,11 @@ int Sys_FileWrite (int handle, void *data, int count);
 int	Sys_FileTime (char *path);
 void Sys_mkdir (char *path);
 
+// QuakeOG: returns a read-only memory image of the whole file (flash on the
+// RP2040, read-only pages on the PC), or NULL if the port cannot map files.
+// The image stays valid for the whole run and must never be written.
+void *Sys_FlashMap (char *path, int length);
+
 //
 // memory protection
 //

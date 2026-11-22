@@ -73,7 +73,7 @@ typedef struct texture_s
 	int			anim_min, anim_max;		// time for this frame min <=time< max
 	struct texture_s *anim_next;		// in the animation sequence
 	struct texture_s *alternate_anims;	// bmodels in frmae 1 use these
-	unsigned	offsets[MIPLEVELS];		// four mip maps stored
+	byte		*mips[MIPLEVELS];		// QuakeOG: pixels of the four mip levels, in RAM or read in place from flash
 } texture_t;
 
 

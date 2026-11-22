@@ -39,6 +39,8 @@ byte	mod_novis[MAX_MAP_LEAFS/8];
 model_t	mod_known[MAX_MOD_KNOWN];
 int		mod_numknown;
 
+static qboolean	mod_inflash;	// QuakeOG: see below at mod_base
+
 // values for model_t's needload
 #define NL_PRESENT		0
 #define NL_NEEDS_LOADED	1
@@ -279,7 +281,23 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 //
 // load the file
 //
-	buf = (unsigned *)COM_LoadStackFile (mod->name, stackbuf, sizeof(stackbuf));
+	// QuakeOG: brush models (maps) are used from the read-only flash image
+	// when the port provides one. Alias and sprite models still load into the
+	// cache for now.
+	buf = NULL;
+	mod_inflash = false;
+	{
+		int		flen;
+		byte	*f = COM_FlashFile (mod->name, &flen);
+		if (f && LittleLong (*(unsigned *)f) != IDPOLYHEADER
+			&& LittleLong (*(unsigned *)f) != IDSPRITEHEADER)
+		{
+			buf = (unsigned *)f;
+			mod_inflash = true;
+		}
+	}
+	if (!buf)
+		buf = (unsigned *)COM_LoadStackFile (mod->name, stackbuf, sizeof(stackbuf));
 	if (!buf)
 	{
 		if (crash)
@@ -315,6 +333,7 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 		Mod_LoadBrushModel (mod, buf);
 		break;
 	}
+	mod_inflash = false;
 
 	return mod;
 }
@@ -346,6 +365,12 @@ model_t *Mod_ForName (char *name, qboolean crash)
 
 byte	*mod_base;
 
+// QuakeOG: mod_inflash is true while the model being loaded is a read-only
+// image in flash. Read-only lumps whose file layout matches memory are then
+// used in place, and the in-place byte swaps (no-ops on little-endian) are
+// skipped.
+#define MOD_IN_PLACE(p)	(mod_inflash && (((int)(p)) & 3) == 0)
+
 
 /*
 =================
@@ -367,36 +392,50 @@ void Mod_LoadTextures (lump_t *l)
 		return;
 	}
 	m = (dmiptexlump_t *)(mod_base + l->fileofs);
-	
-	m->nummiptex = LittleLong (m->nummiptex);
-	
+
+	if (!mod_inflash)	// QuakeOG: no in-place swaps on read-only flash (no-ops on little-endian)
+		m->nummiptex = LittleLong (m->nummiptex);
+
 	loadmodel->numtextures = m->nummiptex;
 	loadmodel->textures = Hunk_AllocName (m->nummiptex * sizeof(*loadmodel->textures) , loadname);
 
 	for (i=0 ; i<m->nummiptex ; i++)
 	{
-		m->dataofs[i] = LittleLong(m->dataofs[i]);
+		if (!mod_inflash)
+			m->dataofs[i] = LittleLong(m->dataofs[i]);
 		if (m->dataofs[i] == -1)
 			continue;
 		mt = (miptex_t *)((byte *)m + m->dataofs[i]);
-		mt->width = LittleLong (mt->width);
-		mt->height = LittleLong (mt->height);
-		for (j=0 ; j<MIPLEVELS ; j++)
-			mt->offsets[j] = LittleLong (mt->offsets[j]);
-		
+		if (!mod_inflash)
+		{
+			mt->width = LittleLong (mt->width);
+			mt->height = LittleLong (mt->height);
+			for (j=0 ; j<MIPLEVELS ; j++)
+				mt->offsets[j] = LittleLong (mt->offsets[j]);
+		}
+
 		if ( (mt->width & 15) || (mt->height & 15) )
 			Sys_Error ("Texture %s is not 16 aligned", mt->name);
 		pixels = mt->width*mt->height/64*85;
-		tx = Hunk_AllocName (sizeof(texture_t) +pixels, loadname );
+		// QuakeOG: from flash only the small header lives in RAM; the pixels
+		// are read in place. Otherwise they follow the struct, as before.
+		tx = Hunk_AllocName (sizeof(texture_t) + (mod_inflash ? 0 : pixels), loadname );
 		loadmodel->textures[i] = tx;
 
 		memcpy (tx->name, mt->name, sizeof(tx->name));
 		tx->width = mt->width;
 		tx->height = mt->height;
-		for (j=0 ; j<MIPLEVELS ; j++)
-			tx->offsets[j] = mt->offsets[j] + sizeof(texture_t) - sizeof(miptex_t);
-		// the pixels immediately follow the structures
-		memcpy ( tx+1, mt+1, pixels);
+		if (mod_inflash)
+		{
+			for (j=0 ; j<MIPLEVELS ; j++)
+				tx->mips[j] = (byte *)mt + mt->offsets[j];
+		}
+		else
+		{
+			for (j=0 ; j<MIPLEVELS ; j++)
+				tx->mips[j] = (byte *)(tx+1) + mt->offsets[j] - sizeof(miptex_t);
+			memcpy ( tx+1, mt+1, pixels);
+		}
 		
 		if (!Q_strncmp(mt->name,"sky",3))	
 			R_InitSky (tx);
@@ -508,7 +547,12 @@ void Mod_LoadLighting (lump_t *l)
 		loadmodel->lightdata = NULL;
 		return;
 	}
-	loadmodel->lightdata = Hunk_AllocName ( l->filelen, loadname);	
+	if (mod_inflash)
+	{	// QuakeOG: read only bytes, read in place from flash
+		loadmodel->lightdata = mod_base + l->fileofs;
+		return;
+	}
+	loadmodel->lightdata = Hunk_AllocName ( l->filelen, loadname);
 	memcpy (loadmodel->lightdata, mod_base + l->fileofs, l->filelen);
 }
 
@@ -525,7 +569,12 @@ void Mod_LoadVisibility (lump_t *l)
 		loadmodel->visdata = NULL;
 		return;
 	}
-	loadmodel->visdata = Hunk_AllocName ( l->filelen, loadname);	
+	if (mod_inflash)
+	{	// QuakeOG: read only bytes, read in place from flash
+		loadmodel->visdata = mod_base + l->fileofs;
+		return;
+	}
+	loadmodel->visdata = Hunk_AllocName ( l->filelen, loadname);
 	memcpy (loadmodel->visdata, mod_base + l->fileofs, l->filelen);
 }
 
@@ -542,7 +591,12 @@ void Mod_LoadEntities (lump_t *l)
 		loadmodel->entities = NULL;
 		return;
 	}
-	loadmodel->entities = Hunk_AllocName ( l->filelen, loadname);	
+	if (mod_inflash && mod_base[l->fileofs + l->filelen - 1] == 0)
+	{	// QuakeOG: parsed read only, so use it in place when it is NUL terminated
+		loadmodel->entities = (char *)(mod_base + l->fileofs);
+		return;
+	}
+	loadmodel->entities = Hunk_AllocName ( l->filelen, loadname);
 	memcpy (loadmodel->entities, mod_base + l->fileofs, l->filelen);
 }
 
@@ -562,10 +616,15 @@ void Mod_LoadVertexes (lump_t *l)
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*sizeof(*out), loadname);	
+	loadmodel->numvertexes = count;
+	if (MOD_IN_PLACE(in))
+	{	// QuakeOG: mvertex_t and dvertex_t are both three floats
+		loadmodel->vertexes = (mvertex_t *)in;
+		return;
+	}
+	out = Hunk_AllocName ( count*sizeof(*out), loadname);
 
 	loadmodel->vertexes = out;
-	loadmodel->numvertexes = count;
 
 	for ( i=0 ; i<count ; i++, in++, out++)
 	{
@@ -951,7 +1010,8 @@ void Mod_LoadClipnodes (lump_t *l)
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*sizeof(*out), loadname);	
+	// QuakeOG: same layout as the file and never written, so read in place from flash
+	out = MOD_IN_PLACE(in) ? in : Hunk_AllocName ( count*sizeof(*out), loadname);
 
 	loadmodel->clipnodes = out;
 	loadmodel->numclipnodes = count;
@@ -980,6 +1040,8 @@ void Mod_LoadClipnodes (lump_t *l)
 	hull->clip_maxs[1] = 32;
 	hull->clip_maxs[2] = 64;
 
+	if (out == in)
+		return;
 	for (i=0 ; i<count ; i++, out++, in++)
 	{
 		out->planenum = LittleLong(in->planenum);
@@ -1070,10 +1132,15 @@ void Mod_LoadSurfedges (lump_t *l)
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*sizeof(*out), loadname);	
+	loadmodel->numsurfedges = count;
+	if (MOD_IN_PLACE(in))
+	{	// QuakeOG: same layout as the file, read in place from flash
+		loadmodel->surfedges = in;
+		return;
+	}
+	out = Hunk_AllocName ( count*sizeof(*out), loadname);
 
 	loadmodel->surfedges = out;
-	loadmodel->numsurfedges = count;
 
 	for ( i=0 ; i<count ; i++)
 		out[i] = LittleLong (in[i]);
@@ -1157,8 +1224,9 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 // swap all the lumps
 	mod_base = (byte *)header;
 
-	for (i=0 ; i<sizeof(dheader_t)/4 ; i++)
-		((int *)header)[i] = LittleLong ( ((int *)header)[i]);
+	if (!mod_inflash)	// QuakeOG: flash is read only, and the swap is a no-op on little-endian
+		for (i=0 ; i<sizeof(dheader_t)/4 ; i++)
+			((int *)header)[i] = LittleLong ( ((int *)header)[i]);
 
 // load into heap
 	

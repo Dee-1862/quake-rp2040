@@ -175,6 +175,9 @@ void COM_CloseFile (int h);
 byte *COM_LoadStackFile (char *path, void *buffer, int bufsize);
 byte *COM_LoadTempFile (char *path);
 byte *COM_LoadHunkFile (char *path);
+// QuakeOG: pointer to the file inside a flash-mapped pack, read only, or NULL
+// if it is not in one (then load it the normal way).
+byte *COM_FlashFile (char *path, int *length);
 void COM_LoadCacheFile (char *path, struct cache_user_s *cu);
 
 

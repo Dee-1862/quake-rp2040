@@ -58,7 +58,7 @@ void R_InitSky (texture_t *mt)
 	int			i, j;
 	byte		*src;
 
-	src = (byte *)mt + mt->offsets[0];
+	src = mt->mips[0];
 
 	for (i=0 ; i<128 ; i++)
 	{

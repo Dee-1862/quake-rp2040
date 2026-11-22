@@ -87,6 +87,26 @@ int Sys_FileTime(char *path) {
 
 void Sys_mkdir(char *path) { _mkdir(path); }
 
+/* Flash emulation: the whole pack in its own pages, then marked read only,
+   so any write into "flash" faults here on the PC instead of corrupting the
+   board. Not counted as RAM. -noflash turns it off to compare. */
+void *Sys_FlashMap(char *path, int length) {
+    if (COM_CheckParm("-noflash") || length <= 0) return NULL;
+    byte *p = VirtualAlloc(NULL, (SIZE_T)length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!p) return NULL;
+    FILE *f = fopen(path, "rb");
+    if (!f || fread(p, 1, (size_t)length, f) != (size_t)length) {
+        if (f) fclose(f);
+        VirtualFree(p, 0, MEM_RELEASE);
+        return NULL;
+    }
+    fclose(f);
+    DWORD old;
+    VirtualProtect(p, (SIZE_T)length, PAGE_READONLY, &old);
+    printf("Flash: %s mapped read only, %d KB\n", path, length / 1024);
+    return p;
+}
+
 /* ---- system ---------------------------------------------------------- */
 
 void Sys_MakeCodeWriteable(unsigned long startaddr, unsigned long length) { (void)startaddr; (void)length; }

@@ -1217,6 +1217,7 @@ typedef struct pack_s
 	int             handle;
 	int             numfiles;
 	packfile_t      *files;
+	byte            *flash;         // QuakeOG: read-only image of the pack, or NULL
 } pack_t;
 
 //
@@ -1626,8 +1627,10 @@ pack_t *COM_LoadPackFile (char *packfile)
 	int                             packhandle;
 	dpackfile_t             info[MAX_FILES_IN_PACK];
 	unsigned short          crc;
+	int                     packlen;
 
-	if (Sys_FileOpenRead (packfile, &packhandle) == -1)
+	packlen = Sys_FileOpenRead (packfile, &packhandle);
+	if (packlen == -1)
 	{
 //              Con_Printf ("Couldn't open %s\n", packfile);
 		return NULL;
@@ -1672,9 +1675,55 @@ pack_t *COM_LoadPackFile (char *packfile)
 	pack->handle = packhandle;
 	pack->numfiles = numpackfiles;
 	pack->files = newfiles;
-	
-	Con_Printf ("Added packfile %s (%i files)\n", packfile, numpackfiles);
+	pack->flash = Sys_FlashMap (packfile, packlen);
+
+	Con_Printf ("Added packfile %s (%i files%s)\n", packfile, numpackfiles,
+		pack->flash ? ", mapped read only" : "");
 	return pack;
+}
+
+/*
+============
+COM_FlashFile
+
+QuakeOG: finds a file the same way COM_FindFile does, and returns a pointer
+into the read-only image of its pack. NULL means it is not available that
+way (no image, or a loose file earlier in the search path wins) and the
+caller should load it normally.
+============
+*/
+byte *COM_FlashFile (char *path, int *length)
+{
+	searchpath_t    *search;
+	pack_t          *pak;
+	int             i;
+	char            netpath[MAX_OSPATH];
+
+	for (search = com_searchpaths ; search ; search = search->next)
+	{
+		if (search->pack)
+		{
+			pak = search->pack;
+			for (i=0 ; i<pak->numfiles ; i++)
+				if (!strcmp (pak->files[i].name, path))
+				{
+					if (!pak->flash)
+						return NULL;
+					if (length)
+						*length = pak->files[i].filelen;
+					return pak->flash + pak->files[i].filepos;
+				}
+		}
+		else
+		{
+			if (!static_registered && (strchr (path, '/') || strchr (path, '\\')))
+				continue;	// same rule as COM_FindFile
+			sprintf (netpath, "%s/%s", search->filename, path);
+			if (Sys_FileTime (netpath) != -1)
+				return NULL;	// a loose file overrides the pack
+		}
+	}
+	return NULL;
 }
 
 

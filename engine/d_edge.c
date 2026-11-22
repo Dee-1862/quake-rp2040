@@ -238,8 +238,7 @@ void D_DrawSurfaces (void)
 				pface = s->data;
 				miplevel = 0;
 				cacheblock = (pixel_t *)
-						((byte *)pface->texinfo->texture +
-						pface->texinfo->texture->offsets[0]);
+						pface->texinfo->texture->mips[0];
 				cachewidth = 64;
 
 				if (s->insubmodel)
