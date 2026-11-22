@@ -68,6 +68,19 @@ Run with `quakeog_pc.exe +map e1m1 +wait +wait +wait +qog_mem +"qog_mem hunk" +q
 
 The total is about **24× over budget**, which is roughly where MG24Quake started too. Nearly 70% of it (the map, the cache, the surface cache and `progs.dat`) is data, which becomes flash reads rather than RAM.
 
+## Progress
+
+| Step | Total KB | Change | Proof it still plays the same |
+| --- | ---: | ---: | --- |
+| Baseline, unmodified id engine | ≈ 5,886 | | |
+| Level data read in place from flash | 5,091 | −795 | E1M1 loads. Read-only flash pages caught no writes |
+| No surface cache, per-pixel lighting | 4,492 | −599 | Same frame as id: 96.3% of pixels identical, the rest within 5/255 |
+| QuakeC compiled to C, `progs.dat` and aligned map arrays in flash | **≈ 3,923** | −569 | State hashes identical to id's interpreter after 21 s of E1M1, monsters included |
+
+Now (E1M1): hunk low 1,848 KB (map structures 781, edicts 513, gfx.wad 110, particles 88, net sockets 81, zone 48, QuakeC globals 45), cache 1,419 KB (models and sounds), video 189 KB, static 435 KB. **One third of the total gone so far, with gameplay proven unchanged.**
+
+Next targets, biggest first: the model and sound cache (1,419 KB → read from flash), edicts (513 KB → per-class sizes), static tables (435 KB), and the map structures (781 KB → split into a read-only part in flash and a small mutable part in RAM).
+
 ## How to use it
 
 1. Before a change: run both halves and note the numbers.

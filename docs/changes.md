@@ -2,6 +2,22 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-22: The three big RAM cuts (PC, measured)
+
+All changes are commits against id's baseline in `engine/`, each verified before the next.
+
+1. **Level data from flash** (−795 KB). New `Sys_FlashMap` port call and `COM_FlashFile` lookup. Brush models load from a read-only image. Lighting, visibility, entities, texture pixels, and (when aligned) vertices, surface edges and clip nodes are used in place. `texture_t` holds mip pointers instead of self-relative offsets. The PC maps the pak into read-only pages at 0x10400000 (the board's data-region address), so any stray write faults immediately.
+2. **No surface cache** (−599 KB). New `engine/d_scanlit.c` lights each pixel from the texture and the 18×18 light grid as it draws. The E1M1 start frame matches id's render on 96.3% of pixels. `qog_shot` saves frames for comparisons like this.
+3. **QuakeC compiled to C** (−569 KB together with flash alignment). `tools/qc2c.py` translates all 2,091 functions of `progs.dat` into C at build time, from the player's own pak (never committed). `progs.dat` stays in flash and only its 45 KB of globals sit in RAM. **E1M1 state hashes match id's interpreter exactly** at 6.25 s and 21.25 s with monsters patrolling, with and without flash.
+
+Supporting work:
+- A shared `qog_rand` (MSVC's generator) on every port, so PC and board make the same random choices.
+- Repeatable PC runs: fixed memory layout, and `Host_Frame` called only when a frame is due.
+- A semantic `qog_statehash` that hashes by QuakeC type, so layout changes don't affect it.
+- The PC flash image realigns pack files to 16 bytes, the way the board converter will.
+
+**E1M1 total: about 5,886 KB down to about 3,923 KB** (see `ram-meter.md`).
+
 ## 2026-11-22: E1M1 runs on the PC build, RAM baseline measured
 
 - Shareware data downloaded and checked (`quake106.zip` MD5 matches the published value). `pak0.pak` extracted as data with a pure-Python LHA decoder, MD5 `5906e599…3abb`, placed in the git-ignored `data/id1/`.

@@ -74,4 +74,14 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L30. id ships with the crosshair off.** With buttons only, the crosshair and slow-start turning (fine aim) are what make aiming possible. Keep both in `port/common/` so every port gets them.
 
+**L31. id's `_Host_Frame` calls `rand()` on every call ("keep the random time dependent"), including calls it then skips.** A port that calls `Host_Frame` faster than the frame cap gets a random sequence that depends on CPU speed. Only call it when a frame is due. Combined with `host_framerate` and the shared `qog_rand`, runs become exactly repeatable.
+
+**L32. `COM_InitArgv` keeps only 50 arguments, and Quake's tokenizer splits on `:`.** Long scripted runs go in a `.cfg` file run with `+exec` (`data/id1/qogtest_*.cfg`). File paths given to console commands must be relative (no `C:`).
+
+**L33. Hash game state by meaning, not bytes.** QuakeC string fields are offsets from `pr_strings`, and entities hold link pointers, so any change in memory layout changes a raw hash. `qog_statehash` walks the global and field definitions and hashes strings by their text. That's what makes "flash on" against "flash off" comparable.
+
+**L34. id's pak files put lumps at odd addresses** (`e1m1.bsp` and `progs.dat` both sit at 3 mod 4). In-place use needs a realigned image: the PC flash map does it now and the board converter must too. Keep each file's disk position (`filepos`) separate from its image position (`flashpos`). Mixing them up broke `gfx.wad` reads.
+
+**L35. Prove each RAM cut with a test that would catch a regression:** the read-only pages catch writes, `qog_shot` plus a pixel diff checks rendering, and state hashes against `-noaot`/`-noflash` check game logic.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
