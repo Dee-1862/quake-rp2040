@@ -53,6 +53,21 @@ Open the console with the backtick key and type `qog_mem` for a full report, or 
 
 **Finding the real minimum:** start with `-heapsize 1024` (KB) and lower it until the map fails to load. The smallest working value is the honest dynamic number for that map. The PC build uses 32-bit pointers on purpose, so these numbers carry over to the board.
 
+## Baseline: unmodified id engine, E1M1 (measured 2026-11-22)
+
+Run with `quakeog_pc.exe +map e1m1 +wait +wait +wait +qog_mem +"qog_mem hunk" +qog_quit`, PC build at 320×200 with 32-bit pointers.
+
+| Part | KB | Biggest pieces | How it shrinks (reference) |
+| --- | ---: | --- | --- |
+| Hunk low | 3,234 | **e1m1 map 1,772**, **edicts 513**, **progs 404**, gfx.wad 110, particles 88, net sockets 81, zone 48 | Map read in place from flash. Edicts sized per entity class. QuakeC compiled to C so `progs.dat` never loads. Fewer particles. No network sockets. (MG24Quake) |
+| Cache | 1,419 | Sounds, models, skins | Read in place from flash, streamed (MG24Quake) |
+| Video | 788 | **Surface cache 600**, z-buffer 125, frame 63 | No surface cache: light per pixel at draw time. 240×150 buffers. Z-buffer shared with edge tables (MG24Quake) |
+| Hunk high | 10 | | |
+| Static | 435 | `cl_entities` 108, `mod_known` 97, sky 65 | Smaller tables, 16-bit indices, sky prerendered in flash |
+| **Total** | **≈ 5,886** | | **Target: under 245** |
+
+The total is about **24× over budget**, which is roughly where MG24Quake started too. Nearly 70% of it (the map, the cache, the surface cache and `progs.dat`) is data, which becomes flash reads rather than RAM.
+
 ## How to use it
 
 1. Before a change: run both halves and note the numbers.

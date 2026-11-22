@@ -2,6 +2,14 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-22: E1M1 runs on the PC build, RAM baseline measured
+
+- Shareware data downloaded and checked (`quake106.zip` MD5 matches the published value). `pak0.pak` extracted as data with a pure-Python LHA decoder, MD5 `5906e599…3abb`, placed in the git-ignored `data/id1/`.
+- The user turned off Windows Smart App Control, which had been blocking each fresh unsigned build.
+- **id's unmodified engine loads E1M1 on our Windows port** ("the Slipgate Complex, player entered the game").
+- Meter fixes: id never sets the zone's size field, and the zone lives inside hunk low. Video buffers are now counted.
+- **Baseline: about 5.9 MB in total for E1M1 against 245 KB** (map 1.77 MB, cache 1.42 MB, surface cache 600 KB, edicts 513 KB, progs 404 KB, static 435 KB). Full table and shrink plan in `ram-meter.md`.
+
 ## 2026-11-22: Clean engine base from id's source, PC build and RAM meter
 
 **Direction change (user decision):** build from id's clean GPL source instead of forking a port. MG24Quake and RP2350-Quake become references to borrow from deliberately, with provenance recorded.
