@@ -2,7 +2,7 @@
 
 A Quake port to **one RP2040**: the display CPU of the FreeWili OG (264 KB RAM, 16 MB flash, no FPU). The board's second RP2040 runs only a small companion that boots the display CPU and kicks its watchdog (`apps/qog/main/main.c`, about 30 lines, all of it visible).
 
-Status: Phase 2 platform layer written and building, not yet run on hardware. See [docs/current-plan.md](docs/current-plan.md).
+Status: platform layer running on the board (32 fps at 320×200 through the LCD pipeline). id's engine imported unmodified and building on Windows, with a RAM meter. See [docs/current-plan.md](docs/current-plan.md).
 
 ## Docs
 
@@ -12,7 +12,7 @@ Status: Phase 2 platform layer written and building, not yet run on hardware. Se
 - [docs/structure.md](docs/structure.md): rules that keep the tree small
 - [docs/game-data.md](docs/game-data.md): how to get and place pak0.pak
 - [docs/ram-meter.md](docs/ram-meter.md): measuring static and dynamic RAM
-- [QuakeOG Port Plan.html](QuakeOG%20Port%20Plan.html): the full plan
+- `QuakeOG Port Plan.html`: the original full plan (kept locally, not in the repo)
 
 ## Setup
 
