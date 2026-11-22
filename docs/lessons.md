@@ -52,4 +52,16 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L20. This PC has MSVC** (VS Build Tools 2022, `cl.exe` 14.44). A Windows build of the engine is possible, and host C tests too: L3 is no longer a blocker.
 
+## Engine work
+
+**L21. Never edit engine files with `sed -i` on Windows.** It silently turned CRLF into LF and made a 41-line rename look like an 11,084-line diff. Use the Edit tool, or a script that keeps the line endings, and check `git diff --stat` before every engine commit.
+
+**L22. id's code says `_WIN32` when it means "id's Win32 port"**, and it says `__i386__` when it means "use the x86 assembly". Both are now neutral (`ID_WIN32` is never defined, and MSVC doesn't define `__i386__`), so every build takes the portable C paths, which are the ones the RP2040 needs.
+
+**L23. GCC 15 defaults to C23, where `true` and `false` are keywords.** id's `typedef enum {false, true} qboolean` then fails. Compile the engine with `-std=gnu11` (the meter does, and the board build must too). GCC 14+ also makes missing prototypes an error, which id's `chase.c` has. Fix those in the engine rather than hiding them, when we get there.
+
+**L24. Keep the engine import pure.** Copy id files byte for byte in their own commit, and make every change afterwards a separate, single-purpose commit. That keeps the GPL provenance exact and makes review possible.
+
+**L25. Commit message rules (user):** a one-line title, a bullet-point body, no em dashes, no semicolons, no colons, and no assistant attribution anywhere in code, comments or commits.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.

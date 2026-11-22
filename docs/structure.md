@@ -5,15 +5,18 @@ The danger in a port like this is growth: importing a whole engine, adding a lay
 ## 1. Three layers, one direction
 
 ```
-apps/qog/display   (game loop glue, ~one file)
+engine/            id's Quake, imported unmodified, then trimmed commit by commit
+      │            talks only through id's own interfaces: Sys_*, VID_*, IN_*, SNDDMA_*
+port/pc/           those interfaces on Windows (development, RAM meter)
+port/rp2040/       those interfaces on the board (next), built on platform/
+port/common/       shared by both ports (qog_mem RAM meter)
       │
-engine/            (Quake code, trimmed; includes ONLY qog_*.h)
-      │
-platform/          (qog_video, qog_input, qog_data, later qog_sound, qog_save)
+platform/          board drivers: qog_video, qog_input, qog_data, later qog_sound, qog_save
       │
 third_party/wiliOGbsp  (BSP, untouched)
 ```
 
+- The boundary is id's own interface set, not a new one we invent. A port is a handful of files implementing `sys.h`, `vid.h`, `input.h` and the `SNDDMA_*` calls.
 - The engine never includes `fwog_*.h` or Pico SDK headers. That keeps the BSP glue small and separable, which the licence question needs (GPL engine, BSP under the FreeWili Hardware License), and it lets the same engine build on a PC.
 - **Check:** `grep -rn "fwog_\|pico/" engine/` returns nothing.
 

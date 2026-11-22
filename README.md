@@ -10,6 +10,8 @@ Status: Phase 2 platform layer written and building, not yet run on hardware. Se
 - [docs/changes.md](docs/changes.md): what changed and why
 - [docs/lessons.md](docs/lessons.md): mistakes not to repeat; **read before flashing**
 - [docs/structure.md](docs/structure.md): rules that keep the tree small
+- [docs/game-data.md](docs/game-data.md): how to get and place pak0.pak
+- [docs/ram-meter.md](docs/ram-meter.md): measuring static and dynamic RAM
 - [QuakeOG Port Plan.html](QuakeOG%20Port%20Plan.html): the full plan
 
 ## Setup

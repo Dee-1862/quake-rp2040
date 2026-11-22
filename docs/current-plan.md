@@ -17,7 +17,7 @@ Done means:
 | Phase | State | What's left |
 | --- | --- | --- |
 | 0 · Set up, learn the facts | **Mostly done** | LVGL example (optional now), data-region UF2 write. Ask FREE-WILi the GPL question. |
-| 1 · Study the reference, set the RAM budget | **Research done; decisions pending** | Choose the base (RP2350-Quake vs MG24Quake engine) after measuring RP2350-Quake's SRAM. Choose 240×150 or 160×100. See both reports in this folder. |
+| 1 · Study the reference, set the RAM budget | **Base chosen: id's clean source** | Engine imported, builds on the PC, RAM meter running (435 KB static to start). Still to do: run with `pak0.pak`, record the dynamic RAM, and write the shrink plan. MG24Quake and RP2350-Quake are references. |
 | 2 · Platform layer | **Running on hardware** | 32 fps at 320×200, 22.4 ms scanout. Still to do: data UF2 test, the 240×150 and 160×100 runs, a red-hold check. |
 | 3 · Renderer spike (GATE) | Not started | |
 | 4 · Game logic and saves | Not started | |
@@ -25,6 +25,9 @@ Done means:
 | 6 · Package and publish | Not started | |
 
 ## Next actions, in order
+
+0. **User:** put `pak0.pak` in `data\id1\` (`game-data.md`). Run the PC build, check that E1M1 plays, and try board mode (F12).
+0b. Measure the dynamic RAM for E1M1 with `-heapsize` stepping down (`ram-meter.md`). Then shrink the biggest static items one commit at a time, starting with `cl_entities` and `mod_known`.
 
 1. ~~Flash `qog` and measure all three resolutions~~ Done (changes.md). **Proposed: develop at 240×150, fall back to 160×100.**
 2. **On the board:** write `build/qogdata_test.uf2` to the display CPU, press green at the bootloader screen, and check that the still image shows and the console reports `data=ok`. Hold green during boot to time a full CRC.
