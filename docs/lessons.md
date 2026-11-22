@@ -90,4 +90,8 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L38. Run scripted tests with `+volume 0` now that the PC build has real sound.** The mixer still runs, so the code paths are exercised, but the tests stay silent.
 
+**L39. The shareware licence forbids modified, translated or derivative versions of the data** (`SLICNSE.TXT` §3a, b, c, e), and id's engine enforces it: a changed `pak0.pak` without the registered version stops with "You must have the registered version to use modified games". Trimmed paks, QuakeC translated to C, and images extracted for the board all count. Don't bypass the check. The route id intended is the registered or retail data (Steam or GOG), which the check accepts when `gfx/pop.lmp` is present. Use the shareware only to run the unmodified PC build. (Not legal advice. The user decides.)
+
+**L40. Opening Options > Video crashed the PC port**, because id's menu calls `vid_menudrawfn` without checking for NULL. Every port must supply that hook (and `vid_menukeyfn`).
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
