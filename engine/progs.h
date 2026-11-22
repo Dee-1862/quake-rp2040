@@ -66,6 +66,17 @@ extern	int				pr_edict_size;	// in bytes
 void PR_Init (void);
 
 void PR_ExecuteProgram (func_t fnum);
+
+// QuakeOG: QuakeC compiled ahead of time by tools/qc2c.py from the player's
+// own progs.dat (a generated file, never committed). Used only when its
+// fingerprint matches the loaded progs; otherwise the interpreter runs.
+extern void (*const pr_aot_functions[]) (void);
+extern const int		pr_aot_numfunctions;
+extern const int		pr_aot_numstatements;
+extern const unsigned	pr_aot_fingerprint;
+extern qboolean			pr_aot_active;
+void PR_AOT_Call (func_t fnum);
+void PR_AOT_Check (void);
 void PR_LoadProgs (void);
 
 void PR_Profile_f (void);

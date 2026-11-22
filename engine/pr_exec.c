@@ -355,6 +355,38 @@ int PR_LeaveFunction (void)
 
 /*
 ====================
+PR_AOT_Call
+
+QuakeOG: OP_CALLn for compiled QuakeC (tools/qc2c.py). The caller has set
+pr_argc and the parameter globals. Builtins and frames are handled exactly
+as the interpreter does, so recursion and dynamic calls behave the same.
+====================
+*/
+qboolean	pr_aot_active;
+
+void PR_AOT_Call (func_t fnum)
+{
+	dfunction_t	*newf;
+	int			i;
+
+	if (!fnum)
+		PR_RunError ("NULL function");
+	newf = &pr_functions[fnum];
+	if (newf->first_statement < 0)
+	{	// negative statements are built in functions
+		i = -newf->first_statement;
+		if (i >= pr_numbuiltins)
+			PR_RunError ("Bad builtin call number");
+		pr_builtins[i] ();
+		return;
+	}
+	PR_EnterFunction (newf);
+	pr_aot_functions[fnum] ();
+	PR_LeaveFunction ();
+}
+
+/*
+====================
 PR_ExecuteProgram
 ====================
 */
@@ -378,6 +410,15 @@ void PR_ExecuteProgram (func_t fnum)
 	}
 	
 	f = &pr_functions[fnum];
+
+	if (pr_aot_active && pr_aot_functions[fnum])
+	{	// QuakeOG: compiled QuakeC, same frame handling as below
+		pr_trace = false;
+		PR_EnterFunction (f);
+		pr_aot_functions[fnum] ();
+		PR_LeaveFunction ();
+		return;
+	}
 
 	runaway = 100000;
 	pr_trace = false;

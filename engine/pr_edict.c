@@ -1057,6 +1057,50 @@ void PR_LoadProgs (void)
 
 	for (i=0 ; i<progs->numglobals ; i++)
 		((int *)pr_globals)[i] = LittleLong (((int *)pr_globals)[i]);
+
+	PR_AOT_Check ();
+}
+
+/*
+===============
+PR_AOT_Check
+
+QuakeOG: switch to the compiled QuakeC only if it was generated from this
+exact progs.dat (same counts, same statement fingerprint). -noaot forces
+the interpreter, for comparison.
+===============
+*/
+void PR_AOT_Check (void)
+{
+	unsigned	h;
+	byte		*p;
+	int			i, n;
+
+	pr_aot_active = false;
+	if (!pr_aot_numfunctions)
+	{
+		Con_Printf ("QuakeC: interpreter (no compiled progs in this build)\n");
+		return;
+	}
+	h = 0x811C9DC5;	// FNV-1a over the statements, as tools/qc2c.py computes it
+	p = (byte *)pr_statements;
+	n = progs->numstatements * sizeof(dstatement_t);
+	for (i=0 ; i<n ; i++)
+		h = (h ^ p[i]) * 0x01000193;
+	if (progs->numfunctions != pr_aot_numfunctions
+		|| progs->numstatements != pr_aot_numstatements
+		|| h != pr_aot_fingerprint)
+	{
+		Con_Printf ("QuakeC: interpreter (compiled progs do not match this progs.dat)\n");
+		return;
+	}
+	if (COM_CheckParm ("-noaot"))
+	{
+		Con_Printf ("QuakeC: interpreter (-noaot)\n");
+		return;
+	}
+	pr_aot_active = true;
+	Con_Printf ("QuakeC: compiled, %i functions\n", pr_aot_numfunctions);
 }
 
 
