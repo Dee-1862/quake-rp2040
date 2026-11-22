@@ -229,6 +229,7 @@ void VID_Init(unsigned char *palette) {
     s_bmi.h.biClrUsed = 256;
     VID_SetPalette(palette);
     qog_input_reset(&s_board_state);
+    qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
 
     WNDCLASSA wc = {0};
     wc.lpfnWndProc = wnd_proc;

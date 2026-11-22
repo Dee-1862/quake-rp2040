@@ -84,6 +84,10 @@ static void cmd_qog_mem(void) {
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");
 }
 
+/* Scripted runs: `quit` can open the "are you sure" menu and wait forever. */
+static void cmd_qog_quit(void) { Sys_Quit(); }
+
 void qog_mem_register(void) {
     Cmd_AddCommand("qog_mem", cmd_qog_mem);
+    Cmd_AddCommand("qog_quit", cmd_qog_quit);
 }

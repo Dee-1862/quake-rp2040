@@ -145,6 +145,7 @@ double Sys_FloatTime(void) {
 int main(int argc, char **argv) {
     quakeparms_t parms;
     memset(&parms, 0, sizeof parms);
+    setvbuf(stdout, NULL, _IONBF, 0);   /* logs survive a killed or crashed run */
 
     COM_InitArgv(argc, argv);
     parms.argc = com_argc;
@@ -162,8 +163,7 @@ int main(int argc, char **argv) {
     parms.cachedir = NULL;
 
     printf("QuakeOG PC: basedir %s, hunk %d KB\n", parms.basedir, heap_kb);
-    Host_Init(&parms);
-    qog_mem_register();
+    Host_Init(&parms);   /* qog_mem is registered from VID_Init: commands must exist before init ends */
 
     double oldtime = Sys_FloatTime();
     for (;;) {

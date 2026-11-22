@@ -28,7 +28,8 @@ const qog_mem_t *qog_mem_sample(void);
 void qog_mem_reset_peaks(void);
 
 /* Registers the console command `qog_mem` (prints a report, `qog_mem reset`
- * clears peaks). Call after Host_Init. */
+ * clears peaks). Call during Host_Init (e.g. from VID_Init): the engine
+ * refuses Cmd_AddCommand once host_initialized is set. */
 void qog_mem_register(void);
 
 #endif
