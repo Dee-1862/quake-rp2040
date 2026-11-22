@@ -1,0 +1,2 @@
+# id engine files keep their original CRLF bytes so diffs show only real changes
+engine/** -text
