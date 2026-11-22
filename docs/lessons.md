@@ -20,7 +20,7 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L7. UART0 is the inter-CPU link on both chips.** Never `printf` to UART. Use `DIAG()`, which goes to USB CDC. Messages printed in the first second or two after boot are lost because USB hasn't enumerated yet, so repeat important ones.
 
-**L8. A display update erases only the sectors its image needs** (`bl_receiver.c`). That's why a game-data region high in flash survives code updates. After a data UF2 is written through the display's BOOTSEL drive, the display CPU reboots into its bootloader and **waits for RUN**. Press green, or power-cycle, to start the app. *Reasoned from code, not yet tested on a board.*
+**L8. A display update erases only the sectors its image needs** (`bl_receiver.c`). That's why a game-data region high in flash survives code updates. After a data UF2 is written through the display's BOOTSEL drive, the display CPU reboots into its bootloader and **waits for RUN**. Press green, power-cycle, or re-run `fw flash <app>`: the main chip finds the display image unchanged (the CRC matches, so no transfer) and sends RUN. *Verified on the board on 2026-11-22: the data survived and the app reported `data=ok`.*
 
 **L9. Put only one CPU in BOOTSEL at a time.** Both chips present the same USB serial, so with two drives mounted you can't tell which is which.
 
