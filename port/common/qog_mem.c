@@ -1,5 +1,6 @@
 #include "qog_mem.h"
 #include "quakedef.h"
+#include "qog_rand.h"
 
 /* Private to zone.c, mirrored here so zone.c stays unmodified. If zone.c's
    structs ever change, change these with them. */
@@ -99,10 +100,42 @@ static void cmd_qog_mem(void) {
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");
 }
 
+/* `qog_statehash`: FNV-1a over every edict and the QuakeC globals. Two runs
+   with the same fixed frame time (host_framerate) must print the same value,
+   which is how compiled QuakeC is checked against the interpreter (-noaot). */
+static unsigned fnv(unsigned h, const void *data, int n) {
+    const byte *p = data;
+    for (int i = 0; i < n; i++) h = (h ^ p[i]) * 0x01000193u;
+    return h;
+}
+
+static void cmd_qog_statehash(void) {
+    if (!sv.active || !progs) { Con_Printf("qog_statehash: no server running\n"); return; }
+    unsigned h = fnv(0x811C9DC5u, pr_globals, progs->numglobals * 4);
+    unsigned e = fnv(0x811C9DC5u, sv.edicts, sv.num_edicts * pr_edict_size);
+    Con_Printf("qog_statehash: time %.2f edicts %d globals %08x edicts %08x rand calls %u\n",
+               sv.time, sv.num_edicts, h, e, qog_rand_calls);
+}
+
+/* `qog_statedump <file>`: raw globals then edicts, for diffing two runs. */
+static void cmd_qog_statedump(void) {
+    if (!sv.active || !progs || Cmd_Argc() < 2) { Con_Printf("usage: qog_statedump <file>\n"); return; }
+    FILE *f = fopen(Cmd_Argv(1), "wb");
+    if (!f) { Con_Printf("qog_statedump: cannot write %s\n", Cmd_Argv(1)); return; }
+    int hdr[3] = { progs->numglobals, sv.num_edicts, pr_edict_size };
+    fwrite(hdr, sizeof hdr, 1, f);
+    fwrite(pr_globals, 4, progs->numglobals, f);
+    fwrite(sv.edicts, pr_edict_size, sv.num_edicts, f);
+    fclose(f);
+    Con_Printf("qog_statedump: wrote %s\n", Cmd_Argv(1));
+}
+
 /* Scripted runs: `quit` can open the "are you sure" menu and wait forever. */
 static void cmd_qog_quit(void) { Sys_Quit(); }
 
 void qog_mem_register(void) {
     Cmd_AddCommand("qog_mem", cmd_qog_mem);
     Cmd_AddCommand("qog_quit", cmd_qog_quit);
+    Cmd_AddCommand("qog_statehash", cmd_qog_statehash);
+    Cmd_AddCommand("qog_statedump", cmd_qog_statedump);
 }

@@ -34,6 +34,8 @@ See the GNU General Public License for more details.
 #define QOG_DEFAULT_BASEDIR "."
 #endif
 #define DEFAULT_HEAP_KB (8 * 1024)
+#define QOG_PC_FLASH_ADDR 0x10400000u   /* same address as the board's game data region */
+#define QOG_PC_HUNK_ADDR  0x30000000u
 
 qboolean isDedicated = false;
 
@@ -91,9 +93,12 @@ void Sys_mkdir(char *path) { _mkdir(path); }
    so any write into "flash" faults here on the PC instead of corrupting the
    board. Not counted as RAM. -noflash turns it off to compare. */
 void *Sys_FlashMap(char *path, int length) {
+    static byte *next = (byte *)QOG_PC_FLASH_ADDR;   /* like the board's XIP data region */
     if (COM_CheckParm("-noflash") || length <= 0) return NULL;
-    byte *p = VirtualAlloc(NULL, (SIZE_T)length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    byte *p = VirtualAlloc(next, (SIZE_T)length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!p) p = VirtualAlloc(NULL, (SIZE_T)length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!p) return NULL;
+    if (p == next) next += ((length + 0xFFFF) & ~0xFFFF);
     FILE *f = fopen(path, "rb");
     if (!f || fread(p, 1, (size_t)length, f) != (size_t)length) {
         if (f) fclose(f);
@@ -176,7 +181,15 @@ int main(int argc, char **argv) {
     int i = COM_CheckParm("-heapsize");
     if (i && i + 1 < com_argc) heap_kb = Q_atoi(com_argv[i + 1]);
     parms.memsize = heap_kb * 1024;
-    parms.membase = malloc(parms.memsize);
+    /* Fixed address (and a fixed-base exe, see pc/CMakeLists.txt) so every
+       run lays memory out the same way: qog_statehash is then repeatable,
+       and pointer bugs reproduce. Falls back to anywhere if it is taken. */
+    parms.membase = VirtualAlloc((void *)QOG_PC_HUNK_ADDR, (SIZE_T)parms.memsize,
+                                 MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!parms.membase) {
+        printf("QuakeOG PC: fixed hunk address unavailable, layout will vary per run\n");
+        parms.membase = malloc(parms.memsize);
+    }
     if (!parms.membase) Sys_Error("could not allocate %d KB", heap_kb);
 
     i = COM_CheckParm("-basedir");
@@ -191,7 +204,11 @@ int main(int argc, char **argv) {
     for (;;) {
         double newtime = Sys_FloatTime();
         double dt = newtime - oldtime;
-        if (dt < 0.001) { Sleep(1); continue; }
+        /* Call Host_Frame only when a frame is due (id caps at 72 fps).
+           _Host_Frame calls rand() on every call, even ones Host_FilterTime
+           then skips, so calling it every millisecond made the random
+           sequence depend on PC speed. Now it depends on frames only. */
+        if (dt < 1.0 / 72.0) { Sleep(1); continue; }
         qog_aim_update(newtime);
         Host_Frame((float)dt);
         /* host_framecount only advances on frames that really ran (Host_Frame
