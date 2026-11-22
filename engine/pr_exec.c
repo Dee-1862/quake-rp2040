@@ -225,8 +225,13 @@ void PR_Profile_f (void)
 	int			max;
 	int			num;
 	int			i;
-	
-	num = 0;	
+
+	if (pr_inflash)
+	{	// QuakeOG: counts are not kept, and pr_functions is in read-only flash
+		Con_Printf ("profile: not available with compiled QuakeC (use -noaot)\n");
+		return;
+	}
+	num = 0;
 	do
 	{
 		max = 0;

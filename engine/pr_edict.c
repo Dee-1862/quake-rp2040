@@ -992,17 +992,36 @@ void PR_LoadProgs (void)
 
 	CRC_Init (&pr_crc);
 
-	progs = (dprograms_t *)COM_LoadHunkFile ("progs.dat");
+	// QuakeOG: with compiled QuakeC the bytecode is never run, so progs.dat
+	// is used in place from flash and only its globals are copied to RAM.
+	// The interpreter writes profile counts into pr_functions, so it always
+	// gets a RAM copy.
+	progs = NULL;
+	pr_inflash = false;
+	{
+		int		flen;
+		byte	*f = COM_FlashFile ("progs.dat", &flen);
+		if (f && !(((int)f) & 3) && !COM_CheckParm ("-noaot")
+			&& PR_AOT_Matches ((dprograms_t *)f))
+		{
+			progs = (dprograms_t *)f;
+			com_filesize = flen;
+			pr_inflash = true;
+		}
+	}
+	if (!progs)
+		progs = (dprograms_t *)COM_LoadHunkFile ("progs.dat");
 	if (!progs)
 		Sys_Error ("PR_LoadProgs: couldn't load progs.dat");
-	Con_DPrintf ("Programs occupy %iK.\n", com_filesize/1024);
+	Con_DPrintf ("Programs occupy %iK%s.\n", com_filesize/1024, pr_inflash ? " of flash" : "");
 
 	for (i=0 ; i<com_filesize ; i++)
 		CRC_ProcessByte (&pr_crc, ((byte *)progs)[i]);
 
 // byte swap the header
+	if (!pr_inflash)	// no-op on little-endian, and flash is read only
 	for (i=0 ; i<sizeof(*progs)/4 ; i++)
-		((int *)progs)[i] = LittleLong ( ((int *)progs)[i] );		
+		((int *)progs)[i] = LittleLong ( ((int *)progs)[i] );
 
 	if (progs->version != PROG_VERSION)
 		Sys_Error ("progs.dat has wrong version number (%i should be %i)", progs->version, PROG_VERSION);
@@ -1016,10 +1035,22 @@ void PR_LoadProgs (void)
 	pr_statements = (dstatement_t *)((byte *)progs + progs->ofs_statements);
 
 	pr_global_struct = (globalvars_t *)((byte *)progs + progs->ofs_globals);
+	if (pr_inflash)
+	{	// the globals change at run time: the only part that needs RAM
+		globalvars_t *g = Hunk_AllocName (progs->numglobals * 4, "progglobals");
+		memcpy (g, pr_global_struct, progs->numglobals * 4);
+		pr_global_struct = g;
+	}
 	pr_globals = (float *)pr_global_struct;
-	
+
 	pr_edict_size = progs->entityfields * 4 + sizeof (edict_t) - sizeof(entvars_t);
-	
+
+	if (pr_inflash)
+	{
+		PR_AOT_Check ();
+		return;	// the swaps below are no-ops on little-endian, and flash is read only
+	}
+
 // byte swap the lumps
 	for (i=0 ; i<progs->numstatements ; i++)
 	{
@@ -1070,26 +1101,35 @@ exact progs.dat (same counts, same statement fingerprint). -noaot forces
 the interpreter, for comparison.
 ===============
 */
-void PR_AOT_Check (void)
+qboolean	pr_inflash;
+
+qboolean PR_AOT_Matches (dprograms_t *p)
 {
 	unsigned	h;
-	byte		*p;
+	byte		*s;
 	int			i, n;
 
+	if (!pr_aot_numfunctions
+		|| p->numfunctions != pr_aot_numfunctions
+		|| p->numstatements != pr_aot_numstatements)
+		return false;
+	h = 0x811C9DC5;	// FNV-1a over the statements, as tools/qc2c.py computes it
+	s = (byte *)p + p->ofs_statements;
+	n = p->numstatements * sizeof(dstatement_t);
+	for (i=0 ; i<n ; i++)
+		h = (h ^ s[i]) * 0x01000193;
+	return h == pr_aot_fingerprint;
+}
+
+void PR_AOT_Check (void)
+{
 	pr_aot_active = false;
 	if (!pr_aot_numfunctions)
 	{
 		Con_Printf ("QuakeC: interpreter (no compiled progs in this build)\n");
 		return;
 	}
-	h = 0x811C9DC5;	// FNV-1a over the statements, as tools/qc2c.py computes it
-	p = (byte *)pr_statements;
-	n = progs->numstatements * sizeof(dstatement_t);
-	for (i=0 ; i<n ; i++)
-		h = (h ^ p[i]) * 0x01000193;
-	if (progs->numfunctions != pr_aot_numfunctions
-		|| progs->numstatements != pr_aot_numstatements
-		|| h != pr_aot_fingerprint)
+	if (!PR_AOT_Matches (progs))
 	{
 		Con_Printf ("QuakeC: interpreter (compiled progs do not match this progs.dat)\n");
 		return;
@@ -1100,7 +1140,8 @@ void PR_AOT_Check (void)
 		return;
 	}
 	pr_aot_active = true;
-	Con_Printf ("QuakeC: compiled, %i functions\n", pr_aot_numfunctions);
+	Con_Printf ("QuakeC: compiled, %i functions%s\n", pr_aot_numfunctions,
+		pr_inflash ? ", progs.dat read in place from flash" : "");
 }
 
 

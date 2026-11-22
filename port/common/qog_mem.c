@@ -109,10 +109,36 @@ static unsigned fnv(unsigned h, const void *data, int n) {
     return h;
 }
 
+/* Hash by meaning, not bytes, using QuakeC's own type information: strings
+   by their text (their offsets move when progs.dat moves to flash), entity
+   references relative to sv.edicts, numbers and functions by value. Engine
+   link pointers are skipped. So two runs that behave the same hash the same
+   even when memory is laid out differently. */
+static unsigned hash_value(unsigned h, int type, const int *p) {
+    type &= ~DEF_SAVEGLOBAL;
+    if (type == ev_string) {
+        const char *s = pr_strings + *p;
+        return fnv(h, s, (int)strlen(s) + 1);
+    }
+    return fnv(h, p, type == ev_vector ? 12 : 4);
+}
+
 static void cmd_qog_statehash(void) {
     if (!sv.active || !progs) { Con_Printf("qog_statehash: no server running\n"); return; }
-    unsigned h = fnv(0x811C9DC5u, pr_globals, progs->numglobals * 4);
-    unsigned e = fnv(0x811C9DC5u, sv.edicts, sv.num_edicts * pr_edict_size);
+    unsigned h = 0x811C9DC5u, e = 0x811C9DC5u;
+    for (int i = 0; i < progs->numglobaldefs; i++) {
+        const ddef_t *d = &pr_globaldefs[i];
+        h = hash_value(h, d->type, (const int *)pr_globals + d->ofs);
+    }
+    for (int n = 0; n < sv.num_edicts; n++) {
+        edict_t *ed = EDICT_NUM(n);
+        e = fnv(e, &ed->free, sizeof ed->free);
+        if (ed->free) continue;
+        for (int i = 1; i < progs->numfielddefs; i++) {
+            const ddef_t *d = &pr_fielddefs[i];
+            e = hash_value(e, d->type, (const int *)&ed->v + d->ofs);
+        }
+    }
     Con_Printf("qog_statehash: time %.2f edicts %d globals %08x edicts %08x rand calls %u\n",
                sv.time, sv.num_edicts, h, e, qog_rand_calls);
 }

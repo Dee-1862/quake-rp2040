@@ -1209,6 +1209,7 @@ typedef struct
 {
 	char    name[MAX_QPATH];
 	int             filepos, filelen;
+	int             flashpos;       // QuakeOG: position in the flash image, which may differ
 } packfile_t;
 
 typedef struct pack_s
@@ -1676,6 +1677,22 @@ pack_t *COM_LoadPackFile (char *packfile)
 	pack->numfiles = numpackfiles;
 	pack->files = newfiles;
 	pack->flash = Sys_FlashMap (packfile, packlen);
+	if (pack->flash)
+	{	// QuakeOG: the image may be laid out differently from the file (files
+		// aligned for reading in place), so take positions from its directory
+		dpackheader_t	*fh = (dpackheader_t *)pack->flash;
+		dpackfile_t		*fi = (dpackfile_t *)(pack->flash + LittleLong (fh->dirofs));
+
+		if (LittleLong (fh->dirlen) != header.dirlen)
+			Sys_Error ("%s: flash image directory does not match", packfile);
+		for (i=0 ; i<numpackfiles ; i++)
+		{
+			if (strcmp (fi[i].name, newfiles[i].name)
+				|| LittleLong (fi[i].filelen) != newfiles[i].filelen)
+				Sys_Error ("%s: flash image directory does not match", packfile);
+			newfiles[i].flashpos = LittleLong (fi[i].filepos);	// filepos stays the disk position
+		}
+	}
 
 	Con_Printf ("Added packfile %s (%i files%s)\n", packfile, numpackfiles,
 		pack->flash ? ", mapped read only" : "");
@@ -1711,7 +1728,7 @@ byte *COM_FlashFile (char *path, int *length)
 						return NULL;
 					if (length)
 						*length = pak->files[i].filelen;
-					return pak->flash + pak->files[i].filepos;
+					return pak->flash + pak->files[i].flashpos;
 				}
 		}
 		else

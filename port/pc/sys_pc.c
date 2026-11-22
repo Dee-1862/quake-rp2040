@@ -89,26 +89,72 @@ int Sys_FileTime(char *path) {
 
 void Sys_mkdir(char *path) { _mkdir(path); }
 
-/* Flash emulation: the whole pack in its own pages, then marked read only,
-   so any write into "flash" faults here on the PC instead of corrupting the
-   board. Not counted as RAM. -noflash turns it off to compare. */
+/* Pack files place lumps at any byte offset (id's pak0 has maps and progs at
+   odd addresses), and the RP2040 cannot read unaligned words. The board's
+   converter will realign; this does the same for the PC image: every file
+   starts on a 16-byte boundary and the directory is rewritten to match.
+   Returns the new image size, or 0 if `src` is not a pack. */
+static int realign_pack(const byte *src, int len, byte *dst) {
+    int dirofs, dirlen, n, pos, i;
+    if (len < 12 || memcmp(src, "PACK", 4)) return 0;
+    dirofs = *(const int *)(src + 4);
+    dirlen = *(const int *)(src + 8);
+    if (dirofs < 12 || dirlen < 0 || dirofs + dirlen > len || dirlen % 64) return 0;
+    n = dirlen / 64;
+    pos = 16;
+    for (i = 0; i < n; i++) {
+        const byte *e = src + dirofs + 64 * i;
+        int fpos = *(const int *)(e + 56), flen = *(const int *)(e + 60);
+        if (fpos < 0 || flen < 0 || fpos + flen > len) return 0;
+        if (dst) memcpy(dst + pos, src + fpos, (size_t)flen);
+        pos = (pos + flen + 15) & ~15;
+    }
+    if (dst) {
+        memcpy(dst, "PACK", 4);
+        *(int *)(dst + 4) = pos;
+        *(int *)(dst + 8) = dirlen;
+        int fp = 16;
+        for (i = 0; i < n; i++) {
+            const byte *e = src + dirofs + 64 * i;
+            byte *o = dst + pos + 64 * i;
+            int flen = *(const int *)(e + 60);
+            memcpy(o, e, 56);
+            *(int *)(o + 56) = fp;
+            *(int *)(o + 60) = flen;
+            fp = (fp + flen + 15) & ~15;
+        }
+    }
+    return pos + dirlen;
+}
+
+/* Flash emulation: the pack, realigned like the board's converter will lay
+   it out, in its own pages at the board's data-region address, then marked
+   read only so any write into "flash" faults on the PC instead of
+   corrupting the board. Not counted as RAM. -noflash turns it off. */
 void *Sys_FlashMap(char *path, int length) {
     static byte *next = (byte *)QOG_PC_FLASH_ADDR;   /* like the board's XIP data region */
     if (COM_CheckParm("-noflash") || length <= 0) return NULL;
-    byte *p = VirtualAlloc(next, (SIZE_T)length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!p) p = VirtualAlloc(NULL, (SIZE_T)length, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!p) return NULL;
-    if (p == next) next += ((length + 0xFFFF) & ~0xFFFF);
+
+    byte *raw = malloc((size_t)length);
     FILE *f = fopen(path, "rb");
-    if (!f || fread(p, 1, (size_t)length, f) != (size_t)length) {
+    if (!raw || !f || fread(raw, 1, (size_t)length, f) != (size_t)length) {
         if (f) fclose(f);
-        VirtualFree(p, 0, MEM_RELEASE);
+        free(raw);
         return NULL;
     }
     fclose(f);
+    const int size = realign_pack(raw, length, NULL);
+    if (!size) { free(raw); return NULL; }   /* not a pack: load it the normal way */
+
+    byte *p = VirtualAlloc(next, (SIZE_T)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!p) p = VirtualAlloc(NULL, (SIZE_T)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!p) { free(raw); return NULL; }
+    if (p == next) next += ((size + 0xFFFF) & ~0xFFFF);
+    realign_pack(raw, length, p);
+    free(raw);
     DWORD old;
-    VirtualProtect(p, (SIZE_T)length, PAGE_READONLY, &old);
-    printf("Flash: %s mapped read only, %d KB\n", path, length / 1024);
+    VirtualProtect(p, (SIZE_T)size, PAGE_READONLY, &old);
+    printf("Flash: %s mapped read only at %p, %d KB, files 16-byte aligned\n", path, (void *)p, size / 1024);
     return p;
 }
 
