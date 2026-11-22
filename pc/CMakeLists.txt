@@ -15,10 +15,9 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR "Configure with -A Win32: the engine port assumes 32-bit pointers.")
 endif()
 
-# Engine: id's files, minus the real sound mixer (snd_null.c stands in for now).
+# Engine: id's files with the real sound mixer (port/pc/snd_pc.c is the output).
 file(GLOB ENGINE_SRC ${ROOT}/engine/*.c)
-list(REMOVE_ITEM ENGINE_SRC
-    ${ROOT}/engine/snd_dma.c ${ROOT}/engine/snd_mem.c ${ROOT}/engine/snd_mix.c)
+list(REMOVE_ITEM ENGINE_SRC ${ROOT}/engine/snd_null.c)
 
 # QuakeC compiled to C from the player's own progs.dat (never committed).
 # Without the pak, qc2c writes an empty table and the interpreter runs.
@@ -39,6 +38,7 @@ add_executable(quakeog_pc
     ${PROGS_AOT}
     ${ROOT}/port/pc/sys_pc.c
     ${ROOT}/port/pc/vid_pc.c
+    ${ROOT}/port/pc/snd_pc.c
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_aim.c
     ${ROOT}/port/common/qog_rand.c

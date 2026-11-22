@@ -23,8 +23,8 @@ TOOLCHAIN = os.path.join(os.path.expanduser("~"), ".pico-sdk", "toolchain", "15_
 EXE = ".exe" if os.name == "nt" else ""
 GCC = os.path.join(TOOLCHAIN, "arm-none-eabi-gcc" + EXE)
 NM = os.path.join(TOOLCHAIN, "arm-none-eabi-nm" + EXE)
-# Same files the PC build compiles (pc/CMakeLists.txt): the real mixer is out for now.
-EXCLUDE = {"snd_dma.c", "snd_mem.c", "snd_mix.c"}
+# Same files the PC build compiles (pc/CMakeLists.txt): the real mixer, not the null stub.
+EXCLUDE = {"snd_null.c"}
 CFLAGS = ["-std=gnu11", "-mcpu=cortex-m0plus", "-mthumb", "-Os", "-fno-common", "-ffunction-sections",
           "-fdata-sections", "-w", "-Wno-implicit-function-declaration", "-DQOG_RP2040_METER", "-I", os.path.join(ROOT, "engine")]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
