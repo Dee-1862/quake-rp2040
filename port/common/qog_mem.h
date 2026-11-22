@@ -18,8 +18,12 @@ typedef struct {
     int hunk_size;                       /* what the port handed to Memory_Init */
     int hunk_low, hunk_high, cache, zone_used, zone_size;
     int peak_low, peak_high, peak_cache, peak_zone, peak_total;
-    int total;                           /* low + high + cache + zone_size */
+    int video;                           /* frame + z-buffer + surface cache, set by the port */
+    int total;                           /* low + high + cache + video (zone is inside low) */
 } qog_mem_t;
+
+/* The port reports what its VID_Init allocated outside the hunk. */
+void qog_mem_set_video(int bytes);
 
 /* Sample now and update peaks. Cheap; call once per frame. */
 const qog_mem_t *qog_mem_sample(void);

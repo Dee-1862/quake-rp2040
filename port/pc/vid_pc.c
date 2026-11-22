@@ -230,6 +230,7 @@ void VID_Init(unsigned char *palette) {
     VID_SetPalette(palette);
     qog_input_reset(&s_board_state);
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
+    qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer) + surfcache_size);
 
     WNDCLASSA wc = {0};
     wc.lpfnWndProc = wnd_proc;

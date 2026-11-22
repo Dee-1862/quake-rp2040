@@ -33,13 +33,23 @@ static int cache_bytes(void) {
     return n;
 }
 
-static int zone_bytes(void) {
-    if (!mainzone) return 0;
-    int n = 0;
-    for (memblock_t *b = mainzone->blocklist.next; b && b != &mainzone->blocklist; b = b->next)
-        if (b->tag) n += b->size;
-    return n;
+/* id never sets memzone_t.size, so capacity is the sum of every block. */
+static int zone_bytes(int *capacity) {
+    int used = 0, all = 0;
+    if (mainzone)
+        for (memblock_t *b = mainzone->blocklist.next; b && b != &mainzone->blocklist; b = b->next) {
+            all += b->size;
+            if (b->tag) used += b->size;
+        }
+    if (capacity) *capacity = all;
+    return used;
 }
+
+static int s_video_bytes;
+void qog_mem_set_video(int bytes) { s_video_bytes = bytes; }
+
+void Hunk_Print(qboolean all);
+void Cache_Print(void);
 
 #define PEAK(p, v) do { if ((v) > (p)) (p) = (v); } while (0)
 
@@ -48,9 +58,10 @@ const qog_mem_t *qog_mem_sample(void) {
     s_m.hunk_low = hunk_low_used;
     s_m.hunk_high = hunk_high_used;
     s_m.cache = cache_bytes();
-    s_m.zone_used = zone_bytes();
-    s_m.zone_size = mainzone ? mainzone->size : 0;
-    s_m.total = s_m.hunk_low + s_m.hunk_high + s_m.cache + s_m.zone_size;
+    s_m.zone_used = zone_bytes(&s_m.zone_size);
+    s_m.video = s_video_bytes;
+    /* The zone is carved out of hunk low, so it is already in hunk_low. */
+    s_m.total = s_m.hunk_low + s_m.hunk_high + s_m.cache + s_m.video;
     PEAK(s_m.peak_low, s_m.hunk_low);
     PEAK(s_m.peak_high, s_m.hunk_high);
     PEAK(s_m.peak_cache, s_m.cache);
@@ -73,14 +84,18 @@ static void cmd_qog_mem(void) {
         Con_Printf("qog_mem: peaks cleared\n");
         return;
     }
+    if (Cmd_Argc() > 1 && !Q_strcmp(Cmd_Argv(1), "hunk")) { Hunk_Print(true); return; }
+    if (Cmd_Argc() > 1 && !Q_strcmp(Cmd_Argv(1), "cache")) { Cache_Print(); return; }
     const qog_mem_t *m = qog_mem_sample();
     Con_Printf("Dynamic RAM (hunk given %d KB):\n", m->hunk_size / 1024);
     kb_line("hunk low", m->hunk_low, m->peak_low);
     kb_line("hunk high", m->hunk_high, m->peak_high);
     kb_line("cache", m->cache, m->peak_cache);
     kb_line("zone used", m->zone_used, m->peak_zone);
-    Con_Printf("  zone size  %7.1f KB (fixed)\n", m->zone_size / 1024.0);
+    Con_Printf("  zone size  %7.1f KB (inside hunk low)\n", m->zone_size / 1024.0);
+    Con_Printf("  video      %7.1f KB (frame, z-buffer, surface cache)\n", m->video / 1024.0);
     kb_line("TOTAL", m->total, m->peak_total);
+    Con_Printf("More: qog_mem hunk | qog_mem cache | qog_mem reset\n");
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");
 }
 
