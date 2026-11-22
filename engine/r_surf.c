@@ -77,7 +77,7 @@ void R_AddDynamicLights (void)
 
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 	{
-		if ( !(surf->dlightbits & (1<<lnum) ) )
+		if ( !(SURF_DLIGHTBITS (r_drawsurf.model, surf) & (1<<lnum) ) )
 			continue;		// not lit by this light
 
 		rad = cl_dlights[lnum].radius;
@@ -187,7 +187,7 @@ void R_BuildLightMap (void)
 		}
 
 // add all the dynamic lights
-	if (surf->dlightframe == r_framecount)
+	if (SURF_DLIGHTFRAME (r_drawsurf.model, surf) == r_framecount)
 		R_AddDynamicLights ();
 
 // bound, invert, and shift

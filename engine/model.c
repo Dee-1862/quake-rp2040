@@ -687,10 +687,15 @@ void Mod_LoadEdges (lump_t *l)
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( (count + 1) * sizeof(*out), loadname);	
+	loadmodel->numedges = count;
+	if (MOD_IN_PLACE(in))
+	{	// QuakeOG: with cachededgeoffset moved out, medge_t is dedge_t
+		loadmodel->edges = (medge_t *)in;
+		return;
+	}
+	out = Hunk_AllocName ( (count + 1) * sizeof(*out), loadname);
 
 	loadmodel->edges = out;
-	loadmodel->numedges = count;
 
 	for ( i=0 ; i<count ; i++, in++, out++)
 	{
@@ -990,7 +995,6 @@ void Mod_LoadLeafs (lump_t *l)
 			out->compressed_vis = NULL;
 		else
 			out->compressed_vis = loadmodel->visdata + p;
-		out->efrags = NULL;
 		
 		for (j=0 ; j<4 ; j++)
 			out->ambient_sound_level[j] = in->ambient_level[j];
@@ -1249,7 +1253,19 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	Mod_LoadSubmodels (&header->lumps[LUMP_MODELS]);
 
 	Mod_MakeHull0 ();
-	
+
+	// QuakeOG: the per-frame state id kept inside the structures, in RAM
+	// (zeroed by the hunk, as the fields were). Copied into the submodels
+	// below with the rest of the model, so they share it like the arrays.
+	loadmodel->surf_visframe = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+	loadmodel->surf_dlightframe = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+	loadmodel->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+	loadmodel->node_visframe = Hunk_AllocName (loadmodel->numnodes * sizeof(int), loadname);
+	loadmodel->leaf_visframe = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+	loadmodel->leaf_efrags = Hunk_AllocName (loadmodel->numleafs * sizeof(efrag_t *), loadname);
+	loadmodel->leaf_key = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+	loadmodel->edge_cache = Hunk_AllocName ((loadmodel->numedges + 1) * sizeof(unsigned int), loadname);
+
 	mod->numframes = 2;		// regular and alternate animation
 	mod->flags = 0;
 	

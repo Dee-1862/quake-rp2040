@@ -256,6 +256,7 @@ int D_log2 (int num)
 
 //=============================================================================
 
+#ifdef QOG_SURFCACHE	// QuakeOG: only used with the surface cache (see d_scanlit.c)
 /*
 ================
 D_CacheSurface
@@ -279,7 +280,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 //
 	cache = surface->cachespots[miplevel];
 
-	if (cache && !cache->dlight && surface->dlightframe != r_framecount
+	if (cache && !cache->dlight && SURF_DLIGHTFRAME (r_drawsurf.model, surface) != r_framecount
 			&& cache->texture == r_drawsurf.texture
 			&& cache->lightadj[0] == r_drawsurf.lightadj[0]
 			&& cache->lightadj[1] == r_drawsurf.lightadj[1]
@@ -308,7 +309,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 		cache->mipscale = surfscale;
 	}
 	
-	if (surface->dlightframe == r_framecount)
+	if (SURF_DLIGHTFRAME (r_drawsurf.model, surface) == r_framecount)
 		cache->dlight = 1;
 	else
 		cache->dlight = 0;
@@ -331,5 +332,7 @@ surfcache_t *D_CacheSurface (msurface_t *surface, int miplevel)
 
 	return surface->cachespots[miplevel];
 }
+#endif
+
 
 

@@ -299,13 +299,13 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 			pn = pnode->children[i];
 
 		// we're done with this branch if the node or leaf isn't in the PVS
-			if (pn->visframe == r_visframecount)
+			if (NODE_VISFRAME (cl.worldmodel, pn) == r_visframecount)
 			{
 				if (pn->contents < 0)
 				{
 					if (pn->contents != CONTENTS_SOLID)
 					{
-						r_currentbkey = ((mleaf_t *)pn)->key;
+						r_currentbkey = LEAF_KEY (cl.worldmodel, (mleaf_t *)pn);
 						R_RenderBmodelFace (psideedges[i], psurf);
 					}
 				}
@@ -431,7 +431,7 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
 		{
-			r_currentkey = ((mleaf_t *)currententity->topnode)->key;
+			r_currentkey = LEAF_KEY (cl.worldmodel, (mleaf_t *)currententity->topnode);
 
 		// FIXME: use bounding-box-based frustum clipping info?
 			R_RenderFace (psurf, clipflags);
@@ -457,7 +457,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	if (node->contents == CONTENTS_SOLID)
 		return;		// solid
 
-	if (node->visframe != r_visframecount)
+	if (NODE_VISFRAME (cl.worldmodel, node) != r_visframecount)
 		return;
 
 // cull the clipping planes if not trivial accept
@@ -510,18 +510,18 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		{
 			do
 			{
-				(*mark)->visframe = r_framecount;
+				SURF_VISFRAME (cl.worldmodel, *mark) = r_framecount;
 				mark++;
 			} while (--c);
 		}
 
 	// deal with model fragments in this leaf
-		if (pleaf->efrags)
+		if (LEAF_EFRAGS (cl.worldmodel, pleaf))
 		{
-			R_StoreEfrags (&pleaf->efrags);
+			R_StoreEfrags (&LEAF_EFRAGS (cl.worldmodel, pleaf));
 		}
 
-		pleaf->key = r_currentkey;
+		LEAF_KEY (cl.worldmodel, pleaf) = r_currentkey;
 		r_currentkey++;		// all bmodels in a leaf share the same key
 	}
 	else
@@ -567,7 +567,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 				do
 				{
 					if ((surf->flags & SURF_PLANEBACK) &&
-						(surf->visframe == r_framecount))
+						(SURF_VISFRAME (cl.worldmodel, surf) == r_framecount))
 					{
 						if (r_drawpolys)
 						{
@@ -600,7 +600,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 				do
 				{
 					if (!(surf->flags & SURF_PLANEBACK) &&
-						(surf->visframe == r_framecount))
+						(SURF_VISFRAME (cl.worldmodel, surf) == r_framecount))
 					{
 						if (r_drawpolys)
 						{

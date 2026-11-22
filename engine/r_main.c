@@ -250,7 +250,7 @@ void R_NewMap (void)
 // clear out efrags in case the level hasn't been reloaded
 // FIXME: is this one short?
 	for (i=0 ; i<cl.worldmodel->numleafs ; i++)
-		cl.worldmodel->leafs[i].efrags = NULL;
+		LEAF_EFRAGS (cl.worldmodel, &cl.worldmodel->leafs[i]) = NULL;
 		 	
 	r_viewleaf = NULL;
 	R_ClearParticles ();
@@ -509,9 +509,9 @@ void R_MarkLeaves (void)
 			node = (mnode_t *)&cl.worldmodel->leafs[i+1];
 			do
 			{
-				if (node->visframe == r_visframecount)
+				if (NODE_VISFRAME (cl.worldmodel, node) == r_visframecount)
 					break;
-				node->visframe = r_visframecount;
+				NODE_VISFRAME (cl.worldmodel, node) = r_visframecount;
 				node = node->parent;
 			} while (node);
 		}

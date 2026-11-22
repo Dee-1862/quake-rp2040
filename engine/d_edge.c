@@ -295,6 +295,7 @@ void D_DrawSurfaces (void)
 				miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
 				* pface->texinfo->mipadjust);
 
+				r_drawsurf.model = s->entity->model;	// QuakeOG: owner of pface's state arrays
 #ifdef QOG_SURFCACHE
 			// FIXME: make this passed in to D_CacheSurface
 				pcurrentcache = D_CacheSurface (pface, miplevel);

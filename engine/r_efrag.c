@@ -57,7 +57,7 @@ void R_RemoveEfrags (entity_t *ent)
 	
 	while (ef)
 	{
-		prev = &ef->leaf->efrags;
+		prev = &LEAF_EFRAGS (cl.worldmodel, ef->leaf);
 		while (1)
 		{
 			walk = *prev;
@@ -127,8 +127,8 @@ void R_SplitEntityOnNode (mnode_t *node)
 		
 // set the leaf links
 		ef->leaf = leaf;
-		ef->leafnext = leaf->efrags;
-		leaf->efrags = ef;
+		ef->leafnext = LEAF_EFRAGS (cl.worldmodel, leaf);
+		LEAF_EFRAGS (cl.worldmodel, leaf) = ef;
 			
 		return;
 	}
@@ -165,7 +165,7 @@ void R_SplitEntityOnNode2 (mnode_t *node)
 	mplane_t	*splitplane;
 	int			sides;
 
-	if (node->visframe != r_visframecount)
+	if (NODE_VISFRAME (cl.worldmodel, node) != r_visframecount)
 		return;
 	
 	if (node->contents < 0)

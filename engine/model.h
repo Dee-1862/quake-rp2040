@@ -88,7 +88,8 @@ typedef struct texture_s
 typedef struct
 {
 	unsigned short	v[2];
-	unsigned int	cachededgeoffset;
+	// QuakeOG: cachededgeoffset moved to model_t.edge_cache (RAM), so medge_t
+	// matches the file's dedge_t and can be read in place from flash
 } medge_t;
 
 typedef struct
@@ -101,10 +102,8 @@ typedef struct
 
 typedef struct msurface_s
 {
-	int			visframe;		// should be drawn when node is crossed
-
-	int			dlightframe;
-	int			dlightbits;
+	// QuakeOG: visframe, dlightframe and dlightbits moved to RAM arrays in
+	// model_t (SURF_VISFRAME and friends) so surfaces can be read only
 
 	mplane_t	*plane;
 	int			flags;
@@ -112,8 +111,10 @@ typedef struct msurface_s
 	int			firstedge;	// look up in model->surfedges[], negative numbers
 	int			numedges;	// are backwards edges
 	
+#ifdef QOG_SURFCACHE
 // surface generation data
 	struct surfcache_s	*cachespots[MIPLEVELS];
+#endif
 
 	short		texturemins[2];
 	short		extents[2];
@@ -129,8 +130,8 @@ typedef struct mnode_s
 {
 // common with leaf
 	int			contents;		// 0, to differentiate from leafs
-	int			visframe;		// node needs to be traversed if current
-	
+	// QuakeOG: visframe moved to model_t (NODE_VISFRAME)
+
 	short		minmaxs[6];		// for bounding box culling
 
 	struct mnode_s	*parent;
@@ -149,7 +150,7 @@ typedef struct mleaf_s
 {
 // common with node
 	int			contents;		// wil be a negative contents number
-	int			visframe;		// node needs to be traversed if current
+	// QuakeOG: visframe moved to model_t (NODE_VISFRAME)
 
 	short		minmaxs[6];		// for bounding box culling
 
@@ -157,11 +158,10 @@ typedef struct mleaf_s
 
 // leaf specific
 	byte		*compressed_vis;
-	efrag_t		*efrags;
+	// QuakeOG: efrags and key moved to model_t (LEAF_EFRAGS, LEAF_KEY)
 
 	msurface_t	**firstmarksurface;
 	int			nummarksurfaces;
-	int			key;			// BSP sequence number for leaf's contents
 	byte		ambient_sound_level[NUM_AMBIENTS];
 } mleaf_t;
 
@@ -375,7 +375,31 @@ typedef struct model_s
 //
 	cache_user_t	cache;		// only access through Mod_Extradata
 
+// QuakeOG: the per-frame state id kept inside the BSP structures, moved out
+// so those structures can be read only (flash). Indexed like the arrays
+// above; inline submodels share their world's arrays, as they share its
+// surfaces, nodes and leafs. Use the accessor macros below.
+	int				*surf_visframe;		// [numsurfaces]
+	int				*surf_dlightframe;	// [numsurfaces]
+	int				*surf_dlightbits;	// [numsurfaces]
+	int				*node_visframe;		// [numnodes]
+	int				*leaf_visframe;		// [numleafs]
+	efrag_t			**leaf_efrags;		// [numleafs]
+	int				*leaf_key;			// [numleafs]
+	unsigned int	*edge_cache;		// [numedges] id's cachededgeoffset
+
 } model_t;
+
+#define SURF_VISFRAME(m, s)		((m)->surf_visframe[(s) - (m)->surfaces])
+#define SURF_DLIGHTFRAME(m, s)	((m)->surf_dlightframe[(s) - (m)->surfaces])
+#define SURF_DLIGHTBITS(m, s)	((m)->surf_dlightbits[(s) - (m)->surfaces])
+#define LEAF_EFRAGS(m, l)		((m)->leaf_efrags[(l) - (m)->leafs])
+#define LEAF_KEY(m, l)			((m)->leaf_key[(l) - (m)->leafs])
+#define EDGE_CACHE(m, e)		((m)->edge_cache[(e) - (m)->edges])
+// nodes and leafs share id's node pointer type; contents < 0 means a leaf
+#define NODE_VISFRAME(m, n)		(*((n)->contents < 0 \
+	? &(m)->leaf_visframe[(mleaf_t *)(n) - (m)->leafs] \
+	: &(m)->node_visframe[(n) - (m)->nodes]))
 
 //============================================================================
 

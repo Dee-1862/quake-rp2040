@@ -199,6 +199,7 @@ typedef struct
 	int			surfmip;	// mipmapped ratio of surface texels / world pixels
 	int			surfwidth;	// in mipmapped texels
 	int			surfheight;	// in mipmapped texels
+	struct model_s	*model;	// QuakeOG: model owning surf, for its per-frame state arrays
 } drawsurf_t;
 
 extern drawsurf_t	r_drawsurf;
