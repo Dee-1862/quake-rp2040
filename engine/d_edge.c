@@ -295,6 +295,7 @@ void D_DrawSurfaces (void)
 				miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
 				* pface->texinfo->mipadjust);
 
+#ifdef QOG_SURFCACHE
 			// FIXME: make this passed in to D_CacheSurface
 				pcurrentcache = D_CacheSurface (pface, miplevel);
 
@@ -304,6 +305,12 @@ void D_DrawSurfaces (void)
 				D_CalcGradients (pface);
 
 				(*d_drawspans) (s->spans);
+#else
+			// QuakeOG: no surface cache, light each pixel as it is drawn (d_scanlit.c)
+				D_SetupLitSurface (pface, miplevel);
+				D_CalcGradients (pface);
+				D_DrawSpans8Lit (s->spans);
+#endif
 
 				D_DrawZSpans (s->spans);
 

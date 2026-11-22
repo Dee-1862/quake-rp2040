@@ -92,6 +92,31 @@ void D_BeginDirectRect(int x, int y, byte *pbitmap, int width, int height) {
 void D_EndDirectRect(int x, int y, int width, int height) { (void)x; (void)y; (void)width; (void)height; }
 void VID_HandlePause(qboolean pause) { (void)pause; }
 
+/* `qog_shot [name]` writes the current 8-bit frame as build-pc-shots/<name>.bmp
+   so renderer changes can be compared frame by frame. */
+static void cmd_qog_shot(void) {
+    char path[256];
+    const char *name = Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot";
+    CreateDirectoryA(QOG_SHOT_DIR, NULL);
+    snprintf(path, sizeof path, "%s/%s.bmp", QOG_SHOT_DIR, name);
+    FILE *f = fopen(path, "wb");
+    if (!f) { Con_Printf("qog_shot: cannot write %s\n", path); return; }
+    const int pal_bytes = 256 * 4, img = QOG_PC_W * QOG_PC_H;
+    BITMAPFILEHEADER fh = {0};
+    fh.bfType = 0x4D42;
+    fh.bfOffBits = sizeof fh + sizeof(BITMAPINFOHEADER) + pal_bytes;
+    fh.bfSize = fh.bfOffBits + img;
+    BITMAPINFOHEADER ih = s_bmi.h;
+    ih.biHeight = -QOG_PC_H;
+    ih.biSizeImage = img;
+    fwrite(&fh, sizeof fh, 1, f);
+    fwrite(&ih, sizeof ih, 1, f);
+    fwrite(s_bmi.pal, pal_bytes, 1, f);
+    fwrite(vid_buffer, img, 1, f);
+    fclose(f);
+    Con_Printf("qog_shot: wrote %s\n", path);
+}
+
 /* ---- keyboard -------------------------------------------------------- */
 
 static int map_vk(WPARAM vk) {
@@ -214,7 +239,13 @@ void VID_Init(unsigned char *palette) {
     vid.rowbytes = vid.conrowbytes = QOG_PC_W;
 
     d_pzbuffer = zbuffer;
+#ifdef QOG_SURFCACHE
     surfcache_size = D_SurfaceCacheForRes(QOG_PC_W, QOG_PC_H);
+#else
+    /* The world is lit per pixel (engine/d_scanlit.c), so nothing allocates
+       from the surface cache. D_InitCaches still writes a header and guard. */
+    surfcache_size = 1024;
+#endif
     surfcache = malloc(surfcache_size);
     if (!surfcache) Sys_Error("no memory for the surface cache");
     D_InitCaches(surfcache, surfcache_size);
@@ -232,6 +263,7 @@ void VID_Init(unsigned char *palette) {
     qog_input_reset(&s_board_state);
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
     qog_aim_register();
+    Cmd_AddCommand("qog_shot", cmd_qog_shot);
     qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer) + surfcache_size);
 
     WNDCLASSA wc = {0};

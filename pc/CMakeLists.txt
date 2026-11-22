@@ -32,7 +32,13 @@ target_include_directories(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     HOST_TEST                       # platform/ pure code only, no Pico SDK
     _CRT_SECURE_NO_WARNINGS
-    QOG_DEFAULT_BASEDIR="${ROOT}/data")
+    QOG_DEFAULT_BASEDIR="${ROOT}/data"
+    QOG_SHOT_DIR="${CMAKE_BINARY_DIR}/shots")
+# id's surface cache (600 KB at 320x200) or per-pixel lighting (engine/d_scanlit.c).
+option(QOG_SURFCACHE "use id's surface cache instead of per-pixel lighting" OFF)
+if(QOG_SURFCACHE)
+    target_compile_definitions(quakeog_pc PRIVATE QOG_SURFCACHE)
+endif()
 # id's 1996 code is noisy at higher warning levels; keep ours strict later.
 target_compile_options(quakeog_pc PRIVATE /W1 /MP)
 target_link_libraries(quakeog_pc PRIVATE user32 gdi32 winmm)

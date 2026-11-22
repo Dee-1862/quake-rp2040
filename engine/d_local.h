@@ -71,6 +71,9 @@ fixed16_t	bbextents, bbextentt;
 
 
 void D_DrawSpans8 (espan_t *pspans);
+// QuakeOG: surface-cache-free world drawing (d_scanlit.c)
+void D_SetupLitSurface (msurface_t *pface, int mip);
+void D_DrawSpans8Lit (espan_t *pspans);
 void D_DrawSpans16 (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);
