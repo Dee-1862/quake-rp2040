@@ -173,3 +173,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_STATIC_TRIM                 # key tables as bytes, loopback-only network tables, 1 KB spawnparms (exact)
     QOG_EDICT_REUSE                 # all edicts in use, reuse the longest-free one before id's Sys_Error
     QOG_PALETTE_FLASH)              # gfx/palette.lmp read in place from the mapped pack (id 800 B hunk copy)
+
+# Renderer-only fly-through (Agent N): the board app apps/qogfly runs the same host.
+# -qogfly runs it standalone, qog_fly and qog_fly_ref compare it with the game.
+target_sources(quakeog_pc PRIVATE
+    ${ROOT}/port/common/qog_fly.c
+    ${ROOT}/port/pc/fly_pc.c)
