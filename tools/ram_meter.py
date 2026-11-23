@@ -29,6 +29,8 @@ CFLAGS = ["-std=gnu11", "-mcpu=cortex-m0plus", "-mthumb", "-Os", "-fno-common", 
           "-fdata-sections", "-w", "-Wno-implicit-function-declaration", "-DQOG_RP2040_METER", "-DQOG_SINGLE_PLAYER", "-DQOG_EDICT_MARGIN=128", "-DQOG_MAX_MOD_KNOWN=192", "-DQOG_MAX_PARTICLES=512", "-DQOG_CON_TEXTSIZE=4096", "-DQOG_KEY_HISTORY=8", "-DQOG_MAXWIDTH=320", "-DQOG_MAXHEIGHT=200", "-DQOG_MAXALIASVERTS=384", "-DQOG_MAX_BTOFPOLYS=0", "-DQOG_WARP_INPLACE=1", "-I", os.path.join(ROOT, "engine")]
 # BSP structure layout flags (engine/model.h, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_PLANES_EXACT", "-DQOG_MARKSURF16", "-DQOG_SURF_PACKED", "-DQOG_EDGECACHE16", "-DQOG_LEAF_PACKED", "-DQOG_SURF_INDEX", "-DQOG_FRAME16"]
+# Buffer and client table flags (pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_LOOP_SERVER_RX=2048", "-DQOG_MAX_MSGLEN=6500", "-DQOG_SIGNON_SIZE=6500", "-DQOG_LOOP_CLIENT_RX=7532", "-DQOG_LOCALSTACK_FROM_PROGS", "-DQOG_MAX_CACHED_PICS=56", "-DQOG_CACHEPIC_NAME=24", "-DQOG_STATICS_ON_HUNK", "-DQOG_ZONE_KB=24", "-DQOG_CONST_LOCALMODELS"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

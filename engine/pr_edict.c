@@ -1046,6 +1046,7 @@ void PR_LoadProgs (void)
 
 	if (pr_inflash)
 	{
+		PR_SizeLocalStack ();	// QuakeOG: locals stack sized for these progs
 		PR_AOT_Check ();
 		return;	// the swaps below are no-ops on little-endian, and flash is read only
 	}
@@ -1088,6 +1089,7 @@ void PR_LoadProgs (void)
 	for (i=0 ; i<progs->numglobals ; i++)
 		((int *)pr_globals)[i] = LittleLong (((int *)pr_globals)[i]);
 
+	PR_SizeLocalStack ();	// QuakeOG: locals stack sized for these progs
 	PR_AOT_Check ();
 }
 

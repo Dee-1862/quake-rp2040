@@ -848,7 +848,13 @@ void NET_Init (void)
 	}
 
 	// allocate space for network message buffer
+#ifdef QOG_SINGLE_PLAYER
+	// QuakeOG: loopback and demos never deliver more than MAX_MSGLEN (the
+	// size of client_t.message, and the limit cl_demo.c checks)
+	SZ_Alloc (&net_message, MAX_MSGLEN);
+#else
 	SZ_Alloc (&net_message, NET_MAXMESSAGE);
+#endif
 
 	Cvar_RegisterVariable (&net_messagetimeout);
 	Cvar_RegisterVariable (&hostname);

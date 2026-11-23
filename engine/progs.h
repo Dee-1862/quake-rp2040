@@ -77,6 +77,7 @@ extern const unsigned	pr_aot_fingerprint;
 extern qboolean			pr_aot_active;
 void PR_AOT_Call (func_t fnum);
 void PR_AOT_Check (void);
+void PR_SizeLocalStack (void);	// QuakeOG: pr_exec.c
 qboolean PR_AOT_Matches (dprograms_t *p);
 extern qboolean			pr_inflash;	// progs.dat used in place from flash
 void PR_LoadProgs (void);

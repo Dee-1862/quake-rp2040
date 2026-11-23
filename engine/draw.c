@@ -40,13 +40,26 @@ qpic_t		*draw_backtile;
 //=============================================================================
 /* Support Routines */
 
+// QuakeOG: every cached pic name is a constant in the engine (menu.c,
+// screen.c, sbar.c): 39 names plus gfx/menudot1-6 and gfx/help0-5, 51 in
+// all, the longest 16 characters. Both limits error out like id's when hit.
+#ifdef QOG_CACHEPIC_NAME
+#define	CACHEPIC_NAME		QOG_CACHEPIC_NAME
+#else
+#define	CACHEPIC_NAME		MAX_QPATH
+#endif
+
 typedef struct cachepic_s
 {
-	char		name[MAX_QPATH];
+	char		name[CACHEPIC_NAME];
 	cache_user_t	cache;
 } cachepic_t;
 
+#ifdef QOG_MAX_CACHED_PICS
+#define	MAX_CACHED_PICS		QOG_MAX_CACHED_PICS
+#else
 #define	MAX_CACHED_PICS		128
+#endif
 cachepic_t	menu_cachepics[MAX_CACHED_PICS];
 int			menu_numcachepics;
 
@@ -75,6 +88,8 @@ qpic_t	*Draw_CachePic (char *path)
 	{
 		if (menu_numcachepics == MAX_CACHED_PICS)
 			Sys_Error ("menu_numcachepics == MAX_CACHED_PICS");
+		if (strlen (path) >= CACHEPIC_NAME)	// QuakeOG: names are shorter than MAX_QPATH
+			Sys_Error ("Draw_CachePic: %s is too long", path);
 		menu_numcachepics++;
 		strcpy (pic->name, path);
 	}

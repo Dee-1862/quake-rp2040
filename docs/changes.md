@@ -2,6 +2,28 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-22: Message buffers and client/host tables sized from measured peaks (PC and ARM meter)
+
+Peaks were measured with temporary counters over every shareware level, every menu, a save and load, and demos 1 to 3. Each limit is a `QOG_` define that defaults to id's value. Overflow still takes id's path (Sys_Error, a dropped client or a dropped datagram).
+
+| Change | Measured peak | Before → after |
+| --- | --- | --- |
+| Loopback sockets: no send buffers, one receive buffer per direction (`QOG_LOOP_CLIENT_RX` 7532, `QOG_LOOP_SERVER_RX` 2048) | 3,844 B to the client, 40 B to the server | hunk 32.4 KB → 0.4 KB, static +9.4 KB |
+| `QOG_MAX_MSGLEN` 6500 (client message, net_message, demo limit, like MG24Quake's retail build), `QOG_SIGNON_SIZE` 6500 | 3,838 B per message, 3,836 B signon | hunk −3.1 KB, static −1.7 KB |
+| Mapped pack looked up in its flash directory, disk positions kept only where they differ (PC) | | hunk 25.2 KB → 1.3 KB (0 on the board) |
+| Colormap read in place from flash (never written; the PC pages are read only) | | hunk −16 KB |
+| QuakeC locals stack sized per progs: largest locals × 31 nestable calls (`QOG_LOCALSTACK_FROM_PROGS`) | 21 of 2,048 ints used | static 8 KB → 0, hunk +2 KB |
+| Menu pic cache: 56 entries with 24-byte names (`QOG_MAX_CACHED_PICS`, `QOG_CACHEPIC_NAME`); the engine can name only 51, the longest 16 characters | 28 | static 8.5 KB → 1.5 KB |
+| Static entities and efrags from the hunk per level (`QOG_STATICS_ON_HUNK`), still capped at 128 and 640 | 44 entities, 197 efrags, 16 per entity | static −33 KB, hunk up to +13 KB |
+| gfx.wad lump directory used in place | | hunk −5.1 KB |
+| Zone 24 KB (`QOG_ZONE_KB`) | 7.4 KB, plus up to 8 KB while a script is inserted | hunk −24 KB |
+| Inline model names as a constant table (`QOG_CONST_LOCALMODELS`) | | static −1.25 KB |
+| Spawn command and keepalive copy off the load-path stack | | stack −8 KB each on the ARM build |
+
+Totals: E1M1 hunk low 1,268.6 → 1,166.5 KB. Peak hunk low over all levels 1,521.1 → 1,429.8 KB. Engine static RAM (ARM meter) 265.4 → 223.9 KB. State hashes, all 10 manifests and 24 demo frames (rows 16–199) are identical to the reference build.
+
+Left as is: `cl_temp_entities` (lightning beams can legitimately use all 64), the 16 KB player translation table (needed for chase view and the renderer indexes it as a full colormap), the 8 KB command buffer, and `MAX_DATAGRAM` (a smaller one drops entities from the frame).
+
 ## 2026-11-22: Engine-only RAM cuts (PC, measured, all verified hidden and silent)
 
 | Step | Change | Saved (E1M1) |

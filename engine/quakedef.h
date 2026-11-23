@@ -98,7 +98,11 @@ void	VID_UnlockBuffer (void);
 
 #define	ON_EPSILON		0.1			// point on plane side epsilon
 
+#ifdef QOG_MAX_MSGLEN	// QuakeOG: client_t.message, net_message and demo messages
+#define	MAX_MSGLEN		QOG_MAX_MSGLEN
+#else
 #define	MAX_MSGLEN		8000		// max length of a reliable message
+#endif
 #define	MAX_DATAGRAM	1024		// max length of unreliable message
 
 //

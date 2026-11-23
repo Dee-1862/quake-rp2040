@@ -24,6 +24,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 int			wad_numlumps;
 lumpinfo_t	*wad_lumps;
 byte		*wad_base;
+qboolean	wad_rawnames;	// QuakeOG: wad_lumps is the read-only directory in flash,
+						// names not yet lowercased (see W_GetLumpinfo)
 
 void SwapPic (qpic_t *pic);
 
@@ -87,6 +89,17 @@ void W_LoadWadFile (char *filename)
 			wad_base = f;
 			wad_numlumps = LittleLong(header->numlumps);
 			infotableofs = LittleLong(header->infotableofs);
+			if (!(infotableofs & 3))
+			{	// QuakeOG: an aligned directory is used in place too (5 KB for
+				// gfx.wad). Its names are matched through W_CleanupName on
+				// lookup instead of being lowercased here.
+				wad_lumps = (lumpinfo_t *)(wad_base + infotableofs);
+				wad_rawnames = true;
+				for (i=0, lump_p = wad_lumps ; i<wad_numlumps ; i++,lump_p++)
+					if ((lump_p->filepos & 3) && lump_p->type == TYP_QPIC)
+						Sys_Error ("W_LoadWadFile: %s is not 4-byte aligned", lump_p->name);
+				return;
+			}
 			wad_lumps = Hunk_AllocName (wad_numlumps * sizeof(lumpinfo_t), "waddir");
 			memcpy (wad_lumps, wad_base + infotableofs, wad_numlumps * sizeof(lumpinfo_t));
 			for (i=0, lump_p = wad_lumps ; i<wad_numlumps ; i++,lump_p++)
@@ -143,6 +156,15 @@ lumpinfo_t	*W_GetLumpinfo (char *name)
 	
 	for (lump_p=wad_lumps, i=0 ; i<wad_numlumps ; i++,lump_p++)
 	{
+		if (wad_rawnames)
+		{	// QuakeOG: directory in flash, clean its name the same way first
+			char	lname[16];
+
+			W_CleanupName (lump_p->name, lname);
+			if (!memcmp(clean, lname, 16))	// both are zero padded to 16
+				return lump_p;
+			continue;
+		}
 		if (!strcmp(clean, lump_p->name))
 			return lump_p;
 	}

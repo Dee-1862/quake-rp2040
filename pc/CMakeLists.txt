@@ -85,6 +85,18 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LEAF_PACKED                 # leaf mark surface index and count as the file's 16 bits
     QOG_SURF_INDEX                  # surface plane and texinfo as the file's 16-bit numbers
     QOG_FRAME16)                    # 16-bit visframe and dlightframe stamps, window refilled on wrap
+# Buffers, message sizes and client tables sized from measured peaks.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_LOOP_SERVER_RX=2048         # loopback buffer to the server, measured peak 40 B (id 8 KB)
+    QOG_MAX_MSGLEN=6500             # reliable message, measured peak 3838 B, MG24Quake retail 6500 (id 8000)
+    QOG_SIGNON_SIZE=6500            # signon buffer, measured peak 3836 B (id 8192)
+    QOG_LOOP_CLIENT_RX=7532         # loopback to the client, one message and one datagram (id 8 KB)
+    QOG_LOCALSTACK_FROM_PROGS       # QuakeC locals stack sized per progs, 2 KB for shareware (id 8 KB static)
+    QOG_MAX_CACHED_PICS=56          # menu pics, 51 possible names in the engine (id 128)
+    QOG_CACHEPIC_NAME=24            # menu pic names, longest 16 characters (id 64)
+    QOG_STATICS_ON_HUNK             # static entities and efrags from the hunk per level, peaks 44 and 197 (id 33 KB static)
+    QOG_ZONE_KB=24                  # zone, measured peak 7.4 KB plus an 8 KB command buffer copy (id 48 KB)
+    QOG_CONST_LOCALMODELS)          # inline model names as a constant table in flash (id 1.25 KB RAM)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

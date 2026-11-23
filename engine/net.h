@@ -136,12 +136,19 @@ typedef struct qsocket_s
 	unsigned int	sendSequence;
 	unsigned int	unreliableSendSequence;
 	int				sendMessageLength;
+#ifndef QOG_SINGLE_PLAYER	// QuakeOG: the loopback driver never uses a send buffer
 	byte			sendMessage [NET_MAXMESSAGE];
+#endif
 
 	unsigned int	receiveSequence;
 	unsigned int	unreliableReceiveSequence;
 	int				receiveMessageLength;
+#ifdef QOG_SINGLE_PLAYER	// QuakeOG: loopback buffers sized per direction, see net_loop.c
+	byte			*receiveMessage;
+	int				receiveMessageSize;
+#else
 	byte			receiveMessage [NET_MAXMESSAGE];
+#endif
 
 	struct qsockaddr	addr;
 	char				address[NET_NAMELEN];

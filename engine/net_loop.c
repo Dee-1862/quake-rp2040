@@ -26,6 +26,28 @@ qboolean	localconnectpending = false;
 qsocket_t	*loop_client = NULL;
 qsocket_t	*loop_server = NULL;
 
+#ifdef QOG_SINGLE_PLAYER
+// QuakeOG: one receive buffer per direction instead of two 8 KB buffers in
+// every socket. The client side holds one reliable message (at most
+// MAX_MSGLEN, the size of client_t.message) plus queued datagrams. The server
+// side only gets cls.message (1 KB) and movement datagrams. Overflow behaves
+// as in id's code: a reliable message stops with Sys_Error, a datagram is
+// dropped. Measured peaks over every shareware level and demo: 3844 bytes
+// to the client, 40 to the server.
+#ifndef QOG_LOOP_CLIENT_RX
+#define QOG_LOOP_CLIENT_RX	NET_MAXMESSAGE
+#endif
+#ifndef QOG_LOOP_SERVER_RX
+#define QOG_LOOP_SERVER_RX	NET_MAXMESSAGE
+#endif
+// 4 spare bytes: id's datagram check counts a 3-byte header but writes 4
+static byte	loop_client_rx[QOG_LOOP_CLIENT_RX + 4];
+static byte	loop_server_rx[QOG_LOOP_SERVER_RX + 4];
+#define LOOP_RXSIZE(s)	((s)->receiveMessageSize)
+#else
+#define LOOP_RXSIZE(s)	NET_MAXMESSAGE
+#endif
+
 int Loop_Init (void)
 {
 	if (cls.state == ca_dedicated)
@@ -77,6 +99,10 @@ qsocket_t *Loop_Connect (char *host)
 			return NULL;
 		}
 		Q_strcpy (loop_client->address, "localhost");
+#ifdef QOG_SINGLE_PLAYER
+		loop_client->receiveMessage = loop_client_rx;
+		loop_client->receiveMessageSize = QOG_LOOP_CLIENT_RX;
+#endif
 	}
 	loop_client->receiveMessageLength = 0;
 	loop_client->sendMessageLength = 0;
@@ -90,6 +116,10 @@ qsocket_t *Loop_Connect (char *host)
 			return NULL;
 		}
 		Q_strcpy (loop_server->address, "LOCAL");
+#ifdef QOG_SINGLE_PLAYER
+		loop_server->receiveMessage = loop_server_rx;
+		loop_server->receiveMessageSize = QOG_LOOP_SERVER_RX;
+#endif
 	}
 	loop_server->receiveMessageLength = 0;
 	loop_server->sendMessageLength = 0;
@@ -161,7 +191,7 @@ int Loop_SendMessage (qsocket_t *sock, sizebuf_t *data)
 
 	bufferLength = &((qsocket_t *)sock->driverdata)->receiveMessageLength;
 
-	if ((*bufferLength + data->cursize + 4) > NET_MAXMESSAGE)
+	if ((*bufferLength + data->cursize + 4) > LOOP_RXSIZE((qsocket_t *)sock->driverdata))	// QuakeOG: was NET_MAXMESSAGE
 		Sys_Error("Loop_SendMessage: overflow\n");
 
 	buffer = ((qsocket_t *)sock->driverdata)->receiveMessage + *bufferLength;
@@ -195,7 +225,7 @@ int Loop_SendUnreliableMessage (qsocket_t *sock, sizebuf_t *data)
 
 	bufferLength = &((qsocket_t *)sock->driverdata)->receiveMessageLength;
 
-	if ((*bufferLength + data->cursize + sizeof(byte) + sizeof(short)) > NET_MAXMESSAGE)
+	if ((*bufferLength + data->cursize + sizeof(byte) + sizeof(short)) > LOOP_RXSIZE((qsocket_t *)sock->driverdata))	// QuakeOG: was NET_MAXMESSAGE
 		return 0;
 
 	buffer = ((qsocket_t *)sock->driverdata)->receiveMessage + *bufferLength;

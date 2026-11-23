@@ -275,10 +275,17 @@ extern	cvar_t	m_side;
 extern	client_state_t	cl;
 
 // FIXME, allocate dynamically
+#ifdef QOG_STATICS_ON_HUNK	// QuakeOG: static entities and efrags on the hunk (cl_main.c)
+entity_t *CL_AllocStatic (void);
+void CL_LinkStatic (entity_t *ent);
+#else
 extern	efrag_t			cl_efrags[MAX_EFRAGS];
+#endif
 extern	entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level
 extern	int				cl_max_edicts;
+#ifndef QOG_STATICS_ON_HUNK
 extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
+#endif
 extern	lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 extern	dlight_t		cl_dlights[MAX_DLIGHTS];
 extern	entity_t		cl_temp_entities[MAX_TEMP_ENTITIES];

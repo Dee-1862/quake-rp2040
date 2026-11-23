@@ -1209,7 +1209,6 @@ typedef struct
 {
 	char    name[MAX_QPATH];
 	int             filepos, filelen;
-	int             flashpos;       // QuakeOG: position in the flash image, which may differ
 } packfile_t;
 
 typedef struct pack_s
@@ -1217,18 +1216,41 @@ typedef struct pack_s
 	char    filename[MAX_OSPATH];
 	int             handle;
 	int             numfiles;
-	packfile_t      *files;
+	packfile_t      *files;         // QuakeOG: NULL when the pack is mapped (fdir)
 	byte            *flash;         // QuakeOG: read-only image of the pack, or NULL
+	struct dpackfile_s *fdir;       // QuakeOG: the image's own directory, used in place
+	int             *diskpos;       // QuakeOG: file positions on disk where the image is
+	                                // laid out differently (PC), NULL when they are the same
 } pack_t;
 
 //
 // on disk
 //
-typedef struct
+typedef struct dpackfile_s	// QuakeOG: tagged so pack_t can point at it
 {
 	char    name[56];
 	int             filepos, filelen;
 } dpackfile_t;
+
+// QuakeOG: a mapped pack keeps no copy of its directory (25 KB with id's
+// 64-byte names for pak0). Names, lengths and image positions are read from
+// the directory in the image.
+static char *Pak_Name (pack_t *pak, int i)
+{
+	return pak->fdir ? pak->fdir[i].name : pak->files[i].name;
+}
+
+static int Pak_Length (pack_t *pak, int i)
+{
+	return pak->fdir ? LittleLong (pak->fdir[i].filelen) : pak->files[i].filelen;
+}
+
+static int Pak_DiskPos (pack_t *pak, int i)
+{
+	if (!pak->fdir)
+		return pak->files[i].filepos;
+	return pak->diskpos ? pak->diskpos[i] : LittleLong (pak->fdir[i].filepos);
+}
 
 typedef struct
 {
@@ -1396,7 +1418,7 @@ int COM_FindFile (char *filename, int *handle, FILE **file)
 		// look through all the pak file elements
 			pak = search->pack;
 			for (i=0 ; i<pak->numfiles ; i++)
-				if (!strcmp (pak->files[i].name, filename))
+				if (!strcmp (Pak_Name (pak, i), filename))	// QuakeOG: Pak_ accessors
 				{       // found it!
 					if (com_fileopened)
 						com_fileopened (filename);	// QuakeOG: asset manifests
@@ -1404,15 +1426,15 @@ int COM_FindFile (char *filename, int *handle, FILE **file)
 					if (handle)
 					{
 						*handle = pak->handle;
-						Sys_FileSeek (pak->handle, pak->files[i].filepos);
+						Sys_FileSeek (pak->handle, Pak_DiskPos (pak, i));
 					}
 					else
 					{       // open a new file on the pakfile
 						*file = fopen (pak->filename, "rb");
 						if (*file)
-							fseek (*file, pak->files[i].filepos, SEEK_SET);
+							fseek (*file, Pak_DiskPos (pak, i), SEEK_SET);
 					}
-					com_filesize = pak->files[i].filelen;
+					com_filesize = Pak_Length (pak, i);
 					return com_filesize;
 				}
 		}
@@ -1632,6 +1654,9 @@ pack_t *COM_LoadPackFile (char *packfile)
 	int                     himark;
 	unsigned short          crc;
 	int                     packlen;
+	byte                    *flash;		// QuakeOG: mapped image, see below
+	dpackfile_t             *fdir;
+	int                     *diskpos;
 
 	packlen = Sys_FileOpenRead (packfile, &packhandle);
 	if (packlen == -1)
@@ -1654,7 +1679,14 @@ pack_t *COM_LoadPackFile (char *packfile)
 	if (numpackfiles != PAK0_COUNT)
 		com_modified = true;    // not the original file
 
-	newfiles = Hunk_AllocName (numpackfiles * sizeof(packfile_t), "packfile");
+	// QuakeOG: a pack mapped in flash is looked up through the image's own
+	// directory, so no copy is made (see Pak_Name). The image is mapped first
+	// to know which way this pack goes.
+	flash = Sys_FlashMap (packfile, packlen);
+	newfiles = NULL;
+	diskpos = NULL;
+	if (!flash)
+		newfiles = Hunk_AllocName (numpackfiles * sizeof(packfile_t), "packfile");
 
 	// QuakeOG: the directory goes into a temporary block on the high hunk,
 	// sized to this pack (21 KB for pak0), instead of a MAX_FILES_IN_PACK
@@ -1671,12 +1703,41 @@ pack_t *COM_LoadPackFile (char *packfile)
 	if (crc != PAK0_CRC)
 		com_modified = true;
 
-// parse the directory
-	for (i=0 ; i<numpackfiles ; i++)
+	if (flash)
+	{	// QuakeOG: the image may be laid out differently from the file (files
+		// aligned for reading in place). Its directory must name the same
+		// files. Disk positions are kept only where they differ (the PC).
+		dpackheader_t	*fh = (dpackheader_t *)flash;
+		qboolean		samepos = true;
+
+		fdir = (dpackfile_t *)(flash + LittleLong (fh->dirofs));
+		if (LittleLong (fh->dirlen) != header.dirlen)
+			Sys_Error ("%s: flash image directory does not match", packfile);
+		for (i=0 ; i<numpackfiles ; i++)
+		{
+			if (strcmp (fdir[i].name, info[i].name)
+				|| fdir[i].filelen != info[i].filelen)
+				Sys_Error ("%s: flash image directory does not match", packfile);
+			if (fdir[i].filepos != info[i].filepos)
+				samepos = false;
+		}
+		if (!samepos)
+		{
+			diskpos = Hunk_AllocName (numpackfiles * sizeof(int), "packpos");
+			for (i=0 ; i<numpackfiles ; i++)
+				diskpos[i] = LittleLong (info[i].filepos);
+		}
+	}
+	else
 	{
-		strcpy (newfiles[i].name, info[i].name);
-		newfiles[i].filepos = LittleLong(info[i].filepos);
-		newfiles[i].filelen = LittleLong(info[i].filelen);
+		fdir = NULL;
+// parse the directory
+		for (i=0 ; i<numpackfiles ; i++)
+		{
+			strcpy (newfiles[i].name, info[i].name);
+			newfiles[i].filepos = LittleLong(info[i].filepos);
+			newfiles[i].filelen = LittleLong(info[i].filelen);
+		}
 	}
 	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the temporary directory
 
@@ -1685,23 +1746,9 @@ pack_t *COM_LoadPackFile (char *packfile)
 	pack->handle = packhandle;
 	pack->numfiles = numpackfiles;
 	pack->files = newfiles;
-	pack->flash = Sys_FlashMap (packfile, packlen);
-	if (pack->flash)
-	{	// QuakeOG: the image may be laid out differently from the file (files
-		// aligned for reading in place), so take positions from its directory
-		dpackheader_t	*fh = (dpackheader_t *)pack->flash;
-		dpackfile_t		*fi = (dpackfile_t *)(pack->flash + LittleLong (fh->dirofs));
-
-		if (LittleLong (fh->dirlen) != header.dirlen)
-			Sys_Error ("%s: flash image directory does not match", packfile);
-		for (i=0 ; i<numpackfiles ; i++)
-		{
-			if (strcmp (fi[i].name, newfiles[i].name)
-				|| LittleLong (fi[i].filelen) != newfiles[i].filelen)
-				Sys_Error ("%s: flash image directory does not match", packfile);
-			newfiles[i].flashpos = LittleLong (fi[i].filepos);	// filepos stays the disk position
-		}
-	}
+	pack->flash = flash;
+	pack->fdir = fdir;
+	pack->diskpos = diskpos;
 
 	Con_Printf ("Added packfile %s (%i files%s)\n", packfile, numpackfiles,
 		pack->flash ? ", mapped read only" : "");
@@ -1735,15 +1782,15 @@ byte *COM_FlashFile (char *path, int *length)
 		{
 			pak = search->pack;
 			for (i=0 ; i<pak->numfiles ; i++)
-				if (!strcmp (pak->files[i].name, path))
+				if (!strcmp (Pak_Name (pak, i), path))
 				{
 					if (!pak->flash)
 						return NULL;
 					if (com_fileopened)
 						com_fileopened (path);
 					if (length)
-						*length = pak->files[i].filelen;
-					return pak->flash + pak->files[i].flashpos;
+						*length = Pak_Length (pak, i);
+					return pak->flash + LittleLong (pak->fdir[i].filepos);
 				}
 		}
 		else
