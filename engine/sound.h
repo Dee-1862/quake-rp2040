@@ -132,7 +132,12 @@ void SNDDMA_Shutdown(void);
 #define	MAX_DYNAMIC_CHANNELS	8
 
 
+#ifdef QOG_SND_ONINIT
+// QuakeOG: allocated by S_Init, so a host that never starts sound pays nothing
+extern	channel_t   *channels;
+#else
 extern	channel_t   channels[MAX_CHANNELS];
+#endif
 // 0 to MAX_DYNAMIC_CHANNELS-1	= normal entity sounds
 // MAX_DYNAMIC_CHANNELS to MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS -1 = water, etc
 // MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS to total_channels = static sounds

@@ -41,8 +41,14 @@ qsocket_t	*loop_server = NULL;
 #define QOG_LOOP_SERVER_RX	NET_MAXMESSAGE
 #endif
 // 4 spare bytes: id's datagram check counts a 3-byte header but writes 4
+#ifdef QOG_LOOP_ONINIT
+// QuakeOG: on the hunk from Loop_Init, so a host without networking pays nothing
+static byte	*loop_client_rx;
+static byte	*loop_server_rx;
+#else
 static byte	loop_client_rx[QOG_LOOP_CLIENT_RX + 4];
 static byte	loop_server_rx[QOG_LOOP_SERVER_RX + 4];
+#endif
 #define LOOP_RXSIZE(s)	((s)->receiveMessageSize)
 #else
 #define LOOP_RXSIZE(s)	NET_MAXMESSAGE
@@ -91,6 +97,10 @@ int Loop_Init (void)
 {
 	if (cls.state == ca_dedicated)
 		return -1;
+#ifdef QOG_LOOP_ONINIT
+	loop_client_rx = Hunk_AllocName (QOG_LOOP_CLIENT_RX + 4, "loop_crx");
+	loop_server_rx = Hunk_AllocName (QOG_LOOP_SERVER_RX + 4, "loop_srx");
+#endif
 	return 0;
 }
 

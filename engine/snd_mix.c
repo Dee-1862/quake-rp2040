@@ -28,7 +28,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 
 #define	PAINTBUFFER_SIZE	512
+#ifdef QOG_SND_ONINIT
+portable_samplepair_t *paintbuffer;	// QuakeOG: PAINTBUFFER_SIZE entries on the hunk, from S_Init
+#else
 portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
+#endif
 // QuakeOG: snd_scaletable removed, see SND_PaintChannelFrom8
 int 	*snd_p, snd_linear_count, snd_vol;
 short	*snd_out;

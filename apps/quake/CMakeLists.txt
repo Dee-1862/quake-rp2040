@@ -112,7 +112,10 @@ list(APPEND QOG_ENGINE_DEFS
 # Renderer temporary memory in the z-buffer (Agent K), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_EDGES_IN_ZBUFFER
-    QOG_EDGECACHE_ZBUFFER)
+    QOG_EDGECACHE_ZBUFFER
+    QOG_SND_ONINIT
+    QOG_LOOP_ONINIT
+    QOG_PACKDIR_CHUNKED)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -155,6 +158,13 @@ target_compile_options(qog_engine PRIVATE -w -Wno-implicit-function-declaration 
 set_source_files_properties(${QOG_ENGINE_SRC} ${QOG_PROGS_AOT}
     PROPERTIES COMPILE_DEFINITIONS "rand=qog_rand")
 target_link_libraries(qog_engine PUBLIC pico_stdlib)
+# The ARM bare-metal ABI makes enums as small as their values (qboolean is
+# one byte), while the PC build and the baked flash image use 4-byte enums.
+# Every engine struct with an enum must have the same layout on both, so
+# the engine and everything that includes its headers uses 4-byte enums.
+# No enum crosses into the SDK, so the linker's enum size note is silenced.
+target_compile_options(qog_engine PUBLIC -fno-short-enums)
+target_link_options(qog_engine INTERFACE -Wl,--no-enum-size-warning)
 
 add_executable(quake_display EXCLUDE_FROM_ALL
     ${QOG_ROOT}/port/rp2040/sys_rp2040.c

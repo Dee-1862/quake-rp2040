@@ -187,4 +187,8 @@ target_compile_definitions(quakeog_pc PRIVATE
 # Renderer temporary memory in the z-buffer (Agent K)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_EDGES_IN_ZBUFFER            # edge table in the z-buffer while it holds no z, spans in the surface table
-    QOG_EDGECACHE_ZBUFFER)          # the world's edge cache in the z-buffer while the world is drawn, not on the hunk
+    QOG_EDGECACHE_ZBUFFER           # the world's edge cache in the z-buffer while the world is drawn, not on the hunk
+    QOG_SND_ONINIT                  # sound channels and paint buffer on the hunk from S_Init
+    QOG_LOOP_ONINIT                 # loopback receive buffers on the hunk from Loop_Init
+    QOG_PACKDIR_CHUNKED             # pack directory read 2 KB at a time, no 21 KB temporary block
+    QOG_PARTICLES_PRESET)           # a host may keep its own particle array (the fly-through)
