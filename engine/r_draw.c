@@ -32,6 +32,63 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 unsigned int	cacheoffset;
 
+// QuakeOG: id's cachededgeoffset per model edge (model_t.edge_cache) is a
+// byte offset into r_edges, or FULLY_CLIPPED_CACHED plus the frame count,
+// or 0x7FFFFFFF for "not cacheable". With QOG_EDGECACHE16 it is 16 bits:
+// an edge index (below 0x7FFF), 0x7FFF for "not cacheable", or 0x8000 plus
+// the frame number counted from a window start kept in front of the array
+// (EDGE_CACHE_START). When a model's window reaches 0x7FFF frames the array
+// is filled with EC16_NEVER and the window restarts, so a fully clipped
+// entry matches only in the frame that wrote it, exactly as in id's code.
+// Entries from earlier frames never match in id's code (an edge below
+// edge_p owned by this medge_t was emitted this frame, which rewrote its
+// entry), so clearing them changes nothing.
+#ifdef QOG_EDGECACHE16
+#define EC16_CLIPPED	0x8000
+#define EC16_NOCACHE	0x7FFF
+#define EC16_NEVER		0xFFFF
+#ifndef EC16_WINDOW		// frames per window, at most 0x7FFF (smaller only to test)
+#define EC16_WINDOW		0x7FFF
+#endif
+static int		r_qog_ecframe;	// r_framecount minus the model's window start
+
+static void R_QogEdgeCacheWindow (model_t *m)
+{
+	int		*start = &EDGE_CACHE_START (m);
+
+	if (edge_max - r_edges > EC16_NOCACHE)
+		Sys_Error ("R_RenderFace: %d edges, the 16-bit edge cache allows %d",
+			(int)(edge_max - r_edges), EC16_NOCACHE);
+	if (r_framecount - *start >= EC16_WINDOW || r_framecount < *start)
+	{
+		*start = r_framecount;
+		memset (m->edge_cache, 0xFF, (m->numedges + 1) * sizeof(*m->edge_cache));
+	}
+	r_qog_ecframe = r_framecount - *start;
+}
+
+static unsigned short R_QogEdgeCacheValue (unsigned int offset)
+{
+	if (offset & FULLY_CLIPPED_CACHED)	// always this frame's
+		return EC16_CLIPPED | r_qog_ecframe;
+	if (offset == 0x7FFFFFFF)
+		return EC16_NOCACHE;
+	return offset / sizeof(edge_t);
+}
+
+#define EC_IS_CLIPPED(m, e)		(EDGE_CACHE (m, e) & EC16_CLIPPED)
+#define EC_CLIPPED_NOW(m, e)	((EDGE_CACHE (m, e) & ~EC16_CLIPPED) == r_qog_ecframe)
+#define EC_EDGE(m, e)			(r_edges + EDGE_CACHE (m, e))
+#define EC_VALID(m, e)			((edge_p - r_edges) > EDGE_CACHE (m, e))
+#define EC_STORE(m, e, v)		(EDGE_CACHE (m, e) = R_QogEdgeCacheValue (v))
+#else
+#define EC_IS_CLIPPED(m, e)		(EDGE_CACHE (m, e) & FULLY_CLIPPED_CACHED)
+#define EC_CLIPPED_NOW(m, e)	((EDGE_CACHE (m, e) & FRAMECOUNT_MASK) == r_framecount)
+#define EC_EDGE(m, e)			((edge_t *)((unsigned long)r_edges + EDGE_CACHE (m, e)))
+#define EC_VALID(m, e)			(((unsigned long)edge_p - (unsigned long)r_edges) > EDGE_CACHE (m, e))
+#define EC_STORE(m, e, v)		(EDGE_CACHE (m, e) = (v))
+#endif
+
 int			c_faceclip;					// number of faces clipped
 
 zpointdesc_t	r_zpointdesc;
@@ -364,7 +421,7 @@ void R_EmitCachedEdge (void)
 {
 	edge_t		*pedge_t;
 
-	pedge_t = (edge_t *)((unsigned long)r_edges + EDGE_CACHE (currententity->model, r_pedge));
+	pedge_t = EC_EDGE (currententity->model, r_pedge);	// QuakeOG
 
 	if (!pedge_t->surfs[0])
 		pedge_t->surfs[0] = surface_p - surfaces;
@@ -392,6 +449,10 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	vec3_t		p_normal;
 	medge_t		*pedges, tedge;
 	clipplane_t	*pclip;
+
+#ifdef QOG_EDGECACHE16
+	R_QogEdgeCacheWindow (currententity->model);	// QuakeOG
+#endif
 
 // skip out if no more surfs
 	if ((surface_p) >= surf_max)
@@ -440,10 +501,9 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 		// if the edge is cached, we can just reuse the edge
 			if (!insubmodel)
 			{
-				if (EDGE_CACHE (currententity->model, r_pedge) & FULLY_CLIPPED_CACHED)
+				if (EC_IS_CLIPPED (currententity->model, r_pedge))	// QuakeOG
 				{
-					if ((EDGE_CACHE (currententity->model, r_pedge) & FRAMECOUNT_MASK) ==
-						r_framecount)
+					if (EC_CLIPPED_NOW (currententity->model, r_pedge))
 					{
 						r_lastvertvalid = false;
 						continue;
@@ -451,10 +511,8 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 				}
 				else
 				{
-					if ((((unsigned long)edge_p - (unsigned long)r_edges) >
-						 EDGE_CACHE (currententity->model, r_pedge)) &&
-						(((edge_t *)((unsigned long)r_edges +
-						 EDGE_CACHE (currententity->model, r_pedge)))->owner == r_pedge))
+					if (EC_VALID (currententity->model, r_pedge) &&	// QuakeOG
+						EC_EDGE (currententity->model, r_pedge)->owner == r_pedge)
 					{
 						R_EmitCachedEdge ();
 						r_lastvertvalid = false;
@@ -469,7 +527,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 			R_ClipEdge (&r_pcurrentvertbase[r_pedge->v[0]],
 						&r_pcurrentvertbase[r_pedge->v[1]],
 						pclip);
-			EDGE_CACHE (currententity->model, r_pedge) = cacheoffset;
+			EC_STORE (currententity->model, r_pedge, cacheoffset);	// QuakeOG
 
 			if (r_leftclipped)
 				makeleftedge = true;
@@ -484,10 +542,9 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 		// if the edge is cached, we can just reuse the edge
 			if (!insubmodel)
 			{
-				if (EDGE_CACHE (currententity->model, r_pedge) & FULLY_CLIPPED_CACHED)
+				if (EC_IS_CLIPPED (currententity->model, r_pedge))	// QuakeOG
 				{
-					if ((EDGE_CACHE (currententity->model, r_pedge) & FRAMECOUNT_MASK) ==
-						r_framecount)
+					if (EC_CLIPPED_NOW (currententity->model, r_pedge))
 					{
 						r_lastvertvalid = false;
 						continue;
@@ -497,10 +554,8 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 				{
 				// it's cached if the cached edge is valid and is owned
 				// by this medge_t
-					if ((((unsigned long)edge_p - (unsigned long)r_edges) >
-						 EDGE_CACHE (currententity->model, r_pedge)) &&
-						(((edge_t *)((unsigned long)r_edges +
-						 EDGE_CACHE (currententity->model, r_pedge)))->owner == r_pedge))
+					if (EC_VALID (currententity->model, r_pedge) &&	// QuakeOG
+						EC_EDGE (currententity->model, r_pedge)->owner == r_pedge)
 					{
 						R_EmitCachedEdge ();
 						r_lastvertvalid = false;
@@ -515,7 +570,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 			R_ClipEdge (&r_pcurrentvertbase[r_pedge->v[1]],
 						&r_pcurrentvertbase[r_pedge->v[0]],
 						pclip);
-			EDGE_CACHE (currententity->model, r_pedge) = cacheoffset;
+			EC_STORE (currententity->model, r_pedge, cacheoffset);	// QuakeOG
 
 			if (r_leftclipped)
 				makeleftedge = true;

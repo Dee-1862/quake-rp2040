@@ -1314,7 +1314,13 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	loadmodel->leaf_visframe = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
 	loadmodel->leaf_efrags = Hunk_AllocName (loadmodel->numleafs * sizeof(efrag_t *), loadname);
 	loadmodel->leaf_key = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+#ifdef QOG_EDGECACHE16
+	// QuakeOG: window start (an int, zero) in front of the 16-bit entries
+	loadmodel->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)
+		+ (loadmodel->numedges + 1) * sizeof(unsigned short), loadname) + sizeof(int));
+#else
 	loadmodel->edge_cache = Hunk_AllocName ((loadmodel->numedges + 1) * sizeof(unsigned int), loadname);
+#endif
 
 	mod->numframes = 2;		// regular and alternate animation
 	mod->flags = 0;

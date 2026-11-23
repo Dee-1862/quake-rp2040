@@ -406,7 +406,11 @@ typedef struct model_s
 	int				*leaf_visframe;		// [numleafs]
 	efrag_t			**leaf_efrags;		// [numleafs]
 	int				*leaf_key;			// [numleafs]
+#ifdef QOG_EDGECACHE16
+	unsigned short	*edge_cache;		// [numedges] 16-bit form, see r_draw.c
+#else
 	unsigned int	*edge_cache;		// [numedges] id's cachededgeoffset
+#endif
 
 } model_t;
 
@@ -416,6 +420,9 @@ typedef struct model_s
 #define LEAF_EFRAGS(m, l)		((m)->leaf_efrags[(l) - (m)->leafs])
 #define LEAF_KEY(m, l)			((m)->leaf_key[(l) - (m)->leafs])
 #define EDGE_CACHE(m, e)		((m)->edge_cache[(e) - (m)->edges])
+// QuakeOG: first frame of the 16-bit edge cache's window, an int stored just
+// before the array so inline submodels share it with their world
+#define EDGE_CACHE_START(m)		(((int *)(m)->edge_cache)[-1])
 // nodes and leafs share id's node pointer type; contents < 0 means a leaf
 #define NODE_VISFRAME(m, n)		(*((n)->contents < 0 \
 	? &(m)->leaf_visframe[(mleaf_t *)(n) - (m)->leafs] \
