@@ -126,10 +126,10 @@ qboolean SV_movestep (edict_t *ent, vec3_t move, qboolean relink)
 		for (i=0 ; i<2 ; i++)
 		{
 			VectorAdd (ent->v.origin, move, neworg);
-			enemy = PROG_TO_EDICT(ent->v.enemy);
+			enemy = PROG_TO_EDICT(EV_INT(ent, enemy));
 			if (i == 0 && enemy != sv.edicts)
 			{
-				dz = ent->v.origin[2] - PROG_TO_EDICT(ent->v.enemy)->v.origin[2];
+				dz = ent->v.origin[2] - PROG_TO_EDICT(EV_INT(ent, enemy))->v.origin[2];
 				if (dz > 40)
 					neworg[2] -= 8;
 				if (dz < 30)
@@ -235,7 +235,7 @@ qboolean SV_StepDirection (edict_t *ent, float yaw, float dist)
 	vec3_t		move, oldorigin;
 	float		delta;
 	
-	ent->v.ideal_yaw = yaw;
+	EV_SETFLOAT(ent, ideal_yaw, yaw);
 	PF_changeyaw();
 	
 	yaw = yaw*M_PI*2 / 360;
@@ -246,7 +246,7 @@ qboolean SV_StepDirection (edict_t *ent, float yaw, float dist)
 	VectorCopy (ent->v.origin, oldorigin);
 	if (SV_movestep (ent, move, false))
 	{
-		delta = ent->v.angles[YAW] - ent->v.ideal_yaw;
+		delta = ent->v.angles[YAW] - EV_FLOAT(ent, ideal_yaw);
 		if (delta > 45 && delta < 315)
 		{		// not turned far enough, so don't take the step
 			VectorCopy (oldorigin, ent->v.origin);
@@ -287,7 +287,7 @@ void SV_NewChaseDir (edict_t *actor, edict_t *enemy, float dist)
 	float			d[3];
 	float		tdir, olddir, turnaround;
 
-	olddir = anglemod( (int)(actor->v.ideal_yaw/45)*45 );
+	olddir = anglemod( (int)(EV_FLOAT(actor, ideal_yaw)/45)*45 );
 	turnaround = anglemod(olddir - 180);
 
 	deltax = enemy->v.origin[0] - actor->v.origin[0];
@@ -354,7 +354,7 @@ void SV_NewChaseDir (edict_t *actor, edict_t *enemy, float dist)
 	if (turnaround != DI_NODIR && SV_StepDirection(actor, turnaround, dist) )
 			return;
 
-	actor->v.ideal_yaw = olddir;		// can't move
+	EV_SETFLOAT(actor, ideal_yaw, olddir);		// can't move
 
 // if a bridge was pulled out from underneath a monster, it may not have
 // a valid standing position at all
@@ -399,7 +399,7 @@ void SV_MoveToGoal (void)
 #endif
 
 	ent = PROG_TO_EDICT(pr_global_struct->self);
-	goal = PROG_TO_EDICT(ent->v.goalentity);
+	goal = PROG_TO_EDICT(EV_INT(ent, goalentity));
 	dist = G_FLOAT(OFS_PARM0);
 
 	if ( !( (int)ent->v.flags & (FL_ONGROUND|FL_FLY|FL_SWIM) ) )
@@ -413,13 +413,13 @@ void SV_MoveToGoal (void)
 	enemy = PROG_TO_EDICT(ent->v.enemy);
 	if (enemy != sv.edicts &&  SV_CloseEnough (ent, enemy, dist) )
 #else
-	if ( PROG_TO_EDICT(ent->v.enemy) != sv.edicts &&  SV_CloseEnough (ent, goal, dist) )
+	if ( PROG_TO_EDICT(EV_INT(ent, enemy)) != sv.edicts &&  SV_CloseEnough (ent, goal, dist) )
 #endif
 		return;
 
 // bump around...
 	if ( (rand()&3)==1 ||
-	!SV_StepDirection (ent, ent->v.ideal_yaw, dist))
+	!SV_StepDirection (ent, EV_FLOAT(ent, ideal_yaw), dist))
 	{
 		SV_NewChaseDir (ent, goal, dist);
 	}

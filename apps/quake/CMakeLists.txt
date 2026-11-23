@@ -61,6 +61,11 @@ list(APPEND QOG_ENGINE_DEFS
 # Baked maps (engine/model.c), loader only. The writer is the PC's qog_bake.
 list(APPEND QOG_ENGINE_DEFS
     QOG_BAKE)
+# Server entities (edicts) and QuakeC memory, same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_EDICT_SPARSE
+    QOG_BASELINE_POOL
+    QOG_AOT_GLOBALS)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

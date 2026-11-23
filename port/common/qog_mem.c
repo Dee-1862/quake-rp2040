@@ -71,8 +71,59 @@ const qog_mem_t *qog_mem_sample(void) {
     return &s_m;
 }
 
+#ifdef QOG_EDICT_STATS
+/* Edict use, sampled after every server frame (end of SV_Physics): live
+   (not free) edicts, the slot high-water mark, and field words that are not
+   zero, in total and per field. A sparse edict layout pays only for the
+   non-zero words, so these peaks size it. */
+#define ES_MAXFIELDS 1024
+static int es_live, es_hwm, es_words, es_maxone;
+double qog_sv_seconds;   /* time in SV_Physics (QuakeC and physics), never reset */
+static int es_fieldpeak[ES_MAXFIELDS], es_fieldnow[ES_MAXFIELDS];
+
+void qog_edict_sample(void) {
+    int live = 0, words = 0, n, i, nf;
+    if (!sv.active || !progs) return;
+    nf = progs->entityfields < ES_MAXFIELDS ? progs->entityfields : ES_MAXFIELDS;
+    memset(es_fieldnow, 0, nf * sizeof(int));
+    for (n = 0; n < sv.num_edicts; n++) {
+        edict_t *ed = EDICT_NUM(n);
+        int k = 0;
+        if (ed->free) continue;
+        live++;
+        for (i = 0; i < nf; i++)
+#ifdef QOG_EDICT_SPARSE
+            if (ED_FieldGet(ed, i)) { k++; es_fieldnow[i]++; }
+#else
+            if (((const int *)&ed->v)[i]) { k++; es_fieldnow[i]++; }
+#endif
+        words += k;
+        PEAK(es_maxone, k);
+    }
+    for (i = 0; i < nf; i++) PEAK(es_fieldpeak[i], es_fieldnow[i]);
+    PEAK(es_live, live);
+    PEAK(es_hwm, sv.num_edicts);
+    PEAK(es_words, words);
+}
+
+static void es_print_fields(void) {
+    int i, j;
+    if (!progs) return;
+    for (i = 0; i < progs->entityfields && i < ES_MAXFIELDS; i++) {
+        const char *name = "?";
+        for (j = 1; j < progs->numfielddefs; j++)
+            if (pr_fielddefs[j].ofs == i) { name = pr_strings + pr_fielddefs[j].s_name; break; }
+        Con_Printf("  field %3d %-16s peak %d\n", i, name, es_fieldpeak[i]);
+    }
+}
+#endif
+
 void qog_mem_reset_peaks(void) {
     extern int r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges;
+#ifdef QOG_EDICT_STATS
+    es_live = es_hwm = es_words = es_maxone = 0;
+    memset(es_fieldpeak, 0, sizeof es_fieldpeak);
+#endif
     s_m.peak_low = s_m.peak_high = s_m.peak_cache = s_m.peak_zone = s_m.peak_total = 0;
     r_qog_peakedges = r_qog_peaksurfs = r_qog_peakbverts = r_qog_peakbedges = 0;
 }
@@ -89,6 +140,9 @@ static void cmd_qog_mem(void) {
     }
     if (Cmd_Argc() > 1 && !Q_strcmp(Cmd_Argv(1), "hunk")) { Hunk_Print(true); return; }
     if (Cmd_Argc() > 1 && !Q_strcmp(Cmd_Argv(1), "cache")) { Cache_Print(); return; }
+#ifdef QOG_EDICT_STATS
+    if (Cmd_Argc() > 1 && !Q_strcmp(Cmd_Argv(1), "fields")) { es_print_fields(); return; }
+#endif
     const qog_mem_t *m = qog_mem_sample();
     Con_Printf("Dynamic RAM (hunk given %d KB):\n", m->hunk_size / 1024);
     kb_line("hunk low", m->hunk_low, m->peak_low);
@@ -112,6 +166,19 @@ static void cmd_qog_mem(void) {
                    r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges);
         if (sv.active)
             Con_Printf("  map %s, signon %d of %d bytes\n", sv.name, sv.signon.cursize, sv.signon.maxsize);
+#ifdef QOG_EDICT_STATS
+        if (sv.active)
+            Con_Printf("  edict peaks: live %d, high water %d of %d, non-zero field words %d, most in one edict %d\n",
+                       es_live, es_hwm, sv.max_edicts, es_words, es_maxone);
+        Con_Printf("  server frames so far: %.3f s\n", qog_sv_seconds);
+#endif
+#ifdef QOG_EDICT_SPARSE
+        if (sv.active) {
+            extern int ed_coldpeak, ed_coldcompactions, ed_coldlivepeak;
+            Con_Printf("  edict size %d bytes, field lists peak %d words, arena top peak %d words, %d compactions\n",
+                       pr_edict_size, ed_coldlivepeak, ed_coldpeak, ed_coldcompactions);
+        }
+#endif
     }
     Con_Printf("More: qog_mem hunk | qog_mem cache | qog_mem reset\n");
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");
@@ -137,7 +204,25 @@ static unsigned hash_value(unsigned h, int type, const int *p) {
         const char *s = pr_strings + *p;
         return fnv(h, s, (int)strlen(s) + 1);
     }
+    if (type == ev_entity) {
+        /* An entity reference is the edict's byte offset. Hash it as id's
+           offset (edict number times id's edict size) so a smaller edict
+           layout (QOG_EDICT_SPARSE, QOG_BASELINE_POOL) still hashes the same. */
+        int id = (*p / pr_edict_size) * (progs->entityfields * 4 + ED_ID_HEADERSIZE);
+        return fnv(h, &id, 4);
+    }
     return fnv(h, p, type == ev_vector ? 12 : 4);
+}
+
+/* Up to three words of an edict field, by QuakeC field number. */
+static const int *field_words(edict_t *ed, int ofs, int *copy) {
+#ifdef QOG_EDICT_SPARSE
+    for (int k = 0; k < 3 && ofs + k < progs->entityfields; k++) copy[k] = ED_FieldGet(ed, ofs + k);
+    return copy;
+#else
+    (void)copy;
+    return (const int *)&ed->v + ofs;
+#endif
 }
 
 static void cmd_qog_statehash(void) {
@@ -145,7 +230,9 @@ static void cmd_qog_statehash(void) {
     unsigned h = 0x811C9DC5u, e = 0x811C9DC5u;
     for (int i = 0; i < progs->numglobaldefs; i++) {
         const ddef_t *d = &pr_globaldefs[i];
-        h = hash_value(h, d->type, (const int *)pr_globals + d->ofs);
+        int copy[3];   /* PR_GlobalPtr: QOG_AOT_GLOBALS packs the RAM globals */
+        for (int k = 0; k < 3 && d->ofs + k < progs->numglobals; k++) copy[k] = *PR_GlobalPtr(d->ofs + k);
+        h = hash_value(h, d->type, copy);
     }
     for (int n = 0; n < sv.num_edicts; n++) {
         edict_t *ed = EDICT_NUM(n);
@@ -153,7 +240,8 @@ static void cmd_qog_statehash(void) {
         if (ed->free) continue;
         for (int i = 1; i < progs->numfielddefs; i++) {
             const ddef_t *d = &pr_fielddefs[i];
-            e = hash_value(e, d->type, (const int *)&ed->v + d->ofs);
+            int copy[3];
+            e = hash_value(e, d->type, field_words(ed, d->ofs, copy));
         }
     }
     Con_Printf("qog_statehash: time %.2f edicts %d globals %08x edicts %08x rand calls %u\n",
@@ -165,10 +253,28 @@ static void cmd_qog_statedump(void) {
     if (!sv.active || !progs || Cmd_Argc() < 2) { Con_Printf("usage: qog_statedump <file>\n"); return; }
     FILE *f = fopen(Cmd_Argv(1), "wb");
     if (!f) { Con_Printf("qog_statedump: cannot write %s\n", Cmd_Argv(1)); return; }
+#ifdef QOG_EDICT_SPARSE
+    /* id's layout: a header of id's size that holds only the free flag,
+       then every field word */
+    static byte head[ED_ID_HEADERSIZE];
+    int hdr[3] = { progs->numglobals, sv.num_edicts, ED_ID_HEADERSIZE + progs->entityfields * 4 };
+    fwrite(hdr, sizeof hdr, 1, f);
+    for (int i = 0; i < progs->numglobals; i++) fwrite(PR_GlobalPtr(i), 4, 1, f);
+    for (int n = 0; n < sv.num_edicts; n++) {
+        edict_t *ed = EDICT_NUM(n);
+        memcpy(head, &ed->free, sizeof ed->free);
+        fwrite(head, sizeof head, 1, f);
+        for (int i = 0; i < progs->entityfields; i++) {
+            int w = ED_FieldGet(ed, i);
+            fwrite(&w, 4, 1, f);
+        }
+    }
+#else
     int hdr[3] = { progs->numglobals, sv.num_edicts, pr_edict_size };
     fwrite(hdr, sizeof hdr, 1, f);
-    fwrite(pr_globals, 4, progs->numglobals, f);
+    for (int i = 0; i < progs->numglobals; i++) fwrite(PR_GlobalPtr(i), 4, 1, f);
     fwrite(sv.edicts, pr_edict_size, sv.num_edicts, f);
+#endif
     fclose(f);
     Con_Printf("qog_statedump: wrote %s\n", Cmd_Argv(1));
 }

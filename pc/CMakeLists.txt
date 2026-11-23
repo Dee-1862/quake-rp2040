@@ -128,3 +128,12 @@ set_target_properties(quakeog_pc PROPERTIES WIN32_EXECUTABLE OFF)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE                        # map loads use the baked image when it matches the packs
     QOG_BAKE_WRITER)                # the qog_bake console command that writes it (PC only)
+# Server entities (edicts) and QuakeC memory.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_EDICT_STATS                 # edict use peaks in qog_mem (PC measurement only)
+    QOG_EDICT_SPARSE                # edicts keep 38 core field words, the rest as pairs in an arena
+    QOG_BASELINE_POOL               # entity baselines only for edicts that get one at spawn
+    QOG_AOT_GLOBALS)                # compiled QuakeC: constants in code, temporaries in C locals, packed RAM globals
+# qc2c reads the core edict fields from the engine headers (QOG_EDICT_SPARSE)
+add_custom_command(OUTPUT ${PROGS_AOT} APPEND
+    DEPENDS ${ROOT}/engine/progs.h ${ROOT}/engine/progdefs.q1)

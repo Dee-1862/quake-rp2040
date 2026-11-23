@@ -220,7 +220,7 @@ void SV_SendServerinfo (client_t *client)
 	else
 		MSG_WriteByte (&client->message, GAME_COOP);
 
-	sprintf (message, pr_strings+sv.edicts->v.message);
+	sprintf (message, pr_strings+EV_INT(sv.edicts, message));
 
 	MSG_WriteString (&client->message,message);
 
@@ -234,8 +234,8 @@ void SV_SendServerinfo (client_t *client)
 
 // send music
 	MSG_WriteByte (&client->message, svc_cdtrack);
-	MSG_WriteByte (&client->message, sv.edicts->v.sounds);
-	MSG_WriteByte (&client->message, sv.edicts->v.sounds);
+	MSG_WriteByte (&client->message, EV_FLOAT(sv.edicts, sounds));
+	MSG_WriteByte (&client->message, EV_FLOAT(sv.edicts, sounds));
 
 // set view	
 	MSG_WriteByte (&client->message, svc_setview);
@@ -450,7 +450,7 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 	edict_t	*ent;
 
 // find the client's PVS
-	VectorAdd (clent->v.origin, clent->v.view_ofs, org);
+	VectorAdd (clent->v.origin, EV_VECTOR(clent, view_ofs), org);
 	pvs = SV_FatPVS (org);
 
 // send over all entities (excpet the client) that touch the pvs
@@ -489,36 +489,36 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 		
 		for (i=0 ; i<3 ; i++)
 		{
-			miss = ent->v.origin[i] - ent->baseline.origin[i];
+			miss = ent->v.origin[i] - SV_BASELINE(ent)->origin[i];
 			if ( miss < -0.1 || miss > 0.1 )
 				bits |= U_ORIGIN1<<i;
 		}
 
-		if ( ent->v.angles[0] != ent->baseline.angles[0] )
+		if ( ent->v.angles[0] != SV_BASELINE(ent)->angles[0] )
 			bits |= U_ANGLE1;
 			
-		if ( ent->v.angles[1] != ent->baseline.angles[1] )
+		if ( ent->v.angles[1] != SV_BASELINE(ent)->angles[1] )
 			bits |= U_ANGLE2;
 			
-		if ( ent->v.angles[2] != ent->baseline.angles[2] )
+		if ( ent->v.angles[2] != SV_BASELINE(ent)->angles[2] )
 			bits |= U_ANGLE3;
 			
 		if (ent->v.movetype == MOVETYPE_STEP)
 			bits |= U_NOLERP;	// don't mess up the step animation
 	
-		if (ent->baseline.colormap != ent->v.colormap)
+		if (SV_BASELINE(ent)->colormap != EV_FLOAT(ent, colormap))
 			bits |= U_COLORMAP;
 			
-		if (ent->baseline.skin != ent->v.skin)
+		if (SV_BASELINE(ent)->skin != EV_FLOAT(ent, skin))
 			bits |= U_SKIN;
 			
-		if (ent->baseline.frame != ent->v.frame)
+		if (SV_BASELINE(ent)->frame != ent->v.frame)
 			bits |= U_FRAME;
 		
-		if (ent->baseline.effects != ent->v.effects)
+		if (SV_BASELINE(ent)->effects != EV_FLOAT(ent, effects))
 			bits |= U_EFFECTS;
 		
-		if (ent->baseline.modelindex != ent->v.modelindex)
+		if (SV_BASELINE(ent)->modelindex != ent->v.modelindex)
 			bits |= U_MODEL;
 
 		if (e >= 256)
@@ -544,11 +544,11 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 		if (bits & U_FRAME)
 			MSG_WriteByte (msg, ent->v.frame);
 		if (bits & U_COLORMAP)
-			MSG_WriteByte (msg, ent->v.colormap);
+			MSG_WriteByte (msg, EV_FLOAT(ent, colormap));
 		if (bits & U_SKIN)
-			MSG_WriteByte (msg, ent->v.skin);
+			MSG_WriteByte (msg, EV_FLOAT(ent, skin));
 		if (bits & U_EFFECTS)
-			MSG_WriteByte (msg, ent->v.effects);
+			MSG_WriteByte (msg, EV_FLOAT(ent, effects));
 		if (bits & U_ORIGIN1)
 			MSG_WriteCoord (msg, ent->v.origin[0]);		
 		if (bits & U_ANGLE1)
@@ -578,7 +578,7 @@ void SV_CleanupEnts (void)
 	ent = NEXT_EDICT(sv.edicts);
 	for (e=1 ; e<sv.num_edicts ; e++, ent = NEXT_EDICT(ent))
 	{
-		ent->v.effects = (int)ent->v.effects & ~EF_MUZZLEFLASH;
+		EV_SETFLOAT(ent, effects, (int)EV_FLOAT(ent, effects) & ~EF_MUZZLEFLASH);
 	}
 
 }
@@ -602,17 +602,17 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
 //
 // send a damage message
 //
-	if (ent->v.dmg_take || ent->v.dmg_save)
+	if (EV_FLOAT(ent, dmg_take) || EV_FLOAT(ent, dmg_save))
 	{
-		other = PROG_TO_EDICT(ent->v.dmg_inflictor);
+		other = PROG_TO_EDICT(EV_INT(ent, dmg_inflictor));
 		MSG_WriteByte (msg, svc_damage);
-		MSG_WriteByte (msg, ent->v.dmg_save);
-		MSG_WriteByte (msg, ent->v.dmg_take);
+		MSG_WriteByte (msg, EV_FLOAT(ent, dmg_save));
+		MSG_WriteByte (msg, EV_FLOAT(ent, dmg_take));
 		for (i=0 ; i<3 ; i++)
 			MSG_WriteCoord (msg, other->v.origin[i] + 0.5*(other->v.mins[i] + other->v.maxs[i]));
 	
-		ent->v.dmg_take = 0;
-		ent->v.dmg_save = 0;
+		EV_SETFLOAT(ent, dmg_take, 0);
+		EV_SETFLOAT(ent, dmg_save, 0);
 	}
 
 //
@@ -621,20 +621,20 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
 	SV_SetIdealPitch ();		// how much to look up / down ideally
 
 // a fixangle might get lost in a dropped packet.  Oh well.
-	if ( ent->v.fixangle )
+	if ( EV_FLOAT(ent, fixangle) )
 	{
 		MSG_WriteByte (msg, svc_setangle);
 		for (i=0 ; i < 3 ; i++)
 			MSG_WriteAngle (msg, ent->v.angles[i] );
-		ent->v.fixangle = 0;
+		EV_SETFLOAT(ent, fixangle, 0);
 	}
 
 	bits = 0;
 	
-	if (ent->v.view_ofs[2] != DEFAULT_VIEWHEIGHT)
+	if (EV_VECTOR(ent, view_ofs)[2] != DEFAULT_VIEWHEIGHT)
 		bits |= SU_VIEWHEIGHT;
 		
-	if (ent->v.idealpitch)
+	if (EV_FLOAT(ent, idealpitch))
 		bits |= SU_IDEALPITCH;
 
 // stuff the sigil bits into the high bits of items for sbar, or else
@@ -645,9 +645,9 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
 	val = GetEdictFieldValue(ent, "items2");
 
 	if (val)
-		items = (int)ent->v.items | ((int)val->_float << 23);
+		items = (int)EV_FLOAT(ent, items) | ((int)val->_float << 23);
 	else
-		items = (int)ent->v.items | ((int)pr_global_struct->serverflags << 28);
+		items = (int)EV_FLOAT(ent, items) | ((int)pr_global_struct->serverflags << 28);
 #endif
 
 	bits |= SU_ITEMS;
@@ -660,16 +660,16 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
 	
 	for (i=0 ; i<3 ; i++)
 	{
-		if (ent->v.punchangle[i])
+		if (EV_VECTOR(ent, punchangle)[i])
 			bits |= (SU_PUNCH1<<i);
 		if (ent->v.velocity[i])
 			bits |= (SU_VELOCITY1<<i);
 	}
 	
-	if (ent->v.weaponframe)
+	if (EV_FLOAT(ent, weaponframe))
 		bits |= SU_WEAPONFRAME;
 
-	if (ent->v.armorvalue)
+	if (EV_FLOAT(ent, armorvalue))
 		bits |= SU_ARMOR;
 
 //	if (ent->v.weapon)
@@ -681,15 +681,15 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
 	MSG_WriteShort (msg, bits);
 
 	if (bits & SU_VIEWHEIGHT)
-		MSG_WriteChar (msg, ent->v.view_ofs[2]);
+		MSG_WriteChar (msg, EV_VECTOR(ent, view_ofs)[2]);
 
 	if (bits & SU_IDEALPITCH)
-		MSG_WriteChar (msg, ent->v.idealpitch);
+		MSG_WriteChar (msg, EV_FLOAT(ent, idealpitch));
 
 	for (i=0 ; i<3 ; i++)
 	{
 		if (bits & (SU_PUNCH1<<i))
-			MSG_WriteChar (msg, ent->v.punchangle[i]);
+			MSG_WriteChar (msg, EV_VECTOR(ent, punchangle)[i]);
 		if (bits & (SU_VELOCITY1<<i))
 			MSG_WriteChar (msg, ent->v.velocity[i]/16);
 	}
@@ -698,28 +698,28 @@ void SV_WriteClientdataToMessage (edict_t *ent, sizebuf_t *msg)
 	MSG_WriteLong (msg, items);
 
 	if (bits & SU_WEAPONFRAME)
-		MSG_WriteByte (msg, ent->v.weaponframe);
+		MSG_WriteByte (msg, EV_FLOAT(ent, weaponframe));
 	if (bits & SU_ARMOR)
-		MSG_WriteByte (msg, ent->v.armorvalue);
+		MSG_WriteByte (msg, EV_FLOAT(ent, armorvalue));
 	if (bits & SU_WEAPON)
-		MSG_WriteByte (msg, SV_ModelIndex(pr_strings+ent->v.weaponmodel));
+		MSG_WriteByte (msg, SV_ModelIndex(pr_strings+EV_INT(ent, weaponmodel)));
 	
-	MSG_WriteShort (msg, ent->v.health);
-	MSG_WriteByte (msg, ent->v.currentammo);
-	MSG_WriteByte (msg, ent->v.ammo_shells);
-	MSG_WriteByte (msg, ent->v.ammo_nails);
-	MSG_WriteByte (msg, ent->v.ammo_rockets);
-	MSG_WriteByte (msg, ent->v.ammo_cells);
+	MSG_WriteShort (msg, EV_FLOAT(ent, health));
+	MSG_WriteByte (msg, EV_FLOAT(ent, currentammo));
+	MSG_WriteByte (msg, EV_FLOAT(ent, ammo_shells));
+	MSG_WriteByte (msg, EV_FLOAT(ent, ammo_nails));
+	MSG_WriteByte (msg, EV_FLOAT(ent, ammo_rockets));
+	MSG_WriteByte (msg, EV_FLOAT(ent, ammo_cells));
 
 	if (standard_quake)
 	{
-		MSG_WriteByte (msg, ent->v.weapon);
+		MSG_WriteByte (msg, EV_FLOAT(ent, weapon));
 	}
 	else
 	{
 		for(i=0;i<32;i++)
 		{
-			if ( ((int)ent->v.weapon) & (1<<i) )
+			if ( ((int)EV_FLOAT(ent, weapon)) & (1<<i) )
 			{
 				MSG_WriteByte (msg, i);
 				break;
@@ -777,7 +777,7 @@ void SV_UpdateToReliableMessages (void)
 // check for changes to be sent over the reliable streams
 	for (i=0, host_client = svs.clients ; i<svs.maxclients ; i++, host_client++)
 	{
-		if (host_client->old_frags != host_client->edict->v.frags)
+		if (host_client->old_frags != EV_FLOAT(host_client->edict, frags))
 		{
 			for (j=0, client = svs.clients ; j<svs.maxclients ; j++, client++)
 			{
@@ -785,10 +785,10 @@ void SV_UpdateToReliableMessages (void)
 					continue;
 				MSG_WriteByte (&client->message, svc_updatefrags);
 				MSG_WriteByte (&client->message, i);
-				MSG_WriteShort (&client->message, host_client->edict->v.frags);
+				MSG_WriteShort (&client->message, EV_FLOAT(host_client->edict, frags));
 			}
 
-			host_client->old_frags = host_client->edict->v.frags;
+			host_client->old_frags = EV_FLOAT(host_client->edict, frags);
 		}
 	}
 	
@@ -943,6 +943,20 @@ void SV_CreateBaseline (void)
 	int			i;
 	edict_t			*svent;
 	int				entnum;	
+#ifdef QOG_BASELINE_POOL
+	int				n = 1;
+
+	// QuakeOG: a baseline only for the edicts that get one below, entry 0
+	// is the empty baseline every other edict keeps, as in id's zeroed array
+	for (entnum = 0; entnum < sv.num_edicts ; entnum++)
+	{
+		svent = EDICT_NUM(entnum);
+		if (!svent->free && (entnum <= svs.maxclients || svent->v.modelindex))
+			n++;
+	}
+	sv.baselines = Hunk_AllocName (n * sizeof(entity_state_t), "baseline");
+	n = 1;
+#endif
 		
 	for (entnum = 0; entnum < sv.num_edicts ; entnum++)
 	{
@@ -952,23 +966,26 @@ void SV_CreateBaseline (void)
 			continue;
 		if (entnum > svs.maxclients && !svent->v.modelindex)
 			continue;
+#ifdef QOG_BASELINE_POOL
+		svent->baseidx = n++;
+#endif
 
 	//
 	// create entity baseline
 	//
-		VectorCopy (svent->v.origin, svent->baseline.origin);
-		VectorCopy (svent->v.angles, svent->baseline.angles);
-		svent->baseline.frame = svent->v.frame;
-		svent->baseline.skin = svent->v.skin;
+		VectorCopy (svent->v.origin, SV_BASELINE(svent)->origin);
+		VectorCopy (svent->v.angles, SV_BASELINE(svent)->angles);
+		SV_BASELINE(svent)->frame = svent->v.frame;
+		SV_BASELINE(svent)->skin = EV_FLOAT(svent, skin);
 		if (entnum > 0 && entnum <= svs.maxclients)
 		{
-			svent->baseline.colormap = entnum;
-			svent->baseline.modelindex = SV_ModelIndex("progs/player.mdl");
+			SV_BASELINE(svent)->colormap = entnum;
+			SV_BASELINE(svent)->modelindex = SV_ModelIndex("progs/player.mdl");
 		}
 		else
 		{
-			svent->baseline.colormap = 0;
-			svent->baseline.modelindex =
+			SV_BASELINE(svent)->colormap = 0;
+			SV_BASELINE(svent)->modelindex =
 				SV_ModelIndex(pr_strings + svent->v.model);
 		}
 		
@@ -978,14 +995,14 @@ void SV_CreateBaseline (void)
 		MSG_WriteByte (&sv.signon,svc_spawnbaseline);		
 		MSG_WriteShort (&sv.signon,entnum);
 
-		MSG_WriteByte (&sv.signon, svent->baseline.modelindex);
-		MSG_WriteByte (&sv.signon, svent->baseline.frame);
-		MSG_WriteByte (&sv.signon, svent->baseline.colormap);
-		MSG_WriteByte (&sv.signon, svent->baseline.skin);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->modelindex);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->frame);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->colormap);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->skin);
 		for (i=0 ; i<3 ; i++)
 		{
-			MSG_WriteCoord(&sv.signon, svent->baseline.origin[i]);
-			MSG_WriteAngle(&sv.signon, svent->baseline.angles[i]);
+			MSG_WriteCoord(&sv.signon, SV_BASELINE(svent)->origin[i]);
+			MSG_WriteAngle(&sv.signon, SV_BASELINE(svent)->angles[i]);
 		}
 	}
 }
@@ -1212,6 +1229,9 @@ void SV_SpawnServer (char *server)
 
 	sv.max_edicts = SV_EdictsForMap (sv.worldmodel->entities);
 	sv.edicts = Hunk_AllocName (sv.max_edicts*pr_edict_size, "edicts");
+#ifdef QOG_EDICT_SPARSE
+	ED_ColdInit ();	// QuakeOG: the arena for the non-core fields
+#endif
 
 // leave slots at start for clients only
 	sv.num_edicts = svs.maxclients+1;
@@ -1240,7 +1260,7 @@ void SV_SpawnServer (char *server)
 // load the rest of the entities
 //	
 	ent = EDICT_NUM(0);
-	memset (&ent->v, 0, progs->entityfields * 4);
+	ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
 	ent->free = false;
 	ent->v.model = sv.worldmodel->name - pr_strings;
 	ent->v.modelindex = 1;		// world model

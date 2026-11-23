@@ -59,6 +59,9 @@ typedef struct
 	edict_t		*edicts;			// can NOT be array indexed, because
 									// edict_t is variable sized, but can
 									// be used to reference the world ent
+#ifdef QOG_BASELINE_POOL
+	entity_state_t	*baselines;		// QuakeOG: only edicts that got one at spawn, entry 0 empty
+#endif
 	server_state_t	state;			// some actions are only valid during load
 
 	sizebuf_t	datagram;
@@ -74,6 +77,12 @@ typedef struct
 	byte		signon_buf[8192];
 #endif
 } server_t;
+
+#ifdef QOG_BASELINE_POOL
+#define	SV_BASELINE(e)	(&sv.baselines[(e)->baseidx])	// QuakeOG
+#else
+#define	SV_BASELINE(e)	(&(e)->baseline)
+#endif
 
 
 #define	NUM_PING_TIMES		16

@@ -11,7 +11,13 @@
  *
  * Spots closer than TOUR_SPACING to one already chosen are skipped. Each
  * view is held for two frames, so the client has the new position before
- * the frame that counts. */
+ * the frame that counts.
+ *
+ *   qog_tour_fight <map> [<map> ...]   the same tour without notarget,
+ *                                with every weapon and the rocket launcher
+ *                                firing all the way, so monsters wake up,
+ *                                fire back, die, gib and drop backpacks.
+ *                                For edict peaks closer to real play. */
 #include <string.h>
 #include "quakedef.h"
 
@@ -25,6 +31,7 @@ static int		tour_nummaps, tour_map;
 static enum { TOUR_IDLE, TOUR_LOADING, TOUR_RUNNING } tour_state;
 static vec3_t	tour_spots[TOUR_MAX_SPOTS];
 static int		tour_numspots, tour_spot, tour_view;
+static qboolean	tour_fight;
 
 static void Tour_StartMap (void)
 {
@@ -92,6 +99,7 @@ static void cmd_qog_tour (void)
 	for (i = 1 ; i < Cmd_Argc () && tour_nummaps < TOUR_MAX_MAPS ; i++)
 		Q_strncpy (tour_maps[tour_nummaps++], Cmd_Argv (i), MAX_QPATH - 1);
 	tour_map = 0;
+	tour_fight = !Q_strcmp (Cmd_Argv (0), "qog_tour_fight");
 	Tour_StartMap ();
 }
 
@@ -108,7 +116,9 @@ void qog_tour_frame (void)
 		if (!sv.active || cls.signon != SIGNONS || Q_strcmp (sv.name, tour_maps[tour_map]))
 			return;
 		sv_player->v.movetype = MOVETYPE_NOCLIP;
-		sv_player->v.flags = (int)sv_player->v.flags | FL_GODMODE | FL_NOTARGET;
+		sv_player->v.flags = (int)sv_player->v.flags | FL_GODMODE | (tour_fight ? 0 : FL_NOTARGET);
+		if (tour_fight)
+			Cbuf_AddText ("impulse 9\nimpulse 7\n+attack\n");
 		Tour_FindSpots ();
 		tour_spot = tour_view = 0;
 		tour_state = TOUR_RUNNING;
@@ -116,7 +126,7 @@ void qog_tour_frame (void)
 
 	if (tour_spot >= tour_numspots)
 	{
-		Cbuf_AddText ("qog_mem\nqog_mem reset\n");
+		Cbuf_AddText (tour_fight ? "-attack\nqog_mem\nqog_mem reset\n" : "qog_mem\nqog_mem reset\n");
 		if (++tour_map < tour_nummaps)
 			Tour_StartMap ();
 		else
@@ -132,8 +142,8 @@ void qog_tour_frame (void)
 	ang[2] = 0;
 	VectorCopy (tour_spots[tour_spot], sv_player->v.origin);
 	VectorCopy (ang, sv_player->v.angles);
-	VectorCopy (ang, sv_player->v.v_angle);
-	sv_player->v.fixangle = 1;
+	EV_SETVECTOR(sv_player, v_angle, ang);	// id's layout or QOG_EDICT_SPARSE
+	EV_SETFLOAT(sv_player, fixangle, 1);
 	SV_LinkEdict (sv_player, false);
 
 	if (++tour_view >= 4 * TOUR_FRAMES_PER_VIEW)
@@ -146,4 +156,5 @@ void qog_tour_frame (void)
 void qog_tour_register (void)
 {
 	Cmd_AddCommand ("qog_tour", cmd_qog_tour);
+	Cmd_AddCommand ("qog_tour_fight", cmd_qog_tour);
 }

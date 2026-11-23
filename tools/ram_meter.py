@@ -35,6 +35,8 @@ CFLAGS += ["-DQOG_LOOP_SERVER_RX=2048", "-DQOG_MAX_MSGLEN=6500", "-DQOG_SIGNON_S
 CFLAGS += ["-DQOG_EDGE_T_PACKED", "-DQOG_ESPAN_T_PACKED", "-DQOG_SURF_T_SMALL", "-DQOG_FINALVERT_PACKED", "-DQOG_ALIAS_NO_AUXVERTS"]
 # Baked map loader (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_BAKE"]
+# Edict and QuakeC memory flags (pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_EDICT_SPARSE", "-DQOG_BASELINE_POOL", "-DQOG_AOT_GLOBALS"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 
