@@ -841,6 +841,11 @@ void Host_Init (quakeparms_t *parms)
 		minimum_memory = MINIMUM_MEMORY;
 	else
 		minimum_memory = MINIMUM_MEMORY_LEVELPAK;
+#ifdef QOG_MIN_MEMORY
+	// QuakeOG: the board's hunk is sized from the measured need, far below
+	// id's 5.3 MB floor. A hunk that is too small still stops in Hunk_Alloc.
+	minimum_memory = QOG_MIN_MEMORY;
+#endif
 
 	if (COM_CheckParm ("-minmemory"))
 		parms->memsize = minimum_memory;

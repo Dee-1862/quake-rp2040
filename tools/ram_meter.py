@@ -53,6 +53,8 @@ CFLAGS += ["-DQOG_CMDBUF_SIZE=4096", "-DQOG_ZONE_BOARD_KB=16"]
 CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE", "-DQOG_LEAF16"]
 # Renderer temporary memory in the z-buffer (Agent K, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_EDGES_IN_ZBUFFER", "-DQOG_EDGECACHE_ZBUFFER", "-DQOG_SND_ONINIT", "-DQOG_LOOP_ONINIT", "-DQOG_PACKDIR_CHUNKED"]
+# Full game on the board (Agent Q), the last one board only (apps/quake/CMakeLists.txt)
+CFLAGS += ["-DQOG_MIN_MEMORY=0", "-DQOG_SND_OFF_NOHUNK", "-DQOG_LOADGAME_ZTEMP", "-DQOG_PRECACHE_ZTEMP", "-DQOG_KEYS_BYTES", "-DQOG_EDICT_MARGIN_BOARD=64"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

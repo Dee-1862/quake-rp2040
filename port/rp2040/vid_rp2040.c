@@ -129,7 +129,11 @@ static int action_key(int action) {
     case QOG_ACT_JUMP: return ' ';
     case QOG_ACT_DOWN: return 'c';
     case QOG_ACT_NEXT_WEAPON: return '/';
-    case QOG_ACT_PREV_WEAPON: return '\\';
+    case QOG_ACT_PREV_WEAPON:
+        /* id's default.cfg binds '\' to +mlook, not to a weapon. QuakeC's
+           impulse 12 is the previous weapon (CycleWeaponReverseCommand). */
+        if (key_dest == key_game) Cbuf_AddText("impulse 12\n");
+        return 0;
     case QOG_ACT_MENU: return K_ESCAPE;
     }
     return 0;

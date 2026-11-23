@@ -116,6 +116,15 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SND_ONINIT
     QOG_LOOP_ONINIT
     QOG_PACKDIR_CHUNKED)
+# Full game on the board (Agent Q), same as pc/CMakeLists.txt except the
+# last one, which is board only.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_MIN_MEMORY=0
+    QOG_SND_OFF_NOHUNK
+    QOG_LOADGAME_ZTEMP
+    QOG_PRECACHE_ZTEMP
+    QOG_KEYS_BYTES
+    QOG_EDICT_MARGIN_BOARD=64)      # board only, edicts past the map's estimate, fight tour peak 35 (PC keeps 128)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -171,11 +180,24 @@ add_executable(quake_display EXCLUDE_FROM_ALL
     ${QOG_ROOT}/port/rp2040/vid_rp2040.c
     ${QOG_ROOT}/port/rp2040/snd_rp2040.c)
 target_compile_options(quake_display PRIVATE -fstack-usage)
-# QuakeOG (Agent I): hunk size in KB (port/rp2040/sys_rp2040.c). 64 is a
-# placeholder; E1M1 needs about 393 KB interpreted, 355 KB with QOG_AOT.
-set(QOG_HUNK_KB 64 CACHE STRING "board hunk size in KB")
+# QuakeOG (Agent I): hunk size in KB (port/rp2040/sys_rp2040.c).
+# Agent Q: the measured E1M1 need with QOG_AOT and the board-only flags, a
+# fight, a save and a load (PC build with the same flags, smallest
+# -heapsize that runs it). Play without a load needs 187 KB, interpreted
+# QuakeC 38 KB more for its globals.
+set(QOG_HUNK_KB 194 CACHE STRING "board hunk size in KB")
 target_compile_definitions(quake_display PRIVATE QOG_HUNK_KB=${QOG_HUNK_KB})
 target_link_libraries(quake_display qog_engine qog_platform fwog_display_bsp)
+# QuakeOG (Agent Q): the honest board configuration. The game's stack is an
+# array in main RAM (port/rp2040/sys_rp2040.c), so the link counts it, sized
+# from the deepest call chain (tools/stack_chain.py, docs/changes.md). The
+# same duplicate definitions as apps/qogfly (pico_stdlib PUBLIC, d_local.h
+# globals) are allowed, the first is the right one.
+set(QOG_STACK_KB 47 CACHE STRING "board stack array in KB, deepest chain 45,968 B plus interrupts (0: the SDK's scratch stack)")
+if(QOG_STACK_KB GREATER 0)
+    target_compile_definitions(quake_display PRIVATE QOG_STACK_KB=${QOG_STACK_KB})
+endif()
+target_link_options(quake_display PRIVATE -Wl,--allow-multiple-definition)
 fwog_display_app(quake_display
     VERSION 001
     DESCRIPTION "QuakeOG: Quake on the display RP2040 (does not fit RAM yet; built for measurement)")

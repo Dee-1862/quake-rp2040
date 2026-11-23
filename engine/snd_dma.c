@@ -177,8 +177,15 @@ void S_Init (void)
 #ifdef QOG_SND_ONINIT
 	// QuakeOG: before the -nosound check, because the other S_ functions
 	// index channels even when sound never started
+#ifdef QOG_SND_OFF_NOHUNK
+	// QuakeOG: with -nosound nothing plays, so no channels and no paint
+	// buffer (10.8 KB of hunk). S_StopSound, the only unguarded user, checks.
+	if (!COM_CheckParm("-nosound"))
+#endif
+	{
 	channels = Hunk_AllocName (MAX_CHANNELS * sizeof(channel_t), "channels");
 	paintbuffer = Hunk_AllocName (512 * sizeof(portable_samplepair_t), "paintbuf");
+	}
 #endif
 
 	if (COM_CheckParm("-nosound"))
@@ -532,6 +539,10 @@ void S_StopSound(int entnum, int entchannel)
 {
 	int i;
 
+#ifdef QOG_SND_OFF_NOHUNK
+	if (!channels)
+		return;		// QuakeOG: -nosound, no channels (S_Init)
+#endif
 	for (i=0 ; i<MAX_DYNAMIC_CHANNELS ; i++)
 	{
 		if (channels[i].entnum == entnum

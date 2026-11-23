@@ -192,3 +192,10 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LOOP_ONINIT                 # loopback receive buffers on the hunk from Loop_Init
     QOG_PACKDIR_CHUNKED             # pack directory read 2 KB at a time, no 21 KB temporary block
     QOG_PARTICLES_PRESET)           # a host may keep its own particle array (the fly-through)
+# Full game on the board (Agent Q)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_MIN_MEMORY=0                # no 5.3 MB hunk floor, so -heapsize can find the smallest hunk a map runs in
+    QOG_SND_OFF_NOHUNK              # with -nosound no sound channels or paint buffer on the hunk (10.8 KB)
+    QOG_LOADGAME_ZTEMP              # the load game line buffer at the end of the z-buffer, not 32 KB of high hunk
+    QOG_PRECACHE_ZTEMP              # the client's precache names at the end of the z-buffer while server info is read, not high hunk
+    QOG_KEYS_BYTES)                 # key down, console and menu key flags as bytes (2.3 KB static)
