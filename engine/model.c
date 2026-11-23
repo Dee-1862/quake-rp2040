@@ -35,7 +35,14 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash);
 
 byte	mod_novis[MAX_MAP_LEAFS/8];
 
+// QuakeOG: QOG_MAX_MOD_KNOWN shrinks the table. Mod_FindName reuses slots of
+// models the current level no longer references once it is full, so it only
+// has to hold one level's models (160 at most in the shareware episode).
+#ifdef QOG_MAX_MOD_KNOWN
+#define	MAX_MOD_KNOWN	QOG_MAX_MOD_KNOWN
+#else
 #define	MAX_MOD_KNOWN	256
+#endif
 model_t	mod_known[MAX_MOD_KNOWN];
 int		mod_numknown;
 

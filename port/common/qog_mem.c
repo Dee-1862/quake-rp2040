@@ -96,6 +96,15 @@ static void cmd_qog_mem(void) {
     Con_Printf("  zone size  %7.1f KB (inside hunk low)\n", m->zone_size / 1024.0);
     Con_Printf("  video      %7.1f KB (frame, z-buffer, surface cache)\n", m->video / 1024.0);
     kb_line("TOTAL", m->total, m->peak_total);
+    {
+        extern int mod_numknown;
+        extern model_t mod_known[];
+        int refd = 0;
+        for (int i = 0; i < mod_numknown; i++)
+            if (mod_known[i].needload != 2) refd++;   /* 2 = NL_UNREFERENCED in model.c */
+        Con_Printf("  models known %d, referenced by this level %d, edicts %d of %d\n", mod_numknown, refd,
+                   sv.active ? sv.num_edicts : 0, sv.active ? sv.max_edicts : 0);
+    }
     Con_Printf("More: qog_mem hunk | qog_mem cache | qog_mem reset\n");
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");
 }
