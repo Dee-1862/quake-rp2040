@@ -95,7 +95,8 @@ list(APPEND QOG_ENGINE_DEFS
 # Server, client and system memory (Agent M), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_HUNK_PACKED
-    QOG_TRANSLATE_ONDRAW)
+    QOG_TRANSLATE_ONDRAW
+    QOG_CBUF_INPLACE)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

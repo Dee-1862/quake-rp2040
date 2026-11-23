@@ -113,6 +113,20 @@ void Cbuf_InsertText (char *text)
 	char	*temp;
 	int		templen;
 
+#ifdef QOG_CBUF_INPLACE
+	// QuakeOG: when both parts fit, move the waiting commands up in place
+	// instead of copying them through the zone (up to the whole buffer, the
+	// zone's largest use). The result is what id's copy produces. Other
+	// cases take id's path, with its overflow message or error.
+	templen = Q_strlen (text);
+	if (templen < cmd_text.maxsize && templen + cmd_text.cursize <= cmd_text.maxsize)
+	{
+		memmove (cmd_text.data + templen, cmd_text.data, cmd_text.cursize);
+		Q_memcpy (cmd_text.data, text, templen);
+		cmd_text.cursize += templen;
+		return;
+	}
+#endif
 // copy off any commands still remaining in the exec buffer
 	templen = cmd_text.cursize;
 	if (templen)

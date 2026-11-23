@@ -167,4 +167,5 @@ target_compile_definitions(quakeog_pc PRIVATE
 # Server, client and system memory (Agent M)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_HUNK_PACKED                 # entity strings and command entries share hunk blocks (id 32 B block each)
-    QOG_TRANSLATE_ONDRAW)           # player colour table built on the stack when drawn (id 16 KB per player on the hunk)
+    QOG_TRANSLATE_ONDRAW            # player colour table built on the stack when drawn (id 16 KB per player on the hunk)
+    QOG_CBUF_INPLACE)               # scripts inserted into the command buffer in place, not copied through the zone
