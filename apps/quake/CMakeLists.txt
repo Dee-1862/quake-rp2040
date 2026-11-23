@@ -66,6 +66,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_EDICT_SPARSE
     QOG_BASELINE_POOL
     QOG_AOT_GLOBALS)
+# Client memory and 2D drawing (Agent G), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_CONBACK_FLASH)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
