@@ -116,6 +116,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SND_ONINIT
     QOG_LOOP_ONINIT
     QOG_PACKDIR_CHUNKED)
+# Demo playback (Agent O), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_DEMO_FLASH)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

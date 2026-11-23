@@ -192,3 +192,10 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LOOP_ONINIT                 # loopback receive buffers on the hunk from Loop_Init
     QOG_PACKDIR_CHUNKED             # pack directory read 2 KB at a time, no 21 KB temporary block
     QOG_PARTICLES_PRESET)           # a host may keep its own particle array (the fly-through)
+# Demo playback host (Agent O): the board app apps/qogdemo runs the same host.
+# -qogdemo plays demos with no server, QuakeC, console or sound.
+target_sources(quakeog_pc PRIVATE
+    ${ROOT}/port/common/qog_demo.c
+    ${ROOT}/port/pc/demo_pc.c)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_DEMO_FLASH)                 # a demo in a mapped pack is read and parsed in place, no FILE

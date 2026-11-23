@@ -395,6 +395,8 @@ void VID_Init(unsigned char *palette) {
         qog_tour_register();
         extern void qog_fly_register(void);
         qog_fly_register();
+        extern void qog_demo_register(void);
+        qog_demo_register();
     }
     qog_mem_set_video(VIDEO_BYTES + surfcache_size);
 

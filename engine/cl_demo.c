@@ -25,6 +25,61 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 void CL_FinishTimeDemo (void);
 
+#ifdef QOG_DEMO_FLASH
+// QuakeOG: a demo in a mapped pack (COM_FlashFile) is read in place, and
+// each message is parsed where it lies, so playback needs no FILE and no
+// message buffer. cls.demofile stays NULL while such a demo plays. A demo
+// that is not in a mapped pack plays from a FILE as in id's code.
+static byte		*cl_demoflash;
+static int		cl_demoflashlen, cl_demoflashpos;
+static byte		*cl_demosaveddata;	// net_message's buffer, given back when playback stops
+static int		cl_demosavedmax;
+
+/*
+====================
+CL_GetFlashMessage
+
+id's three freads from a demo in place. A field that would run past the end
+of the file is left as it was, as fread leaves it, and a message that does
+not fit (or is empty, which fread also reports as a failure) stops playback.
+====================
+*/
+static int CL_GetFlashMessage (void)
+{
+	int		i, len;
+	float	f;
+
+	if (cl_demoflashpos + 4 <= cl_demoflashlen)
+	{
+		memcpy (&len, cl_demoflash + cl_demoflashpos, 4);
+		cl_demoflashpos += 4;
+		net_message.cursize = len;
+	}
+	VectorCopy (cl.mviewangles[0], cl.mviewangles[1]);
+	for (i=0 ; i<3 ; i++)
+	{
+		if (cl_demoflashpos + 4 > cl_demoflashlen)
+			continue;
+		memcpy (&f, cl_demoflash + cl_demoflashpos, 4);
+		cl_demoflashpos += 4;
+		cl.mviewangles[0][i] = LittleFloat (f);
+	}
+
+	net_message.cursize = LittleLong (net_message.cursize);
+	if (net_message.cursize > MAX_MSGLEN)
+		Sys_Error ("Demo message > MAX_MSGLEN");
+	if (net_message.cursize <= 0 || net_message.cursize > cl_demoflashlen - cl_demoflashpos)
+	{
+		CL_StopPlayback ();
+		return 0;
+	}
+	net_message.data = cl_demoflash + cl_demoflashpos;	// read only, the parser never writes it
+	net_message.maxsize = net_message.cursize;
+	cl_demoflashpos += net_message.cursize;
+	return 1;
+}
+#endif
+
 /*
 ==============================================================================
 
@@ -50,6 +105,16 @@ void CL_StopPlayback (void)
 	if (!cls.demoplayback)
 		return;
 
+#ifdef QOG_DEMO_FLASH
+	if (cl_demoflash)
+	{
+		cl_demoflash = NULL;
+		net_message.data = cl_demosaveddata;
+		net_message.maxsize = cl_demosavedmax;
+		net_message.cursize = 0;
+	}
+	else
+#endif
 	fclose (cls.demofile);
 	cls.demoplayback = false;
 	cls.demofile = NULL;
@@ -117,6 +182,10 @@ int CL_GetMessage (void)
 		}
 		
 	// get the next message
+#ifdef QOG_DEMO_FLASH
+		if (cl_demoflash)
+			return CL_GetFlashMessage ();
+#endif
 		fread (&net_message.cursize, 4, 1, cls.demofile);
 		VectorCopy (cl.mviewangles[0], cl.mviewangles[1]);
 		for (i=0 ; i<3 ; i++)
@@ -313,6 +382,32 @@ void CL_PlayDemo_f (void)
 	COM_DefaultExtension (name, ".dem");
 
 	Con_Printf ("Playing demo from %s.\n", name);
+#ifdef QOG_DEMO_FLASH
+	cl_demoflash = COM_FlashFile (name, &cl_demoflashlen);
+	if (cl_demoflash)
+	{
+		cls.demofile = NULL;
+		cls.demoplayback = true;
+		cls.state = ca_connected;
+		cls.forcetrack = 0;
+		cl_demosaveddata = net_message.data;
+		cl_demosavedmax = net_message.maxsize;
+		// the track number line, read as id's getc loop reads it
+		for (cl_demoflashpos = 0 ; cl_demoflashpos < cl_demoflashlen ; )
+		{
+			c = cl_demoflash[cl_demoflashpos++];
+			if (c == '\n')
+				break;
+			if (c == '-')
+				neg = true;
+			else
+				cls.forcetrack = cls.forcetrack * 10 + (c - '0');
+		}
+		if (neg)
+			cls.forcetrack = -cls.forcetrack;
+		return;
+	}
+#endif
 	COM_FOpenFile (name, &cls.demofile);
 	if (!cls.demofile)
 	{
