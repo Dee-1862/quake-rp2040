@@ -2,6 +2,24 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Render tables packed, renderer stack cut (Agent D, PC and ARM build)
+
+Frames from `tools/arm_report.py` with the worktree's 1,600 edges, 640 surfaces, 1,000 spans and 384 alias vertices. Each flag defaults to id's code.
+
+| Flag | Entry size | Frame before → after |
+| --- | --- | --- |
+| `QOG_EDGE_T_PACKED`: links are 16-bit byte offsets into the edge buffer, the four sentinels sit at its front, `owner` is the world edge index (the only kind the edge cache compares), `newedges`/`removeedges` 16-bit | `edge_t` 32 → 24 B | R_EdgeDrawing 84,592 → 71,856 |
+| `QOG_ESPAN_T_PACKED`: u, v, count as shorts, link and `surf_t.spans` as 16-bit offsets into R_ScanEdges' buffer | `espan_t` 16 → 8 B | R_ScanEdges 16,112 → 8,072 |
+| `QOG_SURF_T_SMALL` (needs the two above and `QOG_SURF_T_PACKED`): stack links are surface indices, last_u and spanstate 16-bit, insubmodel and flags bytes | `surf_t` 52 → 40 B | R_EdgeDrawing 71,856 → 64,160 |
+| `QOG_FINALVERT_PACKED` (no assembly padding) and `QOG_ALIAS_NO_AUXVERTS` (the triangle clipper recomputes a near-clipped vertex with the same shared transform instead of keeping a 12-byte view-space entry per vertex) | `finalvert_t` 32 → 28 B, 12 B per vertex gone | R_AliasDrawModel 16,944 → 10,824 |
+
+- Deepest render chain is about 29 KB shorter. With main's 2,000 edges and 800 surfaces R_EdgeDrawing should be about 2,000 × 24 + 800 × 40 + 96 ≈ 80 KB instead of 105,712.
+- Static RAM about −0.9 KB (16-bit edge lists, no static sentinels). Board overflow 187,256 → 186,296 bytes.
+- Limits checked at R_NewMap: at most 2,725 edges for 16-bit links, fewer than 65,535 map edges (largest registered map e3m5 has 16,923), fewer than 65,536 surfaces. Spans are checked at compile time (8,191).
+- Verified hidden and silent against a build of 89a587a after each change: 113 shots (demo1 to demo3 every 40 frames, and the spawn view of every registered map) byte-identical, the same state hashes, and the same `qog_tour e1m1 e2m6 e3m6 e4m7` peaks. The near-plane alias clip path ran about 95,000 times in the shot run.
+- The largest registered alias model is boss.mdl with 325 vertices, so `QOG_MAXALIASVERTS` 328 would save another 56 × 28 B on R_AliasDrawModel's stack. Not changed here (shared build line).
+- Not measured: speed on the board. Each link now costs an add (edges, spans) or a multiply (surfaces) to decode.
+
 ## 2026-11-23: Limits checked against the full game (PC build, registered data)
 
 - Registered PAK1 added locally in data/id1 (git-ignored). PAK0 from Steam is byte-identical to the shareware one.

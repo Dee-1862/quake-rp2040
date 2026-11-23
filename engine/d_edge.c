@@ -87,7 +87,9 @@ void D_DrawSolidSurface (surf_t *surf, int color)
 	int		u, u2, pix;
 	
 	pix = (color<<24) | (color<<16) | (color<<8) | color;
-	for (span=surf->spans ; span ; span=span->pnext)
+	// QuakeOG: SPAN_PTR, see espan_t in r_shared.h
+	for (span=surf->spans ? SPAN_PTR(surf->spans) : NULL ; span ;
+		span=span->pnext ? SPAN_PTR(span->pnext) : NULL)
 	{
 		pdest = (byte *)d_viewbuffer + screenwidth*span->v;
 		u = span->u;
@@ -196,7 +198,7 @@ void D_DrawSurfaces (void)
 			d_ziorigin = s->d_ziorigin;
 
 			D_DrawSolidSurface (s, (int)s->data & 0xFF);
-			D_DrawZSpans (s->spans);
+			D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 		}
 	}
 	else
@@ -219,8 +221,8 @@ void D_DrawSurfaces (void)
 					R_MakeSky ();
 				}
 
-				D_DrawSkyScans8 (s->spans);
-				D_DrawZSpans (s->spans);
+				D_DrawSkyScans8 (SPAN_PTR (s->spans));	// QuakeOG
+				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 			}
 			else if (s->flags & SURF_DRAWBACKGROUND)
 			{
@@ -231,7 +233,7 @@ void D_DrawSurfaces (void)
 				d_ziorigin = -0.9;
 
 				D_DrawSolidSurface (s, (int)r_clearcolor.value & 0xFF);
-				D_DrawZSpans (s->spans);
+				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 			}
 			else if (s->flags & SURF_DRAWTURB)
 			{
@@ -256,8 +258,8 @@ void D_DrawSurfaces (void)
 				}
 
 				D_CalcGradients (pface);
-				Turbulent8 (s->spans);
-				D_DrawZSpans (s->spans);
+				Turbulent8 (SPAN_PTR (s->spans));	// QuakeOG
+				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 
 				if (s->insubmodel)
 				{
@@ -305,15 +307,15 @@ void D_DrawSurfaces (void)
 
 				D_CalcGradients (pface);
 
-				(*d_drawspans) (s->spans);
+				(*d_drawspans) (SPAN_PTR (s->spans));	// QuakeOG
 #else
 			// QuakeOG: no surface cache, light each pixel as it is drawn (d_scanlit.c)
 				D_SetupLitSurface (pface, miplevel);
 				D_CalcGradients (pface);
-				D_DrawSpans8Lit (s->spans);
+				D_DrawSpans8Lit (SPAN_PTR (s->spans));	// QuakeOG
 #endif
 
-				D_DrawZSpans (s->spans);
+				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 
 				if (s->insubmodel)
 				{

@@ -43,10 +43,13 @@ surf_t	*surfaces, *surface_p, *surf_max;
 // pointer is greater than another one, it should be drawn in front
 // surfaces[1] is the background, and is used as the active surface stack
 
-edge_t	*newedges[MAXHEIGHT];
-edge_t	*removeedges[MAXHEIGHT];
+edgeref_t	newedges[MAXHEIGHT];	// QuakeOG: edgeref_t, see r_shared.h
+edgeref_t	removeedges[MAXHEIGHT];
 
 espan_t	*span_p, *max_span_p;
+#ifdef QOG_ESPAN_T_PACKED
+byte	*r_spanbase;	// QuakeOG: see espan_t in r_shared.h
+#endif
 
 int		r_currentkey;
 
@@ -58,10 +61,15 @@ int	edge_head_u_shift20, edge_tail_u_shift20;
 
 static void (*pdrawfunc)(void);
 
+#ifdef QOG_EDGE_T_PACKED
+edge_t	*r_edgesentinels;	// QuakeOG: in the edge buffer, see r_local.h
+byte	*r_edgebase;
+#else
 edge_t	edge_head;
 edge_t	edge_tail;
 edge_t	edge_aftertail;
 edge_t	edge_sentinel;
+#endif
 
 float	fv;
 
@@ -133,7 +141,7 @@ void R_BeginEdgeFrame (void)
 
 	surface_p = &surfaces[2];	// background is surface 1,
 								//  surface 0 is a dummy
-	surfaces[1].spans = NULL;	// no background spans yet
+	surfaces[1].spans = SPAN_NONE;	// no background spans yet (QuakeOG: SPAN_NONE)
 	surfaces[1].flags = SURF_DRAWBACKGROUND;
 
 // put the background behind everything in the world
@@ -153,7 +161,7 @@ void R_BeginEdgeFrame (void)
 // FIXME: set with memset
 	for (v=r_refdef.vrect.y ; v<r_refdef.vrectbottom ; v++)
 	{
-		newedges[v] = removeedges[v] = NULL;
+		newedges[v] = removeedges[v] = EDGE_NONE;
 	}
 }
 
@@ -170,9 +178,10 @@ sentinel at the end (actually, this is the active edge table starting at
 edge_head.next).
 ==============
 */
+// QuakeOG: links through EDGE_PTR/EDGE_REF (r_shared.h), id's pointers by default
 void R_InsertNewEdges (edge_t *edgestoadd, edge_t *edgelist)
 {
-	edge_t	*next_edge;
+	edgeref_t	next_edge;
 
 	do
 	{
@@ -180,25 +189,25 @@ void R_InsertNewEdges (edge_t *edgestoadd, edge_t *edgelist)
 edgesearch:
 		if (edgelist->u >= edgestoadd->u)
 			goto addedge;
-		edgelist=edgelist->next;
+		edgelist=EDGE_PTR(edgelist->next);
 		if (edgelist->u >= edgestoadd->u)
 			goto addedge;
-		edgelist=edgelist->next;
+		edgelist=EDGE_PTR(edgelist->next);
 		if (edgelist->u >= edgestoadd->u)
 			goto addedge;
-		edgelist=edgelist->next;
+		edgelist=EDGE_PTR(edgelist->next);
 		if (edgelist->u >= edgestoadd->u)
 			goto addedge;
-		edgelist=edgelist->next;
+		edgelist=EDGE_PTR(edgelist->next);
 		goto edgesearch;
 
 	// insert edgestoadd before edgelist
 addedge:
-		edgestoadd->next = edgelist;
+		edgestoadd->next = EDGE_REF(edgelist);
 		edgestoadd->prev = edgelist->prev;
-		edgelist->prev->next = edgestoadd;
-		edgelist->prev = edgestoadd;
-	} while ((edgestoadd = next_edge) != NULL);
+		EDGE_PTR(edgelist->prev)->next = EDGE_REF(edgestoadd);
+		edgelist->prev = EDGE_REF(edgestoadd);
+	} while (next_edge != EDGE_NONE && (edgestoadd = EDGE_PTR(next_edge)));
 }
 
 #endif	// !id386
@@ -216,9 +225,9 @@ void R_RemoveEdges (edge_t *pedge)
 
 	do
 	{
-		pedge->next->prev = pedge->prev;
-		pedge->prev->next = pedge->next;
-	} while ((pedge = pedge->nextremove) != NULL);
+		EDGE_PTR(pedge->next)->prev = pedge->prev;	// QuakeOG: EDGE_PTR
+		EDGE_PTR(pedge->prev)->next = pedge->next;
+	} while (pedge->nextremove != EDGE_NONE && (pedge = EDGE_PTR(pedge->nextremove)));
 }
 
 #endif	// !id386
@@ -239,24 +248,24 @@ void R_StepActiveU (edge_t *pedge)
 	{
 nextedge:
 		pedge->u += pedge->u_step;
-		if (pedge->u < pedge->prev->u)
+		if (pedge->u < EDGE_PTR(pedge->prev)->u)
 			goto pushback;
-		pedge = pedge->next;
+		pedge = EDGE_PTR(pedge->next);
 			
 		pedge->u += pedge->u_step;
-		if (pedge->u < pedge->prev->u)
+		if (pedge->u < EDGE_PTR(pedge->prev)->u)
 			goto pushback;
-		pedge = pedge->next;
+		pedge = EDGE_PTR(pedge->next);
 			
 		pedge->u += pedge->u_step;
-		if (pedge->u < pedge->prev->u)
+		if (pedge->u < EDGE_PTR(pedge->prev)->u)
 			goto pushback;
-		pedge = pedge->next;
+		pedge = EDGE_PTR(pedge->next);
 			
 		pedge->u += pedge->u_step;
-		if (pedge->u < pedge->prev->u)
+		if (pedge->u < EDGE_PTR(pedge->prev)->u)
 			goto pushback;
-		pedge = pedge->next;
+		pedge = EDGE_PTR(pedge->next);
 			
 		goto nextedge;		
 		
@@ -265,25 +274,25 @@ pushback:
 			return;
 			
 	// push it back to keep it sorted		
-		pnext_edge = pedge->next;
+		pnext_edge = EDGE_PTR(pedge->next);	// QuakeOG: EDGE_PTR/EDGE_REF
 
 	// pull the edge out of the edge list
-		pedge->next->prev = pedge->prev;
-		pedge->prev->next = pedge->next;
+		EDGE_PTR(pedge->next)->prev = pedge->prev;
+		EDGE_PTR(pedge->prev)->next = pedge->next;
 
 	// find out where the edge goes in the edge list
-		pwedge = pedge->prev->prev;
+		pwedge = EDGE_PTR(EDGE_PTR(pedge->prev)->prev);
 
 		while (pwedge->u > pedge->u)
 		{
-			pwedge = pwedge->prev;
+			pwedge = EDGE_PTR(pwedge->prev);
 		}
 
 	// put the edge back into the edge list
 		pedge->next = pwedge->next;
-		pedge->prev = pwedge;
-		pedge->next->prev = pedge;
-		pwedge->next = pedge;
+		pedge->prev = EDGE_REF(pwedge);
+		EDGE_PTR(pedge->next)->prev = EDGE_REF(pedge);
+		pwedge->next = EDGE_REF(pedge);
 
 		pedge = pnext_edge;
 		if (pedge == &edge_tail)
@@ -307,7 +316,7 @@ void R_CleanupSpan ()
 
 // now that we've reached the right edge of the screen, we're done with any
 // unfinished surfaces, so emit a span for whatever's on top
-	surf = surfaces[1].next;
+	surf = SURF_PTR(surfaces[1].next);
 	iu = edge_tail_u_shift20;
 	if (iu > surf->last_u)
 	{
@@ -316,14 +325,14 @@ void R_CleanupSpan ()
 		span->count = iu - span->u;
 		span->v = current_iv;
 		span->pnext = surf->spans;
-		surf->spans = span;
+		surf->spans = SPAN_REF(span);	// QuakeOG
 	}
 
 // reset spanstate for all surfaces in the surface stack
 	do
 	{
 		surf->spanstate = 0;
-		surf = surf->next;
+		surf = SURF_PTR(surf->next);
 	} while (surf != &surfaces[1]);
 }
 
@@ -347,7 +356,7 @@ void R_LeadingEdgeBackwards (edge_t *edge)
 // end edge)
 	if (++surf->spanstate == 1)
 	{
-		surf2 = surfaces[1].next;
+		surf2 = SURF_PTR(surfaces[1].next);
 
 		if (surf->key > surf2->key)
 			goto newtop;
@@ -365,7 +374,7 @@ continue_search:
 
 		do
 		{
-			surf2 = surf2->next;
+			surf2 = SURF_PTR(surf2->next);
 		} while (surf->key < surf2->key);
 
 		if (surf->key == surf2->key)
@@ -392,7 +401,7 @@ newtop:
 			span->count = iu - span->u;
 			span->v = current_iv;
 			span->pnext = surf2->spans;
-			surf2->spans = span;
+			surf2->spans = SPAN_REF(span);	// QuakeOG
 		}
 
 		// set last_u on the new span
@@ -400,10 +409,10 @@ newtop:
 				
 gotposition:
 	// insert before surf2
-		surf->next = surf2;
+		surf->next = SURF_REF(surf2);	// QuakeOG: SURF_PTR/SURF_REF
 		surf->prev = surf2->prev;
-		surf2->prev->next = surf;
-		surf2->prev = surf;
+		SURF_PTR(surf2->prev)->next = SURF_REF(surf);
+		surf2->prev = SURF_REF(surf);
 	}
 }
 
@@ -426,7 +435,7 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 		if (surf->insubmodel)
 			r_bmodelactive--;
 
-		if (surf == surfaces[1].next)
+		if (surf == SURF_PTR(surfaces[1].next))	// QuakeOG: SURF_PTR
 		{
 		// emit a span (current top going away)
 			iu = edge->u >> 20;
@@ -437,15 +446,15 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 				span->count = iu - span->u;
 				span->v = current_iv;
 				span->pnext = surf->spans;
-				surf->spans = span;
+				surf->spans = SPAN_REF(span);	// QuakeOG
 			}
 
 		// set last_u on the surface below
-			surf->next->last_u = iu;
+			SURF_PTR(surf->next)->last_u = iu;
 		}
 
-		surf->prev->next = surf->next;
-		surf->next->prev = surf->prev;
+		SURF_PTR(surf->prev)->next = surf->next;
+		SURF_PTR(surf->next)->prev = surf->prev;
 	}
 }
 
@@ -477,7 +486,7 @@ void R_LeadingEdge (edge_t *edge)
 			if (surf->insubmodel)
 				r_bmodelactive++;
 
-			surf2 = surfaces[1].next;
+			surf2 = SURF_PTR(surfaces[1].next);
 
 			if (surf->key < surf2->key)
 				goto newtop;
@@ -514,7 +523,7 @@ continue_search:
 
 			do
 			{
-				surf2 = surf2->next;
+				surf2 = SURF_PTR(surf2->next);
 			} while (surf->key > surf2->key);
 
 			if (surf->key == surf2->key)
@@ -563,7 +572,7 @@ newtop:
 				span->count = iu - span->u;
 				span->v = current_iv;
 				span->pnext = surf2->spans;
-				surf2->spans = span;
+				surf2->spans = SPAN_REF(span);	// QuakeOG
 			}
 
 			// set last_u on the new span
@@ -571,10 +580,10 @@ newtop:
 				
 gotposition:
 		// insert before surf2
-			surf->next = surf2;
+			surf->next = SURF_REF(surf2);	// QuakeOG: SURF_PTR/SURF_REF
 			surf->prev = surf2->prev;
-			surf2->prev->next = surf;
-			surf2->prev = surf;
+			SURF_PTR(surf2->prev)->next = SURF_REF(surf);
+			surf2->prev = SURF_REF(surf);
 		}
 	}
 }
@@ -593,11 +602,11 @@ void R_GenerateSpans (void)
 	r_bmodelactive = 0;
 
 // clear active surfaces to just the background surface
-	surfaces[1].next = surfaces[1].prev = &surfaces[1];
+	surfaces[1].next = surfaces[1].prev = SURF_REF(&surfaces[1]);	// QuakeOG
 	surfaces[1].last_u = edge_head_u_shift20;
 
 // generate spans
-	for (edge=edge_head.next ; edge != &edge_tail; edge=edge->next)
+	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
 		if (edge->surfs[0])
 		{
@@ -631,11 +640,11 @@ void R_GenerateSpansBackward (void)
 	r_bmodelactive = 0;
 
 // clear active surfaces to just the background surface
-	surfaces[1].next = surfaces[1].prev = &surfaces[1];
+	surfaces[1].next = surfaces[1].prev = SURF_REF(&surfaces[1]);	// QuakeOG
 	surfaces[1].last_u = edge_head_u_shift20;
 
 // generate spans
-	for (edge=edge_head.next ; edge != &edge_tail; edge=edge->next)
+	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
 		if (edge->surfs[0])
 			R_TrailingEdge (&surfaces[edge->surfs[0]], edge);
@@ -663,12 +672,24 @@ Each surface has a linked list of its visible spans
 void R_ScanEdges (void)
 {
 	int		iv, bottom;
+#ifdef QOG_ESPAN_T_PACKED
+	// QuakeOG: 8-byte spans gain nothing from cache line alignment, and the
+	// 16-bit links reach (65536 / 8) - 1 spans (r_shared.h)
+	espan_t	basespans[MAXSPANS];
+	espan_t	*basespan_p;
+	surf_t	*s;
+	typedef char span_links_fit[((MAXSPANS + 1) * sizeof(espan_t) <= 0x10000) ? 1 : -1];
+
+	basespan_p = basespans;
+	r_spanbase = (byte *)basespans - sizeof(espan_t);
+#else
 	byte	basespans[MAXSPANS*sizeof(espan_t)+CACHE_SIZE];
 	espan_t	*basespan_p;
 	surf_t	*s;
 
 	basespan_p = (espan_t *)
 			((long)(basespans + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
+#endif
 	max_span_p = &basespan_p[MAXSPANS - r_refdef.vrect.width];
 
 	span_p = basespan_p;
@@ -678,27 +699,27 @@ void R_ScanEdges (void)
 	edge_head.u = r_refdef.vrect.x << 20;
 	edge_head_u_shift20 = edge_head.u >> 20;
 	edge_head.u_step = 0;
-	edge_head.prev = NULL;
-	edge_head.next = &edge_tail;
+	edge_head.prev = EDGE_NONE;	// QuakeOG: EDGE_NONE/EDGE_REF
+	edge_head.next = EDGE_REF(&edge_tail);
 	edge_head.surfs[0] = 0;
 	edge_head.surfs[1] = 1;
 	
 	edge_tail.u = (r_refdef.vrectright << 20) + 0xFFFFF;
 	edge_tail_u_shift20 = edge_tail.u >> 20;
 	edge_tail.u_step = 0;
-	edge_tail.prev = &edge_head;
-	edge_tail.next = &edge_aftertail;
+	edge_tail.prev = EDGE_REF(&edge_head);
+	edge_tail.next = EDGE_REF(&edge_aftertail);
 	edge_tail.surfs[0] = 1;
 	edge_tail.surfs[1] = 0;
 	
 	edge_aftertail.u = -1;		// force a move
 	edge_aftertail.u_step = 0;
-	edge_aftertail.next = &edge_sentinel;
-	edge_aftertail.prev = &edge_tail;
+	edge_aftertail.next = EDGE_REF(&edge_sentinel);
+	edge_aftertail.prev = EDGE_REF(&edge_tail);
 
 // FIXME: do we need this now that we clamp x in r_draw.c?
 	edge_sentinel.u = 2000 << 24;		// make sure nothing sorts past this
-	edge_sentinel.prev = &edge_aftertail;
+	edge_sentinel.prev = EDGE_REF(&edge_aftertail);
 
 //	
 // process all scan lines
@@ -715,7 +736,7 @@ void R_ScanEdges (void)
 
 		if (newedges[iv])
 		{
-			R_InsertNewEdges (newedges[iv], edge_head.next);
+			R_InsertNewEdges (EDGE_PTR(newedges[iv]), EDGE_PTR(edge_head.next));	// QuakeOG
 		}
 
 		(*pdrawfunc) ();
@@ -739,16 +760,16 @@ void R_ScanEdges (void)
 
 		// clear the surface span pointers
 			for (s = &surfaces[1] ; s<surface_p ; s++)
-				s->spans = NULL;
+				s->spans = SPAN_NONE;	// QuakeOG
 
 			span_p = basespan_p;
 		}
 
 		if (removeedges[iv])
-			R_RemoveEdges (removeedges[iv]);
+			R_RemoveEdges (EDGE_PTR(removeedges[iv]));	// QuakeOG
 
-		if (edge_head.next != &edge_tail)
-			R_StepActiveU (edge_head.next);
+		if (edge_head.next != EDGE_REF(&edge_tail))
+			R_StepActiveU (EDGE_PTR(edge_head.next));
 	}
 
 // do the last scan (no need to step or sort or remove on the last scan)
@@ -760,7 +781,7 @@ void R_ScanEdges (void)
 	surfaces[1].spanstate = 1;
 
 	if (newedges[iv])
-		R_InsertNewEdges (newedges[iv], edge_head.next);
+		R_InsertNewEdges (EDGE_PTR(newedges[iv]), EDGE_PTR(edge_head.next));	// QuakeOG
 
 	(*pdrawfunc) ();
 

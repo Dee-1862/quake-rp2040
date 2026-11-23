@@ -89,6 +89,27 @@ static unsigned short R_QogEdgeCacheValue (unsigned int offset)
 #define EC_STORE(m, e, v)		(EDGE_CACHE (m, e) = (v))
 #endif
 
+#ifdef QOG_EDGE_T_PACKED
+// QuakeOG: edge_t.owner is a world medge_t index, see r_shared.h. Only
+// world edges are ever looked up in the cache (insubmodel is false only
+// while the world is drawn), and they always encode to their index, so the
+// comparison gives the same answer as id's pointer comparison.
+medge_t			*r_qog_owneredges;		// world edges, set in R_EdgeDrawing
+unsigned int	r_qog_ownerbytes;		// their size in bytes
+
+static unsigned short R_QogEdgeOwner (medge_t *pedge)
+{
+	unsigned int	ofs = (byte *)pedge - (byte *)r_qog_owneredges;
+
+	if (ofs >= r_qog_ownerbytes)
+		return EDGE_OWNER_NONE;
+	return ofs / sizeof(medge_t);
+}
+#define EDGE_OWNER(p)	R_QogEdgeOwner (p)
+#else
+#define EDGE_OWNER(p)	(p)
+#endif
+
 int			c_faceclip;					// number of faces clipped
 
 zpointdesc_t	r_zpointdesc;
@@ -240,7 +261,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 
 	edge = edge_p++;
 
-	edge->owner = r_pedge;
+	edge->owner = EDGE_OWNER (r_pedge);	// QuakeOG
 
 	edge->nearzi = lzi0;
 
@@ -289,22 +310,23 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	if (edge->surfs[0])
 		u_check++;	// sort trailers after leaders
 
-	if (!newedges[v] || newedges[v]->u >= u_check)
+// QuakeOG: links through EDGE_PTR/EDGE_REF (r_shared.h)
+	if (!newedges[v] || EDGE_PTR(newedges[v])->u >= u_check)
 	{
 		edge->next = newedges[v];
-		newedges[v] = edge;
+		newedges[v] = EDGE_REF(edge);
 	}
 	else
 	{
-		pcheck = newedges[v];
-		while (pcheck->next && pcheck->next->u < u_check)
-			pcheck = pcheck->next;
+		pcheck = EDGE_PTR(newedges[v]);
+		while (pcheck->next && EDGE_PTR(pcheck->next)->u < u_check)
+			pcheck = EDGE_PTR(pcheck->next);
 		edge->next = pcheck->next;
-		pcheck->next = edge;
+		pcheck->next = EDGE_REF(edge);
 	}
 
 	edge->nextremove = removeedges[v2];
-	removeedges[v2] = edge;
+	removeedges[v2] = EDGE_REF(edge);
 }
 
 
@@ -512,7 +534,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 				else
 				{
 					if (EC_VALID (currententity->model, r_pedge) &&	// QuakeOG
-						EC_EDGE (currententity->model, r_pedge)->owner == r_pedge)
+						EC_EDGE (currententity->model, r_pedge)->owner == EDGE_OWNER (r_pedge))
 					{
 						R_EmitCachedEdge ();
 						r_lastvertvalid = false;
@@ -555,7 +577,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 				// it's cached if the cached edge is valid and is owned
 				// by this medge_t
 					if (EC_VALID (currententity->model, r_pedge) &&	// QuakeOG
-						EC_EDGE (currententity->model, r_pedge)->owner == r_pedge)
+						EC_EDGE (currententity->model, r_pedge)->owner == EDGE_OWNER (r_pedge))
 					{
 						R_EmitCachedEdge ();
 						r_lastvertvalid = false;
@@ -612,7 +634,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	surface_p->spanstate = 0;
 	surface_p->entity = currententity;
 	surface_p->key = r_currentkey++;
-	surface_p->spans = NULL;
+	surface_p->spans = SPAN_NONE;	// QuakeOG
 
 	pplane = SURF_PLANE (currententity->model, fa);	// QuakeOG
 // FIXME: cache this?
@@ -727,7 +749,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	surface_p->spanstate = 0;
 	surface_p->entity = currententity;
 	surface_p->key = r_currentbkey;
-	surface_p->spans = NULL;
+	surface_p->spans = SPAN_NONE;	// QuakeOG
 
 	pplane = SURF_PLANE (currententity->model, psurf);	// QuakeOG
 // FIXME: cache this?

@@ -263,7 +263,11 @@ void R_AliasClipTriangle (mtriangle_t *ptri)
 	if (clipflags & ALIAS_Z_CLIP)
 	{
 		for (i=0 ; i<3 ; i++)
+#ifdef QOG_ALIAS_NO_AUXVERTS
+			R_AliasTransformAuxVert (&av[i], &r_qog_apverts[ptri->vertindex[i]]);	// QuakeOG
+#else
 			av[i] = pauxverts[ptri->vertindex[i]];
+#endif
 
 		k = R_AliasClip (fv[0], fv[1], ALIAS_Z_CLIP, 3, R_Alias_clip_z);
 		if (k == 0)

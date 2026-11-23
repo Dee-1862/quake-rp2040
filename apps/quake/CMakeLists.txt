@@ -51,6 +51,13 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SURF_T_PACKED
     QOG_MAX_BMODEL_VERTS=128
     QOG_MAX_BMODEL_EDGES=256)
+# Renderer stack frames and render tables, same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_EDGE_T_PACKED
+    QOG_ESPAN_T_PACKED
+    QOG_SURF_T_SMALL
+    QOG_FINALVERT_PACKED
+    QOG_ALIAS_NO_AUXVERTS)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
