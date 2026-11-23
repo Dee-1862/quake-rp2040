@@ -46,7 +46,7 @@ CFLAGS += ["-DQOG_CONST_RTABLES", "-DQOG_NO_ROWTABLES", "-DQOG_SKY_DIRECT", "-DQ
 # Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
 # Per-level map arrays (Agent L, pc/CMakeLists.txt)
-CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE"]
+CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE", "-DQOG_LEAF16"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

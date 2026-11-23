@@ -420,6 +420,26 @@ typedef framestamp_t	dlstamp_t;
 #define DS_SET			FS_SET
 #endif
 
+#ifdef QOG_LEAF16
+// QuakeOG: with QOG_LEAF16 a leaf's efrag list head is one of the world's
+// QOG_EFRAG_HEADS heads, kept in front of a byte per leaf that selects it
+// (EFRAG_HDR). Byte 0 selects head 0, which stays NULL: a leaf gets its own
+// head when it first gets an efrag (R_EfragLeafSlot). Once the heads run
+// out, every further leaf shares the last head, and R_StoreLeafEfrags skips
+// the efrags of other leafs in that list, so each leaf still sees its own
+// efrags in id's order. LEAF_EFRAGS stays a pointer lvalue as in id.
+#ifndef QOG_EFRAG_HEADS
+#define QOG_EFRAG_HEADS		256		// at most 256, the last one shared
+#endif
+typedef struct
+{
+	struct efrag_s	*heads[QOG_EFRAG_HEADS];
+	int				used;			// heads given out, head 0 included
+} efragheads_t;
+#define EFRAG_HDR(slots)	((efragheads_t *)(slots) - 1)
+void	R_EfragLeafSlot (mleaf_t *leaf);		// r_efrag.c
+void	R_StoreLeafEfrags (mleaf_t *leaf);
+#endif
 
 #define	EF_ROCKET	1			// leave a trail
 #define	EF_GRENADE	2			// leave a trail
@@ -443,8 +463,13 @@ typedef struct modframe_s
 	int				*surf_dlightbits;	// [numsurfaces], NULL with QOG_DLIGHT_SPARSE
 	visstamp_t		*node_visframe;		// [numnodes]
 	visstamp_t		*leaf_visframe;		// [numleafs]
+#ifdef QOG_LEAF16
+	byte			*leaf_efrags;		// [numleafs] head numbers, see efragheads_t
+	unsigned short	*leaf_key;			// [numleafs]
+#else
 	efrag_t			**leaf_efrags;		// [numleafs]
 	int				*leaf_key;			// [numleafs]
+#endif
 #ifdef QOG_EDGECACHE16
 	unsigned short	*edge_cache;		// [numedges] 16-bit form, see r_draw.c
 #else
@@ -544,8 +569,13 @@ typedef struct model_s
 	int				*surf_dlightbits;	// [numsurfaces], NULL with QOG_DLIGHT_SPARSE
 	visstamp_t		*node_visframe;		// [numnodes]
 	visstamp_t		*leaf_visframe;		// [numleafs]
+#ifdef QOG_LEAF16
+	byte			*leaf_efrags;		// [numleafs] head numbers, see efragheads_t
+	unsigned short	*leaf_key;			// [numleafs]
+#else
 	efrag_t			**leaf_efrags;		// [numleafs]
 	int				*leaf_key;			// [numleafs]
+#endif
 #ifdef QOG_EDGECACHE16
 	unsigned short	*edge_cache;		// [numedges] 16-bit form, see r_draw.c
 #else
@@ -570,9 +600,20 @@ int		R_DlightBits (model_t *m, msurface_t *surf);
 #define SURF_DLIGHTFRAME_IS(m, s, c)	DS_IS (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
 #define SURF_DLIGHTBITS(m, s)	(MODFRAME (m)->surf_dlightbits[(s) - (m)->surfaces])
 #endif
+#ifdef QOG_LEAF16
+#define LEAF_EFRAGS(m, l)		(EFRAG_HDR (MODFRAME (m)->leaf_efrags)->heads \
+	[MODFRAME (m)->leaf_efrags[(l) - (m)->leafs]])
+#define LEAF_KEY(m, l)			(MODFRAME (m)->leaf_key[(l) - (m)->leafs])
+// QuakeOG: a frame's keys stay far below 0x10000 (one per node, leaf and
+// drawn surface), the check makes sure a key is never silently cut
+#define LEAF_KEY_SET(m, l, k)	((void)((k) <= 0xFFFF || (Mod_LeafKeyOverflow (), 0)), \
+	LEAF_KEY (m, l) = (unsigned short)(k))
+void	Mod_LeafKeyOverflow (void);
+#else
 #define LEAF_EFRAGS(m, l)		(MODFRAME (m)->leaf_efrags[(l) - (m)->leafs])
 #define LEAF_KEY(m, l)			(MODFRAME (m)->leaf_key[(l) - (m)->leafs])
 #define LEAF_KEY_SET(m, l, k)	(LEAF_KEY (m, l) = (k))
+#endif
 #define EDGE_CACHE(m, e)		(MODFRAME (m)->edge_cache[(e) - (m)->edges])
 // QuakeOG: first frame of the 16-bit edge cache's window, an int stored just
 // before the array so inline submodels share it with their world

@@ -535,10 +535,14 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	// deal with model fragments in this leaf
 		if (LEAF_EFRAGS (cl.worldmodel, pleaf))
 		{
+#ifdef QOG_LEAF16
+			R_StoreLeafEfrags (pleaf);	// QuakeOG: the leaf's head may be shared
+#else
 			R_StoreEfrags (&LEAF_EFRAGS (cl.worldmodel, pleaf));
+#endif
 		}
 
-		LEAF_KEY (cl.worldmodel, pleaf) = r_currentkey;
+		LEAF_KEY_SET (cl.worldmodel, pleaf, r_currentkey);	// QuakeOG: QOG_LEAF16
 		r_currentkey++;		// all bmodels in a leaf share the same key
 	}
 	else

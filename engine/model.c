@@ -1598,6 +1598,20 @@ void FB_Clear (framebits_t *bits, int counter)
 }
 #endif
 
+#ifdef QOG_LEAF16
+/*
+=================
+Mod_LeafKeyOverflow
+
+QuakeOG: LEAF_KEY_SET found a key that 16 bits cannot hold.
+=================
+*/
+void Mod_LeafKeyOverflow (void)
+{
+	Sys_Error ("LEAF_KEY_SET: a key above 0xFFFF, QOG_LEAF16 cannot hold it");
+}
+#endif
+
 #ifdef QOG_FRAME16
 /*
 =================
@@ -3179,8 +3193,17 @@ static void Mod_FinishBrushModel (model_t *mod)
 	fr->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
 	fr->leaf_visframe = Mod_AllocFrameStamps (numleafs);
 #endif
+#ifdef QOG_LEAF16
+	// QuakeOG: the efrag heads, then a head number per leaf (all head 0,
+	// which stays NULL), and 16-bit keys
+	fr->leaf_efrags = (byte *)((efragheads_t *)Hunk_AllocName (sizeof(efragheads_t)
+		+ numleafs, loadname) + 1);
+	EFRAG_HDR (fr->leaf_efrags)->used = 1;
+	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(unsigned short), loadname);
+#else
 	fr->leaf_efrags = Hunk_AllocName (numleafs * sizeof(efrag_t *), loadname);
 	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(int), loadname);
+#endif
 #ifdef QOG_EDGECACHE16
 	// QuakeOG: window start (an int, zero) in front of the 16-bit entries
 	fr->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)
