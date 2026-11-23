@@ -2,6 +2,71 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Demo playback on the board (Agent O, PC and ARM build, registered data)
+
+A client-only host plays the recorded demos (demo1 on e1m3, demo2 on e1m4, demo3 on e1m6) with id's client, renderer and status bar, without server, QuakeC, console or sound: monsters, weapons, shooting, particles, explosions, the status bar and the bonus flashes. On the PC every host frame equals the normal game's playdemo frame. The board app pair `apps/qogdemo` links with 73,728 bytes of hunk, a 34,816-byte stack and 3,788 bytes free. It uses the one-byte z-buffer, which changes 0.073% of the view's pixels. Nothing ran on hardware.
+
+| Part | Where |
+| --- | --- |
+| Host: Host_Init's order without server, QuakeC, network, console, keys, menus and sound, plus `sv_gravity` (the client's particles fall by it). Each frame is the client half of `_Host_Frame` (rand, frame time, command buffer, `CL_ReadFromServer`, screen, `CL_DecayLights`), and the screen is `SCR_UpdateScreen`'s game view path (V_RenderView, centre print, status bar, intermission overlays, V_UpdatePalette, VID_Update). Nothing is drawn while id's screen would show the forced console or the loading plaque. The demo loop is id's (`CL_NextDemo`, `Host_EndGame` longjmps out of the frame) | `port/common/qog_demo.c` |
+| PC: `-qogdemo [-demos ...] [-demodt 0.05] [-demoseed 0] [-demohash] [-demodump a b] [-demoshots n] [-demohunk] [-demomanifest file]` runs the host and prints the peaks per demo. In the game `qog_demoloop <seed> <demos>` starts the same loop between two frames, `qog_quitafter <frames>` lets a script end so the command buffer stays free for the text a demo stuffs, `qog_srand` restarts the random sequence | `port/pc/demo_pc.c`, one call each in `port/pc/sys_pc.c` and `port/pc/vid_pc.c` |
+| Board: plays demo1, demo2, demo3 in a loop, gray skips to the next demo, and prints a status line every 2 s. `display/demo_wrap.c` and `display/demo_sv.c` define what the client and renderer refer to in the host, server, console, keys, menus, network and sound objects, so none of them is linked (the server state alone is 11,360 bytes) | `apps/qogdemo` |
+
+Engine flags (each off by default, only `QOG_DEMO_FLASH` and `QOG_ITEMBOX_NOLEAFS` are in the PC and board game lists):
+
+| Flag | What | Saved |
+| --- | --- | ---: |
+| `QOG_DEMO_FLASH` | A demo in a mapped pack is read in place and each message parsed where it lies (net_message points into the image, given back when playback stops). id's three freads are kept, including a field past the end staying as it was and an empty message stopping playback. No FILE, no message buffer | newlib FILE use, 7.5 KB loop buffer on the demo player |
+| `QOG_ITEMBOX_NOLEAFS` | Item box maps (`maps/b_*.bsp`) get no efrag heads or leaf keys. Only `cl.worldmodel`'s are ever used | 1,088 B of hunk per item box, 9.8 KB on e1m3 |
+| `QOG_CL_ENTSLOTS=n` | Client entities in n slots, given to entity numbers as they are first used (slot 0 is the world), with id's colormap rule. Loops over all entities still go in number order. Exact | e1m3 62,432 → 20,608 B of hunk with 192 slots |
+| `QOG_MAX_TEMP_ENTITIES=n` | Fewer beam segments (id 64) | 4,992 B static with 16 |
+| `QOG_EDGECACHE_FRAME=rows` | The world's edge cache in the frame buffer's first rows when the z-buffer has no room for it. Nothing reads them before the world's spans draw over them, and the previous scanout has ended. R_EdgeDrawing stops with an error if the 3D view does not cover them | 25 to 30 KB of hunk with the one-byte z-buffer |
+| `QOG_ZBUFFER8_NEAR=shift` | With Agent H's `QOG_ZBUFFER8`: 1/z below 1024 as before (shift 3), nearer in steps of 1 << shift above 128, so the weapon keeps its depth order (with one shift everything nearer than 16 units ties and the weapon shows its back faces) | 0 (picture) |
+
+Board settings (`apps/qogdemo/CMakeLists.txt`, its own engine library `qog_engine_demo` as `apps/qogfly`): 480 edge-drawing surfaces (demo peak 412), 1,800 stack edges so the edge table fits the one-byte z-buffer (peak 995), command buffer 256 bytes, 8 cached pics, 256-entry lit surface hash, `QOG_CL_ENTSLOTS=192`, `QOG_MAX_TEMP_ENTITIES=16`, `QOG_ZBUFFER8`, `QOG_ZBUFFER8_NEAR=7`, `QOG_EDGECACHE_FRAME=152`, zone 4 KB, hunk 72 KB, stack 34 KB.
+
+Peaks per demo (PC, board data layout): entity numbers up to 299 / 299 / 260, of which 178 / 169 / 150 are ever used, visible entities 47 / 31 / 55, particles 512 (the pool is full in each), static entities 44 / 40 / 16, models 157 / 139 / 160, dlights 3 / 3 / 7, surfaces 383 / 379 / 412, edges 852 / 789 / 995, temp entities and beams 0, zone 3,184 B. Hunk with the board settings: 25,840 B after the engine start, 63,952 / 64,160 / 59,056 B in the demos (the PC figure with one pak, as on the board).
+
+RAM on the board (`qogdemo_display`, region 262,144 bytes, linked):
+
+| User | Bytes |
+| --- | ---: |
+| Frame buffer and one-byte z-buffer (`video_mem`) | 97,280 |
+| Hunk (`QOGDEMO_HUNK_KB` 72) | 73,728 |
+| Stack (`QOGDEMO_STACK_KB` 34, R_EdgeDrawing 23,384, R_AliasDrawModel 9,256, D_PolysetDraw 6,504) | 34,816 |
+| Engine statics (`cl_lightstyle` 4,352, `cl` 2,832, MSG_ReadString's 2,048, `mod_known` 2,304, `cls` 1,284, ...) | 37,726 |
+| SDK, BSP and libc | 6,079 |
+| qog_video and the rest of vid_rp2040 (surface cache header 1,024, 16-bit palette 512) | 4,599 |
+| App (`demo_wrap.c`, `demo_sv.c`, `qog_demo.c`, the rest of `main.c` and `sys_rp2040.c`) | 472 |
+| Heap left (`free` in the status line) | 3,788 |
+
+Without the one-byte z-buffer the player needs 44,852 bytes more than the board has, without the entity slots another 41,824.
+
+Verification, hidden and silent:
+
+- Host against game, full paks: `qogtest_o_ref1.cfg` to `_ref3.cfg` (`qog_demoloop 0 demoN`, `con_notifytime -1`, `crosshair 0`, `qog_quitafter`) against `-qogdemo -demos demoN -demohash`: 1,486, 1,399 and 1,647 host frames, each run found as one contiguous run in the game's frame hashes (pixels and palette). `qogtest_o_loop.cfg` (the three demo loop) against `-qogdemo`: 4,532 host frames, the three demos contiguous, the game has one more frame between demos (the loading plaque, which the host does not draw).
+- Board data layout (`build-board\qogdemo`) against the game on the full paks: the same three results with the normal build and with a PC build of the board settings that keep the picture (`-DQOG_PC_DEMO_BOARD=ON`: entity slots, temp entities, lit surface hash, cached pics, command buffer, edge cache flag).
+- One-byte z-buffer (`-DQOG_PC_DEMO_Z8=ON` as well) against that build, every 50th frame of the loop: 91 frames, 13 identical, 0.073% of view pixels differ on average, at most 126 pixels (far models and particle edges), status bar rows identical. With `QOG_ZBUFFER8` alone it was 0.81%, at most 1,144 pixels (the weapon). No edge moves or stack fallbacks of the edges in the z-buffer in any run.
+- Normal game against a build of 1f2afb6 (`build-pc-base`): `qogtest_hash.cfg` state hashes identical, 113 frames of `qogtest_d_shots.cfg` byte-identical (run after `qogtest_k_quiet.cfg`, as two base runs differ in the notify rows otherwise).
+- `apps/qogfly` still links.
+
+Lessons from the PC comparison: the host's own `rand()` call is MSVC's or newlib's, because only engine files are built with `-Drand=qog_rand` (it now calls `qog_rand`), `sv_gravity` is a server cvar the client's particles read, and a script's waits hold back the "bf" a demo stuffs (docs/lessons.md L46 to L48).
+
+Build and flash:
+
+```powershell
+python tools\mkboard.py --pak ..\quake-2040\data\id1\pak0.pak --pak ..\quake-2040\data\id1\pak1.pak `
+    --manifests build-pc-dev\manifests-demo --maps start --demos `
+    --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps -o build-board\qogdemo
+cmake --preset target -DQOGDEMO_HUNK_KB=72 -DQOGDEMO_STACK_KB=34
+cmake --build build --target qogdemo_main
+```
+
+The manifests: `start.txt` from the game (`+exec qogtest_o_manifest.cfg`), `demos.txt` from the host (`-qogdemo -zone 4 -demomanifest build-pc-dev/manifests-demo/demos.txt`, full paks). The data image is `build-board\qogdemo.uf2` (10,479,264 bytes of data: pak 5,117,392 with map stubs at 0x10400000 holding the three demos, qogbake.bin 5,301,920 at 0x108F0000, 68 models, 83.7% of the region). The app is `build\apps\qogdemo\qogdemo_main.uf2` (`python third_party/wiliOGbsp/tools/fw.py flash qogdemo --uf2 build/apps/qogdemo/qogdemo_main.uf2`). The USB console prints `[qogdemo] engine started, hunk <used>/<size>, free <bytes>` once (possibly before USB is up), id's messages as they come (`Playing demo from demo1.dem.`, the level name, `You got the shells`, ...), and every 2 s `[qogdemo] <demo> t <cl.time>  fps <f>  ms frame <ms> wait <ms>  free <bytes>  stack <bytes>  hunk <used>/<size>`: frames per second over the last 2 s, the mean time per drawn frame in qog_demo_frame and of it the wait for the previous scanout, the heap left, the deepest stack use so far and the hunk in use. id clamps a frame to 0.1 s, so below 10 fps a demo plays slower than recorded.
+
+- Engine files changed: `engine/cl_demo.c`, `engine/cl_main.c`, `engine/cl_parse.c`, `engine/cl_tent.c`, `engine/client.h`, `engine/d_local.h`, `engine/model.c`, `engine/r_main.c`, `engine/view.c`, all behind the flags above. One new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`, and the `QOG_PC_DEMO_BOARD` and `QOG_PC_DEMO_Z8` test options in `pc/CMakeLists.txt` (off by default).
+- The bake layout hash did not change, so the shared `data/id1/qogbake.bin` still loads.
+
 ## 2026-11-23: Per-level map arrays (Agent L, PC and ARM build, registered data)
 
 The map's hunk block (the per-frame arrays `Mod_FinishBrushModel` allocates next to the edge cache) on E1M1 92,128 → 34,720 bytes, on e3m5 (the worst map) 116,112 → 43,024, on e4m7 115,136 → 42,528. Static RAM +6,164 bytes (the light hash). Net saving 51.2 KB on E1M1, 65.4 KB on e3m5. The edge cache (27,024 bytes on E1M1, Agent K's) is untouched and still allocated in the same place. Every change keeps the picture byte-identical and is on in both flag lists. Nothing ran on hardware.
