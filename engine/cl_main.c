@@ -44,10 +44,17 @@ cvar_t	m_side = {"m_side","0.8", true};
 client_static_t	cls;
 client_state_t	cl;
 // FIXME: put these on hunk?
+#ifndef QOG_STATICS_ON_HUNK
 efrag_t			cl_efrags[MAX_EFRAGS];
+#endif
 entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level in CL_ClearState
 int				cl_max_edicts;
+#ifndef QOG_STATICS_ON_HUNK
 entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
+#else
+int				cl_statics_left;	// QuakeOG: see CL_AllocStatic
+int				cl_efrags_made;
+#endif
 lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 dlight_t		cl_dlights[MAX_DLIGHTS];
 
@@ -73,7 +80,12 @@ void CL_ClearState (void)
 	SZ_Clear (&cls.message);
 
 // clear other arrays	
+#ifdef QOG_STATICS_ON_HUNK
+	cl_statics_left = 0;	// QuakeOG: the hunk blocks of the last level are gone
+	cl_efrags_made = 0;
+#else
 	memset (cl_efrags, 0, sizeof(cl_efrags));
+#endif
 	// QuakeOG: sized per level on the hunk (zeroed). With a local server the
 	// client never sees an entity number past the server's array.
 	cl_max_edicts = sv.active ? sv.max_edicts : MAX_EDICTS;
@@ -86,11 +98,89 @@ void CL_ClearState (void)
 //
 // allocate the efrags and chain together into a free list
 //
+#ifdef QOG_STATICS_ON_HUNK
+	cl.free_efrags = NULL;	// QuakeOG: filled on demand, see CL_LinkStatic
+#else
 	cl.free_efrags = cl_efrags;
 	for (i=0 ; i<MAX_EFRAGS-1 ; i++)
 		cl.free_efrags[i].entnext = &cl.free_efrags[i+1];
 	cl.free_efrags[i].entnext = NULL;
+#endif
 }
+
+#ifdef QOG_STATICS_ON_HUNK
+/*
+=====================
+QuakeOG: static entities and their efrags on the hunk
+
+id keeps 128 static entities (23 KB) and 640 efrags (10 KB) in fixed
+arrays. Only static entities use efrags. Here both come from the hunk in
+small blocks as the signon brings them, and go away with the level like the
+rest of the hunk. Shareware peaks: 44 static entities, 197 efrags, 16 for
+one entity. The totals stay capped at id's MAX_STATIC_ENTITIES and
+MAX_EFRAGS, so running out behaves the same.
+=====================
+*/
+#define	STATICS_BLOCK	8		// entities per hunk block
+#define	EFRAGS_BLOCK	32		// efrags per hunk block, also the reserve
+
+static entity_t	*cl_statics_next;
+
+entity_t *CL_AllocStatic (void)
+{
+	if (!cl_statics_left)
+	{
+		cl_statics_next = Hunk_AllocName (STATICS_BLOCK * sizeof(entity_t), "statics");
+		cl_statics_left = STATICS_BLOCK;
+	}
+	cl_statics_left--;
+	return cl_statics_next++;
+}
+
+static int CL_FreeEfrags (void)
+{
+	efrag_t	*ef;
+	int		n;
+
+	n = 0;
+	for (ef = cl.free_efrags ; ef ; ef = ef->entnext)
+		n++;
+	return n;
+}
+
+static qboolean CL_MoreEfrags (void)
+{
+	efrag_t	*block;
+	int		i, n;
+
+	n = MAX_EFRAGS - cl_efrags_made;
+	if (n <= 0)
+		return false;
+	if (n > EFRAGS_BLOCK)
+		n = EFRAGS_BLOCK;
+	block = Hunk_AllocName (n * sizeof(efrag_t), "efrags");
+	for (i=0 ; i<n-1 ; i++)
+		block[i].entnext = &block[i+1];
+	block[i].entnext = cl.free_efrags;	// in front, taken in order like id's array
+	cl.free_efrags = block;
+	cl_efrags_made += n;
+	return true;
+}
+
+void CL_LinkStatic (entity_t *ent)
+{
+	if (CL_FreeEfrags () < EFRAGS_BLOCK)
+		CL_MoreEfrags ();
+	R_AddEfrags (ent);
+	// the free list ran dry, so the entity may be missing leafs: take it
+	// out, add a block and link it again (never seen with the reserve)
+	while (!cl.free_efrags && CL_MoreEfrags ())
+	{
+		R_RemoveEfrags (ent);
+		R_AddEfrags (ent);
+	}
+}
+#endif
 
 /*
 =====================

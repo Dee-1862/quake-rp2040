@@ -673,7 +673,11 @@ void CL_ParseStatic (void)
 	i = cl.num_statics;
 	if (i >= MAX_STATIC_ENTITIES)
 		Host_Error ("Too many static entities");
+#ifdef QOG_STATICS_ON_HUNK
+	ent = CL_AllocStatic ();	// QuakeOG: from the hunk, see cl_main.c
+#else
 	ent = &cl_static_entities[i];
+#endif
 	cl.num_statics++;
 	CL_ParseBaseline (ent);
 
@@ -686,7 +690,11 @@ void CL_ParseStatic (void)
 
 	VectorCopy (ent->baseline.origin, ent->origin);
 	VectorCopy (ent->baseline.angles, ent->angles);	
+#ifdef QOG_STATICS_ON_HUNK
+	CL_LinkStatic (ent);	// QuakeOG: R_AddEfrags with efrags from the hunk
+#else
 	R_AddEfrags (ent);
+#endif
 }
 
 /*
