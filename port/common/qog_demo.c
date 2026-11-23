@@ -20,6 +20,7 @@ extern double	oldrealtime;
 extern jmp_buf	host_abortserver;
 extern int		clearconsole, clearnotify;
 extern int		num_temp_entities;
+extern int		r_qog_peaksurfs, r_qog_peakedges;	// r_main.c, R_EdgeDrawing
 extern cvar_t	sv_gravity;		// sv_phys.c, read by R_DrawParticles
 float CalcFov (float fov_x, float width, float height);	// screen.c
 void SCR_DrawRam (void);
@@ -332,11 +333,21 @@ static void demo_note_peaks (void)
 
 #define PEAK(f, v)	do { if ((v) > demo_peaks.f) demo_peaks.f = (v); } while (0)
 	PEAK (entities, cl.num_entities);
+	for (i = 0, n = 0 ; i < cl.num_entities ; i++)	// entity numbers ever given a model or an update
+	{
+		entity_t	*e = CL_ENTITY_IFANY (i);
+
+		if (e && (e->baseline.modelindex || e->msgtime || e->model))
+			n++;
+	}
+	PEAK (usedents, n);
 	PEAK (visedicts, cl_numvisedicts);
 	PEAK (particles, qog_demo_particles ());
 	PEAK (statics, cl.num_statics);
 	PEAK (tempents, num_temp_entities);
 	PEAK (hunk_low, hunk_low_used);
+	PEAK (surfs, r_qog_peaksurfs);
+	PEAK (edges, r_qog_peakedges);
 	for (i = 1, n = 0 ; i < MAX_MODELS && cl.model_precache[i] ; i++)
 		n++;
 	PEAK (models, n);
@@ -364,6 +375,7 @@ const qog_demo_peaks_t *qog_demo_peaks (void)
 void qog_demo_reset_peaks (void)
 {
 	memset (&demo_peaks, 0, sizeof(demo_peaks));
+	r_qog_peaksurfs = r_qog_peakedges = 0;
 }
 
 /* The client half of id's _Host_Frame. */

@@ -106,7 +106,16 @@ extern void D_PolysetAff8End (void);
 #define QOG_ZBUFFER8_SHIFT	3
 #endif
 typedef byte	d_zval_t;
+#ifdef QOG_ZBUFFER8_NEAR
+// QuakeOG: two ranges. A 1/z value below 1024 (farther than 32 units) is
+// shifted right by 3 as above, into 0..127. Nearer is 128 and up in steps of
+// 1 << QOG_ZBUFFER8_NEAR, so the weapon and models up close keep their own
+// depth order (with the single shift everything nearer than 16 units ties).
+#define D_ZQ(z)	((z) < 0 ? 0 : (z) < 1024 ? (z) >> 3 : (((z) - 1024) >> QOG_ZBUFFER8_NEAR) > 127 ? 255 \
+				 : 128 + (((z) - 1024) >> QOG_ZBUFFER8_NEAR))
+#else
 #define D_ZQ(z)	((z) < 0 ? 0 : ((z) >> QOG_ZBUFFER8_SHIFT) > 255 ? 255 : ((z) >> QOG_ZBUFFER8_SHIFT))
+#endif
 #else
 typedef short	d_zval_t;
 #define D_ZQ(z)	(z)

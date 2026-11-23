@@ -49,6 +49,10 @@ efrag_t			cl_efrags[MAX_EFRAGS];
 #endif
 entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level in CL_ClearState
 int				cl_max_edicts;
+#ifdef QOG_CL_ENTSLOTS
+byte			*cl_entslot;
+static int		cl_numslots;
+#endif
 #ifndef QOG_STATICS_ON_HUNK
 entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 #else
@@ -89,7 +93,15 @@ void CL_ClearState (void)
 	// QuakeOG: sized per level on the hunk (zeroed). With a local server the
 	// client never sees an entity number past the server's array.
 	cl_max_edicts = sv.active ? sv.max_edicts : MAX_EDICTS;
+#ifdef QOG_CL_ENTSLOTS
+	// QuakeOG: slots for the entity numbers in use, see CL_EntitySlot
+	cl_entities = Hunk_AllocName (QOG_CL_ENTSLOTS * sizeof(entity_t), "cl_ents");
+	cl_entslot = Hunk_AllocName (cl_max_edicts, "cl_slots");
+	cl_entslot[0] = 1;
+	cl_numslots = 1;
+#else
 	cl_entities = Hunk_AllocName (cl_max_edicts * sizeof(entity_t), "cl_ents");
+#endif
 	memset (cl_dlights, 0, sizeof(cl_dlights));
 	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
 	memset (cl_temp_entities, 0, sizeof(cl_temp_entities));
@@ -107,6 +119,39 @@ void CL_ClearState (void)
 	cl.free_efrags[i].entnext = NULL;
 #endif
 }
+
+#ifdef QOG_CL_ENTSLOTS
+/*
+=====================
+CL_EntitySlot
+
+QuakeOG: id keeps an entity_t for every entity number up to the highest
+seen (600 on the hunk without a local server, 62 KB). A demo of an E1 map
+uses numbers up to 299 but at most 178 different ones. Here a number gets
+one of QOG_CL_ENTSLOTS slots when it is first used, zeroed like id's array,
+with the colormap id's CL_EntityNum gives the numbers below
+cl.num_entities. Every read and write goes to the same entity as in id, and
+the loops over all entities still go in number order, skipping the numbers
+that never had a slot (id's entity there is empty).
+=====================
+*/
+entity_t *CL_EntitySlot (int num)
+{
+	entity_t	*ent;
+
+	if (num < 0 || num >= cl_max_edicts)
+		Host_Error ("CL_EntitySlot: %i is an invalid number", num);
+	if (cl_entslot[num])
+		return &cl_entities[cl_entslot[num] - 1];
+	if (cl_numslots >= QOG_CL_ENTSLOTS || cl_numslots >= 255)
+		Host_Error ("CL_EntitySlot: more than %i entities in use", cl_numslots);
+	ent = &cl_entities[cl_numslots++];		// zeroed by the hunk
+	cl_entslot[num] = cl_numslots;
+	if (num < cl.num_entities)
+		ent->colormap = vid.colormap;		// as CL_EntityNum set it
+	return ent;
+}
+#endif
 
 #ifdef QOG_STATICS_ON_HUNK
 /*
@@ -346,10 +391,18 @@ void CL_PrintEntities_f (void)
 	entity_t	*ent;
 	int			i;
 	
+#ifdef QOG_CL_ENTSLOTS
+	for (i=0 ; i<cl.num_entities ; i++)
+	{
+		Con_Printf ("%3i:",i);
+		ent = CL_ENTITY_IFANY (i);
+		if (!ent || !ent->model)
+#else
 	for (i=0,ent=cl_entities ; i<cl.num_entities ; i++,ent++)
 	{
 		Con_Printf ("%3i:",i);
 		if (!ent->model)
+#endif
 		{
 			Con_Printf ("EMPTY\n");
 			continue;
@@ -573,8 +626,15 @@ void CL_RelinkEntities (void)
 	bobjrotate = anglemod(100*cl.time);
 	
 // start on the entity after the world
+#ifdef QOG_CL_ENTSLOTS
+	for (i=1 ; i<cl.num_entities ; i++)
+	{
+		if (!(ent = CL_ENTITY_IFANY (i)))
+			continue;	// never used: id's entity there is empty and not forcelinked
+#else
 	for (i=1,ent=cl_entities+1 ; i<cl.num_entities ; i++,ent++)
 	{
+#endif
 		if (!ent->model)
 		{	// empty slot
 			if (ent->forcelink)

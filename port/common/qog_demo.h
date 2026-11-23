@@ -57,7 +57,9 @@ const char *qog_demo_name (void);
    temp entities and beams active in one frame, low hunk used. */
 typedef struct
 {
+	int		usedents;		/* entity numbers with a baseline, an update or a model */
 	int		entities, visedicts, particles, statics, models, tempents, beams, dlights;
+	int		surfs, edges;	/* most edge-drawing surfaces and edges in one frame */
 	int		hunk_low;
 	int		frames;		/* frames presented */
 } qog_demo_peaks_t;

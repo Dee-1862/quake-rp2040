@@ -54,7 +54,7 @@ CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE", "-DQOG_LEAF16"]
 # Renderer temporary memory in the z-buffer (Agent K, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_EDGES_IN_ZBUFFER", "-DQOG_EDGECACHE_ZBUFFER", "-DQOG_SND_ONINIT", "-DQOG_LOOP_ONINIT", "-DQOG_PACKDIR_CHUNKED"]
 # Demo playback (Agent O, pc/CMakeLists.txt)
-CFLAGS += ["-DQOG_DEMO_FLASH"]
+CFLAGS += ["-DQOG_DEMO_FLASH", "-DQOG_ITEMBOX_NOLEAFS"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

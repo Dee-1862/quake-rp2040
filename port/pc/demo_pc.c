@@ -61,10 +61,12 @@ static void demo_print_peaks (const char *what)
 	const qog_demo_peaks_t	*p = qog_demo_peaks ();
 	const qog_mem_t			*m = qog_mem_sample ();
 
+	Sys_Printf ("demo peaks %s: entity numbers used %d\n", what, p->usedents);
 	Sys_Printf ("demo peaks %s: frames %d entities %d visedicts %d particles %d statics %d models %d "
-				"tempents %d beams %d dlights %d hunk low %d (peak %d) high %d\n", what, p->frames,
-				p->entities, p->visedicts, p->particles, p->statics, p->models, p->tempents, p->beams,
-				p->dlights, p->hunk_low, m->peak_low, m->peak_high);
+				"tempents %d beams %d dlights %d surfs %d edges %d hunk low %d (peak %d) high %d "
+				"zone peak %d of %d\n", what, p->frames, p->entities, p->visedicts, p->particles,
+				p->statics, p->models, p->tempents, p->beams, p->dlights, p->surfs, p->edges,
+				p->hunk_low, m->peak_low, m->peak_high, m->peak_zone, m->zone_size);
 }
 
 void qog_demo_pc_main (quakeparms_t *parms)
@@ -122,6 +124,7 @@ void qog_demo_pc_main (quakeparms_t *parms)
 		demo_print_peaks (last);
 	if (COM_CheckParm ("-demohunk"))
 		Hunk_Print (true);
+	Cmd_ExecuteString ("qog_rpeaks", src_command);	// span and z-buffer edge figures (vid_pc.c)
 	Sys_Printf ("demo: done, %d frames, %d presented, hunk low %d high %d\n", i, presented,
 				hunk_low_used, hunk_high_used);
 	i = COM_CheckParm ("-demomanifest");

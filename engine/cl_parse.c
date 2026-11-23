@@ -84,12 +84,17 @@ entity_t	*CL_EntityNum (int num)
 			Host_Error ("CL_EntityNum: %i is an invalid number",num);
 		while (cl.num_entities<=num)
 		{
+#ifdef QOG_CL_ENTSLOTS
+			if (cl_entslot[cl.num_entities])	// QuakeOG: a slot given before (CL_EntitySlot)
+				cl_entities[cl_entslot[cl.num_entities] - 1].colormap = vid.colormap;
+#else
 			cl_entities[cl.num_entities].colormap = vid.colormap;
+#endif
 			cl.num_entities++;
 		}
 	}
 		
-	return &cl_entities[num];
+	return CL_ENTITY (num);
 }
 
 

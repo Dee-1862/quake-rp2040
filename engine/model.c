@@ -3193,16 +3193,31 @@ static void Mod_FinishBrushModel (model_t *mod)
 	fr->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
 	fr->leaf_visframe = Mod_AllocFrameStamps (numleafs);
 #endif
+#ifdef QOG_ITEMBOX_NOLEAFS
+	// QuakeOG: efrags and leaf keys are only ever kept in the world's leafs
+	// (LEAF_EFRAGS and LEAF_KEY are only used with cl.worldmodel), and an
+	// item box map is never the world, so it gets neither
+	if (Mod_IsItemBox (loadmodel->name))
+	{
+		fr->leaf_efrags = NULL;
+		fr->leaf_key = NULL;
+	}
+	else
+#endif
 #ifdef QOG_LEAF16
+	{
 	// QuakeOG: the efrag heads, then a head number per leaf (all head 0,
 	// which stays NULL), and 16-bit keys
 	fr->leaf_efrags = (byte *)((efragheads_t *)Hunk_AllocName (sizeof(efragheads_t)
 		+ numleafs, loadname) + 1);
 	EFRAG_HDR (fr->leaf_efrags)->used = 1;
 	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(unsigned short), loadname);
+	}
 #else
+	{
 	fr->leaf_efrags = Hunk_AllocName (numleafs * sizeof(efrag_t *), loadname);
 	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(int), loadname);
+	}
 #endif
 #if defined(QOG_EDGECACHE_ZBUFFER)
 	// QuakeOG: the renderer keeps the world's edge cache in the z-buffer

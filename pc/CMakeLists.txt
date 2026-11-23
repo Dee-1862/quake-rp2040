@@ -198,4 +198,25 @@ target_sources(quakeog_pc PRIVATE
     ${ROOT}/port/common/qog_demo.c
     ${ROOT}/port/pc/demo_pc.c)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_DEMO_FLASH)                 # a demo in a mapped pack is read and parsed in place, no FILE
+    QOG_DEMO_FLASH                  # a demo in a mapped pack is read and parsed in place, no FILE
+    QOG_ITEMBOX_NOLEAFS)            # item box maps get no efrag heads or leaf keys, only the world uses them
+# Test build only (default off): the engine settings of the board's demo
+# player (apps/qogdemo/CMakeLists.txt) that change what it can hold or draw,
+# so the PC can measure them. -DQOG_PC_DEMO_BOARD=ON in a separate build
+# folder. Never for the normal game.
+# QOG_PC_DEMO_BOARD has the settings that keep the picture, QOG_PC_DEMO_Z8
+# adds the one-byte z-buffer, which changes it.
+option(QOG_PC_DEMO_BOARD "PC test build with the board demo player's engine settings" OFF)
+option(QOG_PC_DEMO_Z8 "with QOG_PC_DEMO_BOARD, also the board demo player's one-byte z-buffer" OFF)
+if(QOG_PC_DEMO_BOARD)
+    get_target_property(_pcdemo_defs quakeog_pc COMPILE_DEFINITIONS)
+    list(TRANSFORM _pcdemo_defs REPLACE "^QOG_MAX_CACHED_PICS=[0-9]+$" "QOG_MAX_CACHED_PICS=8")
+    list(APPEND _pcdemo_defs
+        QOG_CL_ENTSLOTS=192 QOG_MAX_TEMP_ENTITIES=16 QOG_DLIGHT_SURFS=256 QOG_EDGECACHE_FRAME=152
+        QOG_CMDBUF_SIZE=256)
+    if(QOG_PC_DEMO_Z8)
+        list(TRANSFORM _pcdemo_defs REPLACE "^QOG_NUMSTACKEDGES=[0-9]+$" "QOG_NUMSTACKEDGES=1800")
+        list(APPEND _pcdemo_defs QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7)
+    endif()
+    set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_pcdemo_defs}")
+endif()
