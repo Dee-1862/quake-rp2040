@@ -96,10 +96,21 @@ static void update_title(void) {
 /* `qog_framehash 1` prints a hash of every presented frame (pixels and
    palette) to stdout, so a whole scripted run, tours and fights included,
    can be compared frame by frame against another build. `qog_framehash 0`
-   stops it. stdout only, so the console and the frame stay untouched. */
-static int s_framehash;
+   stops it. stdout only, so the console and the frame stay untouched.
+   `qog_framehash 1 <first> <last>` also saves the frames with those
+   positions in the hash list (counted from 0) as shots fd_<position>.
+   While hashing, the console cursor does not blink: its blink follows real
+   time, which would make the same frame differ between runs. */
+static int s_framehash, s_fh_index, s_fh_first = -1, s_fh_last = -1;
+static void write_shot(const char *name);
 static void cmd_qog_framehash(void) {
+    extern float con_cursorspeed;
     s_framehash = Cmd_Argc() > 1 ? Q_atoi(Cmd_Argv(1)) : !s_framehash;
+    if (Cmd_Argc() > 3) {
+        s_fh_first = Q_atoi(Cmd_Argv(2));
+        s_fh_last = Q_atoi(Cmd_Argv(3));
+    }
+    con_cursorspeed = s_framehash ? 0 : 4;
 }
 static void framehash_print(void) {
     unsigned h = 2166136261u;
@@ -110,6 +121,8 @@ static void framehash_print(void) {
         h = (h ^ s_bmi.pal[i].rgbBlue) * 16777619u;
     }
     Sys_Printf("fh %d %08x\n", host_framecount, h);
+    if (s_fh_index >= s_fh_first && s_fh_index <= s_fh_last) write_shot(va("fd_%05d", s_fh_index));
+    s_fh_index++;
 }
 
 void VID_Update(vrect_t *rects) {
@@ -134,8 +147,10 @@ void VID_HandlePause(qboolean pause) { (void)pause; }
 /* `qog_shot [name]` writes the current 8-bit frame as build-pc-shots/<name>.bmp
    so renderer changes can be compared frame by frame. */
 static void cmd_qog_shot(void) {
+    write_shot(Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot");
+}
+static void write_shot(const char *name) {
     char path[256];
-    const char *name = Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot";
     CreateDirectoryA(QOG_SHOT_DIR, NULL);
     snprintf(path, sizeof path, "%s/%s.bmp", QOG_SHOT_DIR, name);
     FILE *f = fopen(path, "wb");
@@ -153,7 +168,8 @@ static void cmd_qog_shot(void) {
     fwrite(s_bmi.pal, pal_bytes, 1, f);
     fwrite(vid_buffer, img, 1, f);
     fclose(f);
-    Con_Printf("qog_shot: wrote %s (frame %d, cl.time %.3f, realtime %.3f)\n", path, host_framecount, cl.time, realtime);
+    if (strncmp(name, "fd_", 3))   /* frame hash dumps stay out of the console */
+        Con_Printf("qog_shot: wrote %s (frame %d, cl.time %.3f, realtime %.3f)\n", path, host_framecount, cl.time, realtime);
 }
 
 /* ---- keyboard -------------------------------------------------------- */
