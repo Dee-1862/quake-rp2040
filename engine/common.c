@@ -1628,7 +1628,8 @@ pack_t *COM_LoadPackFile (char *packfile)
 	int                             numpackfiles;
 	pack_t                  *pack;
 	int                             packhandle;
-	dpackfile_t             info[MAX_FILES_IN_PACK];
+	dpackfile_t             *info;	// QuakeOG: was a 128 KB stack array, see below
+	int                     himark;
 	unsigned short          crc;
 	int                     packlen;
 
@@ -1655,6 +1656,11 @@ pack_t *COM_LoadPackFile (char *packfile)
 
 	newfiles = Hunk_AllocName (numpackfiles * sizeof(packfile_t), "packfile");
 
+	// QuakeOG: the directory goes into a temporary block on the high hunk,
+	// sized to this pack (21 KB for pak0), instead of a MAX_FILES_IN_PACK
+	// array on the stack (128 KB, more than the RP2040's whole stack)
+	himark = Hunk_HighMark ();
+	info = Hunk_HighAllocName (header.dirlen, "packdir");
 	Sys_FileSeek (packhandle, header.dirofs);
 	Sys_FileRead (packhandle, (void *)info, header.dirlen);
 
@@ -1672,6 +1678,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 		newfiles[i].filepos = LittleLong(info[i].filepos);
 		newfiles[i].filelen = LittleLong(info[i].filelen);
 	}
+	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the temporary directory
 
 	pack = Hunk_Alloc (sizeof (pack_t));
 	strcpy (pack->filename, packfile);
