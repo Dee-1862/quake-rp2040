@@ -47,3 +47,18 @@ The whole registered game is about 50 MB; the board's game-data region is 12–1
 - **Levels on demand:** the OG has no Wi-Fi or Bluetooth, so the path is USB to a PC companion app. It converts a level from the user's own pak and streams it into the flash data region (estimated 3–15 s per level; benchmark it). That makes all four episodes playable on a 16 MB chip. Saves go back to a PC folder, which the user may sync to their own cloud. A public server would be redistribution and is not allowed.
 - **Controller:** no USB host or Bluetooth on the OG. First the PC companion relays a gamepad over USB. For untethered play, an ESP32 running Bluepad32 wired to the main CPU's UART1 pins.
 - **FREE-WILi 2** (two RP2350B, 520 KB SRAM and 8 MB PSRAM each, Wi-Fi and Bluetooth via an ESP32-C5, USB host): today's build would fit as is, so it's an easy later port, not the headline.
+
+## Stack: the hidden budget (measured on the ARM build, `tools/arm_report.py`)
+
+The PC measurements never counted the stack, and id puts big work tables there. Biggest frames on the RP2040 build after the fixes so far:
+
+| Function | Frame | Note |
+| --- | ---: | --- |
+| R_EdgeDrawing | 92 KB | edge and surface tables (128 KB before measured sizing) |
+| R_AliasDrawModel | 88 KB | per-vertex work arrays for up to 1024 model vertices |
+| R_RenderView_ | 64 KB | underwater warp buffer |
+| R_RenderWorld | 40 KB | back-to-front poly list (unused path) |
+| D_PolysetDraw | 33 KB | model span table |
+| CL_ParseServerInfo / Host_Loadgame_f | 32 KB each | precache name lists at load time |
+
+COM_LoadPackFile (128 KB) is already fixed. The render chain alone still stacks about 190 KB. MG24Quake kept these tables in a 36 KB stack by packing edges, surfaces and spans and reusing the z-buffer, which is the next engine-only target.
