@@ -105,12 +105,28 @@ typedef struct msurface_s
 	// QuakeOG: visframe, dlightframe and dlightbits moved to RAM arrays in
 	// model_t (SURF_VISFRAME and friends) so surfaces can be read only
 
+#ifdef QOG_SURF_INDEX
+	// QuakeOG: the file's 16-bit plane and texinfo numbers instead of
+	// pointers, use SURF_PLANE and SURF_TEXINFO with the owning model
+	unsigned short	planenum;
+	unsigned short	texinfonum;
+#else
 	mplane_t	*plane;
+#endif
+#ifdef QOG_SURF_PACKED
+	// QuakeOG: flags fit 16 bits (SURF_* up to 0x40) and numedges is the
+	// file's 16-bit count, so the two share one word (msurface_t 36 to 32 B)
+	unsigned short	flags;
+	short		numedges;	// are backwards edges
+
+	int			firstedge;	// look up in model->surfedges[], negative numbers
+#else
 	int			flags;
 
 	int			firstedge;	// look up in model->surfedges[], negative numbers
 	int			numedges;	// are backwards edges
-	
+#endif
+
 #ifdef QOG_SURFCACHE
 // surface generation data
 	struct surfcache_s	*cachespots[MIPLEVELS];
@@ -119,12 +135,34 @@ typedef struct msurface_s
 	short		texturemins[2];
 	short		extents[2];
 
+#ifndef QOG_SURF_INDEX
 	mtexinfo_t	*texinfo;
+#endif
 	
 // lighting info
 	byte		styles[MAXLIGHTMAPS];
 	byte		*samples;		// [numstyles*surfsize]
 } msurface_t;
+
+// QuakeOG: a surface's plane and texinfo; m is the model that owns it
+#ifdef QOG_SURF_INDEX
+#define SURF_PLANE(m, s)	((m)->planes + (s)->planenum)
+#define SURF_TEXINFO(m, s)	((m)->texinfo + (s)->texinfonum)
+#else
+#define SURF_PLANE(m, s)	((s)->plane)
+#define SURF_TEXINFO(m, s)	((s)->texinfo)
+#endif
+
+// QuakeOG: with QOG_MARKSURF16 a mark surface is the file's 16-bit surface
+// number (read in place from flash when possible) instead of a pointer.
+// The file format stores 16-bit numbers, so no map loses anything.
+#ifdef QOG_MARKSURF16
+typedef unsigned short	marksurf_t;
+#define MARKSURF_NUM(m, mk)	(*(mk))
+#else
+typedef struct msurface_s	*marksurf_t;
+#define MARKSURF_NUM(m, mk)	(*(mk) - (m)->surfaces)
+#endif
 
 typedef struct mnode_s
 {
@@ -160,10 +198,24 @@ typedef struct mleaf_s
 	byte		*compressed_vis;
 	// QuakeOG: efrags and key moved to model_t (LEAF_EFRAGS, LEAF_KEY)
 
-	msurface_t	**firstmarksurface;
+#ifdef QOG_LEAF_PACKED
+	// QuakeOG: the file's 16-bit first index and count (mleaf_t 36 to 32 B),
+	// use LEAF_MARKSURFACES
+	unsigned short	firstmarksurface;
+	unsigned short	nummarksurfaces;
+#else
+	marksurf_t	*firstmarksurface;	// QuakeOG: see marksurf_t
 	int			nummarksurfaces;
+#endif
 	byte		ambient_sound_level[NUM_AMBIENTS];
 } mleaf_t;
+
+// QuakeOG: a leaf's first mark surface in model m
+#ifdef QOG_LEAF_PACKED
+#define LEAF_MARKSURFACES(m, l)	((m)->marksurfaces + (l)->firstmarksurface)
+#else
+#define LEAF_MARKSURFACES(m, l)	((l)->firstmarksurface)
+#endif
 
 // !!! if this is changed, it must be changed in asm_i386.h too !!!
 typedef struct
@@ -297,6 +349,36 @@ typedef struct {
 
 typedef enum {mod_brush, mod_sprite, mod_alias} modtype_t;
 
+// QuakeOG: id's per-frame stamps (a surface's or node's visframe, a
+// surface's dlightframe) are only ever compared for equality with a counter
+// that never goes back (r_framecount, r_visframecount, r_dlightframecount),
+// so a stamp from an earlier value never matches again. With QOG_FRAME16 a
+// stamp is 16 bits, counted from a base kept in front of its array with
+// the array's length (FS_BASE, FS_COUNT). A write whose counter is a whole
+// window past the base first refills the array with 0xFFFF, which never
+// matches, and moves the base to that counter. Reads of a counter outside
+// the window match nothing, as no stamp can hold it. A fresh array is all
+// zero with base 0, exactly like id's zeroed int array. Results are
+// identical to id's for every counter value. FS_IS and FS_SET evaluate
+// their arguments more than once: pass plain expressions only.
+#ifdef QOG_FRAME16
+typedef unsigned short	framestamp_t;
+#ifndef QOG_FRAME16_WINDOW		// at most 0xFFFF, smaller only to test the refill
+#define QOG_FRAME16_WINDOW	0xFFFF
+#endif
+#define FS_BASE(a)		(((int *)(a))[-1])
+#define FS_COUNT(a)		(((int *)(a))[-2])
+#define FS_REL(a, c)	((unsigned)((c) - FS_BASE (a)))
+#define FS_IS(a, i, c)	(FS_REL (a, c) < QOG_FRAME16_WINDOW && (a)[i] == FS_REL (a, c))
+#define FS_SET(a, i, c)	((void)(FS_REL (a, c) >= QOG_FRAME16_WINDOW && (FS_Refill ((a), (c)), 1)), \
+	(a)[i] = (framestamp_t)FS_REL (a, c))
+void	FS_Refill (framestamp_t *stamps, int counter);
+#else
+typedef int				framestamp_t;
+#define FS_IS(a, i, c)	((a)[i] == (c))
+#define FS_SET(a, i, c)	((a)[i] = (c))
+#endif
+
 #define	EF_ROCKET	1			// leave a trail
 #define	EF_GRENADE	2			// leave a trail
 #define	EF_GIB		4			// leave a trail
@@ -359,7 +441,7 @@ typedef struct model_s
 	dclipnode_t	*clipnodes;
 
 	int			nummarksurfaces;
-	msurface_t	**marksurfaces;
+	marksurf_t	*marksurfaces;		// QuakeOG: see marksurf_t
 
 	hull_t		hulls[MAX_MAP_HULLS];
 
@@ -379,27 +461,38 @@ typedef struct model_s
 // so those structures can be read only (flash). Indexed like the arrays
 // above; inline submodels share their world's arrays, as they share its
 // surfaces, nodes and leafs. Use the accessor macros below.
-	int				*surf_visframe;		// [numsurfaces]
-	int				*surf_dlightframe;	// [numsurfaces]
+	framestamp_t	*surf_visframe;		// [numsurfaces]
+	framestamp_t	*surf_dlightframe;	// [numsurfaces]
 	int				*surf_dlightbits;	// [numsurfaces]
-	int				*node_visframe;		// [numnodes]
-	int				*leaf_visframe;		// [numleafs]
+	framestamp_t	*node_visframe;		// [numnodes]
+	framestamp_t	*leaf_visframe;		// [numleafs]
 	efrag_t			**leaf_efrags;		// [numleafs]
 	int				*leaf_key;			// [numleafs]
+#ifdef QOG_EDGECACHE16
+	unsigned short	*edge_cache;		// [numedges] 16-bit form, see r_draw.c
+#else
 	unsigned int	*edge_cache;		// [numedges] id's cachededgeoffset
+#endif
 
 } model_t;
 
-#define SURF_VISFRAME(m, s)		((m)->surf_visframe[(s) - (m)->surfaces])
-#define SURF_DLIGHTFRAME(m, s)	((m)->surf_dlightframe[(s) - (m)->surfaces])
+#define SURF_VISFRAME_IS(m, s, c)	FS_IS ((m)->surf_visframe, (s) - (m)->surfaces, c)
+#define SURF_DLIGHTFRAME_IS(m, s, c)	FS_IS ((m)->surf_dlightframe, (s) - (m)->surfaces, c)
+#define SURF_DLIGHTFRAME_SET(m, s, c)	FS_SET ((m)->surf_dlightframe, (s) - (m)->surfaces, c)
 #define SURF_DLIGHTBITS(m, s)	((m)->surf_dlightbits[(s) - (m)->surfaces])
 #define LEAF_EFRAGS(m, l)		((m)->leaf_efrags[(l) - (m)->leafs])
 #define LEAF_KEY(m, l)			((m)->leaf_key[(l) - (m)->leafs])
 #define EDGE_CACHE(m, e)		((m)->edge_cache[(e) - (m)->edges])
+// QuakeOG: first frame of the 16-bit edge cache's window, an int stored just
+// before the array so inline submodels share it with their world
+#define EDGE_CACHE_START(m)		(((int *)(m)->edge_cache)[-1])
 // nodes and leafs share id's node pointer type; contents < 0 means a leaf
-#define NODE_VISFRAME(m, n)		(*((n)->contents < 0 \
-	? &(m)->leaf_visframe[(mleaf_t *)(n) - (m)->leafs] \
-	: &(m)->node_visframe[(n) - (m)->nodes]))
+#define NODE_VISFRAME_IS(m, n, c)	((n)->contents < 0 \
+	? FS_IS ((m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
+	: FS_IS ((m)->node_visframe, (n) - (m)->nodes, c))
+#define NODE_VISFRAME_SET(m, n, c)	((n)->contents < 0 \
+	? FS_SET ((m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
+	: FS_SET ((m)->node_visframe, (n) - (m)->nodes, c))
 
 //============================================================================
 

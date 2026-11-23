@@ -165,7 +165,7 @@ void R_SplitEntityOnNode2 (mnode_t *node)
 	mplane_t	*splitplane;
 	int			sides;
 
-	if (NODE_VISFRAME (cl.worldmodel, node) != r_visframecount)
+	if (!NODE_VISFRAME_IS (cl.worldmodel, node, r_visframecount))	// QuakeOG
 		return;
 	
 	if (node->contents < 0)

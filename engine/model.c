@@ -795,7 +795,7 @@ void CalcSurfaceExtents (msurface_t *s)
 	mins[0] = mins[1] = 999999;
 	maxs[0] = maxs[1] = -99999;
 
-	tex = s->texinfo;
+	tex = SURF_TEXINFO (loadmodel, s);	// QuakeOG
 	
 	for (i=0 ; i<s->numedges ; i++)
 	{
@@ -861,11 +861,27 @@ void Mod_LoadFaces (lump_t *l)
 		planenum = LittleShort(in->planenum);
 		side = LittleShort(in->side);
 		if (side)
-			out->flags |= SURF_PLANEBACK;			
+			out->flags |= SURF_PLANEBACK;
+#ifdef QOG_PLANES_EXACT
+		if (planenum < 0 || planenum >= loadmodel->numplanes)	// QuakeOG
+			Sys_Error ("Mod_LoadFaces: bad plane number %i in %s", planenum, loadmodel->name);
+#endif
 
+#ifdef QOG_SURF_INDEX
+		// QuakeOG: 16-bit numbers as in the file, read as unsigned and checked
+		planenum = (unsigned short)LittleShort(in->planenum);
+		if (planenum >= loadmodel->numplanes)
+			Sys_Error ("Mod_LoadFaces: bad plane number %i in %s", planenum, loadmodel->name);
+		out->planenum = planenum;
+		i = (unsigned short)LittleShort (in->texinfo);
+		if (i >= loadmodel->numtexinfo)
+			Sys_Error ("Mod_LoadFaces: bad texinfo number %i in %s", i, loadmodel->name);
+		out->texinfonum = i;
+#else
 		out->plane = loadmodel->planes + planenum;
 
 		out->texinfo = loadmodel->texinfo + LittleShort (in->texinfo);
+#endif
 
 		CalcSurfaceExtents (out);
 				
@@ -881,13 +897,13 @@ void Mod_LoadFaces (lump_t *l)
 		
 	// set the drawing flags flag
 		
-		if (!Q_strncmp(out->texinfo->texture->name,"sky",3))	// sky
+		if (!Q_strncmp(SURF_TEXINFO (loadmodel, out)->texture->name,"sky",3))	// sky (QuakeOG: SURF_TEXINFO)
 		{
 			out->flags |= (SURF_DRAWSKY | SURF_DRAWTILED);
 			continue;
 		}
 		
-		if (!Q_strncmp(out->texinfo->texture->name,"*",1))		// turbulent
+		if (!Q_strncmp(SURF_TEXINFO (loadmodel, out)->texture->name,"*",1))		// turbulent (QuakeOG: SURF_TEXINFO)
 		{
 			out->flags |= (SURF_DRAWTURB | SURF_DRAWTILED);
 			for (i=0 ; i<2 ; i++)
@@ -944,6 +960,10 @@ void Mod_LoadNodes (lump_t *l)
 		}
 	
 		p = LittleLong(in->planenum);
+#ifdef QOG_PLANES_EXACT
+		if (p < 0 || p >= loadmodel->numplanes)	// QuakeOG
+			Sys_Error ("Mod_LoadNodes: bad plane number %i in %s", p, loadmodel->name);
+#endif
 		out->plane = loadmodel->planes + p;
 
 		out->firstsurface = LittleShort (in->firstface);
@@ -993,9 +1013,17 @@ void Mod_LoadLeafs (lump_t *l)
 		p = LittleLong(in->contents);
 		out->contents = p;
 
+#ifdef QOG_LEAF_PACKED
+		// QuakeOG: kept as the file's 16-bit index, see LEAF_MARKSURFACES
+		out->firstmarksurface = (unsigned short)LittleShort(in->firstmarksurface);
+		out->nummarksurfaces = (unsigned short)LittleShort(in->nummarksurfaces);
+		if (out->firstmarksurface + out->nummarksurfaces > loadmodel->nummarksurfaces)
+			Sys_Error ("Mod_LoadLeafs: bad mark surfaces in %s", loadmodel->name);
+#else
 		out->firstmarksurface = loadmodel->marksurfaces +
 			LittleShort(in->firstmarksurface);
 		out->nummarksurfaces = LittleShort(in->nummarksurfaces);
+#endif
 		
 		p = LittleLong(in->visofs);
 		if (p == -1)
@@ -1053,6 +1081,14 @@ void Mod_LoadClipnodes (lump_t *l)
 	hull->clip_maxs[1] = 32;
 	hull->clip_maxs[2] = 64;
 
+#ifdef QOG_PLANES_EXACT
+	for (i=0 ; i<count ; i++)	// QuakeOG
+	{
+		int		p = LittleLong (in[i].planenum);
+		if (p < 0 || p >= loadmodel->numplanes)
+			Sys_Error ("Mod_LoadClipnodes: bad plane number %i in %s", p, loadmodel->name);
+	}
+#endif
 	if (out == in)
 		return;
 	for (i=0 ; i<count ; i++, out++, in++)
@@ -1111,23 +1147,43 @@ void Mod_LoadMarksurfaces (lump_t *l)
 {	
 	int		i, j, count;
 	short		*in;
-	msurface_t **out;
-	
+	marksurf_t	*out;
+
 	in = (void *)(mod_base + l->fileofs);
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*sizeof(*out), loadname);	
+#ifdef QOG_MARKSURF16
+	// QuakeOG: the file's 16-bit surface numbers, read in place from flash
+	// (checked like id's, but as the unsigned numbers they are)
+	if (mod_inflash && !(((int)in) & 1))
+	{
+		for (i=0 ; i<count ; i++)
+			if ((unsigned short)in[i] >= loadmodel->numsurfaces)
+				Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
+		loadmodel->marksurfaces = (marksurf_t *)in;
+		loadmodel->nummarksurfaces = count;
+		return;
+	}
+#endif
+	out = Hunk_AllocName ( count*sizeof(*out), loadname);
 
 	loadmodel->marksurfaces = out;
 	loadmodel->nummarksurfaces = count;
 
 	for ( i=0 ; i<count ; i++)
 	{
+#ifdef QOG_MARKSURF16
+		j = (unsigned short)LittleShort(in[i]);
+		if (j >= loadmodel->numsurfaces)
+			Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
+		out[i] = j;
+#else
 		j = LittleShort(in[i]);
 		if (j >= loadmodel->numsurfaces)
 			Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
 		out[i] = loadmodel->surfaces + j;
+#endif
 	}
 }
 
@@ -1176,8 +1232,15 @@ void Mod_LoadPlanes (lump_t *l)
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*2*sizeof(*out), loadname);	
-	
+#ifdef QOG_PLANES_EXACT
+	// QuakeOG: id allocates twice the planes and never touches the second
+	// half. Allocate only what the file holds, and check every plane number
+	// against it at load (faces, nodes, clipnodes) so nothing can read past.
+	out = Hunk_AllocName ( count*sizeof(*out), loadname);
+#else
+	out = Hunk_AllocName ( count*2*sizeof(*out), loadname);
+#endif
+
 	loadmodel->planes = out;
 	loadmodel->numplanes = count;
 
@@ -1214,6 +1277,44 @@ float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 
 	return Length (corner);
 }
+
+/*
+=================
+Mod_AllocFrameStamps
+
+QuakeOG: a zeroed array of per-frame stamps (see framestamp_t in model.h).
+With QOG_FRAME16 the array's length and base counter (zero) come first.
+=================
+*/
+static framestamp_t *Mod_AllocFrameStamps (int count)
+{
+#ifdef QOG_FRAME16
+	int		*head;
+
+	head = Hunk_AllocName (2 * sizeof(int) + count * sizeof(framestamp_t), loadname);
+	head[0] = count;	// FS_COUNT
+	head[1] = 0;		// FS_BASE
+	return (framestamp_t *)(head + 2);
+#else
+	return Hunk_AllocName (count * sizeof(framestamp_t), loadname);
+#endif
+}
+
+#ifdef QOG_FRAME16
+/*
+=================
+FS_Refill
+
+QuakeOG: start a new window at counter. Every old stamp becomes 0xFFFF,
+which matches no counter, as id's older stamps never match again.
+=================
+*/
+void FS_Refill (framestamp_t *stamps, int counter)
+{
+	memset (stamps, 0xFF, FS_COUNT (stamps) * sizeof(framestamp_t));
+	FS_BASE (stamps) = counter;
+}
+#endif
 
 /*
 =================
@@ -1264,14 +1365,20 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels
 	// below with the rest of the model, so they share it like the arrays.
-	loadmodel->surf_visframe = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
-	loadmodel->surf_dlightframe = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+	loadmodel->surf_visframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
+	loadmodel->surf_dlightframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
 	loadmodel->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
-	loadmodel->node_visframe = Hunk_AllocName (loadmodel->numnodes * sizeof(int), loadname);
-	loadmodel->leaf_visframe = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+	loadmodel->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
+	loadmodel->leaf_visframe = Mod_AllocFrameStamps (loadmodel->numleafs);
 	loadmodel->leaf_efrags = Hunk_AllocName (loadmodel->numleafs * sizeof(efrag_t *), loadname);
 	loadmodel->leaf_key = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+#ifdef QOG_EDGECACHE16
+	// QuakeOG: window start (an int, zero) in front of the 16-bit entries
+	loadmodel->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)
+		+ (loadmodel->numedges + 1) * sizeof(unsigned short), loadname) + sizeof(int));
+#else
 	loadmodel->edge_cache = Hunk_AllocName ((loadmodel->numedges + 1) * sizeof(unsigned int), loadname);
+#endif
 
 	mod->numframes = 2;		// regular and alternate animation
 	mod->flags = 0;

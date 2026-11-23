@@ -128,12 +128,12 @@ void D_CalcGradients (msurface_t *pface)
 	vec3_t		p_saxis, p_taxis;
 	float		t;
 
-	pplane = pface->plane;
+	pplane = SURF_PLANE (currententity->model, pface);	// QuakeOG
 
 	mipscale = 1.0 / (float)(1 << miplevel);
 
-	TransformVector (pface->texinfo->vecs[0], p_saxis);
-	TransformVector (pface->texinfo->vecs[1], p_taxis);
+	TransformVector (SURF_TEXINFO (currententity->model, pface)->vecs[0], p_saxis);
+	TransformVector (SURF_TEXINFO (currententity->model, pface)->vecs[1], p_taxis);
 
 	t = xscaleinv * mipscale;
 	d_sdivzstepu = p_saxis[0] * t;
@@ -153,10 +153,10 @@ void D_CalcGradients (msurface_t *pface)
 	t = 0x10000*mipscale;
 	sadjust = ((fixed16_t)(DotProduct (p_temp1, p_saxis) * 0x10000 + 0.5)) -
 			((pface->texturemins[0] << 16) >> miplevel)
-			+ pface->texinfo->vecs[0][3]*t;
+			+ SURF_TEXINFO (currententity->model, pface)->vecs[0][3]*t;
 	tadjust = ((fixed16_t)(DotProduct (p_temp1, p_taxis) * 0x10000 + 0.5)) -
 			((pface->texturemins[1] << 16) >> miplevel)
-			+ pface->texinfo->vecs[1][3]*t;
+			+ SURF_TEXINFO (currententity->model, pface)->vecs[1][3]*t;
 
 //
 // -1 (-epsilon) so we never wander off the edge of the texture
@@ -238,7 +238,7 @@ void D_DrawSurfaces (void)
 				pface = s->data;
 				miplevel = 0;
 				cacheblock = (pixel_t *)
-						pface->texinfo->texture->mips[0];
+						SURF_TEXINFO (s->entity->model, pface)->texture->mips[0];	// QuakeOG
 				cachewidth = 64;
 
 				if (s->insubmodel)
@@ -293,7 +293,7 @@ void D_DrawSurfaces (void)
 
 				pface = s->data;
 				miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
-				* pface->texinfo->mipadjust);
+				* SURF_TEXINFO (s->entity->model, pface)->mipadjust);	// QuakeOG
 
 				r_drawsurf.model = s->entity->model;	// QuakeOG: owner of pface's state arrays
 #ifdef QOG_SURFCACHE

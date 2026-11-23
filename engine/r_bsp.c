@@ -299,7 +299,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 			pn = pnode->children[i];
 
 		// we're done with this branch if the node or leaf isn't in the PVS
-			if (NODE_VISFRAME (cl.worldmodel, pn) == r_visframecount)
+			if (NODE_VISFRAME_IS (cl.worldmodel, pn, r_visframecount))	// QuakeOG
 			{
 				if (pn->contents < 0)
 				{
@@ -345,7 +345,7 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 	for (i=0 ; i<numsurfaces ; i++, psurf++)
 	{
 	// find which side of the node we are on
-		pplane = psurf->plane;
+		pplane = SURF_PLANE (pmodel, psurf);	// QuakeOG
 
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
@@ -423,7 +423,7 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 	for (i=0 ; i<numsurfaces ; i++, psurf++)
 	{
 	// find which side of the node we are on
-		pplane = psurf->plane;
+		pplane = SURF_PLANE (pmodel, psurf);	// QuakeOG
 
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
@@ -450,14 +450,15 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	int			i, c, side, *pindex;
 	vec3_t		acceptpt, rejectpt;
 	mplane_t	*plane;
-	msurface_t	*surf, **mark;
+	msurface_t	*surf;
+	marksurf_t	*mark;	// QuakeOG: a pointer or a 16-bit surface number
 	mleaf_t		*pleaf;
 	double		d, dot;
 
 	if (node->contents == CONTENTS_SOLID)
 		return;		// solid
 
-	if (NODE_VISFRAME (cl.worldmodel, node) != r_visframecount)
+	if (!NODE_VISFRAME_IS (cl.worldmodel, node, r_visframecount))	// QuakeOG
 		return;
 
 // cull the clipping planes if not trivial accept
@@ -503,14 +504,14 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	{
 		pleaf = (mleaf_t *)node;
 
-		mark = pleaf->firstmarksurface;
+		mark = LEAF_MARKSURFACES (cl.worldmodel, pleaf);	// QuakeOG
 		c = pleaf->nummarksurfaces;
 
 		if (c)
 		{
 			do
 			{
-				SURF_VISFRAME (cl.worldmodel, *mark) = r_framecount;
+				FS_SET (cl.worldmodel->surf_visframe, MARKSURF_NUM (cl.worldmodel, mark), r_framecount);
 				mark++;
 			} while (--c);
 		}
@@ -567,7 +568,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 				do
 				{
 					if ((surf->flags & SURF_PLANEBACK) &&
-						(SURF_VISFRAME (cl.worldmodel, surf) == r_framecount))
+						SURF_VISFRAME_IS (cl.worldmodel, surf, r_framecount))	// QuakeOG
 					{
 						if (r_drawpolys)
 						{
@@ -600,7 +601,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 				do
 				{
 					if (!(surf->flags & SURF_PLANEBACK) &&
-						(SURF_VISFRAME (cl.worldmodel, surf) == r_framecount))
+						SURF_VISFRAME_IS (cl.worldmodel, surf, r_framecount))	// QuakeOG
 					{
 						if (r_drawpolys)
 						{

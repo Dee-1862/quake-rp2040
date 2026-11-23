@@ -76,6 +76,15 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_MAXALIASVERTS=384           # alias model vertex limit, largest shareware model 325 (id 2000)
     QOG_MAX_BTOFPOLYS=0             # unused back to front debug list compiled out (id 5000)
     QOG_WARP_INPLACE=1)             # underwater warp in the frame buffer, same output (id 64 KB stack buffer)
+# BSP structures built at map load, each flag explained where engine/model.h uses it.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_PLANES_EXACT                # planes allocated once, not twice (id's unused second half)
+    QOG_MARKSURF16                  # mark surfaces as the file's 16-bit numbers, in place
+    QOG_SURF_PACKED                 # surface flags and edge count share a word
+    QOG_EDGECACHE16                 # 16-bit edge cache entries, frame window cleared on wrap
+    QOG_LEAF_PACKED                 # leaf mark surface index and count as the file's 16 bits
+    QOG_SURF_INDEX                  # surface plane and texinfo as the file's 16-bit numbers
+    QOG_FRAME16)                    # 16-bit visframe and dlightframe stamps, window refilled on wrap
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

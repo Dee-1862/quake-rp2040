@@ -27,6 +27,15 @@ set(QOG_ENGINE_DEFS
     QOG_MAXALIASVERTS=384
     QOG_MAX_BTOFPOLYS=0
     QOG_WARP_INPLACE=1)
+# BSP structures built at map load (engine/model.c), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_PLANES_EXACT
+    QOG_MARKSURF16
+    QOG_SURF_PACKED
+    QOG_EDGECACHE16
+    QOG_LEAF_PACKED
+    QOG_SURF_INDEX
+    QOG_FRAME16)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
