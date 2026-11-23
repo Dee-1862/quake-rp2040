@@ -62,7 +62,7 @@ static void R_QogEdgeCacheWindow (model_t *m)
 	if (r_framecount - *start >= EC16_WINDOW || r_framecount < *start)
 	{
 		*start = r_framecount;
-		memset (m->edge_cache, 0xFF, (m->numedges + 1) * sizeof(*m->edge_cache));
+		memset (MODFRAME (m)->edge_cache, 0xFF, (m->numedges + 1) * sizeof(*MODFRAME (m)->edge_cache));	// QuakeOG: MODFRAME, QOG_MOD_FLASH
 	}
 	r_qog_ecframe = r_framecount - *start;
 }

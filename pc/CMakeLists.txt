@@ -137,3 +137,6 @@ target_compile_definitions(quakeog_pc PRIVATE
 # qc2c reads the core edict fields from the engine headers (QOG_EDICT_SPARSE)
 add_custom_command(OUTPUT ${PROGS_AOT} APPEND
     DEPENDS ${ROOT}/engine/progs.h ${ROOT}/engine/progdefs.q1)
+# Model table, server tables and board wiring (Agent I)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_MOD_FLASH)                  # baked model_t used in place in flash, the table holds names and pointers

@@ -37,6 +37,8 @@ CFLAGS += ["-DQOG_EDGE_T_PACKED", "-DQOG_ESPAN_T_PACKED", "-DQOG_SURF_T_SMALL", 
 CFLAGS += ["-DQOG_BAKE"]
 # Edict and QuakeC memory flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_EDICT_SPARSE", "-DQOG_BASELINE_POOL", "-DQOG_AOT_GLOBALS"]
+# Model table, server tables and board wiring (Agent I, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_MOD_FLASH"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

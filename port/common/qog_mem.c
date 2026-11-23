@@ -153,13 +153,13 @@ static void cmd_qog_mem(void) {
     Con_Printf("  video      %7.1f KB (frame, z-buffer, surface cache)\n", m->video / 1024.0);
     kb_line("TOTAL", m->total, m->peak_total);
     {
-        extern int mod_numknown;
-        extern model_t mod_known[];
-        int refd = 0;
-        for (int i = 0; i < mod_numknown; i++)
-            if (mod_known[i].needload != 2) refd++;   /* 2 = NL_UNREFERENCED in model.c */
-        Con_Printf("  models known %d, referenced by this level %d, edicts %d of %d\n", mod_numknown, refd,
+        int known, refd, peakmod;
+        Mod_KnownStats(&known, &refd, &peakmod);   /* QuakeOG: model.c owns the table layout */
+        Con_Printf("  models known %d, referenced by this level %d, edicts %d of %d\n", known, refd,
                    sv.active ? sv.num_edicts : 0, sv.active ? sv.max_edicts : 0);
+#ifdef QOG_MOD_FLASH
+        Con_Printf("  models in one level, most so far %d\n", peakmod);
+#endif
         extern int r_qog_peakedges, r_qog_peaksurfs;
         extern int r_qog_peakbverts, r_qog_peakbedges;
         Con_Printf("  render peaks: edges %d, surfaces %d, bmodel verts %d, bmodel edges %d\n",

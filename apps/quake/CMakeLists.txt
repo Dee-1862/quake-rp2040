@@ -66,6 +66,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_EDICT_SPARSE
     QOG_BASELINE_POOL
     QOG_AOT_GLOBALS)
+# Model table, server tables and board wiring (Agent I), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_MOD_FLASH)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

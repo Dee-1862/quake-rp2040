@@ -44,7 +44,28 @@ byte	mod_novis[MAX_MAP_LEAFS/8];
 #else
 #define	MAX_MOD_KNOWN	256
 #endif
+#ifdef QOG_MOD_FLASH
+// QuakeOG: QOG_MOD_FLASH keeps no model_t in static RAM. The table holds the
+// current level's models only: a name, and a model_t that is either baked
+// (used in place in the flash image, see qogbake_header_t in model.h) or
+// loaded the normal way into a model_t allocated on the level's hunk.
+// Mod_ClearAll empties it before the hunk is freed, so every level finds
+// its models again (an alias model loaded the normal way is loaded again
+// too, its cache block is freed with its model_t). The per-frame arrays of
+// a map are in mod_frames, found through model_t.frameslot.
+typedef struct
+{
+	const char	*name;		// the model's own name, or a constant "*n" while it has none
+	model_t		*model;		// baked, on the hunk, or NULL (an inline model not loaded yet)
+	int			needload;	// a baked map: NL_PRESENT once it has its per-frame arrays
+} modslot_t;
+static modslot_t	mod_known[MAX_MOD_KNOWN];
+modframe_t	mod_frames[QOG_MOD_FRAMES];
+static int	mod_peakknown;	// most models one level used, for qog_mem
+static int	mod_nextframe;	// next frameslot for an item box loaded the normal way
+#else
 model_t	mod_known[MAX_MOD_KNOWN];
+#endif
 int		mod_numknown;
 
 static qboolean	mod_inflash;	// QuakeOG: see below at mod_base
@@ -73,6 +94,7 @@ static qboolean Mod_InBake (void *p)
 		&& (byte *)p < (byte *)mod_bake + mod_bake->size;
 }
 static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen);
+static model_t *Mod_BakeLookup (char *name, byte *f, int flen);
 #define MOD_INBAKE(p)	Mod_InBake (p)
 #else
 #define MOD_INBAKE(p)	false
@@ -82,6 +104,122 @@ static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen);
 #define NL_PRESENT		0
 #define NL_NEEDS_LOADED	1
 #define NL_UNREFERENCED	2
+
+// QuakeOG: an item box (maps/b_*.bsp) is a map loaded next to the world,
+// so with QOG_MOD_FLASH it needs per-frame arrays of its own
+static qboolean Mod_IsItemBox (const char *name)
+{
+	return !Q_strncmp ((char *)name, "maps/b_", 7);
+}
+
+float RadiusFromBounds (vec3_t mins, vec3_t maxs);
+
+// QuakeOG: the per-submodel fields id's Mod_LoadBrushModel sets for inline
+// model i (0 is the world itself), moved here from its loop unchanged
+static void Mod_SetSubmodel (model_t *mod, int i)
+{
+	dmodel_t	*bm;
+	int			j;
+
+	bm = &mod->submodels[i];
+
+	mod->hulls[0].firstclipnode = bm->headnode[0];
+	for (j=1 ; j<MAX_MAP_HULLS ; j++)
+	{
+		mod->hulls[j].firstclipnode = bm->headnode[j];
+		mod->hulls[j].lastclipnode = mod->numclipnodes-1;
+	}
+
+	mod->firstmodelsurface = bm->firstface;
+	mod->nummodelsurfaces = bm->numfaces;
+
+	VectorCopy (bm->maxs, mod->maxs);
+	VectorCopy (bm->mins, mod->mins);
+	mod->radius = RadiusFromBounds (mod->mins, mod->maxs);
+
+	mod->numleafs = bm->visleafs;
+}
+
+#ifdef QOG_MOD_FLASH
+static void Mod_FinishBaked (model_t *mod);
+
+// QuakeOG: constant names for inline models with no model_t yet (a client
+// touches "*n" before it loads the world)
+#define MOD_IN10(p)	p "0", p "1", p "2", p "3", p "4", p "5", p "6", p "7", p "8", p "9"
+static const char	mod_inlinenames[MAX_MODELS][5] = {
+	"*0", "*1", "*2", "*3", "*4", "*5", "*6", "*7", "*8", "*9",
+	MOD_IN10("*1"), MOD_IN10("*2"), MOD_IN10("*3"), MOD_IN10("*4"),
+	MOD_IN10("*5"), MOD_IN10("*6"), MOD_IN10("*7"), MOD_IN10("*8"), MOD_IN10("*9"),
+	MOD_IN10("*10"), MOD_IN10("*11"), MOD_IN10("*12"), MOD_IN10("*13"), MOD_IN10("*14"),
+	MOD_IN10("*15"), MOD_IN10("*16"), MOD_IN10("*17"), MOD_IN10("*18"), MOD_IN10("*19"),
+	MOD_IN10("*20"), MOD_IN10("*21"), MOD_IN10("*22"), MOD_IN10("*23"), MOD_IN10("*24"),
+	"*250", "*251", "*252", "*253", "*254", "*255"
+};
+
+static model_t *Mod_NewModel (const char *name)
+{
+	model_t	*mod;
+
+	mod = Hunk_AllocName (sizeof(model_t), "models");	// zeroed
+	strcpy (mod->name, name);
+	mod->needload = NL_NEEDS_LOADED;
+	return mod;
+}
+
+/*
+==================
+Mod_FindSlot
+
+QuakeOG: the table entry for name, added if the level does not know it
+yet: the baked model when the image holds this file, a constant name for
+an inline model, otherwise a new model_t on the hunk to load into.
+==================
+*/
+static modslot_t *Mod_FindSlot (char *name)
+{
+	int			i;
+	modslot_t	*s;
+
+	if (!name[0])
+		Sys_Error ("Mod_ForName: NULL name");
+	for (i=0 , s=mod_known ; i<mod_numknown ; i++, s++)
+		if (!strcmp (s->name, name))
+			return s;
+	if (mod_numknown == MAX_MOD_KNOWN)
+		Sys_Error ("mod_numknown == MAX_MOD_KNOWN");
+	mod_numknown++;
+	if (mod_numknown > mod_peakknown)
+		mod_peakknown = mod_numknown;
+	s->needload = NL_NEEDS_LOADED;
+#ifdef QOG_BAKE
+	if (name[0] != '*')
+	{
+		int		flen;
+		byte	*f = COM_FlashFile (name, &flen);
+
+		s->model = f ? Mod_BakeLookup (name, f, flen) : NULL;
+		if (s->model)
+		{
+			s->name = s->model->name;
+			return s;
+		}
+	}
+#endif
+	if (name[0] == '*')
+	{
+		i = atoi (name + 1);
+		if (i > 0 && i < MAX_MODELS && !strcmp (mod_inlinenames[i], name))
+		{
+			s->model = NULL;
+			s->name = mod_inlinenames[i];
+			return s;
+		}
+	}
+	s->model = Mod_NewModel (name);
+	s->name = s->model->name;
+	return s;
+}
+#endif	// QOG_MOD_FLASH
 
 /*
 ===============
@@ -213,12 +351,26 @@ void Mod_ClearAll (void)
 	int		i;
 	model_t	*mod;
 
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: the hunk is freed next, with every model_t loaded the normal
+	// way, so free their cache blocks (the cache points into the model_t)
+	for (i=0 ; i<mod_numknown ; i++)
+	{
+		mod = mod_known[i].model;
+		if (mod && mod->type == mod_alias && !MOD_INBAKE (mod->cache.data) && mod->cache.data)
+			Cache_Free (&mod->cache);
+	}
+	mod_numknown = 0;
+	mod_nextframe = QOG_MOD_FRAMES_BAKED;
+	memset (mod_frames, 0, sizeof(mod_frames));
+#else
 
 	for (i=0 , mod=mod_known ; i<mod_numknown ; i++, mod++) {
 		mod->needload = NL_UNREFERENCED;
 //FIX FOR CACHE_ALLOC ERRORS:
 		if (mod->type == mod_sprite) mod->cache.data = NULL;
 	}
+#endif
 }
 
 /*
@@ -233,6 +385,17 @@ model_t *Mod_FindName (char *name)
 	model_t	*mod;
 	model_t	*avail = NULL;
 
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: a model_t to load into (the brush loader's inline models)
+	modslot_t	*s = Mod_FindSlot (name);
+
+	if (!s->model || MOD_INBAKE (s->model))
+	{
+		s->model = Mod_NewModel (name);
+		s->name = s->model->name;
+	}
+	return s->model;
+#else
 	if (!name[0])
 		Sys_Error ("Mod_ForName: NULL name");
 		
@@ -276,6 +439,7 @@ model_t *Mod_FindName (char *name)
 	}
 
 	return mod;
+#endif
 }
 
 /*
@@ -288,7 +452,13 @@ void Mod_TouchModel (char *name)
 {
 	model_t	*mod;
 	
+#ifdef QOG_MOD_FLASH
+	mod = Mod_FindSlot (name)->model;	// QuakeOG: NULL for an inline model not loaded yet
+	if (!mod)
+		return;
+#else
 	mod = Mod_FindName (name);
+#endif
 	
 	if (mod->needload == NL_PRESENT)
 	{
@@ -339,8 +509,9 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 	{
 		int		flen;
 		byte	*f = COM_FlashFile (mod->name, &flen);
-#ifdef QOG_BAKE
+#if defined(QOG_BAKE) && !defined(QOG_MOD_FLASH)
 		// QuakeOG: a baked map, alias model or sprite needs no loading
+		// (with QOG_MOD_FLASH, Mod_FindSlot has already looked)
 		if (f && Mod_LoadBaked (mod, f, flen))
 			return mod;
 #endif
@@ -406,9 +577,34 @@ model_t *Mod_ForName (char *name, qboolean crash)
 {
 	model_t	*mod;
 
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: a baked model is used in place, a map gets its per-frame
+	// arrays the first time the level asks for it
+	modslot_t	*s = Mod_FindSlot (name);
+
+	mod = s->model;
+	if (!mod)
+	{
+		if (crash)
+			Sys_Error ("Mod_NumForName: %s not found", name);
+		return NULL;
+	}
+	if (MOD_INBAKE (mod))
+	{
+		if (s->needload != NL_PRESENT)
+		{
+			s->needload = NL_PRESENT;
+			if (mod->type == mod_brush)
+				Mod_FinishBaked (mod);
+		}
+		return mod;
+	}
+	return Mod_LoadModel (mod, crash);
+#else
 	mod = Mod_FindName (name);
 
 	return Mod_LoadModel (mod, crash);
+#endif
 }
 
 
@@ -1452,7 +1648,11 @@ static unsigned Mod_BakeLayout (void)
 		sizeof(mvertex_t), sizeof(framestamp_t), sizeof(aliashdr_t), sizeof(msprite_t),
 		sizeof(mspriteframe_t), sizeof(mspritegroup_t),
 		MOD_OFS(model_t, submodels), MOD_OFS(model_t, hulls), MOD_OFS(model_t, textures),
+#ifdef QOG_MOD_FLASH
+		MOD_OFS(model_t, cache), MOD_OFS(model_t, frameslot), QOG_MOD_FRAMES_BAKED,
+#else
 		MOD_OFS(model_t, cache), MOD_OFS(model_t, surf_visframe),
+#endif
 		MOD_OFS(mnode_t, children), MOD_OFS(mnode_t, plane), MOD_OFS(mnode_t, parent),
 		MOD_OFS(mleaf_t, compressed_vis), MOD_OFS(mleaf_t, ambient_sound_level),
 		MOD_OFS(msurface_t, samples), MOD_OFS(msurface_t, styles),
@@ -1472,6 +1672,9 @@ static unsigned Mod_BakeLayout (void)
 #endif
 #ifdef QOG_PLANES_EXACT
 		| 16
+#endif
+#ifdef QOG_MOD_FLASH
+		| 32	// QuakeOG: a map's block holds its finished inline models
 #endif
 	};
 
@@ -1507,6 +1710,18 @@ was built by a build with this layout for the address it got. -nobake
 skips it (qog_bake runs that way).
 =================
 */
+static void Mod_BakePath (char *path)
+{
+	int		i;
+
+	// QuakeOG: -bakefile <path> reads (and qog_bake writes) another image
+	i = COM_CheckParm ("-bakefile");
+	if (i && i < com_argc - 1)
+		Q_strncpy (path, com_argv[i + 1], MAX_OSPATH - 1);
+	else
+		sprintf (path, "%s/qogbake.bin", com_gamedir);
+}
+
 static void Mod_BakeOpen (void)
 {
 	char				path[MAX_OSPATH];
@@ -1515,7 +1730,7 @@ static void Mod_BakeOpen (void)
 
 	if (COM_CheckParm ("-nobake"))
 		return;
-	sprintf (path, "%s/qogbake.bin", com_gamedir);
+	Mod_BakePath (path);
 	len = Sys_FileOpenRead (path, &h);
 	if (len < 0)
 		return;
@@ -1549,11 +1764,9 @@ mapped pack), and returns true. A map then gets only its per-frame
 arrays. An alias model or sprite points at its data in the image.
 =================
 */
-static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen)
+static model_t *Mod_BakeLookup (char *name, byte *f, int flen)
 {
 	qogbake_entry_t	*e;
-	char			name[MAX_QPATH];
-	texture_t		*tx;
 	int				i;
 
 	if (!mod_baketried)
@@ -1562,39 +1775,76 @@ static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen)
 		Mod_BakeOpen ();
 	}
 	if (!mod_bake || r_pixbytes != 1)	// the image holds 8-bit pixels
-		return false;
+		return NULL;
 	e = (qogbake_entry_t *)((byte *)mod_bake + mod_bake->dirofs);
 	for (i=0 ; i<mod_bake->nummaps ; i++, e++)
-		if (!strcmp (e->name, mod->name))
+		if (!strcmp (e->name, name))
 			break;
 	if (i == mod_bake->nummaps)
-		return false;
+		return NULL;
 	if (e->fileaddr != (unsigned)(size_t)f || e->filelen != (unsigned)flen
 		|| e->filehash != Mod_FileHash (f, flen))
 	{
-		Con_Printf ("%s changed since it was baked, loading it the normal way\n", mod->name);
-		return false;
+		Con_Printf ("%s changed since it was baked, loading it the normal way\n", name);
+		return NULL;
 	}
+	return (model_t *)e->model;
+}
 
-	COM_FileBase (mod->name, loadname);
-	loadmodel = mod;
-	memcpy (name, mod->name, sizeof(name));
-	*mod = *(model_t *)e->model;
-	memcpy (mod->name, name, sizeof(name));
-	mod->needload = NL_PRESENT;
-	if (mod->type != mod_brush)
-		return true;
+// QuakeOG: the one side effect of id's texture loader
+static void Mod_BakedSky (model_t *mod)
+{
+	texture_t	*tx;
+	int			i;
 
-	// the one side effect of id's texture loader
 	for (i=0 ; i<mod->numtextures ; i++)
 	{
 		tx = mod->textures[i];
 		if (tx && !Q_strncmp (tx->name, "sky", 3))
 			R_InitSky (tx);
 	}
+}
+
+static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen)
+{
+	model_t			*b;
+	char			name[MAX_QPATH];
+
+	b = Mod_BakeLookup (mod->name, f, flen);
+	if (!b)
+		return false;
+
+	COM_FileBase (mod->name, loadname);
+	loadmodel = mod;
+	memcpy (name, mod->name, sizeof(name));
+	*mod = *b;
+	memcpy (mod->name, name, sizeof(name));
+	mod->needload = NL_PRESENT;
+	if (mod->type != mod_brush)
+		return true;
+
+	Mod_BakedSky (mod);
 	Mod_FinishBrushModel (mod);
 	return true;
 }
+
+#ifdef QOG_MOD_FLASH
+/*
+=================
+Mod_FinishBaked
+
+QuakeOG: a baked map used in place: its per-frame arrays and its inline
+models' table entries, once per level.
+=================
+*/
+static void Mod_FinishBaked (model_t *mod)
+{
+	COM_FileBase (mod->name, loadname);
+	loadmodel = mod;
+	Mod_BakedSky (mod);
+	Mod_FinishBrushModel (mod);
+}
+#endif
 
 #ifdef QOG_BAKE_WRITER
 /*
@@ -1625,6 +1875,7 @@ static int			bk_numranges;
 static qboolean		bk_failed;
 static char			bk_names[512][40];
 static int			bk_numnames;
+static int			bk_nextframe;	// QuakeOG: frameslot of the next item box map
 
 static int Bake_Reserve (int size)
 {
@@ -1683,6 +1934,34 @@ static unsigned Bake_Ptr (void *p)
 // rewrites a pointer field of a structure in the image
 #define BAKE_FIX(f)		(*(unsigned *)&(f) = Bake_Ptr (f))
 
+// a map's model_t in the image: its pointers translated, the cache empty
+static void Bake_FixModel (model_t *bm)
+{
+	int		i;
+
+	memset (&bm->cache, 0, sizeof(bm->cache));
+	BAKE_FIX(bm->submodels);
+	BAKE_FIX(bm->planes);
+	BAKE_FIX(bm->leafs);
+	BAKE_FIX(bm->vertexes);
+	BAKE_FIX(bm->edges);
+	BAKE_FIX(bm->nodes);
+	BAKE_FIX(bm->texinfo);
+	BAKE_FIX(bm->surfaces);
+	BAKE_FIX(bm->surfedges);
+	BAKE_FIX(bm->clipnodes);
+	BAKE_FIX(bm->marksurfaces);
+	for (i=0 ; i<MAX_MAP_HULLS ; i++)
+	{
+		BAKE_FIX(bm->hulls[i].clipnodes);
+		BAKE_FIX(bm->hulls[i].planes);
+	}
+	BAKE_FIX(bm->textures);
+	BAKE_FIX(bm->visdata);
+	BAKE_FIX(bm->lightdata);
+	BAKE_FIX(bm->entities);
+}
+
 /*
 =================
 Bake_Map
@@ -1702,6 +1981,7 @@ static unsigned Bake_Map (char *name, byte *f, int flen)
 	msurface_t	*s;
 	mleaf_t		*l;
 	mnode_t		*n;
+	int			nsub = 1, frameslot = 0;
 
 	h = (dheader_t *)f;
 
@@ -1717,7 +1997,24 @@ static unsigned Bake_Map (char *name, byte *f, int flen)
 	mod_inflash = false;
 
 	// the model itself first, then every hunk structure it points at
-	at = bk_base + Bake_Reserve (sizeof(model_t));
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: with QOG_MOD_FLASH the map used in place, finished the way
+	// Mod_FinishBrushModel leaves it, then its inline models *1, *2, ...
+	if (m.numsubmodels > 1)
+		nsub = m.numsubmodels;
+	if (Mod_IsItemBox (name))
+	{
+		if (bk_nextframe == QOG_MOD_FRAMES_BAKED)
+		{
+			Con_Printf ("qog_bake: more than %i item box maps\n", QOG_MOD_FRAMES_BAKED - 1);
+			Hunk_FreeToLowMark (mark);
+			loadmodel = NULL;
+			return 0;
+		}
+		frameslot = bk_nextframe++;
+	}
+#endif
+	at = bk_base + Bake_Reserve (nsub * sizeof(model_t));
 	Bake_Copy (m.planes, m.numplanes * sizeof(mplane_t));
 	if (m.textures)
 	{
@@ -1822,28 +2119,28 @@ static unsigned Bake_Map (char *name, byte *f, int flen)
 
 	// the model, with the per-frame arrays and the cache left empty
 	bm = BAKE_AT(model_t, at);
-	*bm = m;
-	memset (&bm->cache, 0, sizeof(bm->cache));
-	BAKE_FIX(bm->submodels);
-	BAKE_FIX(bm->planes);
-	BAKE_FIX(bm->leafs);
-	BAKE_FIX(bm->vertexes);
-	BAKE_FIX(bm->edges);
-	BAKE_FIX(bm->nodes);
-	BAKE_FIX(bm->texinfo);
-	BAKE_FIX(bm->surfaces);
-	BAKE_FIX(bm->surfedges);
-	BAKE_FIX(bm->clipnodes);
-	BAKE_FIX(bm->marksurfaces);
-	for (i=0 ; i<MAX_MAP_HULLS ; i++)
+#ifdef QOG_MOD_FLASH
+	for (i=0 ; i<nsub ; i++)
 	{
-		BAKE_FIX(bm->hulls[i].clipnodes);
-		BAKE_FIX(bm->hulls[i].planes);
+		model_t	t = m;
+
+		t.numframes = 2;		// as Mod_FinishBrushModel sets them
+		t.flags = 0;
+		if (i < m.numsubmodels)
+			Mod_SetSubmodel (&t, i);
+		if (i)
+		{
+			memset (t.name, 0, sizeof(t.name));
+			sprintf (t.name, "*%i", i);
+		}
+		t.frameslot = frameslot;
+		bm[i] = t;
+		Bake_FixModel (&bm[i]);
 	}
-	BAKE_FIX(bm->textures);
-	BAKE_FIX(bm->visdata);
-	BAKE_FIX(bm->lightdata);
-	BAKE_FIX(bm->entities);
+#else
+	*bm = m;
+	Bake_FixModel (bm);
+#endif
 
 	Hunk_FreeToLowMark (mark);
 	loadmodel = NULL;
@@ -2154,6 +2451,57 @@ static void Bake_Check (void)
 		mod_flashlen = flen;
 		Mod_LoadBrushLumps (&m, f);
 		mod_inflash = false;
+#ifdef QOG_MOD_FLASH
+		// QuakeOG: the baked map is finished (Bake_Map) and its inline
+		// models follow it, each the world with its own fields
+		{
+			static model_t	fin, bu;
+
+			fin = m;
+			fin.numframes = 2;
+			fin.flags = 0;
+			if (m.numsubmodels)
+				Mod_SetSubmodel (&fin, 0);
+			if (fin.numframes != b->numframes || fin.flags != b->flags
+				|| fin.firstmodelsurface != b->firstmodelsurface
+				|| fin.nummodelsurfaces != b->nummodelsurfaces || fin.numleafs != b->numleafs
+				|| memcmp (fin.mins, b->mins, sizeof(fin.mins)) || memcmp (fin.maxs, b->maxs, sizeof(fin.maxs))
+				|| fin.radius != b->radius)
+				Bake_Diff ("finished model", 0);
+			for (i=0 ; i<MAX_MAP_HULLS ; i++)
+				if (fin.hulls[i].firstclipnode != b->hulls[i].firstclipnode
+					|| fin.hulls[i].lastclipnode != b->hulls[i].lastclipnode)
+					Bake_Diff ("finished hull", i);
+			if (b->frameslot != 0 && !(Mod_IsItemBox (e->name)
+				&& b->frameslot > 0 && b->frameslot < QOG_MOD_FRAMES_BAKED))
+				Bake_Diff ("frameslot", 0);
+			for (i=1 ; i<m.numsubmodels ; i++)
+			{
+				fin = *b;
+				Mod_SetSubmodel (&fin, i);
+				memset (fin.name, 0, sizeof(fin.name));
+				sprintf (fin.name, "*%i", i);
+				if (memcmp (&fin, &b[i], sizeof(model_t)))
+					Bake_Diff ("inline model", i);
+			}
+			// the rest compares what the loader built: undo the finishing
+			bu = *b;
+			bu.numframes = m.numframes;
+			bu.flags = m.flags;
+			bu.firstmodelsurface = m.firstmodelsurface;
+			bu.nummodelsurfaces = m.nummodelsurfaces;
+			bu.numleafs = m.numleafs;
+			VectorCopy (m.mins, bu.mins);
+			VectorCopy (m.maxs, bu.maxs);
+			bu.radius = m.radius;
+			for (i=0 ; i<MAX_MAP_HULLS ; i++)
+			{
+				bu.hulls[i].firstclipnode = m.hulls[i].firstclipnode;
+				bu.hulls[i].lastclipnode = m.hulls[i].lastclipnode;
+			}
+			b = &bu;
+		}
+#endif
 
 		// counts, bounds and lumps read in place
 		if (m.type != b->type || m.numsubmodels != b->numsubmodels || m.numplanes != b->numplanes
@@ -2362,6 +2710,22 @@ static void Mod_Bake_f (void)
 		COM_ForEachPackFile (Bake_AddName);
 
 	bk_base = (unsigned)(size_t)Sys_FlashNext ();
+	// QuakeOG: -bakebase <address> builds the image for another flash address
+	// (at or after the packs, 64 KB aligned), for example where a board data
+	// image puts it. Pointers into the packs stay as they are mapped here.
+	i = COM_CheckParm ("-bakebase");
+	if (i && i < com_argc - 1)
+	{
+		unsigned	want = (unsigned)strtoul (com_argv[i + 1], NULL, 0);
+
+		if (want < bk_base || (want & 0xFFFF))
+		{
+			Con_Printf ("qog_bake: -bakebase %08x must be 64 KB aligned and at or after %08x\n", want, bk_base);
+			return;
+		}
+		bk_base = want;
+	}
+	bk_nextframe = 1;
 	bk_len = 0;
 	Bake_Reserve (sizeof(qogbake_header_t));
 	n = 0;
@@ -2386,7 +2750,7 @@ static void Mod_Bake_f (void)
 	hd->nummaps = n;
 	hd->dirofs = dirofs;
 
-	sprintf (path, "%s/qogbake.bin", com_gamedir);
+	Mod_BakePath (path);
 	hnd = Sys_FileOpenWrite (path);
 	if (hnd == -1)
 	{
@@ -2395,7 +2759,7 @@ static void Mod_Bake_f (void)
 	}
 	Sys_FileWrite (hnd, bk_buf, bk_len);
 	Sys_FileClose (hnd);
-	Con_Printf ("qog_bake: %i models, %i bytes, for address %08x, in qogbake.bin\n", n, bk_len, bk_base);
+	Con_Printf ("qog_bake: %i models, %i bytes, for address %08x, in %s\n", n, bk_len, bk_base, path);
 	free (bk_buf);
 	bk_buf = NULL;
 	bk_max = bk_len = 0;
@@ -2424,52 +2788,81 @@ baked maps alike: the per-frame arrays and the inline submodels.
 */
 static void Mod_FinishBrushModel (model_t *mod)
 {
-	int			i, j;
-	dmodel_t 	*bm;
+	int			i, numleafs;
+	modframe_t	*fr;
+
+	numleafs = loadmodel->numleafs;
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: a baked map is finished, its numleafs is already the world
+	// submodel's visleafs: the leaf arrays take the file's count, as in id's
+	if (MOD_INBAKE (loadmodel))
+	{
+		dheader_t	*h = (dheader_t *)COM_FlashFile (loadmodel->name, NULL);
+
+		if (!h)
+			Sys_Error ("Mod_FinishBrushModel: %s is not in flash", loadmodel->name);
+		numleafs = LittleLong (h->lumps[LUMP_LEAFS].filelen) / sizeof(dleaf_t);
+	}
+	// QuakeOG: a map loaded the normal way gets its frameslot here, a baked
+	// one has it in the image (numbered by qog_bake)
+	if (!MOD_INBAKE (loadmodel))
+	{
+		loadmodel->frameslot = 0;
+		if (Mod_IsItemBox (loadmodel->name))
+		{
+			if (mod_nextframe == QOG_MOD_FRAMES)
+				Sys_Error ("Mod_FinishBrushModel: more than %i item box maps", QOG_MOD_FRAMES - QOG_MOD_FRAMES_BAKED);
+			loadmodel->frameslot = mod_nextframe++;
+		}
+	}
+#endif
+	fr = MODFRAME (loadmodel);
 
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels
 	// below with the rest of the model, so they share it like the arrays.
-	loadmodel->surf_visframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
-	loadmodel->surf_dlightframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
-	loadmodel->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
-	loadmodel->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
-	loadmodel->leaf_visframe = Mod_AllocFrameStamps (loadmodel->numleafs);
-	loadmodel->leaf_efrags = Hunk_AllocName (loadmodel->numleafs * sizeof(efrag_t *), loadname);
-	loadmodel->leaf_key = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+	fr->surf_visframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
+	fr->surf_dlightframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
+	fr->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+	fr->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
+	fr->leaf_visframe = Mod_AllocFrameStamps (numleafs);
+	fr->leaf_efrags = Hunk_AllocName (numleafs * sizeof(efrag_t *), loadname);
+	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(int), loadname);
 #ifdef QOG_EDGECACHE16
 	// QuakeOG: window start (an int, zero) in front of the 16-bit entries
-	loadmodel->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)
+	fr->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)
 		+ (loadmodel->numedges + 1) * sizeof(unsigned short), loadname) + sizeof(int));
 #else
-	loadmodel->edge_cache = Hunk_AllocName ((loadmodel->numedges + 1) * sizeof(unsigned int), loadname);
+	fr->edge_cache = Hunk_AllocName ((loadmodel->numedges + 1) * sizeof(unsigned int), loadname);
+#endif
+
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: a baked map is already finished in the image, its inline
+	// models follow it there (see Bake_Map)
+	if (MOD_INBAKE (mod))
+	{
+		modslot_t	*s;
+
+		for (i=1 ; i<mod->numsubmodels ; i++)
+		{
+			s = Mod_FindSlot (mod[i].name);
+			s->model = &mod[i];
+			s->name = mod[i].name;
+			s->needload = NL_PRESENT;
+		}
+		return;
+	}
 #endif
 
 	mod->numframes = 2;		// regular and alternate animation
 	mod->flags = 0;
-	
+
 //
 // set up the submodels (FIXME: this is confusing)
 //
 	for (i=0 ; i<mod->numsubmodels ; i++)
 	{
-		bm = &mod->submodels[i];
-
-		mod->hulls[0].firstclipnode = bm->headnode[0];
-		for (j=1 ; j<MAX_MAP_HULLS ; j++)
-		{
-			mod->hulls[j].firstclipnode = bm->headnode[j];
-			mod->hulls[j].lastclipnode = mod->numclipnodes-1;
-		}
-		
-		mod->firstmodelsurface = bm->firstface;
-		mod->nummodelsurfaces = bm->numfaces;
-		
-		VectorCopy (bm->maxs, mod->maxs);
-		VectorCopy (bm->mins, mod->mins);
-		mod->radius = RadiusFromBounds (mod->mins, mod->maxs);
-		
-		mod->numleafs = bm->visleafs;
+		Mod_SetSubmodel (mod, i);	// QuakeOG: id's code, moved
 
 		if (i < mod->numsubmodels-1)
 		{	// duplicate the basic information
@@ -3150,6 +3543,15 @@ void Mod_Print (void)
 	model_t	*mod;
 
 	Con_Printf ("Cached models:\n");
+#ifdef QOG_MOD_FLASH
+	// QuakeOG: the level's models, baked or loaded
+	for (i=0 ; i < mod_numknown ; i++)
+	{
+		mod = mod_known[i].model;
+		Con_Printf ("%8p : %s%s\n", mod ? mod->cache.data : NULL, mod_known[i].name,
+			!mod ? " (!P)" : MOD_INBAKE (mod) ? " (baked)" : "");
+	}
+#else
 	for (i=0, mod=mod_known ; i < mod_numknown ; i++, mod++)
 	{
 		Con_Printf ("%8p : %s",mod->cache.data, mod->name);
@@ -3159,6 +3561,31 @@ void Mod_Print (void)
 			Con_Printf (" (!P)");
 		Con_Printf ("\n");
 	}
+#endif
 }
 
+
+/*
+================
+Mod_KnownStats
+
+QuakeOG: model table use, for qog_mem
+================
+*/
+void Mod_KnownStats (int *known, int *referenced, int *peak)
+{
+	int		i;
+
+	*known = mod_numknown;
+#ifdef QOG_MOD_FLASH
+	*referenced = mod_numknown;		// the table holds the current level only
+	*peak = mod_peakknown;
+#else
+	*referenced = 0;
+	for (i=0 ; i<mod_numknown ; i++)
+		if (mod_known[i].needload != NL_UNREFERENCED)
+			(*referenced)++;
+	*peak = mod_numknown;
+#endif
+}
 
