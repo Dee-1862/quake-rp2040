@@ -126,6 +126,17 @@ typedef struct msurface_s
 	byte		*samples;		// [numstyles*surfsize]
 } msurface_t;
 
+// QuakeOG: with QOG_MARKSURF16 a mark surface is the file's 16-bit surface
+// number (read in place from flash when possible) instead of a pointer.
+// The file format stores 16-bit numbers, so no map loses anything.
+#ifdef QOG_MARKSURF16
+typedef unsigned short	marksurf_t;
+#define MARKSURF_NUM(m, mk)	(*(mk))
+#else
+typedef struct msurface_s	*marksurf_t;
+#define MARKSURF_NUM(m, mk)	(*(mk) - (m)->surfaces)
+#endif
+
 typedef struct mnode_s
 {
 // common with leaf
@@ -160,7 +171,7 @@ typedef struct mleaf_s
 	byte		*compressed_vis;
 	// QuakeOG: efrags and key moved to model_t (LEAF_EFRAGS, LEAF_KEY)
 
-	msurface_t	**firstmarksurface;
+	marksurf_t	*firstmarksurface;	// QuakeOG: see marksurf_t
 	int			nummarksurfaces;
 	byte		ambient_sound_level[NUM_AMBIENTS];
 } mleaf_t;
@@ -359,7 +370,7 @@ typedef struct model_s
 	dclipnode_t	*clipnodes;
 
 	int			nummarksurfaces;
-	msurface_t	**marksurfaces;
+	marksurf_t	*marksurfaces;		// QuakeOG: see marksurf_t
 
 	hull_t		hulls[MAX_MAP_HULLS];
 

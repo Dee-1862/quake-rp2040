@@ -450,7 +450,8 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	int			i, c, side, *pindex;
 	vec3_t		acceptpt, rejectpt;
 	mplane_t	*plane;
-	msurface_t	*surf, **mark;
+	msurface_t	*surf;
+	marksurf_t	*mark;	// QuakeOG: a pointer or a 16-bit surface number
 	mleaf_t		*pleaf;
 	double		d, dot;
 
@@ -510,7 +511,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		{
 			do
 			{
-				SURF_VISFRAME (cl.worldmodel, *mark) = r_framecount;
+				cl.worldmodel->surf_visframe[MARKSURF_NUM (cl.worldmodel, mark)] = r_framecount;
 				mark++;
 			} while (--c);
 		}

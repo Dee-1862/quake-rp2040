@@ -1127,23 +1127,43 @@ void Mod_LoadMarksurfaces (lump_t *l)
 {	
 	int		i, j, count;
 	short		*in;
-	msurface_t **out;
-	
+	marksurf_t	*out;
+
 	in = (void *)(mod_base + l->fileofs);
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*sizeof(*out), loadname);	
+#ifdef QOG_MARKSURF16
+	// QuakeOG: the file's 16-bit surface numbers, read in place from flash
+	// (checked like id's, but as the unsigned numbers they are)
+	if (mod_inflash && !(((int)in) & 1))
+	{
+		for (i=0 ; i<count ; i++)
+			if ((unsigned short)in[i] >= loadmodel->numsurfaces)
+				Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
+		loadmodel->marksurfaces = (marksurf_t *)in;
+		loadmodel->nummarksurfaces = count;
+		return;
+	}
+#endif
+	out = Hunk_AllocName ( count*sizeof(*out), loadname);
 
 	loadmodel->marksurfaces = out;
 	loadmodel->nummarksurfaces = count;
 
 	for ( i=0 ; i<count ; i++)
 	{
+#ifdef QOG_MARKSURF16
+		j = (unsigned short)LittleShort(in[i]);
+		if (j >= loadmodel->numsurfaces)
+			Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
+		out[i] = j;
+#else
 		j = LittleShort(in[i]);
 		if (j >= loadmodel->numsurfaces)
 			Sys_Error ("Mod_ParseMarksurfaces: bad surface number");
 		out[i] = loadmodel->surfaces + j;
+#endif
 	}
 }
 

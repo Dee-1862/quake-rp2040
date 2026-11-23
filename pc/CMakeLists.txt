@@ -73,7 +73,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_MAXSPANS=1000)              # span buffer, overflow only flushes early (id 3000)
 # BSP structures built at map load (engine/model.c), see docs/changes.md.
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_PLANES_EXACT)               # planes allocated once, not twice (id's unused second half)
+    QOG_PLANES_EXACT                # planes allocated once, not twice (id's unused second half)
+    QOG_MARKSURF16)                 # mark surfaces as the file's 16-bit numbers, in place
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}
