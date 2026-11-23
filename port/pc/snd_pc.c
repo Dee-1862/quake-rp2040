@@ -22,6 +22,7 @@ See the GNU General Public License for more details.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <mmsystem.h>
+#include <math.h>
 #include "quakedef.h"
 
 #define WAV_BUFFERS      64
@@ -36,15 +37,55 @@ static WAVEHDR  s_hdr[WAV_BUFFERS];
 static byte    *s_buffer;
 static int      s_sent, s_completed;
 
+/* Silent mode (-hidden or -silentsound): the mixer runs into the buffer as
+   usual but nothing is sent to the speakers, and the play position advances
+   by game time, not by the audio device. So scripted tests exercise sound
+   without being heard, and stay repeatable. qog_soundlevel reports what was
+   mixed. */
+static qboolean s_silent;
+static double   s_silentpos;   /* in 16-bit samples, both channels */
+
+static void cmd_soundlevel(void) {
+    if (!shm || !shm->buffer) { Con_Printf("qog_soundlevel: sound is off\n"); return; }
+    const short *b = (const short *)shm->buffer;
+    int peak = 0;
+    double sum = 0;
+    for (int i = 0; i < shm->samples; i++) {
+        int v = b[i] < 0 ? -b[i] : b[i];
+        if (v > peak) peak = v;
+        sum += (double)b[i] * b[i];
+    }
+    Con_Printf("qog_soundlevel: peak %d, rms %.0f of 32767 over the last %.2f s%s\n", peak,
+               sqrt(sum / shm->samples), (double)shm->samples / shm->channels / shm->speed,
+               s_silent ? " (silent mode)" : "");
+}
+
 qboolean SNDDMA_Init(void) {
     WAVEFORMATEX fmt;
     int i;
+    static qboolean registered;
 
+    if (!registered) { Cmd_AddCommand("qog_soundlevel", cmd_soundlevel); registered = true; }
     memset((void *)&sn, 0, sizeof sn);
     shm = &sn;
     shm->channels = 2;
     shm->samplebits = 16;
     shm->speed = SND_SPEED;
+
+    s_silent = COM_CheckParm("-hidden") || COM_CheckParm("-silentsound");
+    if (s_silent) {
+        s_buffer = calloc(WAV_BUFFERS, WAV_BUFFER_SIZE);
+        if (!s_buffer) { shm = NULL; return false; }
+        shm->soundalive = true;
+        shm->splitbuffer = false;
+        shm->samples = WAV_BUFFERS * WAV_BUFFER_SIZE / (shm->samplebits / 8);
+        shm->samplepos = 0;
+        shm->submission_chunk = 1;
+        shm->buffer = s_buffer;
+        s_silentpos = 0;
+        Con_Printf("Sound: silent mode, mixing without output\n");
+        return true;
+    }
 
     memset(&fmt, 0, sizeof fmt);
     fmt.wFormatTag = WAVE_FORMAT_PCM;
@@ -78,11 +119,16 @@ qboolean SNDDMA_Init(void) {
 }
 
 int SNDDMA_GetDMAPos(void) {
+    if (s_silent) return (int)s_silentpos & (shm->samples - 1);
     int s = s_sent * WAV_BUFFER_SIZE / (shm->samplebits / 8);
     return s & (shm->samples - 1);
 }
 
 void SNDDMA_Submit(void) {
+    if (s_silent) {   /* "play" one frame of game time */
+        s_silentpos += host_frametime * shm->speed * shm->channels;
+        return;
+    }
     if (!s_wave) return;
     /* retire the blocks that have finished playing */
     while (s_completed != s_sent && (s_hdr[s_completed & WAV_MASK].dwFlags & WHDR_DONE))
@@ -97,6 +143,12 @@ void SNDDMA_Submit(void) {
 
 void SNDDMA_Shutdown(void) {
     int i;
+    if (s_silent) {
+        free(s_buffer);
+        s_buffer = NULL;
+        shm = NULL;
+        return;
+    }
     if (!s_wave) return;
     waveOutReset(s_wave);
     for (i = 0; i < WAV_BUFFERS; i++) waveOutUnprepareHeader(s_wave, &s_hdr[i], sizeof s_hdr[i]);
