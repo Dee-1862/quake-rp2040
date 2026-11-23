@@ -106,11 +106,20 @@ typedef struct msurface_s
 	// model_t (SURF_VISFRAME and friends) so surfaces can be read only
 
 	mplane_t	*plane;
+#ifdef QOG_SURF_PACKED
+	// QuakeOG: flags fit 16 bits (SURF_* up to 0x40) and numedges is the
+	// file's 16-bit count, so the two share one word (msurface_t 36 to 32 B)
+	unsigned short	flags;
+	short		numedges;	// are backwards edges
+
+	int			firstedge;	// look up in model->surfedges[], negative numbers
+#else
 	int			flags;
 
 	int			firstedge;	// look up in model->surfedges[], negative numbers
 	int			numedges;	// are backwards edges
-	
+#endif
+
 #ifdef QOG_SURFCACHE
 // surface generation data
 	struct surfcache_s	*cachespots[MIPLEVELS];

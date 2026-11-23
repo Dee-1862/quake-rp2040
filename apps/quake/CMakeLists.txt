@@ -25,7 +25,8 @@ set(QOG_ENGINE_DEFS
 # BSP structures built at map load (engine/model.c), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_PLANES_EXACT
-    QOG_MARKSURF16)
+    QOG_MARKSURF16
+    QOG_SURF_PACKED)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
