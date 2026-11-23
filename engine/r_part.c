@@ -39,6 +39,15 @@ particle_t	*active_particles, *free_particles;
 particle_t	*particles;
 int			r_numparticles;
 
+#ifdef QOG_PARTICLE_PACKED
+// QuakeOG: the list link is a 16-bit index + 1, 0 = NULL (d_iface.h)
+#define P_NEXT(p)		((p)->next ? particles + (p)->next - 1 : NULL)
+#define P_SETNEXT(p,q)	((p)->next = (q) ? (unsigned short)((particle_t *)(q) - particles + 1) : 0)
+#else
+#define P_NEXT(p)		((p)->next)
+#define P_SETNEXT(p,q)	((p)->next = (q))
+#endif
+
 vec3_t			r_pright, r_pup, r_ppn;
 
 
@@ -63,6 +72,10 @@ void R_InitParticles (void)
 	{
 		r_numparticles = MAX_PARTICLES;
 	}
+#ifdef QOG_PARTICLE_PACKED
+	if (r_numparticles > 65535)
+		r_numparticles = 65535;	// QuakeOG: 16-bit list links
+#endif
 
 	particles = (particle_t *)
 			Hunk_AllocName (r_numparticles * sizeof(particle_t), "particles");
@@ -87,8 +100,8 @@ void R_DarkFieldParticles (entity_t *ent)
 				if (!free_particles)
 					return;
 				p = free_particles;
-				free_particles = p->next;
-				p->next = active_particles;
+				free_particles = P_NEXT(p);
+				P_SETNEXT(p, active_particles);
 				active_particles = p;
 		
 				p->die = cl.time + 0.2 + (rand()&7) * 0.02;
@@ -119,7 +132,15 @@ R_EntityParticles
 
 #define NUMVERTEXNORMALS	162
 extern	float	r_avertexnormals[NUMVERTEXNORMALS][3];
+#ifdef QOG_PARTICLE_AVEL8
+// QuakeOG: each rate is (rand()&255) * 0.01, so keep the byte and scale it
+// on use to the same float (486 bytes instead of 1,944)
+byte	avelocities[NUMVERTEXNORMALS][3];
+#define AVEL(x)		((float)((x) * 0.01))
+#else
 vec3_t	avelocities[NUMVERTEXNORMALS];
+#define AVEL(x)		(x)
+#endif
 float	beamlength = 16;
 vec3_t	avelocity = {23, 7, 3};
 float	partstep = 0.01;
@@ -141,19 +162,23 @@ void R_EntityParticles (entity_t *ent)
 if (!avelocities[0][0])
 {
 for (i=0 ; i<NUMVERTEXNORMALS*3 ; i++)
+#ifdef QOG_PARTICLE_AVEL8
+avelocities[0][i] = rand()&255;
+#else
 avelocities[0][i] = (rand()&255) * 0.01;
+#endif
 }
 
 
 	for (i=0 ; i<NUMVERTEXNORMALS ; i++)
 	{
-		angle = cl.time * avelocities[i][0];
+		angle = cl.time * AVEL(avelocities[i][0]);
 		sy = sin(angle);
 		cy = cos(angle);
-		angle = cl.time * avelocities[i][1];
+		angle = cl.time * AVEL(avelocities[i][1]);
 		sp = sin(angle);
 		cp = cos(angle);
-		angle = cl.time * avelocities[i][2];
+		angle = cl.time * AVEL(avelocities[i][2]);
 		sr = sin(angle);
 		cr = cos(angle);
 	
@@ -164,8 +189,8 @@ avelocities[0][i] = (rand()&255) * 0.01;
 		if (!free_particles)
 			return;
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 
 		p->die = cl.time + 0.01;
@@ -192,8 +217,8 @@ void R_ClearParticles (void)
 	active_particles = NULL;
 
 	for (i=0 ;i<r_numparticles ; i++)
-		particles[i].next = &particles[i+1];
-	particles[r_numparticles-1].next = NULL;
+		P_SETNEXT(&particles[i], &particles[i+1]);
+	P_SETNEXT(&particles[r_numparticles-1], NULL);
 }
 
 
@@ -230,8 +255,8 @@ void R_ReadPointFile_f (void)
 			break;
 		}
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 		
 		p->die = 99999;
@@ -288,8 +313,8 @@ void R_ParticleExplosion (vec3_t org)
 		if (!free_particles)
 			return;
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 
 		p->die = cl.time + 5;
@@ -333,8 +358,8 @@ void R_ParticleExplosion2 (vec3_t org, int colorStart, int colorLength)
 		if (!free_particles)
 			return;
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 
 		p->die = cl.time + 0.3;
@@ -366,8 +391,8 @@ void R_BlobExplosion (vec3_t org)
 		if (!free_particles)
 			return;
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 
 		p->die = cl.time + 1 + (rand()&8)*0.05;
@@ -411,8 +436,8 @@ void R_RunParticleEffect (vec3_t org, vec3_t dir, int color, int count)
 		if (!free_particles)
 			return;
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 
 		if (count == 1024)
@@ -474,8 +499,8 @@ void R_LavaSplash (vec3_t org)
 				if (!free_particles)
 					return;
 				p = free_particles;
-				free_particles = p->next;
-				p->next = active_particles;
+				free_particles = P_NEXT(p);
+				P_SETNEXT(p, active_particles);
 				active_particles = p;
 		
 				p->die = cl.time + 2 + (rand()&31) * 0.02;
@@ -516,8 +541,8 @@ void R_TeleportSplash (vec3_t org)
 				if (!free_particles)
 					return;
 				p = free_particles;
-				free_particles = p->next;
-				p->next = active_particles;
+				free_particles = P_NEXT(p);
+				P_SETNEXT(p, active_particles);
 				active_particles = p;
 		
 				p->die = cl.time + 0.2 + (rand()&7) * 0.02;
@@ -564,8 +589,8 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 		if (!free_particles)
 			return;
 		p = free_particles;
-		free_particles = p->next;
-		p->next = active_particles;
+		free_particles = P_NEXT(p);
+		P_SETNEXT(p, active_particles);
 		active_particles = p;
 		
 		VectorCopy (vec3_origin, p->vel);
@@ -690,23 +715,23 @@ void R_DrawParticles (void)
 		kill = active_particles;
 		if (kill && kill->die < cl.time)
 		{
-			active_particles = kill->next;
-			kill->next = free_particles;
+			active_particles = P_NEXT(kill);
+			P_SETNEXT(kill, free_particles);
 			free_particles = kill;
 			continue;
 		}
 		break;
 	}
 
-	for (p=active_particles ; p ; p=p->next)
+	for (p=active_particles ; p ; p=P_NEXT(p))
 	{
 		for ( ;; )
 		{
-			kill = p->next;
+			kill = P_NEXT(p);
 			if (kill && kill->die < cl.time)
 			{
-				p->next = kill->next;
-				kill->next = free_particles;
+				P_SETNEXT(p, P_NEXT(kill));
+				P_SETNEXT(kill, free_particles);
 				free_particles = kill;
 				continue;
 			}
