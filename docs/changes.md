@@ -2,6 +2,56 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: The game split across both RP2040s, server on main, client on the display (Agent R, PC and ARM build, registered data)
+
+The server half (SV_*, QuakeC, physics, edicts) and the client half (CL_*, renderer, status bar, input) are now separate builds joined by a new net driver over the inter-chip link. On the PC the two halves run as two processes over TCP at the UART's speed and give the same state hashes and frames as the single-process game. On the board `quake_main` (server) links with 1,712 bytes of RAM to spare. `quake_display` (client) still overflows RAM by 118,024 bytes with the E1M1 hunk (136,456 with e3m5's). Nothing ran on hardware.
+
+How the split works (engine/net_link.c, flag `QOG_NET_LINK` with `QOG_SPLIT_SERVER` or `QOG_SPLIT_CLIENT`):
+
+- The link driver replaces the loopback driver with loopback semantics: a reliable message makes the sender wait until the receiver has read it (canSend), the receive buffers have the loopback's sizes and are read in place, and an overflow behaves as there.
+- Lockstep. The client stops where id's Host_Frame ran the local server (`Link_ClientFrame`), sends what its frame produced and waits. The server half runs its frame and answers. Console lines the client does not know run on the server at once, inside the client's command buffer (`Link_ForwardCommand`, a synchronous exchange), so `map`, `load`, `changelevel`, `qog_statehash` happen at the same point as in one process. `qog_sv <line>` forces a line to the server.
+- What id's server did to client state directly comes back as items the client carries out at the same point: `reconnect` (SV_SendReconnect), `connect local` (map, load), `disconnect` (load), Host_ClearMemory's client half, `scr_centertime_off`, Host_Error and Host_EndGame. A client that closes its connection stops the server, as CL_Disconnect did. The server's Con_Printf goes to the client's console. Text the server adds to the command buffer (QuakeC `changelevel`, `localcmd`) joins the client's, which is the game's only command buffer, so scripted waits keep id's order.
+- Shared globals cross with every item that follows a change: the client's realtime, host_frametime and key_dest (SV_Physics pauses in menus), the server's host_frametime, `sv.active`, `sv.paused`, `sv.max_edicts`, `svs.maxclients`, the map name and noclip_anglehack. Every cvar set on one half is set on the other. The shared random sequence (qog_rand) stays one sequence: each side sends its call count and the other advances its generator to it, so QuakeC's random() and the particles draw exactly the numbers they drew in one process.
+- In the client build `sv` and `svs` are that report (engine/server.h), and `Host_ShutdownServer` only clears `sv.active`, so id's client code (CL_LerpPoint, CL_KeepaliveMessage, menus) is unchanged. The server build has no console, renderer, sound, keys or menus (port/common/qog_split_sv.c keeps V_CalcRoll and a console that prints to the log and to the client).
+
+Transport (port/common/qog_link.c, port/pc/link_pc.c, port/rp2040/link_rp2040.c): a reliable byte stream over the BSP's link frames `[0x7E][len16][payload][crc16]` with the BSP's CRC, Quake types 0x40 DATA, 0x41 ACK, 0x42 HELLO and 0x43 HELLOK (0x01 to 0x1F stay the bootloader's, 0x20 to 0x22 the breakout I/O's, which the display hands to `fwog_ioexp_link_handle`). One frame in flight, resent after a timeout with back off, duplicates acknowledged again, the decoder resynchronizes after a bad CRC, and a full receive ring sends no ack so the sender waits (with the UART's RTS/CTS below it). Board sizes 512-byte frames and 2 KB rings on both chips. On the main chip every wait kicks the watchdog, on the display every wait keeps `fwog_power_poll` running.
+
+PC results (hidden and silent with `-nosound`, against an untouched build of eb5c08d, `build-pc-base`, link rate limited to 300,000 bytes per second):
+
+| Test | Single process (base) | Split pair |
+| --- | --- | --- |
+| `qogtest_hash.cfg` | 2 hashes | identical, rand calls 539 and 1990 as in base |
+| `qogtest_r_fhash.cfg` (copy of `qogtest_q_fhash` with its own save name, 8 maps, fight, save, load) | 32 hashes, 8 frames | all identical |
+| `qogtest_k_quiet.cfg` + `qogtest_d_shots.cfg` (demos and `map dm6`) | 113 frames | all byte identical |
+| `qogtest_hash.cfg` with `-linkcorrupt 40 -linkdrop 60` on both | | identical, 39 resends, 20 CRC drops |
+| `qogtest_r_fhash.cfg` on QOG_AOT with the board's flags and link sizes | | identical to base |
+
+The single-process build of this commit (`quakeog_pc`, all new flags off) gives the same 2 + 32 hashes, 8 + 113 frames as base.
+
+Link traffic (wire bytes, framing and acks included, fhash run): per frame client to server average 61, server to client average 235. In 3,360 frames of play the busiest frame was 164 bytes up and 560 down. The worst burst is a level change or load, 5,241 bytes to the client in one frame (17.5 ms at 300 KB/s, 4.2 ms at the BSP's 12.5 Mbaud) and 1,237 bytes up. The lockstep adds the server's frame to the client's frame time: the halves do not yet run in parallel.
+
+RAM of each half. Hunks are the smallest `-heapsize` of a PC build with QOG_AOT and the board's flags that runs the map, a fight, a save and a load (`qogtest_r_mem_e1m1.cfg`, `qogtest_r_mem_e3m5.cfg`). Single chip for comparison: 194 KB (Agent Q).
+
+| | E1M1 | e3m5 (worst map) | Static RAM and stack on the board |
+| --- | ---: | ---: | --- |
+| Server (`quakeog_sv`, server zone 6 KB, load buffer 8 KB, `QOG_LOADGAME_STRSIZE`) | 130 KB | 172 KB | sv 11,360, BSP display update and link buffers 12,441, stack 24 KB (deepest chain 18,608 B, `tools/stack_chain.py --root server_main`) |
+| Client (`quakeog_cl`) | 97 KB | 115 KB | video 145,920, stack 47 KB, engine statics 57,356, SDK and BSP 23,737, link 6,329 |
+
+Board links (`cmake --preset target -DQOG_AOT=ON`):
+
+- `quake_main` with `QOG_SV_HUNK_KB` 172 and `QOG_SV_STACK_KB` 24: links, .data 7,840 + .bss 250,352 + heap 2,048, 1,712 bytes of RAM left. App 884,092 bytes with a stand-in display image (`-DQOG_SPLIT_MAIN_EMBED=qog_display`, because quake_display does not link yet), 3 MB app slot.
+- `quake_display` (client): RAM overflow 136,456 bytes with `QOG_CL_HUNK_KB` 115, 118,024 bytes with 97 (E1M1). Before the split the single chip build overflowed by 223,504. The client keeps the 47 KB stack array: the render chain is 47,584 bytes from R_RenderView (the merge coordinator's measurement) plus about 300 above it, and Agent K's 48 KB exact edge fallback is not reserved (it would add about 41 KB to an overflow that is already 118 KB).
+
+Main flash layout (platform/qog_flashmap.h): app with the embedded display image 0x000000 to 0x2FFFFF (3 MB, checked post-build), server data 0x300000 to 0x7FFFFF (5 MB), BSP FAT volume 0x800000 to 0xFFFFFF (untouched). Server-side lumps of `start` and episode 1 (entities, planes, visibility, nodes, clip nodes, leafs, models) are 2,167,292 bytes in the paks plus progs.dat 413,116, so the server's copy fits 5 MB, while a full copy of the display image (11.9 MB) does not. The server image (a pak of what the server opens and a bake for 0x10300000 without textures, lighting and surfaces, written by the same `tools/mkboard.py` run as the display's) is not written yet.
+
+New engine flags (all off by default): `QOG_NET_LINK`, `QOG_SPLIT_SERVER`, `QOG_SPLIT_CLIENT`, `QOG_LOADGAME_STRSIZE`. Port flags: `QOG_SYS_MAIN`, `QOG_LINK_MAIN`, `QOG_LINK_CHUNK`, `QOG_LINK_TXRING`, `QOG_LINK_RXRING`. CMake: `QOG_SPLIT` (ON), `QOG_CL_HUNK_KB`, `QOG_SV_HUNK_KB`, `QOG_SV_STACK_KB`, `QOG_SPLIT_MAIN_EMBED` in apps/quake, `QOG_SPLIT_SV_EXTRA` and `QOG_SPLIT_CL_EXTRA` in pc.
+
+- Edits outside new files: engine/host.c, host_cmd.c, cmd.c, cvar.c, net_main.c, net_none.c, server.h, sv_main.c, sv_user.c, world.c (each behind the flags), port/common/qog_mem.c (reports leave out the missing half), port/pc/sys_pc.c (server loop), port/rp2040/sys_rp2040.c (`QOG_SYS_MAIN`), tools/pctest.ps1 (`-ServerExe`, `-ServerArgs`), tools/check_app_size.py (`main`), and one new block at the end of pc/CMakeLists.txt and apps/quake/CMakeLists.txt.
+- Not in the split builds: the single-process PC tools `qog_tour`, `qog_manifest`, `qog_fly` (stubs in port/pc/split_cl_pc.c), the server's `viewmodel`, `viewframe`, `viewnext`, `viewprev` (they write the client's model list), and the QOG_BAKE_WRITER.
+- Known differences from one process, none hit by the tests: the order of client and server prints inside one exchange, a load whose file fails on the server after the client cleared its demo loop, config.cfg written by the client lacks server-only archived cvars, and the save and load menus read save files on the client's side (on the board they live on main).
+
+Left before the split runs on the board: the client half must fit (118 KB over on E1M1, the video's 146 KB is the biggest block), the server data image (mkboard `--main` with a server bake), saves on main's FAT volume, the smoketest of the link rate, and a first run on hardware.
+
 ## 2026-11-23: The full game on the board, honest configuration (Agent Q, PC and ARM build, registered data)
 
 `quake_display` now links with everything the game needs counted: QOG_AOT on, sound off, a hunk sized from the measured E1M1 need and the game stack as an array in main RAM. It does not fit. RAM overflow 255,504 bytes before the cuts below, 223,504 bytes after them (216,336 bytes if loading a save is not needed). Exact cuts cannot close the gap, and the picture options do not either. Nothing ran on hardware.
