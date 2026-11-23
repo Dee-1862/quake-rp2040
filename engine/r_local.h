@@ -51,6 +51,14 @@ typedef struct {
 	float	fv[3];		// viewspace x, y
 } auxvert_t;
 
+#ifdef QOG_ALIAS_NO_AUXVERTS
+// QuakeOG: R_AliasDrawModel keeps no per-vertex view-space array. The
+// triangle clipper recomputes a vertex's view-space position from the
+// frame's vertices with the same function, so the values are the same.
+extern trivertx_t	*r_qog_apverts;		// first vertex of the frame being drawn
+void R_AliasTransformAuxVert (auxvert_t *av, trivertx_t *pverts);
+#endif
+
 //===========================================================================
 
 extern cvar_t	r_draworder;

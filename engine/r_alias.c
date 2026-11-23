@@ -273,13 +273,23 @@ void R_AliasPreparePoints (void)
 	auxvert_t	*av;
 	mtriangle_t	*ptri;
 	finalvert_t	*pfv[3];
+#ifdef QOG_ALIAS_NO_AUXVERTS
+	auxvert_t	avone;	// QuakeOG: one vertex at a time, see r_local.h
+#endif
 
 	pstverts = (stvert_t *)((byte *)paliashdr + paliashdr->stverts);
 	r_anumverts = pmdl->numverts;
  	fv = pfinalverts;
+#ifdef QOG_ALIAS_NO_AUXVERTS
+	av = &avone;
+	r_qog_apverts = r_apverts;
+
+	for (i=0 ; i<r_anumverts ; i++, fv++, r_apverts++, pstverts++)
+#else
 	av = pauxverts;
 
 	for (i=0 ; i<r_anumverts ; i++, fv++, av++, r_apverts++, pstverts++)
+#endif
 	{
 		R_AliasTransformFinalVert (fv, av, r_apverts, pstverts);
 		if (av->fv[2] < ALIAS_Z_CLIP_PLANE)
@@ -412,18 +422,38 @@ void R_AliasSetUpTransform (int trivial_accept)
 R_AliasTransformFinalVert
 ================
 */
-void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
-	trivertx_t *pverts, stvert_t *pstverts)
-{
-	int		temp;
-	float	lightcos, *plightnormal;
+#ifdef QOG_ALIAS_NO_AUXVERTS
+trivertx_t	*r_qog_apverts;
 
+// QuakeOG: id's view-space transform from R_AliasTransformFinalVert, shared
+// with the triangle clipper (r_local.h)
+void R_AliasTransformAuxVert (auxvert_t *av, trivertx_t *pverts)
+{
 	av->fv[0] = DotProduct(pverts->v, aliastransform[0]) +
 			aliastransform[0][3];
 	av->fv[1] = DotProduct(pverts->v, aliastransform[1]) +
 			aliastransform[1][3];
 	av->fv[2] = DotProduct(pverts->v, aliastransform[2]) +
 			aliastransform[2][3];
+}
+#endif
+
+void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
+	trivertx_t *pverts, stvert_t *pstverts)
+{
+	int		temp;
+	float	lightcos, *plightnormal;
+
+#ifdef QOG_ALIAS_NO_AUXVERTS
+	R_AliasTransformAuxVert (av, pverts);
+#else
+	av->fv[0] = DotProduct(pverts->v, aliastransform[0]) +
+			aliastransform[0][3];
+	av->fv[1] = DotProduct(pverts->v, aliastransform[1]) +
+			aliastransform[1][3];
+	av->fv[2] = DotProduct(pverts->v, aliastransform[2]) +
+			aliastransform[2][3];
+#endif
 
 	fv->v[2] = pstverts->s;
 	fv->v[3] = pstverts->t;
@@ -704,14 +734,20 @@ void R_AliasDrawModel (alight_t *plighting)
 {
 	finalvert_t		finalverts[MAXALIASVERTS +
 						((CACHE_SIZE - 1) / sizeof(finalvert_t)) + 1];
+#ifndef QOG_ALIAS_NO_AUXVERTS
 	auxvert_t		auxverts[MAXALIASVERTS];
+#endif
 
 	r_amodels_drawn++;
 
 // cache align
 	pfinalverts = (finalvert_t *)
 			(((long)&finalverts[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
+#ifdef QOG_ALIAS_NO_AUXVERTS
+	pauxverts = NULL;	// QuakeOG: recomputed when clipping, see r_local.h
+#else
 	pauxverts = &auxverts[0];
+#endif
 
 	paliashdr = (aliashdr_t *)Mod_Extradata (currententity->model);
 	pmdl = (mdl_t *)((byte *)paliashdr + paliashdr->model);

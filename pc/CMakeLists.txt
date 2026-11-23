@@ -105,7 +105,9 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_EDGE_T_PACKED               # edge_t 24 bytes with 16-bit links and owner (id 32)
     QOG_ESPAN_T_PACKED              # espan_t 8 bytes, 16-bit coordinates and link (id 16)
-    QOG_SURF_T_SMALL)               # surf_t 40 bytes with 16-bit links (52 packed, id 64)
+    QOG_SURF_T_SMALL                # surf_t 40 bytes with 16-bit links (52 packed, id 64)
+    QOG_FINALVERT_PACKED            # finalvert_t 28 bytes, no assembly padding (id 32)
+    QOG_ALIAS_NO_AUXVERTS)          # no per-vertex view-space array, the clipper recomputes it
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

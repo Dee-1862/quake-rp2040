@@ -66,7 +66,9 @@ typedef struct polydesc_s {
 typedef struct finalvert_s {
 	int		v[6];		// u, v, s, t, l, 1/z
 	int		flags;
-	float	reserved;
+#ifndef QOG_FINALVERT_PACKED
+	float	reserved;	// QuakeOG: padding for id's x86 assembly only (28 bytes without)
+#endif
 } finalvert_t;
 
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
