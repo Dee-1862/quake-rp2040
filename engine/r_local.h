@@ -221,7 +221,15 @@ void	R_ZDrawSubmodelPolys (model_t *clmodel);
 // Alias models
 //=========================================================
 
+// QuakeOG: R_AliasDrawModel keeps two work arrays of this many vertices on
+// the stack (44 bytes each). The largest shareware model is progs/boss.mdl
+// with 325 vertices. Mod_LoadAliasModel still refuses a bigger model with
+// "model ... has too many vertices".
+#ifdef QOG_MAXALIASVERTS
+#define MAXALIASVERTS		QOG_MAXALIASVERTS
+#else
 #define MAXALIASVERTS		2000	// TODO: tune this
+#endif
 #define ALIAS_Z_CLIP_PLANE	5
 
 extern int				numverts;
