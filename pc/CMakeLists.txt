@@ -124,3 +124,7 @@ target_link_libraries(quakeog_pc PRIVATE user32 gdi32 winmm)
 # every run has the same memory layout, so qog_statehash is repeatable.
 target_link_options(quakeog_pc PRIVATE /DYNAMICBASE:NO)
 set_target_properties(quakeog_pc PROPERTIES WIN32_EXECUTABLE OFF)
+# Baked maps (engine/model.c): read-only BSP structures from id1/qogbake.bin in flash.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_BAKE                        # map loads use the baked image when it matches the packs
+    QOG_BAKE_WRITER)                # the qog_bake console command that writes it (PC only)

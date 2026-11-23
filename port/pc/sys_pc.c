@@ -130,9 +130,15 @@ static int realign_pack(const byte *src, int len, byte *dst) {
 /* Flash emulation: the pack, realigned like the board's converter will lay
    it out, in its own pages at the board's data-region address, then marked
    read only so any write into "flash" faults on the PC instead of
-   corrupting the board. Not counted as RAM. -noflash turns it off. */
+   corrupting the board. Not counted as RAM. -noflash turns it off.
+   A baked map image (engine/model.c, "QOGB") is mapped as it is, at the
+   next free 64 KB boundary after the packs, the address it was built for. */
+static byte *s_flash_next = (byte *)QOG_PC_FLASH_ADDR;   /* like the board's XIP data region */
+
+void *Sys_FlashNext(void) { return s_flash_next; }
+
 void *Sys_FlashMap(char *path, int length) {
-    static byte *next = (byte *)QOG_PC_FLASH_ADDR;   /* like the board's XIP data region */
+    byte *next = s_flash_next;
     if (COM_CheckParm("-noflash") || length <= 0) return NULL;
 
     byte *raw = malloc((size_t)length);
@@ -143,18 +149,22 @@ void *Sys_FlashMap(char *path, int length) {
         return NULL;
     }
     fclose(f);
-    const int size = realign_pack(raw, length, NULL);
-    if (!size) { free(raw); return NULL; }   /* not a pack: load it the normal way */
+    int size = realign_pack(raw, length, NULL);
+    const int image = !size && length >= 4 && !memcmp(raw, "QOGB", 4);
+    if (image) size = length;
+    if (!size) { free(raw); return NULL; }   /* not a pack or an image: load it the normal way */
 
     byte *p = VirtualAlloc(next, (SIZE_T)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!p) p = VirtualAlloc(NULL, (SIZE_T)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!p) { free(raw); return NULL; }
-    if (p == next) next += ((size + 0xFFFF) & ~0xFFFF);
-    realign_pack(raw, length, p);
+    if (p == next) s_flash_next += ((size + 0xFFFF) & ~0xFFFF);
+    if (image) memcpy(p, raw, (size_t)length);
+    else realign_pack(raw, length, p);
     free(raw);
     DWORD old;
     VirtualProtect(p, (SIZE_T)size, PAGE_READONLY, &old);
-    printf("Flash: %s mapped read only at %p, %d KB, files 16-byte aligned\n", path, (void *)p, size / 1024);
+    printf("Flash: %s mapped read only at %p, %d KB%s\n", path, (void *)p, size / 1024,
+           image ? ", baked map image" : ", files 16-byte aligned");
     return p;
 }
 

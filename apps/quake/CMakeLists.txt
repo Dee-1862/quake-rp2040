@@ -58,6 +58,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SURF_T_SMALL
     QOG_FINALVERT_PACKED
     QOG_ALIAS_NO_AUXVERTS)
+# Baked maps (engine/model.c), loader only. The writer is the PC's qog_bake.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_BAKE)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

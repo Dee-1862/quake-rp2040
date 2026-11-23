@@ -1805,6 +1805,50 @@ byte *COM_FlashFile (char *path, int *length)
 	return NULL;
 }
 
+/*
+============
+COM_InFlash
+
+QuakeOG: true if p points into the read-only image of a mapped pack. The
+map baker (qog_bake in model.c) keeps such pointers as they are.
+============
+*/
+qboolean COM_InFlash (void *p)
+{
+	searchpath_t    *search;
+	dpackheader_t   *h;
+
+	for (search = com_searchpaths ; search ; search = search->next)
+	{
+		if (!search->pack || !search->pack->flash)
+			continue;
+		h = (dpackheader_t *)search->pack->flash;
+		if ((byte *)p >= search->pack->flash
+			&& (byte *)p < search->pack->flash + LittleLong (h->dirofs) + LittleLong (h->dirlen))
+			return true;
+	}
+	return false;
+}
+
+/*
+============
+COM_ForEachPackFile
+
+QuakeOG: calls fn with the name of every file in every pack, in search
+order (a name can come more than once). Used by the map baker.
+============
+*/
+void COM_ForEachPackFile (void (*fn) (char *name))
+{
+	searchpath_t    *search;
+	int             i;
+
+	for (search = com_searchpaths ; search ; search = search->next)
+		if (search->pack)
+			for (i=0 ; i<search->pack->numfiles ; i++)
+				fn (Pak_Name (search->pack, i));
+}
+
 
 /*
 ================
