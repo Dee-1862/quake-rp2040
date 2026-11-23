@@ -76,9 +76,12 @@ powershell -NoProfile -File tools\pctest.ps1 -Exe build-pc-dev\Release\quakeog_p
 - `qog_bake` with no arguments bakes every `maps/*.bsp`, `progs/*.mdl` and `progs/*.spr` in the packs (133 for the registered game: 51 maps including the item boxes `b_*.bsp` and `dm1` to `dm6`, 79 alias models, 3 sprites). `qog_bake start e1m1 progs/player.mdl` bakes only those. The output is `<gamedir>\qogbake.bin`.
 - `-nobake` keeps an existing image from being mapped, which `qog_bake` needs. Run it before any map is loaded.
 - `qog_bake check` (without `-nobake`) loads every baked model again with id's loader and compares the two field by field (an alias model byte for byte, except the 16 bytes past its last hunk block that id's loader copies along unused). It must print `0 differences`.
+- `-bakefile <path>` reads (and `qog_bake` writes) another image instead of `<gamedir>\qogbake.bin`, for example a test image that must not replace the shared one. `-bakebase <address>` builds the image for a later 64 KB aligned address (the PC then maps it there).
 - At run time the image is used when it is present and matches. A model whose file changed (address, length or hash) loads the normal way and says so. `-nobake` turns the image off. The image needs 8-bit pixels (`r_pixbytes` 1).
 
 Measured with the registered paks: the 32 single-player maps take 12.1 MB of image (E1M1 392 KB, the largest E4M7 497 KB, episode 1 with `start` 3.05 MB). All 51 maps take 13.2 MB, the alias models and sprites 0.2 MB, the whole image 13,448,304 bytes.
+
+With `QOG_MOD_FLASH` (on in both builds since Agent I) each map's block also holds its inline models, so the whole image is 14,425,024 bytes (E1M1 414 KB, `start` with episode 1 3.32 MB). The `model_t` of a baked model is then used in place in the image: the model table in RAM keeps only a name and a pointer per model of the current level, and a map's per-frame arrays are found through `model_t.frameslot` (0 for a world map, 1 to 15 for the item boxes `b_*.bsp`, numbered by `qog_bake`).
 
 ### Image layout
 
@@ -95,8 +98,31 @@ Little-endian, 32-bit, defined in `engine/model.h` (`qogbake_header_t`, `qogbake
 | 24 | 4 | directory offset from base |
 | 28 | 36 | zero |
 
-After the header, one 16-byte aligned block per model, its `model_t` first. A map's block then holds its planes, texture pointer list, `texture_t` headers, texinfo, surfaces, leafs, nodes, submodels and hull 0 clip nodes. An alias model's holds the block id's loader puts in the cache (header-relative offsets, `flashbase` pointing into the pack), and `model_t.cache.data` points at it. A sprite's holds its `msprite_t` and frames, with `cache.data` pointing at the `msprite_t` as id's sprite loader does. The directory follows the blocks, 64 bytes per model: the model name (40 bytes), the address of its `model_t`, the block size, and the address, length and FNV-1a hash of the file it was baked from (a map's header and plane lump, an alias model's or sprite's first 4 KB).
+After the header, one 16-byte aligned block per model, its `model_t` first. With `QOG_MOD_FLASH` a map's block starts with one `model_t` per submodel instead: the world finished the way id's `Mod_LoadBrushModel` leaves it (submodel 0's bounds and hulls, `numframes` 2), then `*1`, `*2` and so on, and the directory points at the first. A map's block then holds its planes, texture pointer list, `texture_t` headers, texinfo, surfaces, leafs, nodes, submodels and hull 0 clip nodes. An alias model's holds the block id's loader puts in the cache (header-relative offsets, `flashbase` pointing into the pack), and `model_t.cache.data` points at it. A sprite's holds its `msprite_t` and frames, with `cache.data` pointing at the `msprite_t` as id's sprite loader does. The directory follows the blocks, 64 bytes per model: the model name (40 bytes), the address of its `model_t`, the block size, and the address, length and FNV-1a hash of the file it was baked from (a map's header and plane lump, an alias model's or sprite's first 4 KB).
 
 **Pointers are absolute.** Pointers into the block are resolved for `base`. Pointers into the packs (texture pixels, light, visibility, entities, vertexes, edges, surface edges, clip nodes, mark surfaces) are kept as they are, so an image only fits the packs it was baked against, mapped at the same addresses. The image goes at the first 64 KB boundary after the last pack (`Sys_FlashNext`): `0x13620000` on the PC with registered `pak0` and `pak1`. The engine maps it there (`Sys_FlashMap`) and refuses it if it lands anywhere else.
 
-**On the board** the same rule holds with the board's own pack: bake with the PC build pointed at the trimmed pak that will be flashed (`tools/mkpak.py` lays it out exactly as the PC maps it), and write the image right after that pak in the data region. The RP2040 port does not map the image yet (it only serves `id1/pak0.pak`), so the board build falls back to the normal load. All 51 maps do not fit the 12 MB region next to a pak; one episode does (3.05 MB for `start` and E1).
+**On the board** the same rule holds with the board's own pack. `tools/mkboard.py` does it in one go: it builds the trimmed pak from the manifests (`tools/mkpak.py`, several `--pak` allowed, later ones win as in Quake, so `gfx/pop.lmp` comes from registered `pak1`), runs `qog_bake` on the PC hidden and silent with that pak as the only pak (the PC maps it at `0x10400000` exactly as mkpak lays it out, so the addresses are the board's), and writes the data region image:
+
+| Address | Content |
+| --- | --- |
+| `0x10400000` | trimmed pak, files 16-byte aligned |
+| next 64 KB boundary (or `--bake-base`) | `qogbake.bin`, built for that address |
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak `
+    --manifests build-pc-dev\manifests --maps start e1m1 e1m2 `
+    --exe build-pc-dev\Release\quakeog_pc.exe -o build-board\qogboard
+```
+
+It writes `<out>\id1\pak0.pak`, `<out>\id1\qogbake.bin`, `<out>.bin` and `<out>.uf2` (the UF2 writes the data region only). Keep the output path short (the engine keeps paths in 128-byte buffers). The PC runs the result exactly as laid out for the board with `-basedir <out>`. `port/rp2040/sys_rp2040.c` serves the pak as `id1/pak0.pak` and the image as `id1/qogbake.bin`, found at the first 64 KB boundary after the pak that holds `QOGB`.
+
+Measured (registered data, manifests from `qogtest_manifest.cfg`):
+
+| Maps | Pak | Image | Data region use |
+| --- | ---: | ---: | ---: |
+| `start e1m1 e1m2` | 9.03 MB | 1.30 MB (57 models) | 10.36 MB of 11.94, fits |
+| `start e1m1 e1m2 e1m3` | 10.59 MB | about 1.75 MB | about 12.4 MB, does not fit |
+| `start` and all of episode 1 | 16.51 MB | about 3.5 MB | about 20 MB, does not fit |
+
+So a whole episode does not fit next to its pak: the pak alone is bigger than the region. Two maps and `start` do. Ways to more: deduplicate textures across maps (about 1.7 MB for episode 1), drop the BSP lumps the image replaces (planes are still hashed, but texinfo, faces, leafs, nodes and models are not read once baked), or a smaller app area in `platform/qog_flashmap.h` (the app with compiled QuakeC is about 1 MB of its 3.87 MB).
