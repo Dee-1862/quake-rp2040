@@ -2,6 +2,19 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Maps, alias models and sprites baked into a flash image (Agent E, PC and ARM build, registered data)
+
+- New PC command `qog_bake` runs id's own loaders on every map, alias model and sprite in the packs and writes what they build into `id1/qogbake.bin` (git-ignored, a converted copy of the registered data). Pointers are resolved for the flash address the image is mapped at: the first 64 KB boundary after the packs, `0x13620000` with registered `pak0` and `pak1`. The PC maps it read only there. Format and use in `docs/game-data.md`.
+- `QOG_BAKE` (PC and ARM): a map load copies the baked `model_t` and allocates only the per-frame arrays. An alias model or sprite load puts nothing in the cache or on the hunk. A layout hash refuses an image from a build with other structures, and a model whose file changed loads the normal way. `QOG_BAKE_WRITER` (PC only) adds the command. `-nobake` turns the image off.
+- `qog_bake check` reloads all 133 models with id's loader and compares them field by field with the image: 0 differences.
+- Map hunk blocks, E1M1: 473.6 → 90.0 KB. Worst of the 32 single-player maps: 598.0 KB (E4M7) → 113.4 KB (E3M5). What is left is the per-frame state (visframe and dlight stamps, dlight bits, efrag lists, the edge cache).
+- E1M1 total hunk blocks 995.5 → 580.9 KB. Cache 107.1 → 62.6 KB on E1M1 and 152.5 → 62.6 KB on E4M7 (only the console background is left). Hunk high peak 18.5 KB → 0. `qog_mem` total on E1M1 1,261 → 802 KB, on E4M7 1,649 → 1,035 KB.
+- Image size: 13,448,304 bytes for all 133 models. The 32 single-player maps take 12.1 MB (E1M1 392 KB, largest E4M7 497 KB), `start` with episode 1 3.05 MB, alias models and sprites 0.2 MB. The board's 12 MB region fits one episode next to its pak, not all four.
+- Fix found on the way: with `QOG_MAX_MOD_KNOWN` a reused model slot kept the previous model's `synctype`, so a map loaded into an alias model's old slot got `ST_RAND` and the client drew a random syncbase, which shifted the random sequence from the 20th level of a long run on. Reused slots now start empty.
+- Checked hidden and silent against the build before (with the slot fix): same state hashes, the same logs apart from hunk and cache figures and the `PackFile` lines of sprites (no longer loaded from the pack directory), and 75 frames byte-identical (demo 3, the 9 spawn shots, a save and load, and a spawn and a turn view on all 32 maps). The 32-map regression run and the level tour on E1M1, E3M5 and E4M7 match too.
+- Board: static RAM overflow 187,256 → 187,268 bytes (three statics). The RP2040 port does not map the image yet, so the board build still loads models the normal way.
+- Not changed: the tour stops on `end` with "MOVETYPE_PUSH with a non bsp model" in the build before as well, and long test scripts can run the 24 KB zone out (a 32-map script failed in `Z_Malloc` in both builds, so the new tests chain short scripts).
+
 ## 2026-11-23: Agent B and C merged, renderer stack cut (PC and ARM build)
 
 - Agent B (packed BSP structures) and Agent C (message buffers and client tables) are merged into main. Each merge was checked hidden and silent against the build before it: same state hashes, same all-level manifest output, and byte-identical demo and spawn frames.
