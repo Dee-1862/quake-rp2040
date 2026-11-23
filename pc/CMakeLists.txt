@@ -69,8 +69,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_CON_TEXTSIZE=4096           # console scrollback, about 100 lines (id 16 KB, also on the stack)
     QOG_KEY_HISTORY=8               # console command history lines (id 32)
     QOG_MAX_VIEWSIZE=100            # 3D view stays above the status bar; z-buffer 320x152
-    QOG_NUMSTACKEDGES=1600          # render tables on the stack, measured peaks 1030 edges
-    QOG_NUMSTACKSURFACES=640        #   and 435 surfaces (id 2400 and 800)
+    QOG_NUMSTACKEDGES=2000          # render tables on the stack, full-game tour peak about 1730 edges on e3m6
+    QOG_NUMSTACKSURFACES=800        #   and 626 surfaces (id 2400 and 800)
     QOG_MAXSPANS=1000               # span buffer, overflow only flushes early (id 3000)
     QOG_MAXWIDTH=320                # screen size limit for row and column tables (id 1280x1024)
     QOG_MAXHEIGHT=200
