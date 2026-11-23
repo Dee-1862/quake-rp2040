@@ -63,7 +63,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SHOT_DIR="${CMAKE_BINARY_DIR}/shots"
     QOG_SINGLE_PLAYER               # one client slot, loopback sockets only
     QOG_EDICT_MARGIN=128            # edicts per map: entity blocks + clients + this
-    QOG_MAX_MOD_KNOWN=192)          # model table: one level's models, 160 max in shareware
+    QOG_MAX_MOD_KNOWN=192           # model table: one level's models, 160 max in shareware
+    QOG_MAX_PARTICLES=512)          # id's floor; visual trade-off, see docs/changes.md
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

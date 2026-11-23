@@ -21,7 +21,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 
+#ifdef QOG_MAX_PARTICLES	// QuakeOG: smaller default (MG24Quake and RP2350-Quake use 512, id's own floor)
+#define MAX_PARTICLES			QOG_MAX_PARTICLES
+#else
 #define MAX_PARTICLES			2048	// default max # of particles at one
+#endif
 										//  time
 #define ABSOLUTE_MIN_PARTICLES	512		// no fewer than this no matter what's
 										//  on the command line
