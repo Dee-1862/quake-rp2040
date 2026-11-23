@@ -69,7 +69,8 @@ list(APPEND QOG_ENGINE_DEFS
 # Video memory and renderer tables (Agent H), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_CONST_RTABLES
-    QOG_NO_ROWTABLES)
+    QOG_NO_ROWTABLES
+    QOG_SKY_DIRECT)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

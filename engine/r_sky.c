@@ -43,7 +43,17 @@ int r_skydirect;		// not used?
 // else back, so only the 128x128 output remains in RAM (49 KB less).
 
 static byte	*r_skytex;			// 256x128: left half front layer (0 = clear), right half back layer
+#ifdef QOG_SKY_DIRECT
+// QuakeOG: no composited copy at all (16 KB less). R_MakeSky only records
+// what it would have composited (the texture and the layer shift), and
+// D_DrawSkyScans8 applies SkyPixel's rule to each pixel it draws. id kept
+// the old composite while the shift did not change, even across a map
+// change, so the recorded texture is kept the same way.
+byte	*r_skycomposed;			// texture of the last composite
+int		r_skyxshift, r_skyyshift;	// front layer shift of the last composite
+#else
 byte	newsky[128*128];		// composited sky, 128 wide (d_sky.c reads it with that stride)
+#endif
 
 static byte SkyPixel (int x, int y, int xshift, int yshift)
 {
@@ -62,7 +72,9 @@ A sky texture is 256*128, with the right side being a masked overlay
 void R_InitSky (texture_t *mt)
 {
 	r_skytex = mt->mips[0];
+#ifndef QOG_SKY_DIRECT
 	r_skysource = newsky;
+#endif
 }
 
 
@@ -87,10 +99,17 @@ void R_MakeSky (void)
 	xlast = xshift;
 	ylast = yshift;
 
+#ifdef QOG_SKY_DIRECT
+	(void)x; (void)y; (void)out;
+	r_skycomposed = r_skytex;
+	r_skyxshift = xshift;
+	r_skyyshift = yshift;
+#else
 	out = newsky;
 	for (y=0 ; y<SKYSIZE ; y++)
 		for (x=0 ; x<SKYSIZE ; x++)
 			*out++ = SkyPixel (x, y, xshift, yshift);
+#endif
 
 	r_skymade = 1;
 }

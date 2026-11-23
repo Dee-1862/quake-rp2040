@@ -141,4 +141,5 @@ add_custom_command(OUTPUT ${PROGS_AOT} APPEND
 # picture (docs/changes.md) are not in this list.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_CONST_RTABLES               # turbulence, normal and edge tables as constants in flash
-    QOG_NO_ROWTABLES)               # screen, z and skin row offsets computed, not tabled (3.5 KB)
+    QOG_NO_ROWTABLES                # screen, z and skin row offsets computed, not tabled (3.5 KB)
+    QOG_SKY_DIRECT)                 # sky composed per drawn pixel, no 16 KB composite

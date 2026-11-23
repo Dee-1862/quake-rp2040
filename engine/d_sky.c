@@ -120,6 +120,19 @@ void D_DrawSkyScans8 (espan_t *pspan)
 				}
 			}
 
+#ifdef QOG_SKY_DIRECT
+			// QuakeOG: compose each pixel as R_MakeSky would have (r_sky.c)
+			do
+			{
+				int		x = (s & R_SKY_SMASK) >> 16;
+				int		y = (t & R_SKY_TMASK) >> 16;
+				byte	front = r_skycomposed[((y + r_skyyshift) & SKYMASK) * 256 +
+								((x + r_skyxshift) & SKYMASK)];
+				*pdest++ = front ? front : r_skycomposed[y * 256 + 128 + x];
+				s += sstep;
+				t += tstep;
+			} while (--spancount > 0);
+#else
 			do
 			{
 				*pdest++ = r_skysource[((t & R_SKY_TMASK) >> 9) +	// QuakeOG: newsky is 128 wide now (was 256)
@@ -127,6 +140,7 @@ void D_DrawSkyScans8 (espan_t *pspan)
 				s += sstep;
 				t += tstep;
 			} while (--spancount > 0);
+#endif
 
 			s = snext;
 			t = tnext;
