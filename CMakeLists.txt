@@ -45,4 +45,5 @@ endif()
 
 add_subdirectory(platform)
 add_subdirectory(apps/qog)
+add_subdirectory(apps/qogbench)   # speed benchmark of the engine's inner loops on the board
 add_subdirectory(apps/quake)   # engine on the board: measurement targets, not in the default build

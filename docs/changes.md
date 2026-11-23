@@ -2,6 +2,26 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Speed benchmark on the board (hardware)
+
+`apps/qogbench` times the engine's world-drawing inner loop on the display CPU (200 MHz Cortex-M0+), drawing a perspective-textured plane over the whole 320×152 view. The span code is a copy of `engine/d_scanlit.c`. The texture is a 320×200 picture read from the flash data region. Flashed with `fw flash qogbench --uf2 build/apps/qogbench/qogbench_main.uf2`, results read from the display CPU's USB console (COM8). Steady over 10+ rounds:
+
+| Measurement | Time | Per pixel or per item |
+| --- | ---: | ---: |
+| Lit spans as the game does it now (texture in flash, code in flash) | 52.5 ms | 1.08 µs, about 216 cycles |
+| Same code placed in RAM | 52.3 ms | the XIP cache already holds the loop |
+| Lit spans with a power-of-two texture (masks, not modulo) | 41.9 ms | 20% faster |
+| id's surface-cache span drawer (no per-pixel light) | 24.0 ms | for comparison, its cache needs RAM we do not have |
+| Z spans (16-bit depth for every view pixel) | 1.8 ms | |
+| One float divide (perspective step, once per 8 pixels) | 870 ns | about 5.3 ms per full view |
+| 64 KB sequential read from flash | 7.7 ms | about 8.5 MB/s |
+| Random single-byte flash reads | 538 ns each | an XIP cache miss |
+
+What it means:
+- World drawing alone costs about 52 ms per frame today (about 19 fps for the world, before edges, models, particles and game logic). Core 1's 22 ms LCD scanout runs alongside.
+- Code placement does not matter for this loop. The per-pixel arithmetic does: two modulos and a 4-sample light blend per pixel.
+- Clear next steps for speed: wrap texture coordinates without modulo (per span or with power-of-two masks, worth about 10 ms), and step the light linearly along each 8-pixel run instead of blending 4 samples per pixel.
+
 ## 2026-11-23: Sparse edicts, baseline pool, compiled QuakeC globals (Agent F, PC and ARM build, registered data)
 
 Edicts on E1M1 went from 277,712 to 84,992 bytes of hunk (edicts, field arena, baselines, field map), and on e4m3, the largest array, from 447,664 to 139,888. With compiled QuakeC the globals also went from 45,904 to 7,280 bytes. Hunk low: E1M1 995.5 → 807.3 KB interpreted, 769.6 KB compiled. e4m7 1,338.0 → 1,040.2 / 1,002.5 KB. Nothing ran on hardware.
