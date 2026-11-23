@@ -294,6 +294,10 @@ static int fly_findspots (vec3_t *spots)
 	return n;
 }
 
+/* Which spots see each other: one bit per pair. */
+#define FLY_SEES(vis, a, b)	((vis)[((a) * QOG_FLY_MAX_POINTS + (b)) >> 3] & (1 << (((a) * QOG_FLY_MAX_POINTS + (b)) & 7)))
+#define FLY_VIS_BYTES		(QOG_FLY_MAX_POINTS * QOG_FLY_MAX_POINTS / 8)
+
 /* Shortest route from spot a to every spot, along lines of sight. */
 static void fly_dijkstra (int n, const vec3_t *spots, const byte *vis, int a, float *dist, int *prev)
 {
@@ -321,7 +325,7 @@ static void fly_dijkstra (int n, const vec3_t *spots, const byte *vis, int a, fl
 		{
 			float	nd;
 
-			if (done[i] || !(vis[u * n + i]))
+			if (done[i] || !FLY_SEES (vis, u, i))
 				continue;
 			VectorSubtract (spots[i], spots[u], d);
 			nd = dist[u] + Length (d);
@@ -354,9 +358,10 @@ static int fly_append (byte *route, int m, const int *prev, int target)
 
 int qog_fly_use_world (void)
 {
-	int		himark = Hunk_HighMark ();
-	vec3_t	*spots = Hunk_HighAllocName (QOG_FLY_MAX_POINTS * sizeof(vec3_t), "flyspots");
-	byte	*vis, *route;
+	// work space on the stack, which is far from its depth during drawing
+	// here (the hunk holds only the route that is kept)
+	vec3_t	spots[QOG_FLY_MAX_POINTS];
+	byte	vis[FLY_VIS_BYTES], route[FLY_MAX_ROUTE];
 	qboolean	used[QOG_FLY_MAX_POINTS];
 	float	dist[QOG_FLY_MAX_POINTS], t;
 	int		prev[QOG_FLY_MAX_POINTS];
@@ -369,15 +374,18 @@ int qog_fly_use_world (void)
 		Sys_Error ("qog_fly: %s has %i usable spots", cl.worldmodel->name, n);
 
 	// which spots see each other (eye to eye, no solid on the line)
-	vis = Hunk_HighAllocName (n * n, "flyvis");
+	memset (vis, 0, sizeof(vis));
 	for (i = 0 ; i < n ; i++)
 		for (j = i + 1 ; j < n ; j++)
-			vis[i * n + j] = vis[j * n + i] = fly_clear (spots[i], spots[j]);
+			if (fly_clear (spots[i], spots[j]))
+			{
+				vis[(i * QOG_FLY_MAX_POINTS + j) >> 3] |= 1 << ((i * QOG_FLY_MAX_POINTS + j) & 7);
+				vis[(j * QOG_FLY_MAX_POINTS + i) >> 3] |= 1 << ((j * QOG_FLY_MAX_POINTS + i) & 7);
+			}
 
 	// from the start, always to the unvisited spot nearest along the
 	// sight lines, through spots already seen; the nearest straight
 	// line when none can be reached; at the end back to the start
-	route = Hunk_HighAllocName (FLY_MAX_ROUTE, "flyroute");
 	memset (used, 0, sizeof(used));
 	cur = 0;
 	used[0] = true;
@@ -430,9 +438,8 @@ int qog_fly_use_world (void)
 	for (i = 0 ; i < m ; i++)
 	{
 		VectorCopy (spots[route[i]], fly_pts[i]);
-		fly_cut[i] = route[i] != route[(i + 1) % m] && !vis[route[i] * n + route[(i + 1) % m]];
+		fly_cut[i] = route[i] != route[(i + 1) % m] && !FLY_SEES (vis, route[i], route[(i + 1) % m]);
 	}
-	Hunk_FreeToHighMark (himark);
 	t = 0;
 	for (i = 0 ; i < m ; i++)
 	{

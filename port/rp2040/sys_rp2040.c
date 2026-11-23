@@ -45,6 +45,10 @@ See the GNU General Public License for more details.
 qboolean isDedicated = false;
 static byte s_hunk[QOG_HUNK_KB * 1024] __attribute__((aligned(16)));
 
+/* QuakeOG: the hunk, for a main() in another file (apps/qogfly, built with
+   QOG_SYS_NO_MAIN). */
+void *qog_rp2040_hunk(int *size) { *size = (int)sizeof s_hunk; return s_hunk; }
+
 /* BSP contract rule 2: red held 6 s powers the board off. The main loop
    calls fwog_power_poll every iteration (and Sys_Error keeps doing so). */
 FWOG_POWER_DEFAULT();
@@ -190,6 +194,7 @@ double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
    through fwog_power_poll, the only poll allowed (docs/lessons.md L5). */
 uint8_t qog_rp2040_buttons;
 
+#ifndef QOG_SYS_NO_MAIN
 int main(void) {
     static char *argv[] = { "quake", "-nosound" };
     quakeparms_t parms;
@@ -218,3 +223,4 @@ int main(void) {
         oldtime = newtime;
     }
 }
+#endif
