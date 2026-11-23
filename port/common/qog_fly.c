@@ -79,8 +79,18 @@ void qog_fly_init_host (quakeparms_t *parms)
 	Draw_Init ();
 	Cvar_RegisterVariable (&scr_fov);		// SCR_Init would, with its pictures
 	Cvar_RegisterVariable (&scr_viewsize);
+#ifdef QOG_PARTICLES_PRESET
+	{	/* the renderer keeps this one particle, R_InitParticles takes no block */
+		extern qboolean	r_particles_preset;
+		particles = fly_oneparticle;
+		r_numparticles = 1;
+		r_particles_preset = true;
+	}
+	R_Init ();
+#else
 	R_Init ();
 	fly_release_particles ();
+#endif
 	qog_fly_setup_view ();
 }
 

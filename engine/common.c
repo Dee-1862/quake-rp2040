@@ -1688,6 +1688,82 @@ pack_t *COM_LoadPackFile (char *packfile)
 	if (!flash)
 		newfiles = Hunk_AllocName (numpackfiles * sizeof(packfile_t), "packfile");
 
+#ifdef QOG_PACKDIR_CHUNKED
+	// QuakeOG: the directory is read 32 entries (2 KB) at a time into a
+	// stack buffer, so opening a pack needs no temporary block the size of
+	// its whole directory (21 KB for pak0). The CRC runs over the same bytes
+	// in the same order, the same checks are made, and the hunk gets the
+	// same blocks in the same order as below. Disk positions that differ
+	// from the image need a second pass over the directory.
+	{
+		dpackfile_t	chunk[32];
+		int			first, n, j, pass;
+		qboolean	samepos = true;
+
+		if (flash)
+		{
+			dpackheader_t	*fh = (dpackheader_t *)flash;
+
+			fdir = (dpackfile_t *)(flash + LittleLong (fh->dirofs));
+			if (LittleLong (fh->dirlen) != header.dirlen)
+				Sys_Error ("%s: flash image directory does not match", packfile);
+		}
+		else
+			fdir = NULL;
+
+		CRC_Init (&crc);
+		for (pass = 0 ; pass < 2 ; pass++)
+		{
+			Sys_FileSeek (packhandle, header.dirofs);
+			for (first = 0 ; first < numpackfiles ; first += n)
+			{
+				n = numpackfiles - first;
+				if (n > 32)
+					n = 32;
+				Sys_FileRead (packhandle, (void *)chunk, n * sizeof(dpackfile_t));
+				for (j = 0 ; j < n ; j++)
+				{
+					i = first + j;
+					if (pass)
+					{
+						diskpos[i] = LittleLong (chunk[j].filepos);
+						continue;
+					}
+					{
+						byte	*b = (byte *)&chunk[j];
+						int		k;
+
+						for (k = 0 ; k < (int)sizeof(dpackfile_t) ; k++)
+							CRC_ProcessByte (&crc, b[k]);
+					}
+					if (flash)
+					{
+						if (strcmp (fdir[i].name, chunk[j].name)
+							|| fdir[i].filelen != chunk[j].filelen)
+							Sys_Error ("%s: flash image directory does not match", packfile);
+						if (fdir[i].filepos != chunk[j].filepos)
+							samepos = false;
+					}
+					else
+					{
+						strcpy (newfiles[i].name, chunk[j].name);
+						newfiles[i].filepos = LittleLong(chunk[j].filepos);
+						newfiles[i].filelen = LittleLong(chunk[j].filelen);
+					}
+				}
+			}
+			if (pass)
+				break;
+			if (crc != PAK0_CRC)
+				com_modified = true;
+			if (!flash || samepos)
+				break;
+			diskpos = Hunk_AllocName (numpackfiles * sizeof(int), "packpos");
+		}
+	}
+	(void)himark;
+	(void)info;
+#else
 	// QuakeOG: the directory goes into a temporary block on the high hunk,
 	// sized to this pack (21 KB for pak0), instead of a MAX_FILES_IN_PACK
 	// array on the stack (128 KB, more than the RP2040's whole stack)
@@ -1740,6 +1816,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 		}
 	}
 	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the temporary directory
+#endif
 
 	pack = Hunk_Alloc (sizeof (pack_t));
 	strcpy (pack->filename, packfile);

@@ -184,3 +184,11 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_FRAMEBITS                   # visframe stamps of surfaces, nodes and leafs as one bit each with a frame tag
     QOG_DLIGHT_SPARSE               # dlight bits only for visible lit surfaces in a 1024 entry hash (QOG_DLIGHT_SURFS), a bit per surface for the stamp
     QOG_LEAF16)                     # 16-bit leaf keys, efrag list heads picked by a byte per leaf
+# Renderer temporary memory in the z-buffer (Agent K)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_EDGES_IN_ZBUFFER            # edge table in the z-buffer while it holds no z, spans in the surface table
+    QOG_EDGECACHE_ZBUFFER           # the world's edge cache in the z-buffer while the world is drawn, not on the hunk
+    QOG_SND_ONINIT                  # sound channels and paint buffer on the hunk from S_Init
+    QOG_LOOP_ONINIT                 # loopback receive buffers on the hunk from Loop_Init
+    QOG_PACKDIR_CHUNKED             # pack directory read 2 KB at a time, no 21 KB temporary block
+    QOG_PARTICLES_PRESET)           # a host may keep its own particle array (the fly-through)

@@ -56,10 +56,21 @@ vec3_t			r_pright, r_pup, r_ppn;
 R_InitParticles
 ===============
 */
+#ifdef QOG_PARTICLES_PRESET
+// QuakeOG: a host that draws no particles (the fly-through, port/common/
+// qog_fly.c) sets particles and r_numparticles itself before R_Init and sets
+// this, so no particle block is taken from the hunk at all.
+qboolean	r_particles_preset;
+#endif
+
 void R_InitParticles (void)
 {
 	int		i;
 
+#ifdef QOG_PARTICLES_PRESET
+	if (r_particles_preset)
+		return;
+#endif
 	i = COM_CheckParm ("-particles");
 
 	if (i)

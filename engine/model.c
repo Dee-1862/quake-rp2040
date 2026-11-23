@@ -3204,7 +3204,11 @@ static void Mod_FinishBrushModel (model_t *mod)
 	fr->leaf_efrags = Hunk_AllocName (numleafs * sizeof(efrag_t *), loadname);
 	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(int), loadname);
 #endif
-#ifdef QOG_EDGECACHE16
+#if defined(QOG_EDGECACHE_ZBUFFER)
+	// QuakeOG: the renderer keeps the world's edge cache in the z-buffer
+	// (R_NewMap, r_draw.c), other models' edge caches are never read
+	fr->edge_cache = NULL;
+#elif defined(QOG_EDGECACHE16)
 	// QuakeOG: window start (an int, zero) in front of the 16-bit entries
 	fr->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)
 		+ (loadmodel->numedges + 1) * sizeof(unsigned short), loadname) + sizeof(int));

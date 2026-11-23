@@ -23,7 +23,30 @@ target_compile_definitions(qogfly_display PRIVATE
     QOG_HUNK_KB=${QOGFLY_HUNK_KB}
     QOG_FLY_STACK_KB=${QOGFLY_STACK_KB})
 target_compile_options(qogfly_display PRIVATE -fstack-usage)
-target_link_libraries(qogfly_display qog_engine qog_platform fwog_display_bsp)
+# The fly-through only ever draws E1M1, whose full level tour peaks at 443
+# surfaces, so it gets its own engine library with a smaller surface table
+# (the edge-drawing surfaces live on the stack) and no particle block. The
+# game's qog_engine keeps the full-game sizes. Same sources and flags
+# otherwise (apps/quake/CMakeLists.txt, which must come first).
+set(QOGFLY_SURFACES 480 CACHE STRING "qogfly edge-drawing surfaces (E1M1 tour peak 443, the game uses 800)")
+get_target_property(_fly_src qog_engine SOURCES)
+get_target_property(_fly_defs qog_engine COMPILE_DEFINITIONS)
+list(FILTER _fly_src EXCLUDE REGEX "progs_aot\.c$")
+list(TRANSFORM _fly_defs REPLACE "^QOG_NUMSTACKSURFACES=[0-9]+$" "QOG_NUMSTACKSURFACES=${QOGFLY_SURFACES}")
+set(_fly_aot ${CMAKE_CURRENT_BINARY_DIR}/progs_aot_stub.c)
+add_custom_command(OUTPUT ${_fly_aot}
+    COMMAND ${Python3_EXECUTABLE} ${QOG_ROOT}/tools/qc2c.py --stub -o ${_fly_aot}
+    DEPENDS ${QOG_ROOT}/tools/qc2c.py)
+add_library(qog_engine_fly STATIC EXCLUDE_FROM_ALL ${_fly_src} ${_fly_aot})
+target_include_directories(qog_engine_fly PUBLIC
+    ${QOG_ROOT}/engine ${QOG_ROOT}/port/common ${QOG_ROOT}/platform)
+target_compile_definitions(qog_engine_fly PUBLIC ${_fly_defs} QOG_PARTICLES_PRESET)
+target_compile_options(qog_engine_fly PRIVATE -w -Wno-implicit-function-declaration -fstack-usage)
+set_source_files_properties(${_fly_src} ${_fly_aot} PROPERTIES COMPILE_DEFINITIONS "rand=qog_rand")
+target_link_libraries(qog_engine_fly PUBLIC pico_stdlib)
+target_compile_options(qog_engine_fly PUBLIC -fno-short-enums)   # same layout as the PC and the baked image (apps/quake)
+target_link_options(qog_engine_fly INTERFACE -Wl,--no-enum-size-warning)
+target_link_libraries(qogfly_display qog_engine_fly qog_platform fwog_display_bsp)
 # qog_engine links pico_stdlib PUBLIC, so the SDK's sources are compiled into
 # the library and again into this app, and id's headers define a few globals
 # in every file that includes them (d_local.h sadjust, bbextents, ...), which

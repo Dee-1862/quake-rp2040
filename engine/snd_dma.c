@@ -36,7 +36,12 @@ void S_StopAllSoundsC(void);
 // Internal sound data & structures
 // =======================================================================
 
+#ifdef QOG_SND_ONINIT
+channel_t   *channels;		// QuakeOG: on the hunk from S_Init
+extern portable_samplepair_t *paintbuffer;
+#else
 channel_t   channels[MAX_CHANNELS];
+#endif
 int			total_channels;
 
 int				snd_blocked = 0;
@@ -168,6 +173,13 @@ void S_Init (void)
 {
 
 	Con_Printf("\nSound Initialization\n");
+
+#ifdef QOG_SND_ONINIT
+	// QuakeOG: before the -nosound check, because the other S_ functions
+	// index channels even when sound never started
+	channels = Hunk_AllocName (MAX_CHANNELS * sizeof(channel_t), "channels");
+	paintbuffer = Hunk_AllocName (512 * sizeof(portable_samplepair_t), "paintbuf");
+#endif
 
 	if (COM_CheckParm("-nosound"))
 		return;
