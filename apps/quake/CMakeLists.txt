@@ -125,6 +125,10 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_PRECACHE_ZTEMP
     QOG_KEYS_BYTES
     QOG_EDICT_MARGIN_BOARD=64)      # board only, edicts past the map's estimate, fight tour peak 35 (PC keeps 128)
+# Demo playback (Agent O), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_DEMO_FLASH
+    QOG_ITEMBOX_NOLEAFS)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

@@ -113,3 +113,9 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L48. Quake's vector macros name their arguments more than once.** `VectorCopy (p, arr[n++])` increments `n` three times. Never pass an expression with side effects to `VectorCopy`, `VectorAdd` and friends.
 
 **L49. A board app's RAM is found by measuring each peak on the PC first.** For the fly-through: `-heapsize` and `-zone` on the PC give the true hunk floor (init peaks came from the particle pool and the pack directory read), and the stack is the deepest chain of `.su` frames. Then the link's overflow figure says exactly how much is still missing.
+
+**L50. Only engine files are built with `-Drand=qog_rand`.** A host file in `port/` or `apps/` that calls `rand()` gets MSVC's or newlib's, so the shared random sequence skips a step and every particle after it lands elsewhere. Call `qog_rand()` by name there (port/common/qog_demo.c does for `_Host_Frame`'s per-frame call).
+
+**L51. A client without a server still reads server cvars.** The client's particles fall by `sv_gravity`, which only SV_Init registers. Unregistered, its value is 0 and blood and debris float. Any host that leaves the server out must register it (or define it, on the board).
+
+**L52. Text a demo stuffs waits behind a script's `wait`s.** `stufftext "bf"` is appended to the command buffer, so in a scripted run it runs only after the rest of the script, and the bonus flashes come late or not at all. A script that compares demo frames must end right after starting the demo and leave the buffer free (`qog_quitafter`, port/pc/demo_pc.c).

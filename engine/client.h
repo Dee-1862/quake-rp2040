@@ -284,7 +284,11 @@ extern	cvar_t	m_forward;
 extern	cvar_t	m_side;
 
 
+#ifdef QOG_MAX_TEMP_ENTITIES	// QuakeOG: a host may keep fewer (the demo player, measured)
+#define	MAX_TEMP_ENTITIES	QOG_MAX_TEMP_ENTITIES
+#else
 #define	MAX_TEMP_ENTITIES	64			// lightning bolts, etc
+#endif
 #define	MAX_STATIC_ENTITIES	128			// torches, etc
 
 extern	client_state_t	cl;
@@ -298,6 +302,18 @@ extern	efrag_t			cl_efrags[MAX_EFRAGS];
 #endif
 extern	entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level
 extern	int				cl_max_edicts;
+#ifdef QOG_CL_ENTSLOTS
+// QuakeOG: client entities in slots (cl_main.c). cl_entities holds
+// QOG_CL_ENTSLOTS entities, given to entity numbers as they are first used,
+// slot 0 to entity 0 (the world) so cl_entities[0] stays the world.
+extern	byte			*cl_entslot;	// [cl_max_edicts] slot + 1 of each number, 0 none yet
+entity_t *CL_EntitySlot (int num);		// the entity of a number, a new slot if it has none
+#define CL_ENTITY(n)			CL_EntitySlot (n)
+#define CL_ENTITY_IFANY(n)		(cl_entslot[n] ? &cl_entities[cl_entslot[n] - 1] : NULL)
+#else
+#define CL_ENTITY(n)			(&cl_entities[n])
+#define CL_ENTITY_IFANY(n)		(&cl_entities[n])
+#endif
 #ifndef QOG_STATICS_ON_HUNK
 extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 #endif
