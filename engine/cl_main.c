@@ -268,7 +268,6 @@ An svc_signonnum has been received, perform a client side setup
 */
 void CL_SignonReply (void)
 {
-	char 	str[8192];
 
 Con_DPrintf ("CL_SignonReply: %i\n", cls.signon);
 
@@ -287,8 +286,10 @@ Con_DPrintf ("CL_SignonReply: %i\n", cls.signon);
 		MSG_WriteString (&cls.message, va("color %i %i\n", ((int)cl_color.value)>>4, ((int)cl_color.value)&15));
 	
 		MSG_WriteByte (&cls.message, clc_stringcmd);
-		sprintf (str, "spawn %s", cls.spawnparms);
-		MSG_WriteString (&cls.message, str);
+		// QuakeOG: same bytes as id's "spawn %s" string, without an 8 KB
+		// stack buffer to build it in
+		SZ_Write (&cls.message, "spawn ", 6);
+		MSG_WriteString (&cls.message, cls.spawnparms);
 		break;
 		
 	case 3:	

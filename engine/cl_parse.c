@@ -135,26 +135,22 @@ void CL_ParseStartSoundPacket(void)
     S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, volume/255.0, attenuation);
 }       
 
-/*
-==================
-CL_KeepaliveMessage
+#if defined(__GNUC__)
+#define QOG_NOINLINE	__attribute__((noinline))
+#elif defined(_MSC_VER)
+#define QOG_NOINLINE	__declspec(noinline)
+#else
+#define QOG_NOINLINE
+#endif
 
-When the client is taking a long time to load stuff, send keepalive messages
-so the server doesn't disconnect.
-==================
-*/
-void CL_KeepaliveMessage (void)
+// QuakeOG: the 8 KB copy of net_message is only made with a remote server,
+// so it gets its own stack frame instead of sitting in every keepalive call
+// (CL_ParseServerInfo calls it for every model and sound)
+static QOG_NOINLINE void CL_KeepaliveRead (void)
 {
-	float	time;
-	static float lastmsg;
 	int		ret;
 	sizebuf_t	old;
 	byte		olddata[8192];
-	
-	if (sv.active)
-		return;		// no need if server is local
-	if (cls.demoplayback)
-		return;
 
 // read messages from server, should just be nops
 	old = net_message;
@@ -181,6 +177,28 @@ void CL_KeepaliveMessage (void)
 
 	net_message = old;
 	memcpy (net_message.data, olddata, net_message.cursize);
+}
+
+/*
+==================
+CL_KeepaliveMessage
+
+When the client is taking a long time to load stuff, send keepalive messages
+so the server doesn't disconnect.
+==================
+*/
+void CL_KeepaliveMessage (void)
+{
+	float	time;
+	static float lastmsg;
+	
+	if (sv.active)
+		return;		// no need if server is local
+	if (cls.demoplayback)
+		return;
+
+	CL_KeepaliveRead ();	// QuakeOG: read messages from server, should just be nops
+
 
 // check time
 	time = Sys_FloatTime ();
