@@ -55,10 +55,11 @@ The PC measurements never counted the stack, and id puts big work tables there. 
 | Function | Frame | Note |
 | --- | ---: | --- |
 | R_EdgeDrawing | 92 KB | edge and surface tables (128 KB before measured sizing) |
-| R_AliasDrawModel | 88 KB | per-vertex work arrays for up to 1024 model vertices |
-| R_RenderView_ | 64 KB | underwater warp buffer |
-| R_RenderWorld | 40 KB | back-to-front poly list (unused path) |
-| D_PolysetDraw | 33 KB | model span table |
-| CL_ParseServerInfo / Host_Loadgame_f | 32 KB each | precache name lists at load time |
+| R_DrawSolidClippedSubmodelPolygons | 18 KB | brush model clip edges and vertices |
+| R_AliasDrawModel | 17 KB | per-vertex work arrays, now 384 vertices (`QOG_MAXALIASVERTS`, was 88 KB) |
+| R_ScanEdges | 16 KB | span buffer |
+| D_PolysetDraw | 6.4 KB | model span table sized for 200 rows (`QOG_MAXHEIGHT`, was 33 KB) |
+| D_WarpScreen | 5.5 KB | in-place underwater warp (`QOG_WARP_INPLACE`), the 64 KB buffer in R_RenderView_ is gone |
+| CL_ParseServerInfo / Host_Loadgame_f | 2 KB / 0.3 KB | name lists and line buffer moved to temporary high hunk blocks (were 32 KB each) |
 
-COM_LoadPackFile (128 KB) is already fixed. The render chain alone still stacks about 190 KB. MG24Quake kept these tables in a 36 KB stack by packing edges, surfaces and spans and reusing the z-buffer, which is the next engine-only target.
+R_RenderWorld's unused back-to-front list (40 KB) is compiled out (`QOG_MAX_BTOFPOLYS 0`). COM_LoadPackFile (128 KB) is already fixed. The deepest render chain is now R_EdgeDrawing with R_DrawSolidClippedSubmodelPolygons or R_ScanEdges under it, about 110 KB. MG24Quake kept these tables in a 36 KB stack by packing edges, surfaces and spans and reusing the z-buffer, which is the next engine-only target.
