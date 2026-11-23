@@ -62,11 +62,27 @@ extern	vec3_t	vpn, base_vpn;
 extern	vec3_t	vright, base_vright;
 extern	entity_t		*currententity;
 
+// QuakeOG: these live on the stack (R_EdgeDrawing, R_ScanEdges). Measured
+// peaks over the shareware demos and levels: 1030 edges, 435 surfaces.
+// Overflowing edges or surfaces drops polygons (id counts r_outofedges);
+// a smaller span buffer only flushes to the screen more often.
+#ifdef QOG_NUMSTACKEDGES
+#define NUMSTACKEDGES		QOG_NUMSTACKEDGES
+#else
 #define NUMSTACKEDGES		2400
+#endif
 #define	MINEDGES			NUMSTACKEDGES
+#ifdef QOG_NUMSTACKSURFACES
+#define NUMSTACKSURFACES	QOG_NUMSTACKSURFACES
+#else
 #define NUMSTACKSURFACES	800
+#endif
 #define MINSURFACES			NUMSTACKSURFACES
+#ifdef QOG_MAXSPANS
+#define	MAXSPANS			QOG_MAXSPANS
+#else
 #define	MAXSPANS			3000
+#endif
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct espan_s

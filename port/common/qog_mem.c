@@ -104,6 +104,8 @@ static void cmd_qog_mem(void) {
             if (mod_known[i].needload != 2) refd++;   /* 2 = NL_UNREFERENCED in model.c */
         Con_Printf("  models known %d, referenced by this level %d, edicts %d of %d\n", mod_numknown, refd,
                    sv.active ? sv.num_edicts : 0, sv.active ? sv.max_edicts : 0);
+        extern int r_qog_peakedges, r_qog_peaksurfs;
+        Con_Printf("  render peaks: edges %d, surfaces %d\n", r_qog_peakedges, r_qog_peaksurfs);
     }
     Con_Printf("More: qog_mem hunk | qog_mem cache | qog_mem reset\n");
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");

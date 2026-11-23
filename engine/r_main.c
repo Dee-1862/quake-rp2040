@@ -875,6 +875,8 @@ void R_DrawBEntitiesOnList (void)
 R_EdgeDrawing
 ================
 */
+int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG: see the end of R_EdgeDrawing
+
 void R_EdgeDrawing (void)
 {
 	edge_t	ledges[NUMSTACKEDGES +
@@ -940,6 +942,13 @@ void R_EdgeDrawing (void)
 		VID_LockBuffer ();
 	}
 	
+	// QuakeOG: high-water marks, to size these tables from measurements
+	// (qog_mem prints them)
+	if (edge_p - r_edges > r_qog_peakedges)
+		r_qog_peakedges = edge_p - r_edges;
+	if (surface_p - surfaces > r_qog_peaksurfs)
+		r_qog_peaksurfs = surface_p - surfaces;
+
 	if (!(r_drawpolys | r_drawculledpolys))
 		R_ScanEdges ();
 }
