@@ -93,8 +93,28 @@ static void update_title(void) {
     last = now;
 }
 
+/* `qog_framehash 1` prints a hash of every presented frame (pixels and
+   palette) to stdout, so a whole scripted run, tours and fights included,
+   can be compared frame by frame against another build. `qog_framehash 0`
+   stops it. stdout only, so the console and the frame stay untouched. */
+static int s_framehash;
+static void cmd_qog_framehash(void) {
+    s_framehash = Cmd_Argc() > 1 ? Q_atoi(Cmd_Argv(1)) : !s_framehash;
+}
+static void framehash_print(void) {
+    unsigned h = 2166136261u;
+    for (int i = 0; i < QOG_PC_W * QOG_PC_H; i++) h = (h ^ vid_buffer[i]) * 16777619u;
+    for (int i = 0; i < 256; i++) {
+        h = (h ^ s_bmi.pal[i].rgbRed) * 16777619u;
+        h = (h ^ s_bmi.pal[i].rgbGreen) * 16777619u;
+        h = (h ^ s_bmi.pal[i].rgbBlue) * 16777619u;
+    }
+    Sys_Printf("fh %d %08x\n", host_framecount, h);
+}
+
 void VID_Update(vrect_t *rects) {
     (void)rects;
+    if (s_framehash) framehash_print();
     qog_mem_sample();   /* peaks need every frame, not just title updates */
     HDC dc = GetDC(s_wnd);
     RECT r;
@@ -283,6 +303,7 @@ void VID_Init(unsigned char *palette) {
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
     qog_aim_register();
     Cmd_AddCommand("qog_shot", cmd_qog_shot);
+    Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
     {
         extern void qog_manifest_register(void);
         qog_manifest_register();
