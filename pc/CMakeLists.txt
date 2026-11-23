@@ -160,3 +160,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SKY_DIRECT                  # sky composed per drawn pixel, no 16 KB composite
     QOG_HUD_IN_ZBUFFER              # status bar rows of the frame share the z-buffer (15 KB)
     QOG_SPANS_IN_EDGES)             # spans in the free end of the edge table, no 8 KB span buffer
+# Flash budget for the board's data image (Agent J)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
+    QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none

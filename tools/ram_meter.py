@@ -43,6 +43,8 @@ CFLAGS += ["-DQOG_CONBACK_FLASH", "-DQOG_ENTITY_PACKED", "-DQOG_PARTICLE_PACKED"
 CFLAGS += ["-DQOG_MOD_FLASH", "-DQOG_SV_TABLES", "-DQOG_SV_MAX_MODELS=208", "-DQOG_SV_MAX_SOUNDS=176", "-DQOG_CONST_NOVIS", "-DQOG_PVS_LEAFS=4096"]
 # Video memory and renderer table flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CONST_RTABLES", "-DQOG_NO_ROWTABLES", "-DQOG_SKY_DIRECT", "-DQOG_HUD_IN_ZBUFFER", "-DQOG_SPANS_IN_EDGES"]
+# Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

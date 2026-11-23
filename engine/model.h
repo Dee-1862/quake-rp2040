@@ -569,6 +569,24 @@ typedef struct
 	unsigned	pad;
 } qogbake_entry_t;			// 64 bytes
 
+// QuakeOG: QOG_BAKE_STUBS. qog_bake run with -bakestubs copies everything a
+// map's block points at in the pack (light, vis, entities, vertexes, edges,
+// surface edges, clip nodes, mark surfaces, texture pixels) into the image,
+// each distinct texture's pixels once for all maps. The map file is then
+// not read at all, and tools/mkboard.py replaces it in the board's pak with
+// this stub. Its directory entry has fileaddr 0 (any address) and the
+// stub's length and FNV-1a hash. The lumps stay as in id's header, since
+// the leaf count is read from it (Mod_FinishBrushModel).
+#define QOGB_STUB_IDENT	0x53474F51	// "QOGS", where a map has its version
+
+typedef struct
+{
+	int			ident;		// QOGB_STUB_IDENT
+	lump_t		lumps[HEADER_LUMPS];	// the map's header, unchanged
+	unsigned	filelen;	// length and Mod_FileHash of the map it replaces
+	unsigned	filehash;
+} qogbake_stub_t;			// 132 bytes
+
 //============================================================================
 
 void	Mod_Init (void);

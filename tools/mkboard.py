@@ -28,6 +28,16 @@ steps:
 --no-bake skips step 2 and uses an existing <out>/id1/qogbake.bin. The PC
 can run the result as it will run on the board: -basedir <out>.
 
+--stub-maps (engine flag QOG_BAKE_STUBS) moves every map into the baked
+image: qog_bake -bakestubs copies what a map's block points at in the pak
+(light, vis, entities, vertexes, edges, surface edges, clip nodes, mark
+surfaces, texture pixels, each distinct texture once for all maps), and the
+board's pak keeps a 132-byte stub per map (engine/model.h, qogbake_stub_t).
+The pak is built with the maps last, so every other file has the same
+address in the full pak the bake reads and in the board's pak with stubs,
+and the image goes right after the smaller pak. The full pak is kept as
+<out>/src.pak, which qog_bake check needs (-bakesrc <out>/src.pak).
+
 Never commit or share the output: it is converted id Software data.
 Standard library only.
 """
@@ -45,6 +55,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_ADDR = mkdata.XIP_BASE + mkdata.DATA_OFFSET
 QOGB_MAGIC = 0x42474F51   # engine/model.h
 QOGB_HEADER = "<7I"       # magic, version, layout, base, size, nummaps, dirofs
+QOGB_ENTRY = "<40s6I"     # name, model, size, fileaddr, filelen, filehash (+ pad)
+QOGB_STUB_IDENT = 0x53474F51   # "QOGS", engine/model.h qogbake_stub_t
+BSPVERSION = 29
+LUMP_PLANES = 1
 
 
 def align(n, a):
@@ -67,6 +81,54 @@ def pc_layout(pak):
     return pos + dlen if pos == dofs else None
 
 
+def fnv(data, h=0x811C9DC5):
+    """FNV-1a, as Mod_Fnv in engine/model.c."""
+    for c in data:
+        h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF
+    return h
+
+
+def file_hash(f):
+    """Mod_FileHash: a map's header and plane lump, or a file's first 4 KB."""
+    if len(f) < 124 or struct.unpack_from("<i", f, 0)[0] != BSPVERSION:
+        return fnv(f[:4096])
+    ofs, ln = struct.unpack_from("<ii", f, 4 + 8 * LUMP_PLANES)
+    return fnv(f[ofs:ofs + ln], fnv(f[:124]))
+
+
+def make_stub(f):
+    """The qogbake_stub_t that stands for map f in the board's pak (Bake_MakeStub)."""
+    return struct.pack("<I", QOGB_STUB_IDENT) + f[4:124] + struct.pack("<II", len(f), file_hash(f))
+
+
+def pak_entries(pak):
+    """[(name, filepos, data)] of a pak, in directory order."""
+    _, dofs, dlen = struct.unpack_from("<4sii", pak, 0)
+    out = []
+    for i in range(dlen // 64):
+        n, o, ln = struct.unpack_from("<56sii", pak, dofs + 64 * i)
+        out.append((n.split(b"\0")[0].decode("latin-1"), o, pak[o:o + ln]))
+    return out
+
+
+def stub_pak(pak):
+    """The board's pak: every map replaced by its stub. Checks that no other
+    file moves, so the image's pointers into the pak stay right."""
+    ents = pak_entries(pak)
+    new = mkpak.build_pak([(n, make_stub(d) if mkpak.is_map(n) else d) for n, _, d in ents])
+    for (n, o, _), (_, o2, _) in zip(ents, pak_entries(new)):
+        if not mkpak.is_map(n) and o != o2:
+            sys.exit("mkboard: %s moves when the maps become stubs (build the pak with the maps last)" % n)
+    return new
+
+
+def bake_dir(img):
+    """[(name, fileaddr, filelen, filehash)] of a baked image."""
+    h = bake_header(img)
+    return [(e[0].split(b"\0")[0].decode("latin-1"), e[3], e[4], e[5])
+            for e in (struct.unpack_from(QOGB_ENTRY, img, h[6] + 64 * i) for i in range(h[5]))]
+
+
 def bake_header(img):
     if len(img) < 64:
         return None
@@ -74,9 +136,11 @@ def bake_header(img):
     return h if h[0] == QOGB_MAGIC else None
 
 
-def run_bake(exe, basedir, base, timeout):
+def run_bake(exe, basedir, base, timeout, stubs=False):
     """qog_bake on the PC: hidden, silent, through tools/pctest.ps1."""
     args = "-nosound -nobake -basedir %s" % basedir.replace("\\", "/")
+    if stubs:
+        args += " -bakestubs"
     if base:
         args += " -bakebase 0x%08X" % base
     args += " +qog_bake +qog_quit"
@@ -99,6 +163,8 @@ def main(argv=None):
     ap.add_argument("--bake-base", type=lambda s: int(s, 0), default=0,
                     help="flash address for the baked image (default: first 64 KB boundary after the pak)")
     ap.add_argument("--timeout", type=int, default=900, help="seconds for the bake run")
+    ap.add_argument("--stub-maps", action="store_true",
+                    help="move the maps into the baked image, a stub for each in the pak (QOG_BAKE_STUBS)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension, also the PC basedir")
     a = ap.parse_args(argv)
 
@@ -115,10 +181,22 @@ def main(argv=None):
         mk += ["--maps"] + a.maps
     if a.demos:
         mk += ["--demos"]
+    if a.stub_maps:
+        mk += ["--maps-last"]
     mkpak.main(mk)
     pak = open(pakpath + ".pak", "rb").read()
     if pc_layout(pak) != len(pak):
         sys.exit("mkboard: the pak is not laid out the way the PC maps it")
+    srcpath = os.path.join(out, "src.pak")
+    if a.stub_maps:
+        # the bake reads the full pak, the board gets the one with stubs
+        src = pak
+        with open(srcpath, "wb") as f:
+            f.write(src)
+        maps_bytes = sum(len(d) for n, _, d in pak_entries(src) if mkpak.is_map(n))
+        pak = stub_pak(src)
+        if pc_layout(pak) != len(pak):
+            sys.exit("mkboard: the pak with stubs is not laid out the way the PC maps it")
 
     first = align(len(pak), 0x10000)
     base = a.bake_base or (DATA_ADDR + first)
@@ -132,7 +210,7 @@ def main(argv=None):
             sys.exit("mkboard: --exe is needed to bake (or --no-bake)")
         if os.path.exists(bakepath):
             os.remove(bakepath)   # never map a stale image while baking
-        run_bake(os.path.abspath(a.exe), out, a.bake_base, a.timeout)
+        run_bake(os.path.abspath(a.exe), out, base if a.stub_maps else a.bake_base, a.timeout, a.stub_maps)
     if not os.path.exists(bakepath):
         sys.exit("mkboard: %s was not written" % bakepath)
     img = open(bakepath, "rb").read()
@@ -141,6 +219,14 @@ def main(argv=None):
         sys.exit("mkboard: %s is not a baked image" % bakepath)
     if h[3] != base:
         sys.exit("mkboard: the image is for 0x%08X, the data image puts it at 0x%08X" % (h[3], base))
+    if a.stub_maps:
+        # every map in the pak must be in the image, baked against its stub
+        baked = {n: (addr, ln, hs) for n, addr, ln, hs in bake_dir(img)}
+        for n, _, d in pak_entries(pak):
+            if mkpak.is_map(n) and baked.get(n) != (0, len(d), fnv(d)):
+                sys.exit("mkboard: %s is not in the image as a detached map (see bake.txt)" % n)
+        with open(pakpath + ".pak", "wb") as f:
+            f.write(pak)          # the board's pak, the PC runs it with -basedir <out>
 
     # 3. the data region image
     ofs = base - DATA_ADDR
@@ -153,6 +239,9 @@ def main(argv=None):
 
     print("data region at 0x%08X, %.2f MB:" % (DATA_ADDR, room / 2**20))
     print("  0x%08X  pak        %9d bytes  %6.2f MB" % (DATA_ADDR, len(pak), len(pak) / 2**20))
+    if a.stub_maps:
+        print("            maps are stubs (the full pak's maps took %d bytes, %.2f MB, kept in %s)"
+              % (maps_bytes, maps_bytes / 2**20, srcpath))
     print("  0x%08X  padding    %9d bytes" % (DATA_ADDR + len(pak), ofs - len(pak)))
     print("  0x%08X  qogbake    %9d bytes  %6.2f MB, %d models" % (base, len(img), len(img) / 2**20, h[5]))
     print("  0x%08X  end        %9d bytes  %6.2f MB, %.1f%% of the region"

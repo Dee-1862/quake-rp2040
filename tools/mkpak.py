@@ -33,6 +33,20 @@ ALIGN = 16
 MIX_RATE = 11025
 # Read by the engine at startup or by name from code, not via precache lists.
 ALWAYS = ["gfx.wad", "gfx/*.lmp", "progs.dat", "quake.rc", "default.cfg"]
+# Sounds the client loads by name with sound on (the manifests are recorded
+# without sound, so they miss these): the ambient loops (snd_dma.c S_Init),
+# the temp entity sounds (cl_tent.c CL_InitTEnts), the menu sounds (menu.c)
+# and the chat beep (console.c).
+ENGINE_SOUNDS = ["sound/ambience/water1.wav", "sound/ambience/wind2.wav",
+                 "sound/wizard/hit.wav", "sound/hknight/hit.wav", "sound/weapons/tink1.wav",
+                 "sound/weapons/ric1.wav", "sound/weapons/ric2.wav", "sound/weapons/ric3.wav",
+                 "sound/weapons/r_exp3.wav",
+                 "sound/misc/menu1.wav", "sound/misc/menu2.wav", "sound/misc/menu3.wav",
+                 "sound/misc/talk.wav"]
+# Pics in gfx/ that no engine code draws (WinQuake has no sell screen, the
+# video menu draws text and the multiplayer menu has no dim_mult), so the
+# gfx/*.lmp rule above need not keep them.
+NEVER_DRAWN = ["gfx/sell.lmp", "gfx/dim_mult.lmp", "gfx/vidmodes.lmp"]
 
 
 def read_pak(path):
@@ -125,6 +139,15 @@ def convert_wav(data):
     return b"RIFF" + struct.pack("<I", 4 + len(chunks)) + b"WAVE" + chunks
 
 
+def is_map(name):
+    return name.startswith("maps/") and name.endswith(".bsp")
+
+
+def maps_last(entries):
+    """The same entries, maps/*.bsp moved after the rest, both in their order."""
+    return [e for e in entries if not is_map(e[0])] + [e for e in entries if is_map(e[0])]
+
+
 def build_pak(entries):
     """entries: list of (name, bytes) -> aligned pak bytes."""
     body = bytearray(b"\0" * ALIGN)
@@ -148,6 +171,8 @@ def main(argv=None):
     ap.add_argument("--maps", nargs="*", help="maps to keep (default: every manifest)")
     ap.add_argument("--demos", action="store_true", help="keep demo*.dem for the attract loop")
     ap.add_argument("--no-uf2", action="store_true", help="write only the .pak (tools/mkboard.py)")
+    ap.add_argument("--maps-last", action="store_true",
+                    help="put maps/*.bsp after every other file (tools/mkboard.py --stub-maps)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension")
     a = ap.parse_args(argv)
 
@@ -168,8 +193,9 @@ def main(argv=None):
         sys.exit("no manifest for: %s" % " ".join(missing))
 
     keep = set(common)
-    for pat in ALWAYS + (["demo*.dem"] if a.demos else []):
+    for pat in ALWAYS + ENGINE_SOUNDS + (["demo*.dem"] if a.demos else []):
         keep |= {n for n in files if fnmatch.fnmatch(n, pat)}
+    keep -= set(NEVER_DRAWN)
     for m in maps:
         keep |= mans[m]
     unknown = sorted(n for n in keep if n not in files)
@@ -187,6 +213,8 @@ def main(argv=None):
                 converted.append((name, len(data), len(new)))
                 data = new
         entries.append((name, data))
+    if a.maps_last:   # the other files keep their place when the maps become stubs
+        entries = maps_last(entries)
 
     pak = build_pak(entries)
     budget = mkdata.DATA_MAX

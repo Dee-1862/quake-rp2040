@@ -41,5 +41,52 @@ class BakeHeader(unittest.TestCase):
         self.assertIsNone(mkboard.bake_header(b"PACK" + b"\0" * 60))
 
 
+def fake_map(planes=b"p" * 40, extra=b"lump"):
+    """A BSP header (version 29) with a plane lump and one other lump."""
+    hdr = bytearray(124)
+    struct.pack_into("<i", hdr, 0, 29)
+    struct.pack_into("<ii", hdr, 4 + 8 * 1, 124, len(planes))
+    struct.pack_into("<ii", hdr, 4 + 8 * 8, 124 + len(planes), len(extra))
+    return bytes(hdr) + planes + extra
+
+
+class Stubs(unittest.TestCase):
+    def test_fnv_matches_engine_constants(self):
+        self.assertEqual(mkboard.fnv(b""), 0x811C9DC5)
+        self.assertEqual(mkboard.fnv(b"a"), 0xE40C292C)   # published FNV-1a 32 value
+
+    def test_map_hash_reads_header_and_planes_only(self):
+        a, b = fake_map(extra=b"AAAA"), fake_map(extra=b"BBBB")
+        self.assertEqual(mkboard.file_hash(a), mkboard.file_hash(b))
+        self.assertNotEqual(mkboard.file_hash(a), mkboard.file_hash(fake_map(planes=b"q" * 40)))
+
+    def test_stub_layout(self):
+        m = fake_map()
+        st = mkboard.make_stub(m)
+        self.assertEqual(len(st), 132)
+        self.assertEqual(struct.unpack_from("<I", st, 0)[0], mkboard.QOGB_STUB_IDENT)
+        self.assertEqual(st[4:124], m[4:124])
+        self.assertEqual(struct.unpack_from("<II", st, 124), (len(m), mkboard.file_hash(m)))
+
+    def test_maps_last_keeps_other_files_in_place(self):
+        ents = mkpak.maps_last([("maps/a.bsp", fake_map()), ("x.wav", b"w" * 7), ("maps/b.bsp", fake_map()),
+                                ("progs/p.mdl", b"m" * 21)])
+        self.assertEqual([n for n, _ in ents], ["x.wav", "progs/p.mdl", "maps/a.bsp", "maps/b.bsp"])
+        pak = mkpak.build_pak(ents)
+        new = mkboard.stub_pak(pak)
+        self.assertEqual(mkboard.pc_layout(new), len(new))
+        old = {n: o for n, o, _ in mkboard.pak_entries(pak)}
+        for n, o, d in mkboard.pak_entries(new):
+            if mkpak.is_map(n):
+                self.assertEqual(len(d), 132)
+            else:
+                self.assertEqual(o, old[n])
+
+    def test_stub_pak_refuses_maps_first(self):
+        pak = mkpak.build_pak([("maps/a.bsp", fake_map()), ("x.wav", b"w" * 7)])
+        with self.assertRaises(SystemExit):
+            mkboard.stub_pak(pak)
+
+
 if __name__ == "__main__":
     unittest.main()

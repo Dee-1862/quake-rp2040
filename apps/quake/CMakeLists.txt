@@ -88,6 +88,10 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SKY_DIRECT
     QOG_HUD_IN_ZBUFFER
     QOG_SPANS_IN_EDGES)
+# Flash budget for the board's data image (Agent J), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_BAKE_STUBS
+    QOG_DEMOS_OPTIONAL)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
