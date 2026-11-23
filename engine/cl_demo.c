@@ -19,6 +19,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "quakedef.h"
+#ifdef QOG_LOOP_INPLACE
+#include "net_loop.h"	// QuakeOG: Loop_DemoBuffer
+#endif
 
 void CL_FinishTimeDemo (void);
 
@@ -125,6 +128,10 @@ int CL_GetMessage (void)
 		net_message.cursize = LittleLong (net_message.cursize);
 		if (net_message.cursize > MAX_MSGLEN)
 			Sys_Error ("Demo message > MAX_MSGLEN");
+#ifdef QOG_LOOP_INPLACE
+		net_message.data = Loop_DemoBuffer ();	// QuakeOG: net_message has no buffer of its own
+		net_message.maxsize = MAX_MSGLEN;
+#endif
 		r = fread (net_message.data, net_message.cursize, 1, cls.demofile);
 		if (r != 1)
 		{
@@ -175,9 +182,23 @@ void CL_Stop_f (void)
 	}
 
 // write a disconnect message to the demo file
+#ifdef QOG_LOOP_INPLACE
+	{	// QuakeOG: net_message points into a receive buffer, write elsewhere
+		byte		one[4];
+		sizebuf_t	saved = net_message;
+
+		net_message.data = one;
+		net_message.maxsize = sizeof(one);
+		SZ_Clear (&net_message);
+		MSG_WriteByte (&net_message, svc_disconnect);
+		CL_WriteDemoMessage ();
+		net_message = saved;
+	}
+#else
 	SZ_Clear (&net_message);
 	MSG_WriteByte (&net_message, svc_disconnect);
 	CL_WriteDemoMessage ();
+#endif
 
 // finish up
 	fclose (cls.demofile);

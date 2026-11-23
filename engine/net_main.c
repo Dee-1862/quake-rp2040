@@ -848,7 +848,10 @@ void NET_Init (void)
 	}
 
 	// allocate space for network message buffer
-#ifdef QOG_SINGLE_PLAYER
+#if defined(QOG_LOOP_INPLACE)
+	// QuakeOG: none, messages are read in place in the loopback buffers
+	// and demos in the idle client buffer (net_loop.c)
+#elif defined(QOG_SINGLE_PLAYER)
 	// QuakeOG: loopback and demos never deliver more than MAX_MSGLEN (the
 	// size of client_t.message, and the limit cl_demo.c checks)
 	SZ_Alloc (&net_message, MAX_MSGLEN);

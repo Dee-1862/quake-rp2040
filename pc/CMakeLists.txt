@@ -168,4 +168,5 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_HUNK_PACKED                 # entity strings and command entries share hunk blocks (id 32 B block each)
     QOG_TRANSLATE_ONDRAW            # player colour table built on the stack when drawn (id 16 KB per player on the hunk)
-    QOG_CBUF_INPLACE)               # scripts inserted into the command buffer in place, not copied through the zone
+    QOG_CBUF_INPLACE                # scripts inserted into the command buffer in place, not copied through the zone
+    QOG_LOOP_INPLACE)               # net_message read in place in the loopback buffers (id 6.5 KB buffer)
