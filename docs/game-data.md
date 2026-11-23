@@ -77,6 +77,7 @@ powershell -NoProfile -File tools\pctest.ps1 -Exe build-pc-dev\Release\quakeog_p
 - `-nobake` keeps an existing image from being mapped, which `qog_bake` needs. Run it before any map is loaded.
 - `qog_bake check` (without `-nobake`) loads every baked model again with id's loader and compares the two field by field (an alias model byte for byte, except the 16 bytes past its last hunk block that id's loader copies along unused). It must print `0 differences`.
 - `-bakefile <path>` reads (and `qog_bake` writes) another image instead of `<gamedir>\qogbake.bin`, for example a test image that must not replace the shared one. `-bakebase <address>` builds the image for a later 64 KB aligned address (the PC then maps it there).
+- `-bakestubs` (with `QOG_BAKE_STUBS`) copies everything a map points at in the pack into the image, each distinct texture's pixels once, and records the map by its 132-byte stub (see "Maps in the image, stubs in the pak" below). `qog_bake check -bakesrc <pak>` then reads the full maps from that pak.
 - At run time the image is used when it is present and matches. A model whose file changed (address, length or hash) loads the normal way and says so. `-nobake` turns the image off. The image needs 8-bit pixels (`r_pixbytes` 1).
 
 Measured with the registered paks: the 32 single-player maps take 12.1 MB of image (E1M1 392 KB, the largest E4M7 497 KB, episode 1 with `start` 3.05 MB). All 51 maps take 13.2 MB, the alias models and sprites 0.2 MB, the whole image 13,448,304 bytes.
@@ -117,12 +118,52 @@ python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak `
 
 It writes `<out>\id1\pak0.pak`, `<out>\id1\qogbake.bin`, `<out>.bin` and `<out>.uf2` (the UF2 writes the data region only). Keep the output path short (the engine keeps paths in 128-byte buffers). The PC runs the result exactly as laid out for the board with `-basedir <out>`. `port/rp2040/sys_rp2040.c` serves the pak as `id1/pak0.pak` and the image as `id1/qogbake.bin`, found at the first 64 KB boundary after the pak that holds `QOGB`.
 
-Measured (registered data, manifests from `qogtest_manifest.cfg`):
+Measured without stubs (registered data, manifests from `qogtest_manifest.cfg`, Agent I):
 
 | Maps | Pak | Image | Data region use |
 | --- | ---: | ---: | ---: |
 | `start e1m1 e1m2` | 9.03 MB | 1.30 MB (57 models) | 10.36 MB of 11.94, fits |
 | `start e1m1 e1m2 e1m3` | 10.59 MB | about 1.75 MB | about 12.4 MB, does not fit |
-| `start` and all of episode 1 | 16.51 MB | about 3.5 MB | about 20 MB, does not fit |
+| `start` and all of episode 1 | 16.51 MB | 3.31 MB (81 models) | 19.87 MB, does not fit |
 
-So a whole episode does not fit next to its pak: the pak alone is bigger than the region. Two maps and `start` do. Ways to more: deduplicate textures across maps (about 1.7 MB for episode 1), drop the BSP lumps the image replaces (planes are still hashed, but texinfo, faces, leafs, nodes and models are not read once baked), or a smaller app area in `platform/qog_flashmap.h` (the app with compiled QuakeC is about 1 MB of its 3.87 MB).
+### Maps in the image, stubs in the pak (`--stub-maps`, Agent J)
+
+Once a map is baked, the engine reads only some of its file through the image's pointers (light, visibility, entities, vertexes, edges, surface edges, clip nodes, mark surfaces, texture pixels) and none of the rest (faces, nodes, leafs, planes, texinfo, models). And each map carries its own copy of textures that other maps share. With `QOG_BAKE_STUBS` (both builds) and `--stub-maps`:
+
+- `qog_bake -bakestubs` copies everything a map's block points at in the pack into the image, so the map points at nothing in the pack. Texture pixels are stored once per distinct content for the whole image (same bytes, any name), so a texture used by several maps is in flash once. Alias models and sprites are baked as before (alias frames and skins stay in the pack).
+- Each map file in the board's pak becomes a 132-byte stub (`qogbake_stub_t` in `engine/model.h`): `QOGS` where the BSP version is, then the map's 15 lumps from its header unchanged (the leaf count is read from there), then the length and `Mod_FileHash` of the map it replaces. Its directory entry has `fileaddr` 0 (any address), and `filelen` and `filehash` are those of the stub. Without a matching image a stub stops with "is a stub, its map is in qogbake.bin".
+- `mkpak --maps-last` puts the maps after every other file. The bake runs on that full pak, and the stubs only change the end of it, so every other file keeps its address. `-bakebase` with `-bakestubs` may then point inside the full pak, right after where the pak with stubs ends. Any pointer into the pack that would lie past that address makes the model unbakeable.
+- `mkboard` keeps the full pak as `<out>\src.pak`. `qog_bake check` compares a stubbed map with the full map read from `-bakesrc <out>/src.pak`, and checks that its light, vis, entities, geometry and texture pixels are in the image.
+- The full paks and `-nobake` are unchanged: without `-bakestubs` the bake writes what it wrote before.
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak `
+    --manifests build-pc-dev\manifests --maps start e1m1 e1m2 e1m3 e1m4 `
+    --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps -o build-board\qogboard
+```
+
+Also for the board's pak (mkpak, with or without stubs): the sounds the client loads by name are always kept (the ambient loops, the temp entity sounds, the menu sounds and the chat beep, which the manifests miss because they are recorded with sound off), and the three pics no engine code draws (`gfx/sell.lmp`, `gfx/dim_mult.lmp`, `gfx/vidmodes.lmp`) are left out. Demos stay out unless `--demos`: with `QOG_DEMOS_OPTIONAL` the attract loop plays only the demos present, so without them the game opens on the console instead of stopping with a missing file.
+
+Measured with stubs (registered data, the same manifests):
+
+| Maps | Pak | Image | Data region use |
+| --- | ---: | ---: | ---: |
+| `start e1m1 e1m2 e1m3` | 5.44 MB | 5.19 MB (66 models) | 10.69 MB, fits |
+| `start` to `e1m4` | 5,735,168 B (5.47 MB) | 6,704,736 B (6.39 MB, 68 models) | 12,471,904 B (11.89 MB), fits with 45,472 B to spare |
+| `start` to `e1m5` | 5.74 MB | 7.62 MB (73 models) | 13.37 MB, 1,500,112 B over |
+| `start` to `e1m6` | 5.82 MB | 8.59 MB (76 models) | 14.46 MB, 2,649,584 B over |
+| `start` and all of episode 1 | 6,577,520 B (6.27 MB) | 10,226,672 B (9.75 MB, 81 models) | 16,845,808 B (16.07 MB), 4,328,432 B over |
+
+The episode's maps take 10.27 MB in a pak and 9.61 MB in the image (3.16 MB of baked structures, 2.28 MB of distinct texture pixels, and the light, vis, entity and geometry lumps). Without sharing, the texture pixels would take 1,794,520 bytes (1.71 MB) more. Per map in the image: `start` 1.56 MB, `e1m1` 1.27, `e1m2` 1.35, `e1m3` 1.07, `e1m4` 1.26, `e1m5` 1.27, `e1m6` 1.02, `e1m7` 0.41, `e1m8` 0.80 (a shared texture counts for the first map that uses it). What is left of the pak is alias models 2.65 MB, sounds 2.47 MB, pics 0.61 MB, `progs.dat` 0.39 MB, `gfx.wad` 0.11 MB and 19 stubs of 132 bytes.
+
+The whole episode still needs a decision by the user (none of these is implemented):
+
+| Option | Gain | Cost |
+| --- | ---: | --- |
+| `QOG_DATA_OFFSET` 0x400000 to 0x200000 (`platform/qog_flashmap.h` and `tools/mkdata.py`) | 2,097,152 B | app area 1.87 MB (the app is about 1 MB, 1.5 MB with compiled QuakeC). A board layout change: the data must be written again |
+| `QOG_DATA_OFFSET` to 0x180000 | 2,621,440 B | app area 1.37 MB, too small for compiled QuakeC |
+| 4-bit ADPCM sounds | about 1,284,085 B (half of 2,568,170 B of samples) | changes the sound slightly, decoding costs CPU in the mixer |
+| Alias model stubs (header, skin vertices and triangles, already copied into the image) | up to 182,596 B | a stub format for `.mdl` like the maps' |
+| `progs.dat` without its statements when QuakeC is compiled | 167,520 B | no interpreter fallback |
+
+All five together give 4,255,641 B with the 0x180000 offset or 3,731,353 B with 0x200000, both short of the 4,328,432 B needed. With 0x200000 alone, `start` to `e1m5` fits (13.37 MB of 13.94, 597,040 B to spare).

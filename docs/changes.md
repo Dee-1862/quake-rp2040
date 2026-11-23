@@ -2,6 +2,24 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Flash budget for the board's data image (Agent J, PC and ARM build, registered data)
+
+Start plus episode 1 (`start`, `e1m1` to `e1m8`) in the board's data region: 20,833,408 → 16,845,808 bytes (19.87 → 16.07 MB of 11.94). It still does not fit, by 4,328,432 bytes. `start` to `e1m4` now fits (11.89 MB, 45,472 bytes to spare), where before only `start e1m1 e1m2` did. Engine static RAM on the ARM meter unchanged (118.2 KB). Nothing ran on hardware.
+
+| Change | Flag | Data region |
+| --- | --- | --- |
+| Maps moved into the baked image. `qog_bake -bakestubs` copies what a map points at in the pack (light, vis, entities, vertexes, edges, surface edges, clip nodes, mark surfaces, texture pixels) into the image, each distinct texture's pixels once for all maps (1,794,520 bytes not stored twice). The pak keeps a 132-byte stub per map, matched by length and hash at any address. `mkboard --stub-maps` | `QOG_BAKE_STUBS` | −4,053,136 bytes (19.87 → 16.00 MB) |
+| Sounds the client loads by name kept in the board pak (ambient loops, temp entity, menu and chat sounds). Six were missing, since the manifests are recorded with sound off | none (mkpak) | +110,512 bytes |
+| The demo loop plays only the demos present. The board pak has none, and the attract loop stopped with a missing file error. It now opens on the console | `QOG_DEMOS_OPTIONAL` | 0 (demos were already left out, 0.52 MB) |
+| The three pics no engine code draws (`gfx/sell.lmp`, `gfx/dim_mult.lmp`, `gfx/vidmodes.lmp`) left out of the board pak | none (mkpak) | −72,552 bytes |
+
+- Layout for start plus episode 1: pak with stubs 6,577,520 bytes at `0x10400000`, 41,616 bytes of padding, `qogbake.bin` 10,226,672 bytes at `0x10A50000` (81 models), end at `0x11410BF0`.
+- How it stays exact: `mkpak --maps-last` puts the maps after every other file, the bake runs on that full pak for the address after the pak with stubs (`-bakebase` may lie inside the full pak with `-bakestubs`, and any pack pointer past it makes the model unbakeable), and `mkboard` checks that no other file moves and that every map is in the image against its stub. The full pak is kept as `<out>\src.pak` for `qog_bake check -bakesrc`.
+- Verification, hidden and silent, against a build of c92533c with the full paks: the new `qogtest_j_ep1.cfg` (then `_ep1b`, `_ep1c`) visits `start` and `e1m1` to `e1m8` with `host_framerate 0.05`, 2 frames and a state hash per map. All 9 hashes and 18 frames identical on the board layout and on the full paks with the new build. `qogtest_hash` identical on all three and with `-nobake`. `qog_bake check -bakesrc` 0 differences over 81 models. The same tour with the mixer on (`-silentsound +volume 0`, no audio device opened) and the new `qogtest_j_menu.cfg` (every menu) show no load error on the board layout and the same 9 hashes as the full paks. `start` to `e1m4` checked the same way.
+- What is left needs the user. Exact sizes in docs/game-data.md: `QOG_DATA_OFFSET` to 0x200000 gives 2,097,152 bytes (app area 1.87 MB), to 0x180000 2,621,440 bytes (app area 1.37 MB, too small for compiled QuakeC), 4-bit ADPCM about 1,284,085 bytes, alias model stubs up to 182,596 bytes, `progs.dat` without statements 167,520 bytes. All five give at most 4,255,641 bytes, still short of 4,328,432. With the offset at 0x200000 alone `start` to `e1m5` fits (13.37 MB of 13.94).
+- Edits outside Agent J's files: `engine/host_cmd.c` (the demo loop, behind `QOG_DEMOS_OPTIONAL`), one declaration in `engine/common.h` (`COM_HasFile`), and one new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`.
+- The shared `data/id1/qogbake.bin` needs no rebuild: the layout hash did not change, and without `-bakestubs` the bake writes what it wrote before.
+
 ## 2026-11-23: Model table in flash, server tables, board data image (Agent I, PC and ARM build, registered data)
 
 Engine static RAM on the ARM meter 202.8 → 124.5 KB. Board link overflow (`quake_display`, 64 KB placeholder hunk) 186,540 → 106,428 bytes. Nothing ran on hardware.
