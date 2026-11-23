@@ -373,7 +373,30 @@ edict_t *ED_Alloc (void)
 	}
 	
 	if (i == sv.max_edicts)	// QuakeOG: was MAX_EDICTS, wrong once the array is sized per map
+	{
+#ifdef QOG_EDICT_REUSE
+		// QuakeOG: the array is sized per map (SV_EdictsForMap), smaller than
+		// id's 600. Before giving up, take the free edict that has been free
+		// longest, even if less than 0.5 s, instead of stopping the game.
+		// Only runs where id's code above has no slot to give.
+		edict_t	*best = NULL;
+
+		for (i=svs.maxclients+1 ; i<sv.num_edicts ; i++)
+		{
+			e = EDICT_NUM(i);
+			if (e->free && (!best || e->freetime < best->freetime))
+				best = e;
+		}
+		if (best)
+		{
+			Con_DPrintf ("ED_Alloc: all %i edicts in use, reused one freed %.2f s ago\n",
+				sv.max_edicts, sv.time - best->freetime);
+			ED_ClearEdict (best);
+			return best;
+		}
+#endif
 		Sys_Error ("ED_Alloc: no free edicts");
+	}
 		
 	sv.num_edicts++;
 	e = EDICT_NUM(i);
@@ -1010,7 +1033,18 @@ char *ED_NewString (char *string)
 	int		i,l;
 	
 	l = strlen(string) + 1;
+#ifdef QOG_HUNK_PACKED
+	{	// QuakeOG: exactly the bytes the copy below writes, packed (zone.c)
+		int		n = 0;
+
+		for (i=0 ; i< l ; i++, n++)
+			if (string[i] == '\\' && i < l-1)
+				i++;
+		new = Hunk_AllocPacked (n, 1);
+	}
+#else
 	new = Hunk_Alloc (l);
+#endif
 	new_p = new;
 
 	for (i=0 ; i< l ; i++)

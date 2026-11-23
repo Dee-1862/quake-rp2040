@@ -185,8 +185,18 @@ typedef struct
 } net_landriver_t;
 
 #define	MAX_NET_DRIVERS		8
+#ifdef QOG_STATIC_TRIM
+// QuakeOG: the engine has the loopback driver only (net_none.c) and no LAN
+// driver, so one slot each and one server list entry (Loop_SearchForHosts
+// fills entry 0) hold everything id's tables of 8 ever held
+#define	NET_DRIVER_SLOTS	1
+#define	NET_LANDRIVER_SLOTS	1
+#else
+#define	NET_DRIVER_SLOTS	MAX_NET_DRIVERS
+#define	NET_LANDRIVER_SLOTS	MAX_NET_DRIVERS
+#endif
 extern int 				net_numlandrivers;
-extern net_landriver_t	net_landrivers[MAX_NET_DRIVERS];
+extern net_landriver_t	net_landrivers[NET_LANDRIVER_SLOTS];
 
 typedef struct
 {
@@ -208,7 +218,7 @@ typedef struct
 } net_driver_t;
 
 extern int			net_numdrivers;
-extern net_driver_t	net_drivers[MAX_NET_DRIVERS];
+extern net_driver_t	net_drivers[NET_DRIVER_SLOTS];
 
 extern int			DEFAULTnet_hostport;
 extern int			net_hostport;
@@ -228,7 +238,11 @@ void NET_FreeQSocket(qsocket_t *);
 double SetNetTime(void);
 
 
+#ifdef QOG_STATIC_TRIM
+#define HOSTCACHESIZE	1	// QuakeOG: see NET_DRIVER_SLOTS
+#else
 #define HOSTCACHESIZE	8
+#endif
 
 typedef struct
 {

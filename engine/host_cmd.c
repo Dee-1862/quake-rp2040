@@ -657,7 +657,11 @@ void Host_Loadgame_f (void)
 	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
 	{
 		fscanf (f, "%s\n", str);
+#ifdef QOG_HUNK_PACKED
+		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG: packed, zone.c
+#else
 		sv.lightstyles[i] = Hunk_Alloc (strlen(str)+1);
+#endif
 		strcpy (sv.lightstyles[i], str);
 	}
 
@@ -826,7 +830,11 @@ int LoadGamestate(char *level, char *startspot)
 	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
 	{
 		fscanf (f, "%s\n", str);
+#ifdef QOG_HUNK_PACKED
+		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG: packed, zone.c
+#else
 		sv.lightstyles[i] = Hunk_Alloc (strlen(str)+1);
+#endif
 		strcpy (sv.lightstyles[i], str);
 	}
 

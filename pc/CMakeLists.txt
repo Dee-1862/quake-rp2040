@@ -164,3 +164,12 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
+# Server, client and system memory (Agent M)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_HUNK_PACKED                 # entity strings and command entries share hunk blocks (id 32 B block each)
+    QOG_TRANSLATE_ONDRAW            # player colour table built on the stack when drawn (id 16 KB per player on the hunk)
+    QOG_CBUF_INPLACE                # scripts inserted into the command buffer in place, not copied through the zone
+    QOG_LOOP_INPLACE                # net_message read in place in the loopback buffers (id 6.5 KB buffer)
+    QOG_STATIC_TRIM                 # key tables as bytes, loopback-only network tables, 1 KB spawnparms (exact)
+    QOG_EDICT_REUSE                 # all edicts in use, reuse the longest-free one before id's Sys_Error
+    QOG_PALETTE_FLASH)              # gfx/palette.lmp read in place from the mapped pack (id 800 B hunk copy)

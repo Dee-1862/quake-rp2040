@@ -31,3 +31,6 @@ qboolean	Loop_CanSendMessage (qsocket_t *sock);
 qboolean	Loop_CanSendUnreliableMessage (qsocket_t *sock);
 void		Loop_Close (qsocket_t *sock);
 void		Loop_Shutdown (void);
+#ifdef QOG_LOOP_INPLACE
+byte		*Loop_DemoBuffer (void);	// QuakeOG: where a demo message is read
+#endif

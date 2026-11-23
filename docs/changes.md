@@ -2,6 +2,30 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Server, client and system memory (Agent M, PC and ARM build, registered data)
+
+Hunk low (PC, `qog_mem`) on E1M1 364.0 → 325.9 KB, on e4m7 (largest) 472.5 → 426.5 KB, on e3m4 460.3 → 401.0 KB. The two board-only sizes take another 12 KB off every map (E1M1 about 313.9 KB on the board). Engine static RAM on the ARM meter 93.4 → 89.2 KB, board link overflow 59,148 → 55,512 bytes. Nothing ran on hardware.
+
+| Change | Flag | Builds | Saved |
+| --- | --- | --- | --- |
+| Entity lump strings, console command entries and loaded light styles share hunk blocks (`Hunk_AllocPacked`, zone.c). id gave each its own block, a 16-byte header plus 16-byte rounding | `QOG_HUNK_PACKED` | PC and board | E1M1 15,376 B (22,560 → 7,184), e4m7 about 22 KB (its total saving less the fixed ones) |
+| The 16 KB player colour table is built on the stack for the one draw that needs it (`R_AliasDrawTranslated`). The entity's colormap points at its scoreboard entry | `QOG_TRANSLATE_ONDRAW` | PC and board | 16,384 B on every map |
+| Scripts inserted into the command buffer with memmove, not copied through the zone | `QOG_CBUF_INPLACE` | PC and board | zone peak no longer includes up to 8 KB of commands (measured peak now 7,920 B) |
+| net_message read in place in the loopback receive buffers. id's move of the rest of the buffer waits for the next read or send on that buffer. Demos are read into the idle client buffer | `QOG_LOOP_INPLACE` | PC and board | 6,528 B on every map |
+| Palette read in place from the mapped pack, like the colormap | `QOG_PALETTE_FLASH` | PC and board | 800 B |
+| keyshift and key_repeats as bytes (repeat count stops at 255), one slot in the network driver, LAN driver and server list tables, `cls.spawnparms` 1,024 bytes | `QOG_STATIC_TRIM` | PC and board | 4.2 KB static |
+| All edicts in use: take the free edict freed longest ago before id's Sys_Error | `QOG_EDICT_REUSE` | PC and board | 0 (safety) |
+| Command buffer 4 KB (measured peak 2,158 B) | `QOG_CMDBUF_SIZE=4096` | **board only** | 4 KB |
+| Zone 16 KB | `QOG_ZONE_BOARD_KB=16` | **board only** | 8 KB |
+
+- Board-only flags are set in `apps/quake/CMakeLists.txt` and `tools/ram_meter.py` only. The PC keeps 8 KB and 24 KB, which the long test scripts need. A 12 KB zone failed at startup from fragmentation (8,744 B used, 3,512 B free in pieces of at most 152 B), 16 KB ran every test. A PC build with both board values gave the base state hashes (`qogtest_hash`, the 8-map fight with save and load, save and load) and the base status bar frames.
+- `QOG_TRANSLATE_ONDRAW`: before the first colour update the table is all zero, as id's untouched hunk was. The new 16 KB frame sits under `R_DrawEntitiesOnList`, beside R_EdgeDrawing (84.8 KB) and not under it: the alias chain is about 32 KB on the ARM build. It costs a 16 KB copy from the colormap per drawn player-coloured model, which only chase view (or a copy of the player's body) draws. The scores entry also explains why the earlier idea of pointing at the colormap is not exact: colours 0 0 still remap ranges 16 to 31 and 96 to 111, only colours 1 6 give the identity.
+- `QOG_EDICT_REUSE` was checked with a 167-slot test build on e1m1 under super nailgun fire: the fallback ran 97 times and the run finished. A full array of live edicts still stops with id's error. `QOG_EDICT_MARGIN` stays 128: the fallback only helps when free slots exist, and a long fight can fill the array with live gibs and backpacks.
+- Verification, hidden and silent, against a build of c97750d (`+_cl_color 0` on every run): identical state hashes in `qogtest_hash`, the 8-map fight with save and load and `qogtest_m_save` (copies with their own save names), also with `-DQOG_AOT=ON` against the interpreted base. Byte-identical shots: 113 `qogtest_d_shots`, 8 fight end frames, 10 new chase view frames (`qogtest_mm_chase.cfg`, four colour pairs, two maps), 12 menu pics apart from the blinking cursor cell. Per-frame hashes of `qogtest_h_hud.cfg` (997 frames) and the chase script match one of two base runs on every frame except the startup console (build time) and frames that show a notify line or a map load, which also differ between two base runs. `qogtest_reg.cfg` logs equal apart from memory lines and the render peaks, which also differ between two base runs (the turning in that script follows real time).
+- Shared config: `data/id1/config.cfg` is saved by every run. A chase test that changed the player colours left `_cl_color` non-zero there, which changes the player's edict (team) and therefore every state hash. All my runs now pass `+_cl_color 0`. Other agents comparing hashes across time should do the same or check the saved colour.
+- Looked at and left: `leafnums` (recomputing PVS leafs per frame would cost a BSP walk per entity on the M0+), `sv.signon` (6.5 KB static, worst map still needs 5 KB, and a late makestatic would overflow an exactly sized copy), `client_t.message` (datagrams are appended to the client buffer before the reliable message, so the two cannot share it), `MSG_ReadString`'s 2 KB buffer, `cl_lightstyle`, the particle count.
+- Edit outside Agent M's files: `engine/r_alias.c` (`R_AliasDrawTranslated` and the branch to it in `R_AliasDrawModel`).
+
 ## 2026-11-23: Flash budget for the board's data image (Agent J, PC and ARM build, registered data)
 
 Start plus episode 1 (`start`, `e1m1` to `e1m8`) in the board's data region: 20,833,408 → 16,845,808 bytes (19.87 → 16.07 MB of 11.94). It still does not fit, by 4,328,432 bytes. `start` to `e1m4` now fits (11.89 MB, 45,472 bytes to spare), where before only `start e1m1 e1m2` did. Engine static RAM on the ARM meter unchanged (118.2 KB). Nothing ran on hardware.

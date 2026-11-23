@@ -95,6 +95,9 @@ int Z_FreeMemory (void);
 
 void *Hunk_Alloc (int size);		// returns 0 filled memory
 void *Hunk_AllocName (int size, char *name);
+#ifdef QOG_HUNK_PACKED
+void *Hunk_AllocPacked (int size, int align);	// QuakeOG: small blocks sharing one header, zone.c
+#endif
 
 void *Hunk_HighAllocName (int size, char *name);
 

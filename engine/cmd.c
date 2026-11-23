@@ -70,9 +70,16 @@ sizebuf_t	cmd_text;
 Cbuf_Init
 ============
 */
+#ifndef QOG_CMDBUF_SIZE
+// QuakeOG: board-only size in apps/quake/CMakeLists.txt. The measured peak
+// is 2,158 bytes (default.cfg inserted ahead of the rest of quake.rc). The
+// PC builds keep id's size for the long test scripts. Overflow is id's
+// "Cbuf_AddText: overflow" message, the text is dropped.
+#define	QOG_CMDBUF_SIZE	8192
+#endif
 void Cbuf_Init (void)
 {
-	SZ_Alloc (&cmd_text, 8192);		// space for commands and script files
+	SZ_Alloc (&cmd_text, QOG_CMDBUF_SIZE);		// space for commands and script files
 }
 
 
@@ -113,6 +120,20 @@ void Cbuf_InsertText (char *text)
 	char	*temp;
 	int		templen;
 
+#ifdef QOG_CBUF_INPLACE
+	// QuakeOG: when both parts fit, move the waiting commands up in place
+	// instead of copying them through the zone (up to the whole buffer, the
+	// zone's largest use). The result is what id's copy produces. Other
+	// cases take id's path, with its overflow message or error.
+	templen = Q_strlen (text);
+	if (templen < cmd_text.maxsize && templen + cmd_text.cursize <= cmd_text.maxsize)
+	{
+		memmove (cmd_text.data + templen, cmd_text.data, cmd_text.cursize);
+		Q_memcpy (cmd_text.data, text, templen);
+		cmd_text.cursize += templen;
+		return;
+	}
+#endif
 // copy off any commands still remaining in the exec buffer
 	templen = cmd_text.cursize;
 	if (templen)
@@ -553,7 +574,11 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
 		}
 	}
 
+#ifdef QOG_HUNK_PACKED
+	cmd = Hunk_AllocPacked (sizeof(cmd_function_t), sizeof(void *));	// QuakeOG: packed, zone.c
+#else
 	cmd = Hunk_Alloc (sizeof(cmd_function_t));
+#endif
 	cmd->name = cmd_name;
 	cmd->function = function;
 	cmd->next = cmd_functions;

@@ -728,6 +728,36 @@ void R_AliasSetupFrame (void)
 }
 
 
+#ifdef QOG_TRANSLATE_ONDRAW
+#if defined(__GNUC__)
+#define QOG_NOINLINE	__attribute__((noinline))
+#elif defined(_MSC_VER)
+#define QOG_NOINLINE	__declspec(noinline)
+#else
+#define QOG_NOINLINE
+#endif
+/*
+================
+R_AliasDrawTranslated
+
+QuakeOG: an entity in player colours (client.h). The colour table id kept
+per player is built here for this draw, in a stack frame of its own that
+sits beside R_EdgeDrawing's larger one, not under it.
+================
+*/
+static QOG_NOINLINE void R_AliasDrawTranslated (int slot)
+{
+	byte	table[VID_GRADES*256];
+
+	CL_BuildTranslation (table, slot);
+	acolormap = table;
+	if (currententity->trivial_accept)
+		R_AliasPrepareUnclippedPoints ();
+	else
+		R_AliasPreparePoints ();
+}
+#endif
+
 /*
 ================
 R_AliasDrawModel
@@ -784,6 +814,13 @@ void R_AliasDrawModel (alight_t *plighting)
 	else
 		ziscale = (float)0x8000 * (float)0x10000 * 3.0;
 
+#ifdef QOG_TRANSLATE_ONDRAW
+	if (CL_TranslationSlot (currententity->colormap) >= 0)
+	{
+		R_AliasDrawTranslated (CL_TranslationSlot (currententity->colormap));
+		return;
+	}
+#endif
 	if (currententity->trivial_accept)
 		R_AliasPrepareUnclippedPoints ();
 	else

@@ -48,6 +48,45 @@ static byte	loop_server_rx[QOG_LOOP_SERVER_RX + 4];
 #define LOOP_RXSIZE(s)	NET_MAXMESSAGE
 #endif
 
+#ifdef QOG_LOOP_INPLACE
+#ifndef QOG_SINGLE_PLAYER
+#error QOG_LOOP_INPLACE needs QOG_SINGLE_PLAYER
+#endif
+// QuakeOG: net_message is read where the message lies in the receive
+// buffer, so it needs no 6.5 KB buffer of its own. id moved the rest of the
+// buffer down as soon as it copied a message out. Here that move waits until
+// the message has been parsed: the next read of the buffer or the next send
+// into it does it first, so every check and every byte stored is as in id's
+// code. Demos are read into the client buffer, which is idle while one
+// plays (Loop_DemoBuffer).
+static int	loop_pending[2];	// delivered bytes still at the front of loop_client_rx, loop_server_rx
+
+static int *Loop_Pending (qsocket_t *sock)
+{
+	return &loop_pending[sock->receiveMessage == loop_client_rx ? 0 : 1];
+}
+
+static void Loop_Consume (qsocket_t *sock)
+{
+	int		*pending = Loop_Pending (sock);
+	int		length = *pending;
+
+	if (!length)
+		return;
+	*pending = 0;
+	sock->receiveMessageLength -= length;
+	if (sock->receiveMessageLength)
+		Q_memcpy(sock->receiveMessage, &sock->receiveMessage[length], sock->receiveMessageLength);
+}
+
+byte *Loop_DemoBuffer (void)
+{
+	if (loop_client)
+		Sys_Error ("Loop_DemoBuffer: demo played while connected");
+	return loop_client_rx;
+}
+#endif
+
 int Loop_Init (void)
 {
 	if (cls.state == ca_dedicated)
@@ -107,6 +146,9 @@ qsocket_t *Loop_Connect (char *host)
 	loop_client->receiveMessageLength = 0;
 	loop_client->sendMessageLength = 0;
 	loop_client->canSend = true;
+#ifdef QOG_LOOP_INPLACE
+	loop_pending[0] = 0;
+#endif
 
 	if (!loop_server)
 	{
@@ -124,6 +166,9 @@ qsocket_t *Loop_Connect (char *host)
 	loop_server->receiveMessageLength = 0;
 	loop_server->sendMessageLength = 0;
 	loop_server->canSend = true;
+#ifdef QOG_LOOP_INPLACE
+	loop_pending[1] = 0;
+#endif
 
 	loop_client->driverdata = (void *)loop_server;
 	loop_server->driverdata = (void *)loop_client;
@@ -144,6 +189,9 @@ qsocket_t *Loop_CheckNewConnections (void)
 	loop_client->sendMessageLength = 0;
 	loop_client->receiveMessageLength = 0;
 	loop_client->canSend = true;
+#ifdef QOG_LOOP_INPLACE
+	loop_pending[0] = loop_pending[1] = 0;
+#endif
 	return loop_server;
 }
 
@@ -159,12 +207,20 @@ int Loop_GetMessage (qsocket_t *sock)
 	int		ret;
 	int		length;
 
+#ifdef QOG_LOOP_INPLACE
+	Loop_Consume (sock);
+#endif
 	if (sock->receiveMessageLength == 0)
 		return 0;
 
 	ret = sock->receiveMessage[0];
 	length = sock->receiveMessage[1] + (sock->receiveMessage[2] << 8);
 	// alignment byte skipped here
+#ifdef QOG_LOOP_INPLACE
+	net_message.data = &sock->receiveMessage[4];	// QuakeOG: in place, see above
+	net_message.maxsize = net_message.cursize = length;
+	*Loop_Pending (sock) = IntAlign(length + 4);
+#else
 	SZ_Clear (&net_message);
 	SZ_Write (&net_message, &sock->receiveMessage[4], length);
 
@@ -173,6 +229,7 @@ int Loop_GetMessage (qsocket_t *sock)
 
 	if (sock->receiveMessageLength)
 		Q_memcpy(sock->receiveMessage, &sock->receiveMessage[length], sock->receiveMessageLength);
+#endif
 
 	if (sock->driverdata && ret == 1)
 		((qsocket_t *)sock->driverdata)->canSend = true;
@@ -188,6 +245,9 @@ int Loop_SendMessage (qsocket_t *sock, sizebuf_t *data)
 
 	if (!sock->driverdata)
 		return -1;
+#ifdef QOG_LOOP_INPLACE
+	Loop_Consume ((qsocket_t *)sock->driverdata);
+#endif
 
 	bufferLength = &((qsocket_t *)sock->driverdata)->receiveMessageLength;
 
@@ -222,6 +282,9 @@ int Loop_SendUnreliableMessage (qsocket_t *sock, sizebuf_t *data)
 
 	if (!sock->driverdata)
 		return -1;
+#ifdef QOG_LOOP_INPLACE
+	Loop_Consume ((qsocket_t *)sock->driverdata);
+#endif
 
 	bufferLength = &((qsocket_t *)sock->driverdata)->receiveMessageLength;
 
@@ -268,6 +331,9 @@ void Loop_Close (qsocket_t *sock)
 	sock->receiveMessageLength = 0;
 	sock->sendMessageLength = 0;
 	sock->canSend = true;
+#ifdef QOG_LOOP_INPLACE
+	*Loop_Pending (sock) = 0;
+#endif
 	if (sock == loop_client)
 		loop_client = NULL;
 	else

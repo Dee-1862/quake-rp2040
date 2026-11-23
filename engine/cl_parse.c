@@ -464,7 +464,11 @@ if (bits&(1<<i))
 	{
 		if (i > cl.maxclients)
 			Sys_Error ("i >= cl.maxclients");
+#ifdef QOG_TRANSLATE_ONDRAW
+		ent->colormap = (byte *)&cl.scores[i-1];	// QuakeOG: see client.h
+#else
 		ent->colormap = cl.scores[i-1].translations;
+#endif
 	}
 
 #ifdef GLQUAKE
@@ -687,9 +691,57 @@ void CL_NewTranslation (int slot)
 	
 	if (slot > cl.maxclients)
 		Sys_Error ("CL_NewTranslation: slot > cl.maxclients");
+#ifdef QOG_TRANSLATE_ONDRAW
+	cl.scores[slot].translated = true;	// QuakeOG: the table is built when drawn
+}
+
+/*
+=====================
+CL_TranslationSlot
+
+QuakeOG: the scoreboard slot whose colours an entity colormap stands for
+(client.h), or -1 for a real colormap.
+=====================
+*/
+int CL_TranslationSlot (void *colormap)
+{
+	unsigned	ofs;
+
+	if (!cl.scores)
+		return -1;
+	ofs = (unsigned)((byte *)colormap - (byte *)cl.scores);
+	if (ofs >= (unsigned)(cl.maxclients * sizeof(scoreboard_t)) || ofs % sizeof(scoreboard_t))
+		return -1;
+	return ofs / sizeof(scoreboard_t);
+}
+
+/*
+=====================
+CL_BuildTranslation
+
+QuakeOG: id's CL_NewTranslation table for the slot's current colours, into
+dest (VID_GRADES*256 bytes). Before the first colour update id's table was
+the zero filled hunk, so it is here too.
+=====================
+*/
+void CL_BuildTranslation (byte *dest, int slot)
+{
+	int		i, j;
+	int		top, bottom;
+	byte	*source;
+
+	if (!cl.scores[slot].translated)
+	{
+		memset (dest, 0, VID_GRADES*256);
+		return;
+	}
+	source = vid.colormap;
+	memcpy (dest, vid.colormap, VID_GRADES*256);
+#else
 	dest = cl.scores[slot].translations;
 	source = vid.colormap;
 	memcpy (dest, vid.colormap, sizeof(cl.scores[slot].translations));
+#endif
 	top = cl.scores[slot].colors & 0xf0;
 	bottom = (cl.scores[slot].colors &15)<<4;
 #ifdef GLQUAKE
