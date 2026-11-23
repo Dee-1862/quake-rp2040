@@ -21,6 +21,11 @@ See the GNU General Public License for more details.
  * with Sys_FlashMap. Nothing is written (saves come later, to the save
  * slots at the end of flash).
  *
+ * QuakeOG: a baked model image (engine/model.c, "QOGB") may follow the pack
+ * at a 64 KB boundary (tools/mkboard.py lays both out). It appears as
+ * <basedir>/id1/qogbake.bin and is mapped in place the same way. The engine
+ * checks it was built for the address it is found at.
+ *
  * Hunk size: QOG_HUNK_KB. The engine does not fit in RAM yet; this layer
  * is built to measure code size, static RAM and stack frames on the target
  * (docs/fit-plan.md). */
@@ -65,7 +70,44 @@ static qboolean is_pak_path(const char *path) {
     return n >= 12 && !strcmp(path + n - 12, "id1/pak0.pak");
 }
 
+/* ---- the baked model image after it ----------------------------------- */
+
+#define BAKE_HANDLE 2
+static const byte *s_bake;
+static int s_bakelen = -1;     /* -1: not looked for yet, 0: none */
+
+static qboolean is_bake_path(const char *path) {
+    size_t n = strlen(path);
+    return n >= 15 && !strcmp(path + n - 15, "id1/qogbake.bin");
+}
+
+/* First 64 KB boundary after the pack holding "QOGB" with a size that fits
+   the data region (the same rule as the PC's Sys_FlashNext, and where
+   tools/mkboard.py puts it, also with its --bake-base option). */
+static int bake_length(void) {
+    if (s_bakelen >= 0) return s_bakelen;
+    s_bakelen = 0;
+    int pak = pak_length();
+    if (pak < 0) return 0;
+    for (unsigned ofs = ((unsigned)pak + 0xFFFFu) & ~0xFFFFu; ofs + 64 <= QOG_DATA_MAX_SIZE; ofs += 0x10000u) {
+        const unsigned *h = (const unsigned *)(s_pak + ofs);
+        if (h[0] != 0x42474F51u) continue;          /* "QOGB", QOGB_MAGIC in engine/model.h */
+        if (h[4] < 64 || h[4] > QOG_DATA_MAX_SIZE - ofs) break;
+        s_bake = s_pak + ofs;
+        s_bakelen = (int)h[4];                      /* size, header included */
+        break;
+    }
+    return s_bakelen;
+}
+
+static int s_bakepos;
+
 int Sys_FileOpenRead(char *path, int *hndl) {
+    if (is_bake_path(path) && bake_length() > 0) {
+        *hndl = BAKE_HANDLE;
+        s_bakepos = 0;
+        return s_bakelen;
+    }
     int len = is_pak_path(path) ? pak_length() : -1;
     if (len < 0) { *hndl = -1; return -1; }
     *hndl = PAK_HANDLE;
@@ -75,21 +117,32 @@ int Sys_FileOpenRead(char *path, int *hndl) {
 
 int Sys_FileOpenWrite(char *path) { Sys_Error("Sys_FileOpenWrite: no writable storage (%s)", path); return -1; }
 void Sys_FileClose(int handle) { (void)handle; }
-void Sys_FileSeek(int handle, int position) { (void)handle; s_pakpos = position; }
+void Sys_FileSeek(int handle, int position) {
+    if (handle == BAKE_HANDLE) s_bakepos = position;
+    else s_pakpos = position;
+}
 
 int Sys_FileRead(int handle, void *dest, int count) {
-    (void)handle;
+    if (handle == BAKE_HANDLE) {
+        memcpy(dest, s_bake + s_bakepos, (size_t)count);
+        s_bakepos += count;
+        return count;
+    }
     memcpy(dest, s_pak + s_pakpos, (size_t)count);
     s_pakpos += count;
     return count;
 }
 
 int Sys_FileWrite(int handle, void *data, int count) { (void)handle; (void)data; return count; }
-int Sys_FileTime(char *path) { return is_pak_path(path) && pak_length() > 0 ? 1 : -1; }
+int Sys_FileTime(char *path) {
+    if (is_bake_path(path)) return bake_length() > 0 ? 1 : -1;
+    return is_pak_path(path) && pak_length() > 0 ? 1 : -1;
+}
 void Sys_mkdir(char *path) { (void)path; }
 
 void *Sys_FlashMap(char *path, int length) {
-    (void)length;
+    if (is_bake_path(path))
+        return (bake_length() > 0 && length == s_bakelen) ? (void *)s_bake : NULL;
     return (is_pak_path(path) && pak_length() > 0) ? (void *)s_pak : NULL;
 }
 
