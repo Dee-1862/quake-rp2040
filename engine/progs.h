@@ -80,10 +80,17 @@ typedef struct edict_s
 	qboolean	free;
 	link_t		area;				// linked to a division node or leaf
 	
+#ifdef QOG_BASELINE_POOL
+	short		num_leafs;			// QuakeOG: was int, at most MAX_ENT_LEAFS
+	unsigned short	baseidx;		// QuakeOG: entry in sv.baselines, 0 is the empty baseline
+#else
 	int			num_leafs;
+#endif
 	short		leafnums[MAX_ENT_LEAFS];
 
+#ifndef QOG_BASELINE_POOL
 	entity_state_t	baseline;
+#endif
 
 	float		freetime;			// sv.time when the object was freed
 #ifdef QOG_EDICT_SPARSE

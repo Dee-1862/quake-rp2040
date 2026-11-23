@@ -489,36 +489,36 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 		
 		for (i=0 ; i<3 ; i++)
 		{
-			miss = ent->v.origin[i] - ent->baseline.origin[i];
+			miss = ent->v.origin[i] - SV_BASELINE(ent)->origin[i];
 			if ( miss < -0.1 || miss > 0.1 )
 				bits |= U_ORIGIN1<<i;
 		}
 
-		if ( ent->v.angles[0] != ent->baseline.angles[0] )
+		if ( ent->v.angles[0] != SV_BASELINE(ent)->angles[0] )
 			bits |= U_ANGLE1;
 			
-		if ( ent->v.angles[1] != ent->baseline.angles[1] )
+		if ( ent->v.angles[1] != SV_BASELINE(ent)->angles[1] )
 			bits |= U_ANGLE2;
 			
-		if ( ent->v.angles[2] != ent->baseline.angles[2] )
+		if ( ent->v.angles[2] != SV_BASELINE(ent)->angles[2] )
 			bits |= U_ANGLE3;
 			
 		if (ent->v.movetype == MOVETYPE_STEP)
 			bits |= U_NOLERP;	// don't mess up the step animation
 	
-		if (ent->baseline.colormap != ent->v.colormap)
+		if (SV_BASELINE(ent)->colormap != ent->v.colormap)
 			bits |= U_COLORMAP;
 			
-		if (ent->baseline.skin != ent->v.skin)
+		if (SV_BASELINE(ent)->skin != ent->v.skin)
 			bits |= U_SKIN;
 			
-		if (ent->baseline.frame != ent->v.frame)
+		if (SV_BASELINE(ent)->frame != ent->v.frame)
 			bits |= U_FRAME;
 		
-		if (ent->baseline.effects != ent->v.effects)
+		if (SV_BASELINE(ent)->effects != ent->v.effects)
 			bits |= U_EFFECTS;
 		
-		if (ent->baseline.modelindex != ent->v.modelindex)
+		if (SV_BASELINE(ent)->modelindex != ent->v.modelindex)
 			bits |= U_MODEL;
 
 		if (e >= 256)
@@ -943,6 +943,20 @@ void SV_CreateBaseline (void)
 	int			i;
 	edict_t			*svent;
 	int				entnum;	
+#ifdef QOG_BASELINE_POOL
+	int				n = 1;
+
+	// QuakeOG: a baseline only for the edicts that get one below, entry 0
+	// is the empty baseline every other edict keeps, as in id's zeroed array
+	for (entnum = 0; entnum < sv.num_edicts ; entnum++)
+	{
+		svent = EDICT_NUM(entnum);
+		if (!svent->free && (entnum <= svs.maxclients || svent->v.modelindex))
+			n++;
+	}
+	sv.baselines = Hunk_AllocName (n * sizeof(entity_state_t), "baseline");
+	n = 1;
+#endif
 		
 	for (entnum = 0; entnum < sv.num_edicts ; entnum++)
 	{
@@ -952,23 +966,26 @@ void SV_CreateBaseline (void)
 			continue;
 		if (entnum > svs.maxclients && !svent->v.modelindex)
 			continue;
+#ifdef QOG_BASELINE_POOL
+		svent->baseidx = n++;
+#endif
 
 	//
 	// create entity baseline
 	//
-		VectorCopy (svent->v.origin, svent->baseline.origin);
-		VectorCopy (svent->v.angles, svent->baseline.angles);
-		svent->baseline.frame = svent->v.frame;
-		svent->baseline.skin = svent->v.skin;
+		VectorCopy (svent->v.origin, SV_BASELINE(svent)->origin);
+		VectorCopy (svent->v.angles, SV_BASELINE(svent)->angles);
+		SV_BASELINE(svent)->frame = svent->v.frame;
+		SV_BASELINE(svent)->skin = svent->v.skin;
 		if (entnum > 0 && entnum <= svs.maxclients)
 		{
-			svent->baseline.colormap = entnum;
-			svent->baseline.modelindex = SV_ModelIndex("progs/player.mdl");
+			SV_BASELINE(svent)->colormap = entnum;
+			SV_BASELINE(svent)->modelindex = SV_ModelIndex("progs/player.mdl");
 		}
 		else
 		{
-			svent->baseline.colormap = 0;
-			svent->baseline.modelindex =
+			SV_BASELINE(svent)->colormap = 0;
+			SV_BASELINE(svent)->modelindex =
 				SV_ModelIndex(pr_strings + svent->v.model);
 		}
 		
@@ -978,14 +995,14 @@ void SV_CreateBaseline (void)
 		MSG_WriteByte (&sv.signon,svc_spawnbaseline);		
 		MSG_WriteShort (&sv.signon,entnum);
 
-		MSG_WriteByte (&sv.signon, svent->baseline.modelindex);
-		MSG_WriteByte (&sv.signon, svent->baseline.frame);
-		MSG_WriteByte (&sv.signon, svent->baseline.colormap);
-		MSG_WriteByte (&sv.signon, svent->baseline.skin);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->modelindex);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->frame);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->colormap);
+		MSG_WriteByte (&sv.signon, SV_BASELINE(svent)->skin);
 		for (i=0 ; i<3 ; i++)
 		{
-			MSG_WriteCoord(&sv.signon, svent->baseline.origin[i]);
-			MSG_WriteAngle(&sv.signon, svent->baseline.angles[i]);
+			MSG_WriteCoord(&sv.signon, SV_BASELINE(svent)->origin[i]);
+			MSG_WriteAngle(&sv.signon, SV_BASELINE(svent)->angles[i]);
 		}
 	}
 }
