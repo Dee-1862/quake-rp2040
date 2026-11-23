@@ -47,6 +47,9 @@ edgeref_t	newedges[MAXHEIGHT];	// QuakeOG: edgeref_t, see r_shared.h
 edgeref_t	removeedges[MAXHEIGHT];
 
 espan_t	*span_p, *max_span_p;
+#ifdef QOG_ESPAN_T_PACKED
+byte	*r_spanbase;	// QuakeOG: see espan_t in r_shared.h
+#endif
 
 int		r_currentkey;
 
@@ -138,7 +141,7 @@ void R_BeginEdgeFrame (void)
 
 	surface_p = &surfaces[2];	// background is surface 1,
 								//  surface 0 is a dummy
-	surfaces[1].spans = NULL;	// no background spans yet
+	surfaces[1].spans = SPAN_NONE;	// no background spans yet (QuakeOG: SPAN_NONE)
 	surfaces[1].flags = SURF_DRAWBACKGROUND;
 
 // put the background behind everything in the world
@@ -322,7 +325,7 @@ void R_CleanupSpan ()
 		span->count = iu - span->u;
 		span->v = current_iv;
 		span->pnext = surf->spans;
-		surf->spans = span;
+		surf->spans = SPAN_REF(span);	// QuakeOG
 	}
 
 // reset spanstate for all surfaces in the surface stack
@@ -398,7 +401,7 @@ newtop:
 			span->count = iu - span->u;
 			span->v = current_iv;
 			span->pnext = surf2->spans;
-			surf2->spans = span;
+			surf2->spans = SPAN_REF(span);	// QuakeOG
 		}
 
 		// set last_u on the new span
@@ -443,7 +446,7 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 				span->count = iu - span->u;
 				span->v = current_iv;
 				span->pnext = surf->spans;
-				surf->spans = span;
+				surf->spans = SPAN_REF(span);	// QuakeOG
 			}
 
 		// set last_u on the surface below
@@ -569,7 +572,7 @@ newtop:
 				span->count = iu - span->u;
 				span->v = current_iv;
 				span->pnext = surf2->spans;
-				surf2->spans = span;
+				surf2->spans = SPAN_REF(span);	// QuakeOG
 			}
 
 			// set last_u on the new span
@@ -669,12 +672,24 @@ Each surface has a linked list of its visible spans
 void R_ScanEdges (void)
 {
 	int		iv, bottom;
+#ifdef QOG_ESPAN_T_PACKED
+	// QuakeOG: 8-byte spans gain nothing from cache line alignment, and the
+	// 16-bit links reach (65536 / 8) - 1 spans (r_shared.h)
+	espan_t	basespans[MAXSPANS];
+	espan_t	*basespan_p;
+	surf_t	*s;
+	typedef char span_links_fit[((MAXSPANS + 1) * sizeof(espan_t) <= 0x10000) ? 1 : -1];
+
+	basespan_p = basespans;
+	r_spanbase = (byte *)basespans - sizeof(espan_t);
+#else
 	byte	basespans[MAXSPANS*sizeof(espan_t)+CACHE_SIZE];
 	espan_t	*basespan_p;
 	surf_t	*s;
 
 	basespan_p = (espan_t *)
 			((long)(basespans + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
+#endif
 	max_span_p = &basespan_p[MAXSPANS - r_refdef.vrect.width];
 
 	span_p = basespan_p;
@@ -745,7 +760,7 @@ void R_ScanEdges (void)
 
 		// clear the surface span pointers
 			for (s = &surfaces[1] ; s<surface_p ; s++)
-				s->spans = NULL;
+				s->spans = SPAN_NONE;	// QuakeOG
 
 			span_p = basespan_p;
 		}

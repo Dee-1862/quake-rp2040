@@ -133,6 +133,6 @@ void D_DrawSkyScans8 (espan_t *pspan)
 
 		} while (count > 0);
 
-	} while ((pspan = pspan->pnext) != NULL);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
 

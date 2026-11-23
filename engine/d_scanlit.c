@@ -226,7 +226,7 @@ void D_DrawSpans8Lit (espan_t *pspan)
 
 		} while (count > 0);
 
-	} while ((pspan = pspan->pnext) != NULL);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
 
 #endif	// !QOG_SURFCACHE

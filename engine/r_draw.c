@@ -634,7 +634,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	surface_p->spanstate = 0;
 	surface_p->entity = currententity;
 	surface_p->key = r_currentkey++;
-	surface_p->spans = NULL;
+	surface_p->spans = SPAN_NONE;	// QuakeOG
 
 	pplane = SURF_PLANE (currententity->model, fa);	// QuakeOG
 // FIXME: cache this?
@@ -749,7 +749,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	surface_p->spanstate = 0;
 	surface_p->entity = currententity;
 	surface_p->key = r_currentbkey;
-	surface_p->spans = NULL;
+	surface_p->spans = SPAN_NONE;	// QuakeOG
 
 	pplane = SURF_PLANE (currententity->model, psurf);	// QuakeOG
 // FIXME: cache this?

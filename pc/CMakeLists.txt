@@ -103,7 +103,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_MAX_BMODEL_EDGES=256)       #   and 74 edges (id 1000)
 # Renderer stack frames and render tables (Agent D)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_EDGE_T_PACKED)              # edge_t 24 bytes with 16-bit links and owner (id 32)
+    QOG_EDGE_T_PACKED               # edge_t 24 bytes with 16-bit links and owner (id 32)
+    QOG_ESPAN_T_PACKED)             # espan_t 8 bytes, 16-bit coordinates and link (id 16)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

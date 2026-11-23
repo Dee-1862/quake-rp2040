@@ -97,11 +97,35 @@ extern	entity_t		*currententity;
 #endif
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
+#ifdef QOG_ESPAN_T_PACKED
+// QuakeOG: 8 bytes, not 16. u, v and count are screen coordinates (at
+// most MAXWIDTH), and every span lives in R_ScanEdges' span buffer, so the
+// link is a 16-bit byte offset from r_spanbase, one entry before the
+// buffer (SPAN_NONE is 0, which never addresses a span). surf_t.spans uses
+// the same form.
+typedef unsigned short	espanref_t;
+#define SPAN_NONE		0
+extern byte	*r_spanbase;
+#define SPAN_PTR(r)		((espan_t *)(r_spanbase + (r)))
+#define SPAN_REF(p)		((espanref_t)((byte *)(p) - r_spanbase))
+
+typedef struct espan_s
+{
+	short			u, v, count;
+	espanref_t		pnext;
+} espan_t;
+#else
+typedef struct espan_s	*espanref_t;
+#define SPAN_NONE		NULL
+#define SPAN_PTR(r)		(r)
+#define SPAN_REF(p)		(p)
+
 typedef struct espan_s
 {
 	int				u, v, count;
 	struct espan_s	*pnext;
 } espan_t;
+#endif
 
 // FIXME: compress, make a union if that will help
 // insubmodel is only 1, flags is fewer than 32, spanstate could be a byte
@@ -109,7 +133,8 @@ typedef struct surf_s
 {
 	struct surf_s	*next;			// active surface stack in r_edge.c
 	struct surf_s	*prev;			// used in r_edge.c for active surf stack
-	struct espan_s	*spans;			// pointer to linked list of spans to draw
+	espanref_t	spans;				// pointer to linked list of spans to draw
+									// (QuakeOG: espanref_t, see espan_t)
 	int			key;				// sorting key (BSP order)
 	int			last_u;				// set during tracing
 #ifdef QOG_SURF_T_PACKED

@@ -330,7 +330,7 @@ void Turbulent8 (espan_t *pspan)
 
 		} while (count > 0);
 
-	} while ((pspan = pspan->pnext) != NULL);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
 
 
@@ -466,7 +466,7 @@ void D_DrawSpans8 (espan_t *pspan)
 
 		} while (count > 0);
 
-	} while ((pspan = pspan->pnext) != NULL);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
 
 #endif
@@ -529,7 +529,7 @@ void D_DrawZSpans (espan_t *pspan)
 		if (count & 1)
 			*pdest = (short)(izi >> 16);
 
-	} while ((pspan = pspan->pnext) != NULL);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
 
 #endif
