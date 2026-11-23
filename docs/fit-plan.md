@@ -39,3 +39,11 @@ Target budget from the research (≈ 244 KB): frame buffer 35, z-buffer 70, rend
 ## Flash budget
 
 The whole registered game is about 50 MB; the board's game-data region is 12–15 MB. One episode per flash image (episode 1 is 16.6 MB before texture deduplication, ≈ 14.9 MB after). Switching episodes means reflashing the data region.
+
+## Hardware options (from `research-freewili-hardware.md`)
+
+- **The OG stays the target.** Its main RP2040 has to run anyway: it carries the display firmware and must kick the watchdog. The honest claim is "all game code runs on one RP2040; the other chip boots it".
+- **Two-chip fallback:** Quake's own client/server split maps onto the two chips (the server and entities on the main CPU, rendering and sound on the display CPU). The 12.5 Mbaud UART is about 1.25 MB/s, and a frame's server message is about 1 KB. Keep a swappable network-driver seam so this stays cheap if 245 KB fails. Benchmark the link with the BSP's `smoketest` app first; the rate has never been measured on a board.
+- **Levels on demand:** the OG has no Wi-Fi or Bluetooth, so the path is USB to a PC companion app. It converts a level from the user's own pak and streams it into the flash data region (estimated 3–15 s per level; benchmark it). That makes all four episodes playable on a 16 MB chip. Saves go back to a PC folder, which the user may sync to their own cloud. A public server would be redistribution and is not allowed.
+- **Controller:** no USB host or Bluetooth on the OG. First the PC companion relays a gamepad over USB. For untethered play, an ESP32 running Bluepad32 wired to the main CPU's UART1 pins.
+- **FREE-WILi 2** (two RP2350B, 520 KB SRAM and 8 MB PSRAM each, Wi-Fi and Bluetooth via an ESP32-C5, USB host): today's build would fit as is, so it's an easy later port, not the headline.
