@@ -963,9 +963,17 @@ r_refdef must be set before the first call
 */
 void R_RenderView_ (void)
 {
+#ifdef QOG_WARP_INPLACE
+	// QuakeOG: underwater, the view is drawn into the frame buffer and
+	// D_WarpScreen distorts it in place, so no 64 KB warp buffer on the stack
+	if (vid.rowbytes != WARP_WIDTH)
+		Sys_Error ("R_RenderView: in-place underwater warp needs %d bytes per row", WARP_WIDTH);
+	r_warpbuffer = vid.buffer;
+#else
 	byte	warpbuffer[WARP_WIDTH * WARP_HEIGHT];
 
 	r_warpbuffer = warpbuffer;
+#endif
 
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = Sys_FloatTime ();

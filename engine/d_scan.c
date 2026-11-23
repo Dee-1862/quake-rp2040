@@ -41,6 +41,92 @@ D_WarpScreen
 // the sine warp, to keep the edges from wrapping
 =============
 */
+#ifdef QOG_WARP_INPLACE
+/*
+QuakeOG: the underwater view is drawn straight into the frame buffer (see
+R_RenderView_) and distorted in place here, instead of being drawn into a
+64 KB warp buffer on the stack and copied out. Destination row v reads
+source rows from rowsrc[v] to rowsrc[v + AMP2*2], which are never more than
+AMP2*2 rows above v, so each source row is saved to a small ring before it
+is overwritten, and rows at or above v are read from that copy. The output
+is the same as id's.
+*/
+#define WARP_RING	8	// power of two, more than AMP2*2 rows
+
+void D_WarpScreen (void)
+{
+	int		w, h;
+	int		u,v,k,r;
+	byte	*dest;
+	int		*turb;
+	int		*col;
+	byte	**row;
+	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
+	int		rowsrc[MAXHEIGHT+(AMP2*2)];
+	int		column[MAXWIDTH+(AMP2*2)];
+	byte	ring[WARP_RING][WARP_WIDTH];
+	float	wratio, hratio;
+
+	if (d_viewbuffer != vid.buffer || screenwidth != vid.rowbytes ||
+		r_refdef.vrect.x != scr_vrect.x || r_refdef.vrect.y != scr_vrect.y ||
+		r_refdef.vrect.width != scr_vrect.width ||
+		r_refdef.vrect.height != scr_vrect.height ||
+		r_refdef.vrect.x + r_refdef.vrect.width > WARP_WIDTH)
+		Sys_Error ("D_WarpScreen: in-place warp needs the view drawn full size into the frame buffer");
+
+	w = r_refdef.vrect.width;
+	h = r_refdef.vrect.height;
+
+	wratio = w / (float)scr_vrect.width;
+	hratio = h / (float)scr_vrect.height;
+
+	for (v=0 ; v<scr_vrect.height+AMP2*2 ; v++)
+	{
+		rowsrc[v] = (int)((float)v * hratio * h / (h + AMP2 * 2));
+	}
+
+	for (u=0 ; u<scr_vrect.width+AMP2*2 ; u++)
+	{
+		column[u] = r_refdef.vrect.x +
+				(int)((float)u * wratio * w / (w + AMP2 * 2));
+	}
+
+	turb = intsintable + ((int)(cl.time*SPEED)&(CYCLE-1));
+	dest = vid.buffer + scr_vrect.y * vid.rowbytes + scr_vrect.x;
+
+	for (v=0 ; v<scr_vrect.height ; v++, dest += vid.rowbytes)
+	{
+	// save source row v before destination row v overwrites it
+		memcpy (&ring[v & (WARP_RING-1)][r_refdef.vrect.x],
+				d_viewbuffer + (r_refdef.vrect.y + v) * screenwidth + r_refdef.vrect.x,
+				w);
+
+		for (k=v ; k<=v+AMP2*2 ; k++)
+		{
+			r = rowsrc[k];
+			if (r <= v)
+			{
+				if (v - r >= WARP_RING)
+					Sys_Error ("D_WarpScreen: warp ring too small");
+				rowptr[k] = ring[r & (WARP_RING-1)];
+			}
+			else
+				rowptr[k] = d_viewbuffer + (r_refdef.vrect.y + r) * screenwidth;
+		}
+
+		col = &column[turb[v]];
+		row = &rowptr[v];
+
+		for (u=0 ; u<scr_vrect.width ; u+=4)
+		{
+			dest[u+0] = row[turb[u+0]][col[u+0]];
+			dest[u+1] = row[turb[u+1]][col[u+1]];
+			dest[u+2] = row[turb[u+2]][col[u+2]];
+			dest[u+3] = row[turb[u+3]][col[u+3]];
+		}
+	}
+}
+#else	// id's warp from a separate buffer
 void D_WarpScreen (void)
 {
 	int		w, h;
@@ -88,6 +174,7 @@ void D_WarpScreen (void)
 		}
 	}
 }
+#endif	// QOG_WARP_INPLACE
 
 
 #if	!id386
