@@ -199,3 +199,59 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LOADGAME_ZTEMP              # the load game line buffer at the end of the z-buffer, not 32 KB of high hunk
     QOG_PRECACHE_ZTEMP              # the client's precache names at the end of the z-buffer while server info is read, not high hunk
     QOG_KEYS_BYTES)                 # key down, console and menu key flags as bytes (2.3 KB static)
+
+# Two-chip split (Agent R): the server half (quakeog_sv) and the client half
+# (quakeog_cl) of the same game, joined by the link net driver
+# (engine/net_link.c) over TCP on 127.0.0.1 at the UART's speed
+# (port/pc/link_pc.c). Same engine flags as quakeog_pc, except the bake
+# writer (a single-process tool) and, on the server, the client's z-buffer
+# temporaries. Run the pair with tools/pctest.ps1 -ServerExe.
+get_target_property(QOG_SPLIT_DEFS quakeog_pc COMPILE_DEFINITIONS)
+list(REMOVE_ITEM QOG_SPLIT_DEFS QOG_BAKE_WRITER)
+set(QOG_BSP_LINK
+    ${ROOT}/third_party/wiliOGbsp/bsp/common/link/link_frame.c
+    ${ROOT}/third_party/wiliOGbsp/bsp/common/crc.c)
+set(QOG_SPLIT_SV_ENGINE cmd common crc cvar host host_cmd mathlib model net_link net_main net_none
+    net_vcr pr_cmds pr_edict pr_exec sv_main sv_move sv_phys sv_user world zone)
+list(TRANSFORM QOG_SPLIT_SV_ENGINE PREPEND ${ROOT}/engine/)
+list(TRANSFORM QOG_SPLIT_SV_ENGINE APPEND .c)
+set(QOG_SPLIT_CL_ENGINE ${ENGINE_SRC})
+list(FILTER QOG_SPLIT_CL_ENGINE EXCLUDE REGEX "/(sv_[a-z]+|pr_[a-z]+|net_loop)\.c$")
+
+add_executable(quakeog_sv
+    ${QOG_SPLIT_SV_ENGINE}
+    ${PROGS_AOT}
+    ${ROOT}/port/pc/sys_pc.c
+    ${ROOT}/port/pc/link_pc.c
+    ${ROOT}/port/common/qog_split_sv.c
+    ${ROOT}/port/common/qog_link.c
+    ${ROOT}/port/common/qog_mem.c
+    ${ROOT}/port/common/qog_rand.c
+    ${QOG_BSP_LINK})
+set(QOG_SPLIT_SV_DEFS ${QOG_SPLIT_DEFS})
+list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
+target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER)
+
+add_executable(quakeog_cl
+    ${QOG_SPLIT_CL_ENGINE}
+    ${ROOT}/port/pc/sys_pc.c
+    ${ROOT}/port/pc/vid_pc.c
+    ${ROOT}/port/pc/snd_pc.c
+    ${ROOT}/port/pc/split_cl_pc.c
+    ${ROOT}/port/pc/link_pc.c
+    ${ROOT}/port/common/qog_link.c
+    ${ROOT}/port/common/qog_mem.c
+    ${ROOT}/port/common/qog_aim.c
+    ${ROOT}/port/common/qog_rand.c
+    ${ROOT}/platform/qog_input.c
+    ${QOG_BSP_LINK})
+target_compile_definitions(quakeog_cl PRIVATE ${QOG_SPLIT_DEFS} QOG_NET_LINK QOG_SPLIT_CLIENT)
+
+foreach(_t quakeog_sv quakeog_cl)
+    target_include_directories(${_t} PRIVATE
+        ${ROOT}/engine ${ROOT}/port/common ${ROOT}/platform ${ROOT}/third_party/wiliOGbsp/bsp)
+    target_compile_options(${_t} PRIVATE /W1 /MP)
+    target_link_libraries(${_t} PRIVATE user32 gdi32 winmm ws2_32)
+    target_link_options(${_t} PRIVATE /DYNAMICBASE:NO)
+    set_target_properties(${_t} PROPERTIES WIN32_EXECUTABLE OFF)
+endforeach()

@@ -237,8 +237,27 @@ extern	cvar_t	coop;
 extern	cvar_t	fraglimit;
 extern	cvar_t	timelimit;
 
+#ifdef QOG_SPLIT_CLIENT
+// QuakeOG: the split client has no server. What client code reads of sv and
+// svs is what the server half last sent (engine/net_link.c).
+typedef struct
+{
+	qboolean	active;
+	qboolean	paused;
+	int			max_edicts;
+	char		name[64];
+} qog_svmirror_t;
+typedef struct
+{
+	int			maxclients;
+	int			maxclientslimit;
+} qog_svsmirror_t;
+extern	qog_svsmirror_t	svs;
+extern	qog_svmirror_t	sv;
+#else
 extern	server_static_t	svs;				// persistant server info
 extern	server_t		sv;					// local server
+#endif
 
 extern	client_t	*host_client;
 

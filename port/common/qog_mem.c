@@ -2,6 +2,22 @@
 #include "quakedef.h"
 #include "qog_rand.h"
 
+/* QuakeOG (Agent R): the split game's halves have no server (QOG_SPLIT_CLIENT)
+   or no renderer (QOG_SPLIT_SERVER), so their reports leave those parts out. */
+#ifdef QOG_SPLIT_CLIENT
+#undef QOG_EDICT_STATS
+#undef QOG_EDICT_SPARSE
+#undef QOG_SV_TABLES
+#define QOG_MEM_SERVER 0
+#else
+#define QOG_MEM_SERVER 1
+#endif
+#ifdef QOG_SPLIT_SERVER
+#define QOG_MEM_RENDER 0
+#else
+#define QOG_MEM_RENDER 1
+#endif
+
 /* Private to zone.c, mirrored here so zone.c stays unmodified. If zone.c's
    structs ever change, change these with them. */
 typedef struct memblock_s {
@@ -125,7 +141,9 @@ void qog_mem_reset_peaks(void) {
     memset(es_fieldpeak, 0, sizeof es_fieldpeak);
 #endif
     s_m.peak_low = s_m.peak_high = s_m.peak_cache = s_m.peak_zone = s_m.peak_total = 0;
+#if QOG_MEM_RENDER
     r_qog_peakedges = r_qog_peaksurfs = r_qog_peakbverts = r_qog_peakbedges = 0;
+#endif
 }
 
 static void kb_line(const char *what, int now, int peak) {
@@ -155,17 +173,25 @@ static void cmd_qog_mem(void) {
     {
         int known, refd, peakmod;
         Mod_KnownStats(&known, &refd, &peakmod);   /* QuakeOG: model.c owns the table layout */
+#if QOG_MEM_SERVER
         Con_Printf("  models known %d, referenced by this level %d, edicts %d of %d\n", known, refd,
                    sv.active ? sv.num_edicts : 0, sv.active ? sv.max_edicts : 0);
+#else
+        Con_Printf("  models known %d, referenced by this level %d\n", known, refd);
+#endif
 #ifdef QOG_MOD_FLASH
         Con_Printf("  models in one level, most so far %d\n", peakmod);
 #endif
+#if QOG_MEM_RENDER
         extern int r_qog_peakedges, r_qog_peaksurfs;
         extern int r_qog_peakbverts, r_qog_peakbedges;
         Con_Printf("  render peaks: edges %d, surfaces %d, bmodel verts %d, bmodel edges %d\n",
                    r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges);
+#endif
+#if QOG_MEM_SERVER
         if (sv.active)
             Con_Printf("  map %s, signon %d of %d bytes\n", sv.name, sv.signon.cursize, sv.signon.maxsize);
+#endif
 #ifdef QOG_SV_TABLES
             if (sv.active) {   /* QuakeOG: precache list use against the sizes in server.h */
                 int nm = 0, ns = 0;
@@ -192,6 +218,7 @@ static void cmd_qog_mem(void) {
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");
 }
 
+#if QOG_MEM_SERVER
 /* `qog_statehash`: FNV-1a over every edict and the QuakeC globals. Two runs
    with the same fixed frame time (host_framerate) must print the same value,
    which is how compiled QuakeC is checked against the interpreter (-noaot). */
@@ -287,12 +314,16 @@ static void cmd_qog_statedump(void) {
     Con_Printf("qog_statedump: wrote %s\n", Cmd_Argv(1));
 }
 
+#endif  /* QOG_MEM_SERVER */
+
 /* Scripted runs: `quit` can open the "are you sure" menu and wait forever. */
 static void cmd_qog_quit(void) { Sys_Quit(); }
 
 void qog_mem_register(void) {
     Cmd_AddCommand("qog_mem", cmd_qog_mem);
     Cmd_AddCommand("qog_quit", cmd_qog_quit);
+#if QOG_MEM_SERVER
     Cmd_AddCommand("qog_statehash", cmd_qog_statehash);
     Cmd_AddCommand("qog_statedump", cmd_qog_statedump);
+#endif
 }

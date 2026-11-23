@@ -719,6 +719,7 @@ qboolean NET_CanSendMessage (qsocket_t *sock)
 }
 
 
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server only
 int NET_SendToAll(sizebuf_t *data, int blocktime)
 {
 	double		start;
@@ -791,6 +792,7 @@ int NET_SendToAll(sizebuf_t *data, int blocktime)
 	}
 	return count;
 }
+#endif
 
 
 //=============================================================================
@@ -831,11 +833,17 @@ void NET_Init (void)
 	}
 	net_hostport = DEFAULTnet_hostport;
 
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG: the split server has no client of its own, like a dedicated one
+	listening = true;
+	net_numsockets = svs.maxclientslimit;
+#else
 	if (COM_CheckParm("-listen") || cls.state == ca_dedicated)
 		listening = true;
 	net_numsockets = svs.maxclientslimit;
 	if (cls.state != ca_dedicated)
 		net_numsockets++;
+#endif
 
 	SetNetTime();
 
@@ -875,7 +883,9 @@ void NET_Init (void)
 
 	Cmd_AddCommand ("slist", NET_Slist_f);
 	Cmd_AddCommand ("listen", NET_Listen_f);
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the split client sends it to the server half
 	Cmd_AddCommand ("maxplayers", MaxPlayers_f);
+#endif
 	Cmd_AddCommand ("port", NET_Port_f);
 
 	// initialize all the drivers

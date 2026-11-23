@@ -259,6 +259,13 @@ int main(int argc, char **argv) {
     parms.cachedir = NULL;
 
     printf("QuakeOG PC: basedir %s, hunk %d KB\n", parms.basedir, heap_kb);
+#ifdef QOG_SPLIT_SERVER
+    /* The split game's server half (engine/net_link.c): each Host_Frame waits
+       for the client half's frame, so it runs as fast as the client asks. */
+    Host_Init(&parms);
+    for (;;)
+        Host_Frame(0.0f);
+#else
     if (COM_CheckParm("-qogfly")) {   /* renderer-only fly-through (port/pc/fly_pc.c), never returns */
         extern void qog_fly_pc_main(quakeparms_t *parms);
         qog_fly_pc_main(&parms);
@@ -289,4 +296,5 @@ int main(int argc, char **argv) {
         if (!frame && host_framecount >= 1) { frame = 1; qog_aim_apply_defaults(); }
         oldtime = newtime;
     }
+#endif
 }

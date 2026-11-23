@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the split client keeps only the hull trace (chase.c)
 /*
 
 entities never clip against themselves, or their owner
@@ -480,6 +481,8 @@ POINT TESTING IN HULLS
 ===============================================================================
 */
 
+#endif	// QOG_SPLIT_CLIENT
+
 #if	!id386
 
 /*
@@ -517,6 +520,7 @@ int SV_HullPointContents (hull_t *hull, int num, vec3_t p)
 
 #endif	// !id386
 
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG
 
 /*
 ==================
@@ -568,6 +572,8 @@ LINE TESTING IN HULLS
 
 ===============================================================================
 */
+
+#endif	// QOG_SPLIT_CLIENT
 
 // 1/32 epsilon to keep floating point happy
 #define	DIST_EPSILON	(0.03125)
@@ -710,6 +716,7 @@ qboolean SV_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec
 	return false;
 }
 
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG
 
 /*
 ==================
@@ -960,3 +967,5 @@ trace_t SV_Move (vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end, int type, e
 	return clip.trace;
 }
 
+
+#endif	// QOG_SPLIT_CLIENT
