@@ -54,7 +54,7 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 	texture_t	*tex;
 	int			i;
 
-	tex = R_TextureAnimation (pface->texinfo->texture);
+	tex = R_TextureAnimation (SURF_TEXINFO (r_drawsurf.model, pface)->texture);	// QuakeOG
 	r_drawsurf.surf = pface;
 	r_drawsurf.texture = tex;
 	r_drawsurf.surfmip = mip;

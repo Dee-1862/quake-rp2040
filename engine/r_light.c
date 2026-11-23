@@ -190,7 +190,7 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 		if (surf->flags & SURF_DRAWTILED)
 			continue;	// no lightmaps
 
-		tex = surf->texinfo;
+		tex = SURF_TEXINFO (cl.worldmodel, surf);	// QuakeOG
 		
 		s = DotProduct (mid, tex->vecs[0]) + tex->vecs[0][3];
 		t = DotProduct (mid, tex->vecs[1]) + tex->vecs[1][3];;

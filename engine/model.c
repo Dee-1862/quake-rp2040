@@ -795,7 +795,7 @@ void CalcSurfaceExtents (msurface_t *s)
 	mins[0] = mins[1] = 999999;
 	maxs[0] = maxs[1] = -99999;
 
-	tex = s->texinfo;
+	tex = SURF_TEXINFO (loadmodel, s);	// QuakeOG
 	
 	for (i=0 ; i<s->numedges ; i++)
 	{
@@ -867,9 +867,21 @@ void Mod_LoadFaces (lump_t *l)
 			Sys_Error ("Mod_LoadFaces: bad plane number %i in %s", planenum, loadmodel->name);
 #endif
 
+#ifdef QOG_SURF_INDEX
+		// QuakeOG: 16-bit numbers as in the file, read as unsigned and checked
+		planenum = (unsigned short)LittleShort(in->planenum);
+		if (planenum >= loadmodel->numplanes)
+			Sys_Error ("Mod_LoadFaces: bad plane number %i in %s", planenum, loadmodel->name);
+		out->planenum = planenum;
+		i = (unsigned short)LittleShort (in->texinfo);
+		if (i >= loadmodel->numtexinfo)
+			Sys_Error ("Mod_LoadFaces: bad texinfo number %i in %s", i, loadmodel->name);
+		out->texinfonum = i;
+#else
 		out->plane = loadmodel->planes + planenum;
 
 		out->texinfo = loadmodel->texinfo + LittleShort (in->texinfo);
+#endif
 
 		CalcSurfaceExtents (out);
 				
@@ -885,13 +897,13 @@ void Mod_LoadFaces (lump_t *l)
 		
 	// set the drawing flags flag
 		
-		if (!Q_strncmp(out->texinfo->texture->name,"sky",3))	// sky
+		if (!Q_strncmp(SURF_TEXINFO (loadmodel, out)->texture->name,"sky",3))	// sky (QuakeOG: SURF_TEXINFO)
 		{
 			out->flags |= (SURF_DRAWSKY | SURF_DRAWTILED);
 			continue;
 		}
 		
-		if (!Q_strncmp(out->texinfo->texture->name,"*",1))		// turbulent
+		if (!Q_strncmp(SURF_TEXINFO (loadmodel, out)->texture->name,"*",1))		// turbulent (QuakeOG: SURF_TEXINFO)
 		{
 			out->flags |= (SURF_DRAWTURB | SURF_DRAWTILED);
 			for (i=0 ; i<2 ; i++)

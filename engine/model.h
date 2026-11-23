@@ -105,7 +105,14 @@ typedef struct msurface_s
 	// QuakeOG: visframe, dlightframe and dlightbits moved to RAM arrays in
 	// model_t (SURF_VISFRAME and friends) so surfaces can be read only
 
+#ifdef QOG_SURF_INDEX
+	// QuakeOG: the file's 16-bit plane and texinfo numbers instead of
+	// pointers, use SURF_PLANE and SURF_TEXINFO with the owning model
+	unsigned short	planenum;
+	unsigned short	texinfonum;
+#else
 	mplane_t	*plane;
+#endif
 #ifdef QOG_SURF_PACKED
 	// QuakeOG: flags fit 16 bits (SURF_* up to 0x40) and numedges is the
 	// file's 16-bit count, so the two share one word (msurface_t 36 to 32 B)
@@ -128,12 +135,23 @@ typedef struct msurface_s
 	short		texturemins[2];
 	short		extents[2];
 
+#ifndef QOG_SURF_INDEX
 	mtexinfo_t	*texinfo;
+#endif
 	
 // lighting info
 	byte		styles[MAXLIGHTMAPS];
 	byte		*samples;		// [numstyles*surfsize]
 } msurface_t;
+
+// QuakeOG: a surface's plane and texinfo; m is the model that owns it
+#ifdef QOG_SURF_INDEX
+#define SURF_PLANE(m, s)	((m)->planes + (s)->planenum)
+#define SURF_TEXINFO(m, s)	((m)->texinfo + (s)->texinfonum)
+#else
+#define SURF_PLANE(m, s)	((s)->plane)
+#define SURF_TEXINFO(m, s)	((s)->texinfo)
+#endif
 
 // QuakeOG: with QOG_MARKSURF16 a mark surface is the file's 16-bit surface
 // number (read in place from flash when possible) instead of a pointer.

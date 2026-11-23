@@ -73,7 +73,7 @@ void R_AddDynamicLights (void)
 	surf = r_drawsurf.surf;
 	smax = (surf->extents[0]>>4)+1;
 	tmax = (surf->extents[1]>>4)+1;
-	tex = surf->texinfo;
+	tex = SURF_TEXINFO (r_drawsurf.model, surf);	// QuakeOG
 
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 	{
@@ -81,8 +81,8 @@ void R_AddDynamicLights (void)
 			continue;		// not lit by this light
 
 		rad = cl_dlights[lnum].radius;
-		dist = DotProduct (cl_dlights[lnum].origin, surf->plane->normal) -
-				surf->plane->dist;
+		dist = DotProduct (cl_dlights[lnum].origin, SURF_PLANE (r_drawsurf.model, surf)->normal) -	// QuakeOG
+				SURF_PLANE (r_drawsurf.model, surf)->dist;
 		rad -= fabs(dist);
 		minlight = cl_dlights[lnum].minlight;
 		if (rad < minlight)
@@ -92,7 +92,7 @@ void R_AddDynamicLights (void)
 		for (i=0 ; i<3 ; i++)
 		{
 			impact[i] = cl_dlights[lnum].origin[i] -
-					surf->plane->normal[i]*dist;
+					SURF_PLANE (r_drawsurf.model, surf)->normal[i]*dist;
 		}
 
 		local[0] = DotProduct (impact, tex->vecs[0]) + tex->vecs[0][3];
@@ -651,12 +651,12 @@ void R_GenTile (msurface_t *psurf, void *pdest)
 		if (r_pixbytes == 1)
 		{
 			R_GenTurbTile ((pixel_t *)
-				psurf->texinfo->texture->mips[0], pdest);
+				SURF_TEXINFO (currententity->model, psurf)->texture->mips[0], pdest);	// QuakeOG
 		}
 		else
 		{
 			R_GenTurbTile16 ((pixel_t *)
-				psurf->texinfo->texture->mips[0], pdest);
+				SURF_TEXINFO (currententity->model, psurf)->texture->mips[0], pdest);	// QuakeOG
 		}
 	}
 	else if (psurf->flags & SURF_DRAWSKY)

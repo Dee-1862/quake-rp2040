@@ -614,7 +614,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	surface_p->key = r_currentkey++;
 	surface_p->spans = NULL;
 
-	pplane = fa->plane;
+	pplane = SURF_PLANE (currententity->model, fa);	// QuakeOG
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
@@ -729,7 +729,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	surface_p->key = r_currentbkey;
 	surface_p->spans = NULL;
 
-	pplane = psurf->plane;
+	pplane = SURF_PLANE (currententity->model, psurf);	// QuakeOG
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
@@ -859,7 +859,7 @@ void R_RenderPoly (msurface_t *fa, int clipflags)
 
 // transform and project, remembering the z values at the vertices and
 // r_nearzi, and extract the s and t coordinates at the vertices
-	pplane = fa->plane;
+	pplane = SURF_PLANE (currententity->model, fa);	// QuakeOG
 	switch (pplane->type)
 	{
 	case PLANE_X:
@@ -947,7 +947,7 @@ void R_ZDrawSubmodelPolys (model_t *pmodel)
 	for (i=0 ; i<numsurfaces ; i++, psurf++)
 	{
 	// find which side of the node we are on
-		pplane = psurf->plane;
+		pplane = SURF_PLANE (pmodel, psurf);	// QuakeOG
 
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
