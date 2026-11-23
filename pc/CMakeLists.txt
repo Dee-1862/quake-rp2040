@@ -170,4 +170,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_TRANSLATE_ONDRAW            # player colour table built on the stack when drawn (id 16 KB per player on the hunk)
     QOG_CBUF_INPLACE                # scripts inserted into the command buffer in place, not copied through the zone
     QOG_LOOP_INPLACE                # net_message read in place in the loopback buffers (id 6.5 KB buffer)
-    QOG_STATIC_TRIM)                # key tables as bytes, loopback-only network tables, 1 KB spawnparms (exact)
+    QOG_STATIC_TRIM                 # key tables as bytes, loopback-only network tables, 1 KB spawnparms (exact)
+    QOG_EDICT_REUSE)                # all edicts in use, reuse the longest-free one before id's Sys_Error

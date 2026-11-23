@@ -46,7 +46,7 @@ CFLAGS += ["-DQOG_CONST_RTABLES", "-DQOG_NO_ROWTABLES", "-DQOG_SKY_DIRECT", "-DQ
 # Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
 # Server, client and system memory (Agent M, pc/CMakeLists.txt)
-CFLAGS += ["-DQOG_HUNK_PACKED", "-DQOG_TRANSLATE_ONDRAW", "-DQOG_CBUF_INPLACE", "-DQOG_LOOP_INPLACE", "-DQOG_STATIC_TRIM"]
+CFLAGS += ["-DQOG_HUNK_PACKED", "-DQOG_TRANSLATE_ONDRAW", "-DQOG_CBUF_INPLACE", "-DQOG_LOOP_INPLACE", "-DQOG_STATIC_TRIM", "-DQOG_EDICT_REUSE"]
 # Board-only sizes (apps/quake/CMakeLists.txt only, not pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CMDBUF_SIZE=4096", "-DQOG_ZONE_BOARD_KB=16"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
