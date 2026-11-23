@@ -228,7 +228,7 @@ void PR_Profile_f (void)
 
 	if (pr_inflash)
 	{	// QuakeOG: counts are not kept, and pr_functions is in read-only flash
-		Con_Printf ("profile: not available with compiled QuakeC (use -noaot)\n");
+		Con_Printf ("profile: not available with progs.dat in flash (use -noflash)\n");
 		return;
 	}
 	num = 0;
@@ -445,7 +445,8 @@ while (1)
 	if (!--runaway)
 		PR_RunError ("runaway loop error");
 		
-	pr_xfunction->profile++;
+	if (!pr_inflash)	// QuakeOG: pr_functions is read-only flash then
+		pr_xfunction->profile++;
 	pr_xstatement = s;
 	
 	if (pr_trace)

@@ -992,17 +992,16 @@ void PR_LoadProgs (void)
 
 	CRC_Init (&pr_crc);
 
-	// QuakeOG: with compiled QuakeC the bytecode is never run, so progs.dat
-	// is used in place from flash and only its globals are copied to RAM.
-	// The interpreter writes profile counts into pr_functions, so it always
-	// gets a RAM copy.
+	// QuakeOG: progs.dat is used in place from flash and only its globals
+	// are copied to RAM, whether QuakeC runs compiled or interpreted.
 	progs = NULL;
 	pr_inflash = false;
 	{
 		int		flen;
 		byte	*f = COM_FlashFile ("progs.dat", &flen);
-		if (f && !(((int)f) & 3) && !COM_CheckParm ("-noaot")
-			&& PR_AOT_Matches ((dprograms_t *)f))
+		// The interpreter can run from flash too: it no longer counts
+		// profile hits there (pr_exec.c), the only thing it wrote.
+		if (f && !(((int)f) & 3))
 		{
 			progs = (dprograms_t *)f;
 			com_filesize = flen;
