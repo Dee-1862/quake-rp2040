@@ -171,4 +171,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_CBUF_INPLACE                # scripts inserted into the command buffer in place, not copied through the zone
     QOG_LOOP_INPLACE                # net_message read in place in the loopback buffers (id 6.5 KB buffer)
     QOG_STATIC_TRIM                 # key tables as bytes, loopback-only network tables, 1 KB spawnparms (exact)
-    QOG_EDICT_REUSE)                # all edicts in use, reuse the longest-free one before id's Sys_Error
+    QOG_EDICT_REUSE                 # all edicts in use, reuse the longest-free one before id's Sys_Error
+    QOG_PALETTE_FLASH)              # gfx/palette.lmp read in place from the mapped pack (id 800 B hunk copy)

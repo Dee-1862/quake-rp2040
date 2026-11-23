@@ -877,6 +877,12 @@ void Host_Init (quakeparms_t *parms)
  
 	if (cls.state != ca_dedicated)
 	{
+#ifdef QOG_PALETTE_FLASH
+		// QuakeOG: the palette (768 bytes) is only ever read too, as the
+		// colormap below, so use it in place when the pack is mapped
+		host_basepal = COM_FlashFile ("gfx/palette.lmp", NULL);
+		if (!host_basepal)
+#endif
 		host_basepal = (byte *)COM_LoadHunkFile ("gfx/palette.lmp");
 		if (!host_basepal)
 			Sys_Error ("Couldn't load gfx/palette.lmp");
