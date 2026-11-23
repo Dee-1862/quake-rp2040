@@ -681,7 +681,11 @@ void PF_checkpos (void)
 
 //============================================================================
 
+#ifdef QOG_PVS_LEAFS
+byte	checkpvs[QOG_PVS_LEAFS/8];	// QuakeOG: maps are checked against it at load (model.c)
+#else
 byte	checkpvs[MAX_MAP_LEAFS/8];
+#endif
 
 int PF_newcheckclient (int check)
 {
@@ -1076,7 +1080,7 @@ void PF_precache_sound (void)
 	G_INT(OFS_RETURN) = G_INT(OFS_PARM0);
 	PR_CheckEmptyString (s);
 	
-	for (i=0 ; i<MAX_SOUNDS ; i++)
+	for (i=0 ; i<SV_PRECACHE_SOUNDS ; i++)	// QuakeOG: SV_PRECACHE_SOUNDS, see server.h
 	{
 		if (!sv.sound_precache[i])
 		{
@@ -1101,7 +1105,7 @@ void PF_precache_model (void)
 	G_INT(OFS_RETURN) = G_INT(OFS_PARM0);
 	PR_CheckEmptyString (s);
 
-	for (i=0 ; i<MAX_MODELS ; i++)
+	for (i=0 ; i<SV_PRECACHE_MODELS ; i++)	// QuakeOG: SV_PRECACHE_MODELS, see server.h
 	{
 		if (!sv.model_precache[i])
 		{

@@ -152,12 +152,12 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
 		return;	
 
 // find precache number for sound
-    for (sound_num=1 ; sound_num<MAX_SOUNDS
+    for (sound_num=1 ; sound_num<SV_MAX_SOUNDS	// QuakeOG: SV_MAX_SOUNDS, see server.h
         && sv.sound_precache[sound_num] ; sound_num++)
         if (!strcmp(sample, sv.sound_precache[sound_num]))
             break;
     
-    if ( sound_num == MAX_SOUNDS || !sv.sound_precache[sound_num] )
+    if ( sound_num == SV_MAX_SOUNDS || !sv.sound_precache[sound_num] )
     {
         Con_Printf ("SV_StartSound: %s not precacheed\n", sample);
         return;
@@ -378,7 +378,11 @@ crosses a waterline.
 */
 
 int		fatbytes;
+#ifdef QOG_PVS_LEAFS
+byte	fatpvs[QOG_PVS_LEAFS/8];	// QuakeOG: maps are checked against it at load
+#else
 byte	fatpvs[MAX_MAP_LEAFS/8];
+#endif
 
 void SV_AddToFatPVS (vec3_t org, mnode_t *node)
 {
@@ -924,10 +928,10 @@ int SV_ModelIndex (char *name)
 	if (!name || !name[0])
 		return 0;
 
-	for (i=0 ; i<MAX_MODELS && sv.model_precache[i] ; i++)
+	for (i=0 ; i<SV_MAX_MODELS && sv.model_precache[i] ; i++)	// QuakeOG: SV_MAX_MODELS
 		if (!strcmp(sv.model_precache[i], name))
 			return i;
-	if (i==MAX_MODELS || !sv.model_precache[i])
+	if (i==SV_MAX_MODELS || !sv.model_precache[i])
 		Sys_Error ("SV_ModelIndex: model %s not precached", name);
 	return i;
 }
@@ -1217,6 +1221,21 @@ void SV_SpawnServer (char *server)
 	sv.time = 1.0;
 	
 	strcpy (sv.name, server);
+#ifdef QOG_SV_TABLES
+	// QuakeOG: no copy of the model name in sv, the model has it
+	{
+		char	modelname[64];
+
+		sprintf (modelname,"maps/%s.bsp", server);
+		sv.worldmodel = Mod_ForName (modelname, false);
+		if (!sv.worldmodel)
+		{
+			Con_Printf ("Couldn't spawn server %s\n", modelname);
+			sv.active = false;
+			return;
+		}
+	}
+#else
 	sprintf (sv.modelname,"maps/%s.bsp", server);
 	sv.worldmodel = Mod_ForName (sv.modelname, false);
 	if (!sv.worldmodel)
@@ -1225,6 +1244,7 @@ void SV_SpawnServer (char *server)
 		sv.active = false;
 		return;
 	}
+#endif
 	sv.models[1] = sv.worldmodel;
 
 	sv.max_edicts = SV_EdictsForMap (sv.worldmodel->entities);
@@ -1249,7 +1269,11 @@ void SV_SpawnServer (char *server)
 	sv.sound_precache[0] = pr_strings;
 
 	sv.model_precache[0] = pr_strings;
+#ifdef QOG_SV_TABLES
+	sv.model_precache[1] = sv.worldmodel->name;	// QuakeOG: the same text, kept by the model table
+#else
 	sv.model_precache[1] = sv.modelname;
+#endif
 	for (i=1 ; i<sv.worldmodel->numsubmodels ; i++)
 	{
 		sv.model_precache[1+i] = (char *)localmodels[i];	// QuakeOG: may be const, never written

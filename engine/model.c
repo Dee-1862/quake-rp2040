@@ -34,7 +34,15 @@ static void Mod_FinishBrushModel (model_t *mod);	// QuakeOG
 void Mod_LoadAliasModel (model_t *mod, void *buffer);
 model_t *Mod_LoadModel (model_t *mod, qboolean crash);
 
+#ifdef QOG_CONST_NOVIS
+// QuakeOG: the all-visible row is never written, so it is a constant (flash)
+#define NOVIS16		0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff
+#define NOVIS256	NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16, \
+					NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16,NOVIS16
+static const byte	mod_novis[MAX_MAP_LEAFS/8] = { NOVIS256, NOVIS256, NOVIS256, NOVIS256 };
+#else
 byte	mod_novis[MAX_MAP_LEAFS/8];
+#endif
 
 // QuakeOG: QOG_MAX_MOD_KNOWN shrinks the table. Mod_FindName reuses slots of
 // models the current level no longer references once it is full, so it only
@@ -228,7 +236,9 @@ Mod_Init
 */
 void Mod_Init (void)
 {
+#ifndef QOG_CONST_NOVIS
 	memset (mod_novis, 0xff, sizeof(mod_novis));
+#endif
 #ifdef QOG_BAKE_WRITER
 	Cmd_AddCommand ("qog_bake", Mod_Bake_f);	// QuakeOG
 #endif
@@ -337,7 +347,7 @@ byte *Mod_DecompressVis (byte *in, model_t *model)
 byte *Mod_LeafPVS (mleaf_t *leaf, model_t *model)
 {
 	if (leaf == model->leafs)
-		return mod_novis;
+		return (byte *)mod_novis;	// QuakeOG: cast, see QOG_CONST_NOVIS
 	return Mod_DecompressVis (leaf->compressed_vis, model);
 }
 
@@ -2815,6 +2825,11 @@ static void Mod_FinishBrushModel (model_t *mod)
 			loadmodel->frameslot = mod_nextframe++;
 		}
 	}
+#endif
+#ifdef QOG_PVS_LEAFS
+	// QuakeOG: the server's PVS rows (fatpvs, checkpvs) hold QOG_PVS_LEAFS
+	if (numleafs > QOG_PVS_LEAFS)
+		Sys_Error ("Mod_FinishBrushModel: %s has %i leafs, QOG_PVS_LEAFS is %i", loadmodel->name, numleafs, QOG_PVS_LEAFS);
 #endif
 	fr = MODFRAME (loadmodel);
 

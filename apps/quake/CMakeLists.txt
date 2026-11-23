@@ -68,7 +68,12 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_AOT_GLOBALS)
 # Model table, server tables and board wiring (Agent I), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
-    QOG_MOD_FLASH)
+    QOG_MOD_FLASH
+    QOG_SV_TABLES
+    QOG_SV_MAX_MODELS=208
+    QOG_SV_MAX_SOUNDS=176
+    QOG_CONST_NOVIS
+    QOG_PVS_LEAFS=4096)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

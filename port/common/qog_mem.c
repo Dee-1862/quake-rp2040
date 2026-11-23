@@ -166,6 +166,14 @@ static void cmd_qog_mem(void) {
                    r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges);
         if (sv.active)
             Con_Printf("  map %s, signon %d of %d bytes\n", sv.name, sv.signon.cursize, sv.signon.maxsize);
+#ifdef QOG_SV_TABLES
+            if (sv.active) {   /* QuakeOG: precache list use against the sizes in server.h */
+                int nm = 0, ns = 0;
+                while (nm < SV_MAX_MODELS && sv.model_precache[nm]) nm++;
+                while (ns < SV_MAX_SOUNDS && sv.sound_precache[ns]) ns++;
+                Con_Printf("  precache models %d of %d, sounds %d of %d\n", nm, SV_PRECACHE_MODELS, ns, SV_PRECACHE_SOUNDS);
+            }
+#endif
 #ifdef QOG_EDICT_STATS
         if (sv.active)
             Con_Printf("  edict peaks: live %d, high water %d of %d, non-zero field words %d, most in one edict %d\n",
