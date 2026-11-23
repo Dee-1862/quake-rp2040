@@ -2,6 +2,34 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Video memory and renderer RAM (Agent H, PC and ARM build, registered data)
+
+Board static RAM overflow 186,540 → 145,688 bytes (−40,852). Video memory 158,720 → 145,920 bytes. The deepest render stack chain is about 3.4 KB shorter. Every part A change keeps the picture byte-identical and is on in both flag lists. The part B options change the picture and are off. Nothing ran on hardware.
+
+| Change | Flag | Saved (measured on the ARM build) |
+| --- | --- | ---: |
+| sintable and intsintable precomputed in `engine/r_turbtab.h`, `r_avertexnormals`, the alias box edges and the polyset edge table `const` | `QOG_CONST_RTABLES` | 5,952 B static |
+| Row offsets of the screen, the z-buffer and the alias skin computed with one multiply, not read from `d_scantable`, `zspantable` and `skintable` | `QOG_NO_ROWTABLES` | 3,516 B static |
+| Sky composed per drawn pixel from the texture (front layer if non-zero, else back), no 16 KB `newsky` | `QOG_SKY_DIRECT` | 16,376 B static |
+| Status bar rows 152 to 199 stored in the first 15 KB of the z-buffer, which is idle during the 2D overlay and the scanout | `QOG_HUD_IN_ZBUFFER` | 15,360 B video (15,032 B net) |
+| R_ScanEdges spans and the brush clip buffers in the free end of the edge table, with 4,608 B of room past the unchanged edge limit | `QOG_SPANS_IN_EDGES` | R_ScanEdges 8,072 → 88 B, brush clip frame 4,664 → 64 B, R_EdgeDrawing 80,160 → 84,768 B |
+
+- `QOG_HUD_IN_ZBUFFER`: id redraws the status bar only when something changed and otherwise relies on the frame buffer keeping it. After each 3D view R_RenderView repaints the rows with the tile background a full update leaves there, and when Sbar_Draw is going to skip the frame it draws the status bar again from the client state it was last drawn with (saved by `R_HudFrameEnd`, which both VID_Update ports call). A first version that simply redrew the status bar every frame was not exact: after damage that left the stats unchanged it showed the pain face where id still shows the old face (`qogtest_f_hash.cfg` end frame). The next 3D view may not start before the scanout ends, which the single frame buffer already requires.
+- `QOG_SKY_DIRECT`: R_MakeSky only records the texture and shift it would have composited, and keeps them until the shift changes, so a map change with the same shift shows what id showed.
+- `QOG_SPANS_IN_EDGES`: where spans are flushed does not change the picture (each pixel is drawn once). The span room is the free part of the edge table plus the 4,608 B reserve, at least 576 spans and up to the 8,191 the 16-bit links reach. On spawn views of e3m6, e1m1, e4m7 and demo1 it was 4,611 to 6,573 spans, and one frame used at most 2,977. The reserve holds the brush clip arrays (128 vertices, 256 edges) before R_ScanEdges runs. `qog_rpeaks` prints these figures on the PC.
+- Not changed, with the reason: the z-buffer itself. Alias models, sprites and particles test and write it, and a reader can cover the whole view (a monster close up, an explosion), so storing z only where readers draw saves nothing in the worst case. World z also depends on where each span starts, so it cannot be rebuilt from surface planes without keeping every span of the frame. No exact scheme with a smaller worst case was found. The z-buffer is idle outside the 3D view, which `QOG_HUD_IN_ZBUFFER` uses and other short-lived buffers could use too.
+- Not changed: the edge and surface tables (2,000 × 24 B and 800 × 40 B). They are live while D_DrawSurfaces writes z mid-scan, so they cannot share the z-buffer without holding every span of the frame, whose number has no bound.
+
+Part B, off by default and not in the shipped flag lists (built with extra `-D` flags, 177 frames of `qogtest_d_shots.cfg` and `qogtest_e_shots*.cfg` compared with the part A build):
+
+| Option | Video memory (with the part A flags) | Picture |
+| --- | ---: | --- |
+| `QOG_RENDER_SCALE=75`: 3D view drawn at 240×114 in the top left of its rectangle and scaled up in place before the 2D overlay, z-buffer only as large as the view (`QOG_ZBUFFER_VIEW`) | 103,360 B (−42,560) | Blockier 3D, 39% of view pixels differ, status bar and text unchanged, 56% of the 3D pixels to draw |
+| `QOG_ZBUFFER8`: one byte of depth, id's 16-bit value shifted right by 3 and clamped to 255 | 97,280 B (−48,640) | 24 of 177 frames identical, 0.39% of view pixels differ: objects nearer than about 16 units tie, so the weapon covers its own muzzle flash, and models close to walls show coarser depth steps |
+| Both | 76,000 B (−69,920) | As both above |
+
+Verification (hidden and silent, against a build of 2c6c10f with the same test tooling): `qogtest_d_shots.cfg` (113 frames, demos 1 to 3 including the underwater demo2, every map's spawn view), `qogtest_e_shots*.cfg` (64), `qogtest_sky.cfg`, `qogtest_demo.cfg`, `qogtest_f_hash.cfg` all byte-identical, state hashes identical in `qogtest_hash.cfg`, `qogtest_e_shots*.cfg` and `qogtest_f_hash.cfg`, no Short messages. New per-frame hashes (`qog_framehash`, new `qogtest_h_*.cfg` scripts) over the three demos, `qog_tour_fight` on every map of the full game (the e4m5 run stops at a QuakeC teleport error in both builds), `qog_tour e1m1 e3m6 e4m7` with edge and surface reports, and a status bar script (console, menu, pause, viewsize 80, scoreboard, death, intermission): 45,525 frames. Every frame equals a base run except the console frames at startup and at each map change, which show the build time or the `qog_mem` video figure. Those were dumped from both builds and differ only in those text cells (checked for every such frame in the first 4,000 of each run, and they fall in the same places later). Two runs of the same build differ on a few frames around map loads, so each frame is compared against two base runs.
+
 ## 2026-11-23: Model table in flash, server tables, board data image (Agent I, PC and ARM build, registered data)
 
 Engine static RAM on the ARM meter 202.8 → 124.5 KB. Board link overflow (`quake_display`, 64 KB placeholder hunk) 186,540 → 106,428 bytes. Nothing ran on hardware.

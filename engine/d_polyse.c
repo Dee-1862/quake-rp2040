@@ -32,7 +32,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct {
 	void			*pdest;
-	short			*pz;
+	d_zval_t		*pz;
 	int				count;
 	byte			*ptex;
 	int				sfrac, tfrac, light, zi;
@@ -57,9 +57,11 @@ byte		*d_pcolormap;
 int			d_aflatcolor;
 int			d_xdenom;
 
-edgetable	*pedgetable;
+// QuakeOG: the triangle edge table is only read, so with QOG_CONST_RTABLES
+// it stays in flash
+QOG_RTABLE_CONST edgetable	*pedgetable;
 
-edgetable	edgetables[12] = {
+QOG_RTABLE_CONST edgetable	edgetables[12] = {
 	{0, 1, r_p0, r_p2, NULL, 2, r_p0, r_p1, r_p2 },
 	{0, 2, r_p1, r_p0, r_p2,   1, r_p1, r_p2, NULL},
 	{1, 1, r_p0, r_p2, NULL, 1, r_p1, r_p2, NULL},
@@ -84,7 +86,7 @@ spanpackage_t			*a_spans;
 spanpackage_t			*d_pedgespanpackage;
 static int				ystart;
 byte					*d_pdest, *d_ptex;
-short					*d_pz;
+d_zval_t				*d_pz;
 int						d_sfrac, d_tfrac, d_light, d_zi;
 int						d_ptexextrastep, d_sfracextrastep;
 int						d_tfracextrastep, d_lightextrastep, d_pdestextrastep;
@@ -102,7 +104,14 @@ static adivtab_t	adivtab[32*32] = {
 #include "adivtab.h"
 };
 
+#ifdef QOG_NO_ROWTABLES
+// QuakeOG: skin rows are computed (one multiply) instead of read from the
+// 480-entry skintable (1.9 KB of RAM). Same addresses.
+#define D_SKINROW(t)	(skinstart + (t) * skinwidth)
+#else
 byte	*skintable[MAX_LBM_HEIGHT];
+#define D_SKINROW(t)	skintable[t]
+#endif
 int		skinwidth;
 byte	*skinstart;
 
@@ -150,7 +159,7 @@ D_PolysetDrawFinalVerts
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 {
 	int		i, z;
-	short	*zbuf;
+	d_zval_t	*zbuf;
 
 	for (i=0 ; i<numverts ; i++, fv++)
 	{
@@ -160,15 +169,16 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 			(fv->v[1] < r_refdef.vrectbottom))
 		{
 			z = fv->v[5]>>16;
-			zbuf = zspantable[fv->v[1]] + fv->v[0];
+			z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
+			zbuf = D_ZSPANTABLE(fv->v[1]) + fv->v[0];	// QuakeOG: QOG_NO_ROWTABLES
 			if (z >= *zbuf)
 			{
 				int		pix;
 				
 				*zbuf = z;
-				pix = skintable[fv->v[3]>>16][fv->v[2]>>16];
+				pix = D_SKINROW(fv->v[3]>>16)[fv->v[2]>>16];
 				pix = ((byte *)acolormap)[pix + (fv->v[4] & 0xFF00) ];
-				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = pix;
+				d_viewbuffer[D_SCANTABLE(fv->v[1]) + fv->v[0]] = pix;
 			}
 		}
 	}
@@ -315,7 +325,7 @@ void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 	int		d;
 	int		new[6];
 	int		z;
-	short	*zbuf;
+	d_zval_t	*zbuf;
 
 	d = lp2[0] - lp1[0];
 	if (d < -1 || d > 1)
@@ -370,14 +380,15 @@ split:
 
 
 	z = new[5]>>16;
-	zbuf = zspantable[new[1]] + new[0];
+	z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
+	zbuf = D_ZSPANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
 	if (z >= *zbuf)
 	{
 		int		pix;
 		
 		*zbuf = z;
-		pix = d_pcolormap[skintable[new[3]>>16][new[2]>>16]];
-		d_viewbuffer[d_scantable[new[1]] + new[0]] = pix;
+		pix = d_pcolormap[D_SKINROW(new[3]>>16)[new[2]>>16]];
+		d_viewbuffer[D_SCANTABLE(new[1]) + new[0]] = pix;
 	}
 
 nodraw:
@@ -404,9 +415,11 @@ void D_PolysetUpdateTables (void)
 	{
 		skinwidth = r_affinetridesc.skinwidth;
 		skinstart = r_affinetridesc.pskin;
+#ifndef QOG_NO_ROWTABLES
 		s = skinstart;
 		for (i=0 ; i<MAX_LBM_HEIGHT ; i++, s+=skinwidth)
 			skintable[i] = s;
+#endif
 	}
 }
 
@@ -619,7 +632,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 	int		lsfrac, ltfrac;
 	int		llight;
 	int		lzi;
-	short	*lpz;
+	d_zval_t	*lpz;
 
 	do
 	{
@@ -648,12 +661,23 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 			do
 			{
+#ifdef QOG_ZBUFFER8
+				int	lz = lzi >> 16;
+
+				lz = D_ZQ(lz);
+				if (lz >= *lpz)
+				{
+					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
+					*lpz = lz;
+				}
+#else
 				if ((lzi >> 16) >= *lpz)
 				{
 					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
 // gel mapping					*lpdest = gelmap[*lpdest];
 					*lpz = lzi >> 16;
 				}
+#endif
 				lpdest++;
 				lzi += r_zistepx;
 				lpz++;
@@ -1062,13 +1086,13 @@ split:
 	new[4] = (lp1[4] + lp2[4]) >> 1;
 
 // draw the point
-	ofs = d_scantable[new[1]] + new[0];
+	ofs = D_SCANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
 	if (new[5] > d_pzbuffer[ofs])
 	{
 		int		pix;
 		
 		d_pzbuffer[ofs] = new[5];
-		pix = skintable[new[3]>>16][new[2]>>16];
+		pix = D_SKINROW(new[3]>>16)[new[2]>>16];
 //		pix = ((byte *)acolormap)[pix + (new[4] & 0xFF00)];
 		d_viewbuffer[ofs] = pix;
 	}

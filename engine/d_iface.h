@@ -192,6 +192,10 @@ void D_PolysetUpdateTables (void);
 // these are currently for internal use only, and should not be used by drivers
 extern int				r_skydirect;
 extern byte				*r_skysource;
+#ifdef QOG_SKY_DIRECT
+extern byte				*r_skycomposed;		// QuakeOG: r_sky.c
+extern int				r_skyxshift, r_skyyshift;
+#endif
 
 // transparency types for D_DrawRect ()
 #define DR_SOLID		0

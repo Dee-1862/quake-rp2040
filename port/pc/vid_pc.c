@@ -43,7 +43,6 @@ static void vid_menu_key(int key) {
 void (*vid_menudrawfn)(void) = vid_menu_draw;
 void (*vid_menukeyfn)(int key) = vid_menu_key;
 
-static byte  vid_buffer[QOG_PC_W * QOG_PC_H];
 /* With QOG_MAX_VIEWSIZE 100 the 3D view stops above the 48-row status bar
    (engine/screen.c, r_main.c), so the z-buffer only needs those rows. */
 #ifdef QOG_MAX_VIEWSIZE
@@ -51,7 +50,37 @@ static byte  vid_buffer[QOG_PC_W * QOG_PC_H];
 #else
 #define QOG_PC_ZROWS QOG_PC_H
 #endif
-static short zbuffer[QOG_PC_W * QOG_PC_ZROWS];
+/* z-buffer width and rows. QuakeOG: with QOG_RENDER_SCALE (changes the
+   picture, off in the shipped flag lists) the 3D view is drawn smaller and
+   the z-buffer only covers it (QOG_ZBUFFER_VIEW, engine/d_local.h). */
+#ifdef QOG_RENDER_SCALE
+#define QOG_PC_ZW ((QOG_PC_W * QOG_RENDER_SCALE / 100) & ~7)
+#define QOG_PC_ZH ((QOG_PC_ZROWS * QOG_RENDER_SCALE / 100) & ~1)
+#else
+#define QOG_PC_ZW QOG_PC_W
+#define QOG_PC_ZH QOG_PC_ZROWS
+#endif
+#define ZBUFFER_BYTES   (QOG_PC_ZW * QOG_PC_ZH * (int)sizeof(d_zval_t))
+#define FRAME_BYTES     (QOG_PC_W * QOG_PC_H)
+#ifdef QOG_HUD_IN_ZBUFFER
+/* QuakeOG: the frame's rows below the 3D view (the status bar) are the first
+   bytes of the z-buffer, which is idle while the 2D overlay is drawn and the
+   frame is shown. R_RenderView repaints them after each 3D view
+   (engine/r_main.c), so the frame holds the same pixels as with two arrays. */
+#ifndef QOG_MAX_VIEWSIZE
+#error "QOG_HUD_IN_ZBUFFER needs QOG_MAX_VIEWSIZE"
+#endif
+#define HUD_BYTES       (QOG_PC_W * (QOG_PC_H - QOG_PC_ZROWS))
+static __declspec(align(16)) byte video_mem[QOG_PC_W * QOG_PC_ZROWS +
+                                            (ZBUFFER_BYTES > HUD_BYTES ? ZBUFFER_BYTES : HUD_BYTES)];
+#define vid_buffer      video_mem
+#define zbuffer         ((d_zval_t *)(video_mem + QOG_PC_W * QOG_PC_ZROWS))
+#define VIDEO_BYTES     ((int)sizeof video_mem)
+#else
+static byte  vid_buffer[FRAME_BYTES];
+static d_zval_t zbuffer[QOG_PC_ZW * QOG_PC_ZH];
+#define VIDEO_BYTES     ((int)(sizeof vid_buffer + sizeof zbuffer))
+#endif
 static byte *surfcache;
 static int   surfcache_size;
 
@@ -93,8 +122,44 @@ static void update_title(void) {
     last = now;
 }
 
+/* `qog_framehash 1` prints a hash of every presented frame (pixels and
+   palette) to stdout, so a whole scripted run, tours and fights included,
+   can be compared frame by frame against another build. `qog_framehash 0`
+   stops it. stdout only, so the console and the frame stay untouched.
+   `qog_framehash 1 <first> <last>` also saves the frames with those
+   positions in the hash list (counted from 0) as shots fd_<position>.
+   While hashing, the console cursor does not blink: its blink follows real
+   time, which would make the same frame differ between runs. */
+static int s_framehash, s_fh_index, s_fh_first = -1, s_fh_last = -1;
+static void write_shot(const char *name);
+static void cmd_qog_framehash(void) {
+    extern float con_cursorspeed;
+    s_framehash = Cmd_Argc() > 1 ? Q_atoi(Cmd_Argv(1)) : !s_framehash;
+    if (Cmd_Argc() > 3) {
+        s_fh_first = Q_atoi(Cmd_Argv(2));
+        s_fh_last = Q_atoi(Cmd_Argv(3));
+    }
+    con_cursorspeed = s_framehash ? 0 : 4;
+}
+static void framehash_print(void) {
+    unsigned h = 2166136261u;
+    for (int i = 0; i < QOG_PC_W * QOG_PC_H; i++) h = (h ^ vid_buffer[i]) * 16777619u;
+    for (int i = 0; i < 256; i++) {
+        h = (h ^ s_bmi.pal[i].rgbRed) * 16777619u;
+        h = (h ^ s_bmi.pal[i].rgbGreen) * 16777619u;
+        h = (h ^ s_bmi.pal[i].rgbBlue) * 16777619u;
+    }
+    Sys_Printf("fh %d %08x\n", host_framecount, h);
+    if (s_fh_index >= s_fh_first && s_fh_index <= s_fh_last) write_shot(va("fd_%05d", s_fh_index));
+    s_fh_index++;
+}
+
 void VID_Update(vrect_t *rects) {
     (void)rects;
+#ifdef QOG_HUD_IN_ZBUFFER
+    R_HudFrameEnd();
+#endif
+    if (s_framehash) framehash_print();
     qog_mem_sample();   /* peaks need every frame, not just title updates */
     HDC dc = GetDC(s_wnd);
     RECT r;
@@ -113,9 +178,25 @@ void VID_HandlePause(qboolean pause) { (void)pause; }
 
 /* `qog_shot [name]` writes the current 8-bit frame as build-pc-shots/<name>.bmp
    so renderer changes can be compared frame by frame. */
+/* `qog_rpeaks [reset]` prints renderer table measurements kept by the engine
+   (r_main.c, r_edge.c): edge plus surface bytes in one frame, spans in one
+   frame and in one flush, and the span room R_ScanEdges had. */
+static void cmd_qog_rpeaks(void) {
+    extern int r_qog_peakedgesurfbytes, r_qog_peakspanroom, r_qog_minspanroom,
+               r_qog_peakframespans, r_qog_peakflushspans;
+    Con_Printf("qog_rpeaks: edge+surf bytes %d, spans per frame %d, per flush %d, span room %d..%d\n",
+               r_qog_peakedgesurfbytes, r_qog_peakframespans, r_qog_peakflushspans,
+               r_qog_minspanroom, r_qog_peakspanroom);
+    if (Cmd_Argc() > 1)
+        r_qog_peakedgesurfbytes = r_qog_peakspanroom = r_qog_minspanroom =
+            r_qog_peakframespans = r_qog_peakflushspans = 0;
+}
+
 static void cmd_qog_shot(void) {
+    write_shot(Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot");
+}
+static void write_shot(const char *name) {
     char path[256];
-    const char *name = Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot";
     CreateDirectoryA(QOG_SHOT_DIR, NULL);
     snprintf(path, sizeof path, "%s/%s.bmp", QOG_SHOT_DIR, name);
     FILE *f = fopen(path, "wb");
@@ -133,7 +214,8 @@ static void cmd_qog_shot(void) {
     fwrite(s_bmi.pal, pal_bytes, 1, f);
     fwrite(vid_buffer, img, 1, f);
     fclose(f);
-    Con_Printf("qog_shot: wrote %s (frame %d, cl.time %.3f, realtime %.3f)\n", path, host_framecount, cl.time, realtime);
+    if (strncmp(name, "fd_", 3))   /* frame hash dumps stay out of the console */
+        Con_Printf("qog_shot: wrote %s (frame %d, cl.time %.3f, realtime %.3f)\n", path, host_framecount, cl.time, realtime);
 }
 
 /* ---- keyboard -------------------------------------------------------- */
@@ -258,6 +340,12 @@ void VID_Init(unsigned char *palette) {
     vid.rowbytes = vid.conrowbytes = QOG_PC_W;
 
     d_pzbuffer = zbuffer;
+#if defined(QOG_ZBUFFER_VIEW) || defined(QOG_RENDER_SCALE)
+    d_zbase = zbuffer;
+#endif
+#ifdef QOG_HUD_IN_ZBUFFER
+    r_zalias_row = QOG_PC_ZROWS;
+#endif
 #ifdef QOG_SURFCACHE
     surfcache_size = D_SurfaceCacheForRes(QOG_PC_W, QOG_PC_H);
 #else
@@ -268,8 +356,8 @@ void VID_Init(unsigned char *palette) {
     surfcache = malloc(surfcache_size);
     if (!surfcache) Sys_Error("no memory for the surface cache");
     D_InitCaches(surfcache, surfcache_size);
-    Sys_Printf("VID: %dx%d, frame %d KB, z-buffer %d KB, surface cache %d KB\n", QOG_PC_W, QOG_PC_H,
-               (int)(sizeof vid_buffer / 1024), (int)(sizeof zbuffer / 1024), surfcache_size / 1024);
+    Sys_Printf("VID: %dx%d, frame %d KB, z-buffer %d KB, video memory %d KB, surface cache %d KB\n", QOG_PC_W,
+               QOG_PC_H, FRAME_BYTES / 1024, ZBUFFER_BYTES / 1024, VIDEO_BYTES / 1024, surfcache_size / 1024);
 
     s_bmi.h.biSize = sizeof s_bmi.h;
     s_bmi.h.biWidth = QOG_PC_W;
@@ -283,13 +371,15 @@ void VID_Init(unsigned char *palette) {
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
     qog_aim_register();
     Cmd_AddCommand("qog_shot", cmd_qog_shot);
+    Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
+    Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
     {
         extern void qog_manifest_register(void);
         qog_manifest_register();
         extern void qog_tour_register(void);
         qog_tour_register();
     }
-    qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer) + surfcache_size);
+    qog_mem_set_video(VIDEO_BYTES + surfcache_size);
 
     WNDCLASSA wc = {0};
     wc.lpfnWndProc = wnd_proc;

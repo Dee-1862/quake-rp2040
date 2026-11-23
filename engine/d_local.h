@@ -93,11 +93,49 @@ extern void D_PolysetAff8Start (void);
 extern void D_PolysetAff8End (void);
 #endif
 
-extern short *d_pzbuffer;
+#if defined(QOG_RENDER_SCALE) && !defined(QOG_ZBUFFER_VIEW)
+#define QOG_ZBUFFER_VIEW	// QuakeOG: a scaled view needs only a z-buffer of its own size
+#endif
+#ifdef QOG_ZBUFFER8
+// QuakeOG (changes the picture, off in the shipped flag lists): one byte of
+// depth per pixel instead of two. Depth is id's 16-bit 1/z value shifted
+// right by QOG_ZBUFFER8_SHIFT and clamped to 0..255, so far surfaces keep
+// coarse steps and everything nearer than the clamp ties (the reader wins
+// a tie, as in id's >= tests).
+#ifndef QOG_ZBUFFER8_SHIFT
+#define QOG_ZBUFFER8_SHIFT	3
+#endif
+typedef byte	d_zval_t;
+#define D_ZQ(z)	((z) < 0 ? 0 : ((z) >> QOG_ZBUFFER8_SHIFT) > 255 ? 255 : ((z) >> QOG_ZBUFFER8_SHIFT))
+#else
+typedef short	d_zval_t;
+#define D_ZQ(z)	(z)
+#endif
+extern d_zval_t *d_pzbuffer;
+#ifdef QOG_ZBUFFER_VIEW
+// QuakeOG: the z-buffer holds only the view rectangle, in rows of the view's
+// width. The VID port sets d_zbase, D_ViewChanged points d_pzbuffer before
+// it so that screen coordinates (u, v) still index it as d_pzbuffer[v * d_zwidth + u].
+extern d_zval_t *d_zbase;
+#endif
+#ifdef QOG_HUD_IN_ZBUFFER
+extern int	r_zalias_row;	// QuakeOG: screen rows from here down live in the z-buffer (r_main.c)
+void R_HudFrameEnd (void);	// QuakeOG: VID_Update calls it at the end of every frame
+#endif
 extern unsigned int d_zrowbytes, d_zwidth;
 
 extern int	*d_pscantable;
+#ifdef QOG_NO_ROWTABLES
+// QuakeOG: row offsets are computed (one multiply) instead of read from
+// d_scantable and zspantable (1.6 KB of RAM). Same values.
+extern int	d_scanrowbytes;
+#define D_SCANTABLE(v)		((v) * d_scanrowbytes)
+#define D_ZSPANTABLE(v)		(d_pzbuffer + (v) * (int)d_zwidth)
+#else
 extern int	d_scantable[MAXHEIGHT];
+#define D_SCANTABLE(v)		d_scantable[v]
+#define D_ZSPANTABLE(v)		zspantable[v]
+#endif
 
 extern int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
@@ -105,7 +143,9 @@ extern int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
 
 extern pixel_t	*d_viewbuffer;
 
-extern short	*zspantable[MAXHEIGHT];
+#ifndef QOG_NO_ROWTABLES
+extern d_zval_t	*zspantable[MAXHEIGHT];
+#endif
 
 extern int		d_minmip;
 extern float	d_scalemip[3];

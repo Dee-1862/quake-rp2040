@@ -49,6 +49,11 @@ edgeref_t	removeedges[MAXHEIGHT];
 espan_t	*span_p, *max_span_p;
 #ifdef QOG_ESPAN_T_PACKED
 byte	*r_spanbase;	// QuakeOG: see espan_t in r_shared.h
+#ifdef QOG_SPANS_IN_EDGES
+byte	*r_spanpool_end;	// QuakeOG: end of the edge table, see r_local.h
+#endif
+// QuakeOG: span measurements for the PC qog_rpeaks command (port/pc/vid_pc.c)
+int		r_qog_peakspanroom, r_qog_minspanroom, r_qog_peakframespans, r_qog_peakflushspans;
 #endif
 
 int		r_currentkey;
@@ -672,7 +677,30 @@ Each surface has a linked list of its visible spans
 void R_ScanEdges (void)
 {
 	int		iv, bottom;
-#ifdef QOG_ESPAN_T_PACKED
+	int		framespans = 0;	// QuakeOG: measurement only
+#if defined(QOG_SPANS_IN_EDGES)
+	// QuakeOG: the spans fill the edge table from the first unused entry on
+	// (r_local.h). Every edge of the frame is emitted by now, and the edge
+	// cache only looks at entries below edge_p. 16-bit links reach
+	// (65536 / 8) - 1 spans.
+	espan_t	*basespan_p;
+	surf_t	*s;
+	int		numspans;
+
+	basespan_p = (espan_t *)edge_p;
+	numspans = (r_spanpool_end - (byte *)basespan_p) / sizeof(espan_t);
+	if (numspans > 0x10000 / sizeof(espan_t) - 1)
+		numspans = 0x10000 / sizeof(espan_t) - 1;
+	if (numspans < r_refdef.vrect.width + 1)
+		Sys_Error ("R_ScanEdges: room for %d spans, a scan line needs %d", numspans,
+			r_refdef.vrect.width + 1);
+	if (numspans > r_qog_peakspanroom)
+		r_qog_peakspanroom = numspans;
+	if (!r_qog_minspanroom || numspans < r_qog_minspanroom)
+		r_qog_minspanroom = numspans;
+	r_spanbase = (byte *)basespan_p - sizeof(espan_t);
+#define MAXSPANS_THISFRAME	numspans
+#elif defined(QOG_ESPAN_T_PACKED)
 	// QuakeOG: 8-byte spans gain nothing from cache line alignment, and the
 	// 16-bit links reach (65536 / 8) - 1 spans (r_shared.h)
 	espan_t	basespans[MAXSPANS];
@@ -690,7 +718,12 @@ void R_ScanEdges (void)
 	basespan_p = (espan_t *)
 			((long)(basespans + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
 #endif
+#ifdef MAXSPANS_THISFRAME
+	max_span_p = &basespan_p[MAXSPANS_THISFRAME - r_refdef.vrect.width];
+#undef MAXSPANS_THISFRAME
+#else
 	max_span_p = &basespan_p[MAXSPANS - r_refdef.vrect.width];
+#endif
 
 	span_p = basespan_p;
 
@@ -762,6 +795,9 @@ void R_ScanEdges (void)
 			for (s = &surfaces[1] ; s<surface_p ; s++)
 				s->spans = SPAN_NONE;	// QuakeOG
 
+			framespans += span_p - basespan_p;	// QuakeOG: measurement only
+			if (span_p - basespan_p > r_qog_peakflushspans)
+				r_qog_peakflushspans = span_p - basespan_p;
 			span_p = basespan_p;
 		}
 
@@ -784,6 +820,13 @@ void R_ScanEdges (void)
 		R_InsertNewEdges (EDGE_PTR(newedges[iv]), EDGE_PTR(edge_head.next));	// QuakeOG
 
 	(*pdrawfunc) ();
+
+// QuakeOG: measurement only
+	framespans += span_p - basespan_p;
+	if (span_p - basespan_p > r_qog_peakflushspans)
+		r_qog_peakflushspans = span_p - basespan_p;
+	if (framespans > r_qog_peakframespans)
+		r_qog_peakframespans = framespans;
 
 // draw whatever's left in the span list
 	if (r_drawculledpolys)

@@ -81,6 +81,13 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SV_MAX_SOUNDS=176
     QOG_CONST_NOVIS
     QOG_PVS_LEAFS=4096)
+# Video memory and renderer tables (Agent H), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_CONST_RTABLES
+    QOG_NO_ROWTABLES
+    QOG_SKY_DIRECT
+    QOG_HUD_IN_ZBUFFER
+    QOG_SPANS_IN_EDGES)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

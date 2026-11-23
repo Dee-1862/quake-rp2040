@@ -47,6 +47,16 @@ typedef struct bedge_s
 	struct bedge_s	*pnext;
 } bedge_t;
 
+// one brush entity polygon after clipping against the world (r_bsp.c)
+#ifdef QOG_MAX_BMODEL_VERTS
+#define MAX_BMODEL_VERTS	QOG_MAX_BMODEL_VERTS
+#define MAX_BMODEL_EDGES	QOG_MAX_BMODEL_EDGES
+#else
+#define MAX_BMODEL_VERTS	500			// 6K
+#define MAX_BMODEL_EDGES	1000		// 12K
+#endif
+#define BMODEL_CLIP_BYTES	(MAX_BMODEL_VERTS * sizeof(mvertex_t) + MAX_BMODEL_EDGES * sizeof(bedge_t))
+
 typedef struct {
 	float	fv[3];		// viewspace x, y
 } auxvert_t;
@@ -296,6 +306,24 @@ extern	edge_t	*r_edgesentinels;
 #define edge_tail		(r_edgesentinels[1])
 #define edge_aftertail	(r_edgesentinels[2])
 #define edge_sentinel	(r_edgesentinels[3])
+#ifdef QOG_SPANS_IN_EDGES
+// QuakeOG: R_ScanEdges puts its spans in the edge table after the last edge
+// of the frame, up to r_spanpool_end. The table has room for QOG_SPAN_MIN
+// spans past the edge limit, so the edge limit is unchanged. Where the spans
+// are flushed changes nothing in the picture, each pixel is drawn once.
+#if !defined(QOG_ESPAN_T_PACKED)
+#error "QOG_SPANS_IN_EDGES needs QOG_ESPAN_T_PACKED"
+#endif
+#ifndef QOG_SPAN_MIN
+#define QOG_SPAN_MIN	512
+#endif
+// Before that, R_DrawSolidClippedSubmodelPolygons keeps its clip buffers
+// there, so the room is the larger of the two.
+#define SPAN_RESERVE_BYTES	(QOG_SPAN_MIN * sizeof(espan_t) > BMODEL_CLIP_BYTES ? \
+							 QOG_SPAN_MIN * sizeof(espan_t) : BMODEL_CLIP_BYTES)
+#define SPAN_RESERVE_EDGES	((SPAN_RESERVE_BYTES + sizeof(edge_t) - 1) / sizeof(edge_t))
+extern	byte	*r_spanpool_end;
+#endif
 #else
 // FIXME: make stack vars when debugging done
 extern	edge_t	edge_head;

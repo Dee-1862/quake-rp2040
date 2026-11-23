@@ -26,8 +26,12 @@ int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
 int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
 
+#ifdef QOG_NO_ROWTABLES
+int		d_scanrowbytes;		// QuakeOG: replaces the two row tables (d_local.h)
+#else
 int		d_scantable[MAXHEIGHT];
-short	*zspantable[MAXHEIGHT]; 
+d_zval_t	*zspantable[MAXHEIGHT]; 
+#endif
 
 /*
 ================
@@ -74,8 +78,15 @@ void D_ViewChanged (void)
 	if (yscale > xscale)
 		scale_for_mip = yscale;
 
+#ifdef QOG_ZBUFFER_VIEW
+	// QuakeOG: z rows as wide as the view, see d_local.h
+	d_zwidth = r_refdef.vrect.width;
+	d_zrowbytes = d_zwidth * 2;
+	d_pzbuffer = d_zbase - (r_refdef.vrect.y * (int)d_zwidth + r_refdef.vrect.x);
+#else
 	d_zrowbytes = vid.width * 2;
 	d_zwidth = vid.width;
+#endif
 
 	d_pix_min = r_refdef.vrect.width / 320;
 	if (d_pix_min < 1)
@@ -97,6 +108,9 @@ void D_ViewChanged (void)
 	d_vrectbottom_particle =
 			r_refdef.vrectbottom - (d_pix_max << d_y_aspect_shift);
 
+#ifdef QOG_NO_ROWTABLES
+	d_scanrowbytes = rowbytes;
+#else
 	{
 		int		i;
 
@@ -106,6 +120,7 @@ void D_ViewChanged (void)
 			zspantable[i] = d_pzbuffer + i*d_zwidth;
 		}
 	}
+#endif
 
 	D_Patch ();
 }

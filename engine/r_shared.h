@@ -66,8 +66,14 @@ extern int		r_drawnpolycount;
 
 extern cvar_t	r_clearcolor;
 
-extern int	sintable[SIN_BUFFER_SIZE];
-extern int	intsintable[SIN_BUFFER_SIZE];
+// QuakeOG: with QOG_CONST_RTABLES the turbulence tables are constants in flash
+#ifdef QOG_CONST_RTABLES
+#define QOG_RTABLE_CONST	const
+#else
+#define QOG_RTABLE_CONST
+#endif
+extern QOG_RTABLE_CONST int	sintable[SIN_BUFFER_SIZE];
+extern QOG_RTABLE_CONST int	intsintable[SIN_BUFFER_SIZE];
 
 extern	vec3_t	vup, base_vup;
 extern	vec3_t	vpn, base_vpn;

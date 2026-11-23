@@ -45,14 +45,7 @@ typedef enum {touchessolid, drawnode, nodrawnode} solidstate_t;
 // world, and are reset for every polygon. Shareware peaks are 22 vertices
 // and 74 edges over all three demos (qog_mem prints them). Overflow only
 // drops that fragment with a console message, as in id's code.
-#ifdef QOG_MAX_BMODEL_VERTS
-#define MAX_BMODEL_VERTS	QOG_MAX_BMODEL_VERTS
-#define MAX_BMODEL_EDGES	QOG_MAX_BMODEL_EDGES
-#else
-#define MAX_BMODEL_VERTS	500			// 6K
-#define MAX_BMODEL_EDGES	1000		// 12K
-#endif
-
+// (MAX_BMODEL_VERTS and MAX_BMODEL_EDGES are in r_local.h, QuakeOG)
 static mvertex_t	*pbverts;
 static bedge_t		*pbedges;
 static int			numbverts, numbedges;
@@ -342,8 +335,15 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 	msurface_t	*psurf;
 	int			numsurfaces;
 	mplane_t	*pplane;
+#ifdef QOG_SPANS_IN_EDGES
+	// QuakeOG: the clip buffers sit in the edge table past the edge limit,
+	// which only R_ScanEdges uses later (r_local.h)
+	mvertex_t	*bverts = (mvertex_t *)(r_spanpool_end - SPAN_RESERVE_EDGES * sizeof(edge_t));
+	bedge_t		*bedges = (bedge_t *)(bverts + MAX_BMODEL_VERTS), *pbedge;
+#else
 	mvertex_t	bverts[MAX_BMODEL_VERTS];
 	bedge_t		bedges[MAX_BMODEL_EDGES], *pbedge;
+#endif
 	medge_t		*pedge, *pedges;
 
 // FIXME: use bounding-box-based frustum clipping info?

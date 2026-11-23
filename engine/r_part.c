@@ -131,7 +131,7 @@ R_EntityParticles
 */
 
 #define NUMVERTEXNORMALS	162
-extern	float	r_avertexnormals[NUMVERTEXNORMALS][3];
+extern	QOG_RTABLE_CONST float	r_avertexnormals[NUMVERTEXNORMALS][3];	// QuakeOG: const with QOG_CONST_RTABLES (r_alias.c)
 #ifdef QOG_PARTICLE_AVEL8
 // QuakeOG: each rate is (rand()&255) * 0.01, so keep the byte and scale it
 // on use to the same float (486 bytes instead of 1,944)

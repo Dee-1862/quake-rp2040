@@ -29,6 +29,74 @@ vec3_t		viewlightvec;
 alight_t	r_viewlighting = {128, 192, viewlightvec};
 float		r_time1;
 int			r_numallocatededges;
+#ifdef QOG_HUD_IN_ZBUFFER
+int			r_zalias_row = 0x7fff;	// QuakeOG: first screen row stored in the z-buffer (set by VID_Init)
+
+// QuakeOG: what Sbar_Draw reads from cl in single player, as it was the
+// last time the status bar was drawn (see R_RenderView)
+typedef struct
+{
+	int		stats[MAX_CL_STATS];
+	int		items;
+	float	item_gettime[32];
+	float	faceanimtime;
+	double	time;
+	char	levelname[40];
+	int		viewentity, maxclients, gametype;
+} r_hudstate_t;
+
+static r_hudstate_t	r_hudshot;
+static qboolean		r_hudshot_valid;
+static int			r_hud_sbbefore = -1;	// sb_updates when this frame's view was done
+
+static void R_HudStateGet (r_hudstate_t *s)
+{
+	memcpy (s->stats, cl.stats, sizeof(s->stats));
+	s->items = cl.items;
+	memcpy (s->item_gettime, cl.item_gettime, sizeof(s->item_gettime));
+	s->faceanimtime = cl.faceanimtime;
+	s->time = cl.time;
+	memcpy (s->levelname, cl.levelname, sizeof(s->levelname));
+	s->viewentity = cl.viewentity;
+	s->maxclients = cl.maxclients;
+	s->gametype = cl.gametype;
+}
+
+static void R_HudStateSet (const r_hudstate_t *s)
+{
+	memcpy (cl.stats, s->stats, sizeof(s->stats));
+	cl.items = s->items;
+	memcpy (cl.item_gettime, s->item_gettime, sizeof(s->item_gettime));
+	cl.faceanimtime = s->faceanimtime;
+	cl.time = s->time;
+	memcpy (cl.levelname, s->levelname, sizeof(s->levelname));
+	cl.viewentity = s->viewentity;
+	cl.maxclients = s->maxclients;
+	cl.gametype = s->gametype;
+}
+
+/*
+===============
+R_HudFrameEnd
+
+QuakeOG: called by VID_Update. If Sbar_Draw drew the status bar in this
+frame (sb_updates went up from below vid.numpages), keep the state it drew
+from, so R_RenderView can draw the same picture again in frames where id's
+code would have left it on screen.
+===============
+*/
+void R_HudFrameEnd (void)
+{
+	extern int	sb_updates;
+
+	if (r_hud_sbbefore >= 0 && r_hud_sbbefore < vid.numpages && sb_updates >= vid.numpages)
+	{
+		R_HudStateGet (&r_hudshot);
+		r_hudshot_valid = true;
+	}
+	r_hud_sbbefore = -1;
+}
+#endif
 qboolean	r_drawpolys;
 qboolean	r_drawculledpolys;
 qboolean	r_worldpolysbacktofront;
@@ -313,8 +381,13 @@ void R_NewMap (void)
 	{
 #ifdef QOG_EDGE_T_PACKED
 		// QuakeOG: room for the sentinels in front, see R_EdgeDrawing
+#ifdef QOG_SPANS_IN_EDGES
+		auxedges = Hunk_AllocName ((r_numallocatededges + EDGE_SENTINELS + SPAN_RESERVE_EDGES) *
+								   sizeof(edge_t), "edges");
+#else
 		auxedges = Hunk_AllocName ((r_numallocatededges + EDGE_SENTINELS) * sizeof(edge_t),
 								   "edges");
+#endif
 #else
 		auxedges = Hunk_AllocName (r_numallocatededges * sizeof(edge_t),
 								   "edges");
@@ -384,6 +457,40 @@ Called every time the vid structure or r_refdef changes.
 Guaranteed to be called before the first refresh
 ===============
 */
+#ifdef QOG_RENDER_SCALE
+vrect_t		r_qog_screenvrect;	// QuakeOG: where the scaled view goes on screen
+
+/*
+===============
+R_QogScaleUp
+
+QuakeOG: enlarges the view drawn in r_refdef.vrect to r_qog_screenvrect
+(same top left corner) in place, nearest pixel. Rows and pixels are written
+from the last to the first, and each one reads a source pixel at or before
+its own position that is not yet overwritten.
+===============
+*/
+static void R_QogScaleUp (void)
+{
+	vrect_t	*src = &r_refdef.vrect, *dst = &r_qog_screenvrect;
+	short	xmap[MAXWIDTH];
+	byte	*row, *srow;
+	int		x, y;
+
+	if (src->width == dst->width && src->height == dst->height)
+		return;
+	for (x = 0 ; x < dst->width ; x++)
+		xmap[x] = x * src->width / dst->width;
+	for (y = dst->height - 1 ; y >= 0 ; y--)
+	{
+		srow = vid.buffer + (src->y + y * src->height / dst->height) * vid.rowbytes + src->x;
+		row = vid.buffer + (dst->y + y) * vid.rowbytes + dst->x;
+		for (x = dst->width - 1 ; x >= 0 ; x--)
+			row[x] = srow[xmap[x]];
+	}
+}
+#endif
+
 void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 {
 	int		i;
@@ -392,6 +499,18 @@ void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 	r_viewchanged = true;
 
 	R_SetVrect (pvrect, &r_refdef.vrect, lineadj);
+
+#ifdef QOG_RENDER_SCALE
+	// QuakeOG (changes the picture, off in the shipped flag lists): the 3D
+	// view is drawn at QOG_RENDER_SCALE percent of its screen size into the
+	// top left of its screen rectangle, and R_QogScaleUp enlarges it in place
+	// before the 2D overlay is drawn at full resolution. The field of view is
+	// unchanged. Fewer pixels to draw, and with QOG_ZBUFFER_VIEW the z-buffer
+	// only covers the smaller view.
+	r_qog_screenvrect = r_refdef.vrect;
+	r_refdef.vrect.width = (r_refdef.vrect.width * QOG_RENDER_SCALE / 100) & ~7;
+	r_refdef.vrect.height = (r_refdef.vrect.height * QOG_RENDER_SCALE / 100) & ~1;
+#endif
 
 	r_refdef.horizontalFieldOfView = 2.0 * tan (r_refdef.fov_x/360*M_PI);
 	r_refdef.fvrectx = (float)r_refdef.vrect.x;
@@ -903,6 +1022,7 @@ R_EdgeDrawing
 ================
 */
 int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG: see the end of R_EdgeDrawing
+int		r_qog_peakedgesurfbytes;			// QuakeOG: most edge plus surface bytes in one frame
 
 void R_EdgeDrawing (void)
 {
@@ -913,7 +1033,13 @@ void R_EdgeDrawing (void)
 	// line alignment, so the table is not aligned.
 	extern medge_t		*r_qog_owneredges;
 	extern unsigned int	r_qog_ownerbytes;
+#ifdef QOG_SPANS_IN_EDGES
+	// QuakeOG: R_ScanEdges keeps its spans in the part of this table the
+	// edges left free, with QOG_SPAN_MIN spans of room past the edge limit
+	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES + SPAN_RESERVE_EDGES];
+#else
 	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES];
+#endif
 #else
 	edge_t	ledges[NUMSTACKEDGES +
 				((CACHE_SIZE - 1) / sizeof(edge_t)) + 1];
@@ -925,6 +1051,10 @@ void R_EdgeDrawing (void)
 	r_edgesentinels = auxedges ? auxedges : ledges;
 	r_edgebase = (byte *)r_edgesentinels - sizeof(edge_t);
 	r_edges = r_edgesentinels + EDGE_SENTINELS;
+#ifdef QOG_SPANS_IN_EDGES
+	r_spanpool_end = (byte *)(r_edges + (auxedges ? r_numallocatededges : NUMSTACKEDGES) +
+							  SPAN_RESERVE_EDGES);
+#endif
 	// id's sentinels were zeroed statics, and R_ScanEdges sets only some fields
 	memset (r_edgesentinels, 0, EDGE_SENTINELS * sizeof(edge_t));
 	r_qog_owneredges = cl.worldmodel->edges;
@@ -995,6 +1125,8 @@ void R_EdgeDrawing (void)
 		r_qog_peakedges = edge_p - r_edges;
 	if (surface_p - surfaces > r_qog_peaksurfs)
 		r_qog_peaksurfs = surface_p - surfaces;
+	if ((int)((edge_p - r_edges) * sizeof(edge_t) + (surface_p - surfaces) * sizeof(surf_t)) > r_qog_peakedgesurfbytes)
+		r_qog_peakedgesurfbytes = (edge_p - r_edges) * sizeof(edge_t) + (surface_p - surfaces) * sizeof(surf_t);
 
 	if (!(r_drawpolys | r_drawculledpolys))
 		R_ScanEdges ();
@@ -1085,8 +1217,21 @@ SetVisibilityByPassages ();
 	if (r_dspeeds.value)
 		dp_time2 = Sys_FloatTime ();
 
+#ifdef QOG_RENDER_SCALE
+	R_QogScaleUp ();
+	if (r_dowarp)
+	{
+		// QuakeOG: the scaled up view fills the screen rectangle, so warp that
+		vrect_t	drawn = r_refdef.vrect;
+
+		r_refdef.vrect = r_qog_screenvrect;
+		D_WarpScreen ();
+		r_refdef.vrect = drawn;
+	}
+#else
 	if (r_dowarp)
 		D_WarpScreen ();
+#endif
 
 	V_SetContentsColor (r_viewleaf->contents);
 
@@ -1131,6 +1276,40 @@ void R_RenderView (void)
 		Sys_Error ("Globals are missaligned");
 
 	R_RenderView_ ();
+
+#ifdef QOG_HUD_IN_ZBUFFER
+	// QuakeOG: the screen rows from r_zalias_row down (the status bar) share
+	// memory with the start of the z-buffer, which this view has just
+	// overwritten. Repaint what a separate frame buffer would still hold:
+	// the tile background a full screen update leaves there, and, when
+	// Sbar_Draw is going to skip this frame (sb_updates), the status bar as
+	// it was last drawn, from the state saved by R_HudFrameEnd. Sbar_Draw
+	// redraws by itself in the other frames. The 2D overlay comes after this.
+	if (r_zalias_row < vid.height)
+	{
+		extern int	sb_updates;
+
+		Draw_TileClear (0, r_zalias_row, vid.width, vid.height - r_zalias_row);
+		r_hud_sbbefore = sb_updates;
+		if (sb_updates >= vid.numpages && !cl.intermission)
+		{
+			if (r_hudshot_valid)
+			{
+				r_hudstate_t	now;
+				int				updates = sb_updates;
+
+				R_HudStateGet (&now);
+				R_HudStateSet (&r_hudshot);
+				sb_updates = 0;
+				Sbar_Draw ();
+				sb_updates = updates;
+				R_HudStateSet (&now);
+			}
+			else
+				Sbar_Changed ();	// nothing drawn yet, draw it now
+		}
+	}
+#endif
 }
 
 /*
@@ -1140,6 +1319,21 @@ R_InitTurb
 */
 void R_InitTurb (void)
 {
+#ifdef QOG_CONST_RTABLES
+// QuakeOG: the tables are constants (r_turbtab.h). The PC build checks them
+// against id's formulas once, so a changed formula or size cannot go unseen.
+#ifdef HOST_TEST
+	int		i;
+
+	for (i=0 ; i<(SIN_BUFFER_SIZE) ; i++)
+	{
+		int	s = AMP + sin(i*3.14159*2/CYCLE)*AMP;
+		int	t = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2;
+		if (s != sintable[i] || t != intsintable[i])
+			Sys_Error ("R_InitTurb: r_turbtab.h differs at %d", i);
+	}
+#endif
+#else
 	int		i;
 	
 	for (i=0 ; i<(SIN_BUFFER_SIZE) ; i++)
@@ -1147,5 +1341,6 @@ void R_InitTurb (void)
 		sintable[i] = AMP + sin(i*3.14159*2/CYCLE)*AMP;
 		intsintable[i] = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2;	// AMP2, not 20
 	}
+#endif
 }
 

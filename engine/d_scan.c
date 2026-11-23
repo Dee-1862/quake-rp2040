@@ -27,7 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 unsigned char	*r_turb_pbase, *r_turb_pdest;
 fixed16_t		r_turb_s, r_turb_t, r_turb_sstep, r_turb_tstep;
-int				*r_turb_turb;
+QOG_RTABLE_CONST int	*r_turb_turb;
 int				r_turb_spancount;
 
 void D_DrawTurbulent8Span (void);
@@ -58,7 +58,7 @@ void D_WarpScreen (void)
 	int		w, h;
 	int		u,v,k,r;
 	byte	*dest;
-	int		*turb;
+	QOG_RTABLE_CONST int	*turb;
 	int		*col;
 	byte	**row;
 	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
@@ -132,7 +132,7 @@ void D_WarpScreen (void)
 	int		w, h;
 	int		u,v;
 	byte	*dest;
-	int		*turb;
+	QOG_RTABLE_CONST int	*turb;
 	int		*col;
 	byte	**row;
 	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
@@ -483,7 +483,7 @@ void D_DrawZSpans (espan_t *pspan)
 {
 	int				count, doublecount, izistep;
 	int				izi;
-	short			*pdest;
+	d_zval_t		*pdest;
 	unsigned		ltemp;
 	double			zi;
 	float			du, dv;
@@ -491,6 +491,25 @@ void D_DrawZSpans (espan_t *pspan)
 // FIXME: check for clamping/range problems
 // we count on FP exceptions being turned off to avoid range problems
 	izistep = (int)(d_zistepu * 0x8000 * 0x10000);
+#ifdef QOG_ZBUFFER8
+	(void)ltemp; (void)doublecount;
+	do
+	{
+		pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+		count = pspan->count;
+		du = (float)pspan->u;
+		dv = (float)pspan->v;
+		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
+		izi = (int)(zi * 0x8000 * 0x10000);
+		do
+		{
+			int	z = izi >> 16;
+			*pdest++ = D_ZQ(z);
+			izi += izistep;
+		} while (--count > 0);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));
+	return;
+#endif
 
 	do
 	{

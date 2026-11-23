@@ -594,7 +594,7 @@ R_GenTurbTile
 */
 void R_GenTurbTile (pixel_t *pbasetex, void *pdest)
 {
-	int		*turb;
+	QOG_RTABLE_CONST int	*turb;
 	int		i, j, s, t;
 	byte	*pd;
 	
@@ -620,7 +620,7 @@ R_GenTurbTile16
 */
 void R_GenTurbTile16 (pixel_t *pbasetex, void *pdest)
 {
-	int				*turb;
+	QOG_RTABLE_CONST int	*turb;
 	int				i, j, s, t;
 	unsigned short	*pd;
 
