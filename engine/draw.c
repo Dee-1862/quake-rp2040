@@ -53,6 +53,9 @@ typedef struct cachepic_s
 {
 	char		name[CACHEPIC_NAME];
 	cache_user_t	cache;
+#ifdef QOG_CACHEPIC_FLASH
+	qpic_t		*flash;		// QuakeOG: the pic in a mapped pack, or NULL
+#endif
 } cachepic_t;
 
 #ifdef QOG_MAX_CACHED_PICS
@@ -92,7 +95,20 @@ qpic_t	*Draw_CachePic (char *path)
 			Sys_Error ("Draw_CachePic: %s is too long", path);
 		menu_numcachepics++;
 		strcpy (pic->name, path);
+#ifdef QOG_CACHEPIC_FLASH
+		// QuakeOG: menu, intermission, finale and plaque pics are only ever
+		// read, so a pic in a mapped pack is used in place instead of being
+		// copied into the cache (30.6 KB at an intermission). The console
+		// background is not, because id writes the version into it (see
+		// Draw_ConsoleBackground). Little endian only: SwapPic would write.
+		if (!bigendien && strcmp (path, "gfx/conback.lmp"))
+			pic->flash = (qpic_t *)COM_FlashFile (path, NULL);
+#endif
 	}
+#ifdef QOG_CACHEPIC_FLASH
+	if (pic->flash)
+		return pic->flash;
+#endif
 
 	dat = Cache_Check (&pic->cache);
 
