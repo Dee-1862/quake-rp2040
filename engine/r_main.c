@@ -1140,6 +1140,21 @@ R_InitTurb
 */
 void R_InitTurb (void)
 {
+#ifdef QOG_CONST_RTABLES
+// QuakeOG: the tables are constants (r_turbtab.h). The PC build checks them
+// against id's formulas once, so a changed formula or size cannot go unseen.
+#ifdef HOST_TEST
+	int		i;
+
+	for (i=0 ; i<(SIN_BUFFER_SIZE) ; i++)
+	{
+		int	s = AMP + sin(i*3.14159*2/CYCLE)*AMP;
+		int	t = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2;
+		if (s != sintable[i] || t != intsintable[i])
+			Sys_Error ("R_InitTurb: r_turbtab.h differs at %d", i);
+	}
+#endif
+#else
 	int		i;
 	
 	for (i=0 ; i<(SIN_BUFFER_SIZE) ; i++)
@@ -1147,5 +1162,6 @@ void R_InitTurb (void)
 		sintable[i] = AMP + sin(i*3.14159*2/CYCLE)*AMP;
 		intsintable[i] = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2;	// AMP2, not 20
 	}
+#endif
 }
 

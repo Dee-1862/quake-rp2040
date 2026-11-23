@@ -128,8 +128,27 @@ qboolean		r_leftclipped, r_rightclipped;
 static qboolean	makeleftedge, makerightedge;
 qboolean		r_nearzionly;
 
+#ifdef QOG_CONST_RTABLES
+// QuakeOG: the turbulence tables never change after R_InitTurb, so they are
+// precomputed constants in flash (r_turbtab.h, checked at startup on the PC)
+#include "r_turbtab.h"
+#if SIN_BUFFER_SIZE != QOG_TURBTAB_SIZE
+#error "QOG_CONST_RTABLES: r_turbtab.h is generated for MAXWIDTH 320 and CYCLE 128"
+#endif
+const int	sintable[SIN_BUFFER_SIZE] = {
+#define QOG_TURBTAB_SINTABLE
+#include "r_turbtab.h"
+#undef QOG_TURBTAB_SINTABLE
+};
+const int	intsintable[SIN_BUFFER_SIZE] = {
+#define QOG_TURBTAB_INTSINTABLE
+#include "r_turbtab.h"
+#undef QOG_TURBTAB_INTSINTABLE
+};
+#else
 int		sintable[SIN_BUFFER_SIZE];
 int		intsintable[SIN_BUFFER_SIZE];
+#endif
 
 mvertex_t	r_leftenter, r_leftexit;
 mvertex_t	r_rightenter, r_rightexit;

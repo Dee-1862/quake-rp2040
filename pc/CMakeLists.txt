@@ -137,3 +137,7 @@ target_compile_definitions(quakeog_pc PRIVATE
 # qc2c reads the core edict fields from the engine headers (QOG_EDICT_SPARSE)
 add_custom_command(OUTPUT ${PROGS_AOT} APPEND
     DEPENDS ${ROOT}/engine/progs.h ${ROOT}/engine/progdefs.q1)
+# Video memory and renderer tables (Agent H). The QOG_ flags that change the
+# picture (docs/changes.md) are not in this list.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_CONST_RTABLES)              # turbulence, normal and edge tables as constants in flash

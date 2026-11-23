@@ -118,7 +118,7 @@ R_EntityParticles
 */
 
 #define NUMVERTEXNORMALS	162
-extern	float	r_avertexnormals[NUMVERTEXNORMALS][3];
+extern	QOG_RTABLE_CONST float	r_avertexnormals[NUMVERTEXNORMALS][3];	// QuakeOG: const with QOG_CONST_RTABLES (r_alias.c)
 vec3_t	avelocities[NUMVERTEXNORMALS];
 float	beamlength = 16;
 vec3_t	avelocity = {23, 7, 3};

@@ -57,9 +57,11 @@ byte		*d_pcolormap;
 int			d_aflatcolor;
 int			d_xdenom;
 
-edgetable	*pedgetable;
+// QuakeOG: the triangle edge table is only read, so with QOG_CONST_RTABLES
+// it stays in flash
+QOG_RTABLE_CONST edgetable	*pedgetable;
 
-edgetable	edgetables[12] = {
+QOG_RTABLE_CONST edgetable	edgetables[12] = {
 	{0, 1, r_p0, r_p2, NULL, 2, r_p0, r_p1, r_p2 },
 	{0, 2, r_p1, r_p0, r_p2,   1, r_p1, r_p2, NULL},
 	{1, 1, r_p0, r_p2, NULL, 1, r_p1, r_p2, NULL},

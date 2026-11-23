@@ -60,7 +60,7 @@ typedef struct {
 	int	index1;
 } aedge_t;
 
-static aedge_t	aedges[12] = {
+static QOG_RTABLE_CONST aedge_t	aedges[12] = {	// QuakeOG: const with QOG_CONST_RTABLES
 {0, 1}, {1, 2}, {2, 3}, {3, 0},
 {4, 5}, {5, 6}, {6, 7}, {7, 4},
 {0, 5}, {1, 4}, {2, 7}, {3, 6}
@@ -68,7 +68,8 @@ static aedge_t	aedges[12] = {
 
 #define NUMVERTEXNORMALS	162
 
-float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
+// QuakeOG: QOG_CONST_RTABLES keeps the normal table in flash (it is only read)
+QOG_RTABLE_CONST float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
 #include "anorms.h"
 };
 
@@ -442,7 +443,8 @@ void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	trivertx_t *pverts, stvert_t *pstverts)
 {
 	int		temp;
-	float	lightcos, *plightnormal;
+	float	lightcos;
+	QOG_RTABLE_CONST float	*plightnormal;
 
 #ifdef QOG_ALIAS_NO_AUXVERTS
 	R_AliasTransformAuxVert (av, pverts);
@@ -489,7 +491,8 @@ R_AliasTransformAndProjectFinalVerts
 void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 {
 	int			i, temp;
-	float		lightcos, *plightnormal, zi;
+	float		lightcos, zi;
+	QOG_RTABLE_CONST float	*plightnormal;
 	trivertx_t	*pverts;
 
 	pverts = r_apverts;

@@ -27,7 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 unsigned char	*r_turb_pbase, *r_turb_pdest;
 fixed16_t		r_turb_s, r_turb_t, r_turb_sstep, r_turb_tstep;
-int				*r_turb_turb;
+QOG_RTABLE_CONST int	*r_turb_turb;
 int				r_turb_spancount;
 
 void D_DrawTurbulent8Span (void);
@@ -58,7 +58,7 @@ void D_WarpScreen (void)
 	int		w, h;
 	int		u,v,k,r;
 	byte	*dest;
-	int		*turb;
+	QOG_RTABLE_CONST int	*turb;
 	int		*col;
 	byte	**row;
 	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
@@ -132,7 +132,7 @@ void D_WarpScreen (void)
 	int		w, h;
 	int		u,v;
 	byte	*dest;
-	int		*turb;
+	QOG_RTABLE_CONST int	*turb;
 	int		*col;
 	byte	**row;
 	byte	*rowptr[MAXHEIGHT+(AMP2*2)];

@@ -37,6 +37,8 @@ CFLAGS += ["-DQOG_EDGE_T_PACKED", "-DQOG_ESPAN_T_PACKED", "-DQOG_SURF_T_SMALL", 
 CFLAGS += ["-DQOG_BAKE"]
 # Edict and QuakeC memory flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_EDICT_SPARSE", "-DQOG_BASELINE_POOL", "-DQOG_AOT_GLOBALS"]
+# Video memory and renderer table flags (pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_CONST_RTABLES"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 
