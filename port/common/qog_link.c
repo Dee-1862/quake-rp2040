@@ -1,11 +1,17 @@
 /* QuakeOG: reliable byte stream over the BSP's link frames. See qog_link.h.
  *
- * Pure C: the frame codec is the BSP's (bsp/common/link/link_frame.c,
- * common/crc.c), which has no SDK dependency, so the PC build compiles the
- * very same files. */
+ * Pure C. The frame format, its constants and its CRC are the BSP's
+ * (bsp/common/link/link_frame.h, common/crc.c, which have no SDK dependency,
+ * so the PC build compiles the very same files). The encoder writes a frame
+ * in three pieces and the decoder follows link_frame.c's state machine with a
+ * buffer sized for our largest frame instead of the BSP's 4,160 bytes: the
+ * display has little RAM to spare. A longer frame (only the bootloader's
+ * update chunks are longer, and they never reach a running app) is dropped
+ * and the decoder resynchronizes, as it does after a bad CRC. */
 #include <string.h>
 #include "qog_link.h"
 #include "common/link/link_frame.h"
+#include "common/crc.h"
 
 #if (QOG_LINK_TXRING & (QOG_LINK_TXRING - 1)) || (QOG_LINK_RXRING & (QOG_LINK_RXRING - 1))
 #error QOG_LINK_TXRING and QOG_LINK_RXRING must be powers of two
@@ -33,14 +39,60 @@ static uint8_t  s_rx[QOG_LINK_RXRING];
 static uint32_t s_rx_head, s_rx_tail;
 static uint8_t  s_rx_expect;
 
-static fwog_link_rx_t s_dec;
-static uint8_t  s_frame[QOG_LINK_CHUNK + 2 + FWOG_LINK_OVERHEAD];
+/* decoder, link_frame.c's states */
+#define DEC_MAX (QOG_LINK_CHUNK + 2 < 64 ? 64 : QOG_LINK_CHUNK + 2)
+static struct {
+    uint8_t  state;
+    uint16_t len, got, crc;
+    uint8_t  buf[DEC_MAX];
+} s_dec;
 
+/* returns the payload length when a good frame completed, -1 otherwise */
+static int dec_byte(uint8_t b) {
+    switch (s_dec.state) {
+    case FWOG_LINK_ST_SOF:
+        if (b == FWOG_LINK_SOF) s_dec.state = FWOG_LINK_ST_LEN_LO;
+        return -1;
+    case FWOG_LINK_ST_LEN_LO:
+        s_dec.len = b;
+        s_dec.state = FWOG_LINK_ST_LEN_HI;
+        return -1;
+    case FWOG_LINK_ST_LEN_HI:
+        s_dec.len |= (uint16_t)(b << 8);
+        if (s_dec.len > DEC_MAX) { s_dec.state = FWOG_LINK_ST_SOF; return -1; }   /* resync */
+        s_dec.got = 0;
+        s_dec.state = s_dec.len ? FWOG_LINK_ST_PAYLOAD : FWOG_LINK_ST_CRC_LO;
+        return -1;
+    case FWOG_LINK_ST_PAYLOAD:
+        s_dec.buf[s_dec.got++] = b;
+        if (s_dec.got == s_dec.len) s_dec.state = FWOG_LINK_ST_CRC_LO;
+        return -1;
+    case FWOG_LINK_ST_CRC_LO:
+        s_dec.crc = b;
+        s_dec.state = FWOG_LINK_ST_CRC_HI;
+        return -1;
+    default: {
+        uint8_t hdr[2] = { (uint8_t)s_dec.len, (uint8_t)(s_dec.len >> 8) };
+        s_dec.crc |= (uint16_t)(b << 8);
+        s_dec.state = FWOG_LINK_ST_SOF;
+        if (fwog_crc16_xmodem_span(hdr, 2, s_dec.buf, s_dec.len) != s_dec.crc) {
+            qog_link_stats.crc_drops++;
+            return -1;
+        }
+        return s_dec.len;
+    }
+    }
+}
+
+/* [SOF][len16][payload][crc16], fwog_link_encode's bytes */
 static void send_payload(const uint8_t *payload, int len) {
-    size_t n = fwog_link_encode(s_frame, sizeof s_frame, payload, (size_t)len);
-    if (!n) return;
-    qog_link_hw_write(s_frame, (int)n);
-    qog_link_stats.wire_tx += (uint32_t)n;
+    uint8_t h[3] = { FWOG_LINK_SOF, (uint8_t)len, (uint8_t)(len >> 8) };
+    uint16_t crc = fwog_crc16_xmodem_span(h + 1, 2, payload, (size_t)len);
+    uint8_t c[2] = { (uint8_t)crc, (uint8_t)(crc >> 8) };
+    qog_link_hw_write(h, 3);
+    qog_link_hw_write(payload, len);
+    qog_link_hw_write(c, 2);
+    qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
 }
 
 static void send_small(uint8_t type, uint8_t a) {
@@ -133,12 +185,9 @@ static void poll_rx(void) {
     while ((n = qog_link_hw_read(buf, (int)sizeof buf)) > 0) {
         qog_link_stats.wire_rx += (uint32_t)n;
         for (int i = 0; i < n; i++) {
-            size_t len;
-            uint8_t st = s_dec.state;
-            if (fwog_link_rx_byte(&s_dec, buf[i], &len))
-                handle_payload(s_dec.buf, (int)len);
-            else if (st == FWOG_LINK_ST_CRC_HI)
-                qog_link_stats.crc_drops++;    /* a frame ended with a bad CRC */
+            int len = dec_byte(buf[i]);
+            if (len >= 0)
+                handle_payload(s_dec.buf, len);
         }
     }
 }
@@ -179,7 +228,7 @@ void qog_link_pump(void) {
 void qog_link_start(int role) {
     uint32_t last = 0;
     s_role = role;
-    fwog_link_rx_init(&s_dec);
+    s_dec.state = FWOG_LINK_ST_SOF;
     qog_link_hw_open(role);
     s_session = qog_link_hw_ms() * 2654435761u ^ (uint32_t)role ^ 0x51u;
     if (!s_session) s_session = 1;

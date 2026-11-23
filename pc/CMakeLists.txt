@@ -230,7 +230,11 @@ add_executable(quakeog_sv
     ${QOG_BSP_LINK})
 set(QOG_SPLIT_SV_DEFS ${QOG_SPLIT_DEFS})
 list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
-target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER)
+# -DQOG_SPLIT_SV_EXTRA=... and -DQOG_SPLIT_CL_EXTRA=... add flags, to measure
+# a half with the board's own (apps/quake/CMakeLists.txt)
+set(QOG_SPLIT_SV_EXTRA "" CACHE STRING "extra engine flags for quakeog_sv")
+set(QOG_SPLIT_CL_EXTRA "" CACHE STRING "extra engine flags for quakeog_cl")
+target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER ${QOG_SPLIT_SV_EXTRA})
 
 add_executable(quakeog_cl
     ${QOG_SPLIT_CL_ENGINE}
@@ -245,7 +249,7 @@ add_executable(quakeog_cl
     ${ROOT}/port/common/qog_rand.c
     ${ROOT}/platform/qog_input.c
     ${QOG_BSP_LINK})
-target_compile_definitions(quakeog_cl PRIVATE ${QOG_SPLIT_DEFS} QOG_NET_LINK QOG_SPLIT_CLIENT)
+target_compile_definitions(quakeog_cl PRIVATE ${QOG_SPLIT_DEFS} QOG_NET_LINK QOG_SPLIT_CLIENT ${QOG_SPLIT_CL_EXTRA})
 
 foreach(_t quakeog_sv quakeog_cl)
     target_include_directories(${_t} PRIVATE

@@ -56,7 +56,8 @@ void Con_DPrintf (char *fmt, ...)
 	va_start (argptr, fmt);
 	vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
-	Con_Printf ("%s", msg);
+	Sys_Printf ("%s", msg);		// not through Con_Printf: one 4 KB buffer on the stack, not two
+	Link_ServerPrint (msg, false);
 }
 
 void Con_SafePrintf (char *fmt, ...)

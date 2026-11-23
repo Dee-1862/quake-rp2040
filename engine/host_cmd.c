@@ -642,7 +642,15 @@ void Host_Loadgame_f (void)
 	Link_ForwardCommand (Cmd_Argc () > 1 ? va ("load %s", Cmd_Args ()) : "load");
 }
 #else
+#ifdef QOG_LOADGAME_STRSIZE
+// QuakeOG (Agent R): the split server has no z-buffer to borrow, so the
+// buffer is sized for the biggest brace block of a save instead (a fight
+// save of E1M1: the globals, 2,485 bytes). A bigger block still stops with
+// id's "Loadgame buffer overflow".
+#define LOADGAME_STRSIZE	QOG_LOADGAME_STRSIZE
+#else
 #define LOADGAME_STRSIZE	32768
+#endif
 #ifdef QOG_LOADGAME_ZTEMP
 // QuakeOG: the line buffer at the end of the z-buffer, which is free between
 // frames (r_shared.h): a load runs from the command buffer, before the

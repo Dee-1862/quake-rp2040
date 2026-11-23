@@ -51,6 +51,8 @@ See the GNU General Public License for more details.
 #include "qog_rand.h"
 
 #define LINK_TEXTMAX	4096	// console.c MAXPRINTMSG
+#define LINK_CLTEXT	256		// the client's text buffer: console lines it runs, pieces of the rest
+#define LINK_SVTEXT	1024	// the server's: a console line (Cbuf_Execute's line buffer)
 
 #ifndef QOG_SINGLE_PLAYER
 #error QOG_NET_LINK needs QOG_SINGLE_PLAYER
@@ -141,15 +143,19 @@ static void Link_Item (int kind, const void *data, int len)
 
 static void Link_ItemText (int kind, int flag, const char *text)
 {
-	static byte	buf[LINK_TEXTMAX + 2];
+	byte	h[4];
 	int		n = Q_strlen ((char *)text);
 
 	if (n > LINK_TEXTMAX)
 		n = LINK_TEXTMAX;
-	buf[0] = flag;
-	memcpy (buf + 1, text, n);
-	buf[n + 1] = 0;
-	Link_Item (kind, buf, n + 2);
+	Link_SyncState ();
+	h[0] = kind;		// written in pieces: no copy of the text
+	put16 (h + 1, n + 2);
+	h[3] = flag;
+	qog_link_write (h, 4);
+	qog_link_write (text, n);
+	h[0] = 0;
+	qog_link_write (h, 1);
 }
 
 static void Link_Skip (int len)
@@ -291,11 +297,16 @@ static void Link_ApplyCvar (int len)
 static unsigned	ls_frames, ls_last_tx, ls_last_rx;
 static unsigned	ls_sum_c2s, ls_sum_s2c, ls_max_c2s, ls_max_s2c, ls_max_frame;
 static double	ls_wait;	// seconds the client waited for the server
+static unsigned	ls_play, ls_play_c2s, ls_play_s2c;	// frames of play (no signon, level change or load)
+static qboolean	ls_signed;
 
 static void Link_Stats_f (void)
 {
 	qog_link_stats_t *s = &qog_link_stats;
 
+	if (ls_play)
+		Con_Printf ("link: %u frames of play, most wire bytes in one client to server %u, server to client %u\n",
+			ls_play, ls_play_c2s, ls_play_s2c);
 	Con_Printf ("link: %u frames, wire bytes per frame client to server avg %u max %u, server to client avg %u max %u (frame %u)\n",
 		ls_frames, ls_frames ? ls_sum_c2s / ls_frames : 0, ls_max_c2s,
 		ls_frames ? ls_sum_s2c / ls_frames : 0, ls_max_s2c, ls_max_frame);
@@ -363,9 +374,9 @@ static void Link_ApplySState (int len)
 // read the server's items until the one that ends this exchange
 static void Link_ClientWait (int endkind)
 {
-	static byte	text[LINK_TEXTMAX + 2];
+	static byte	text[LINK_CLTEXT + 1];	// short lines; prints and added text come in pieces
 	double	t0 = Sys_FloatTime ();
-	int		kind, len;
+	int		kind, len, flag, n;
 
 	link_waiting = true;
 	for (;;)
@@ -389,18 +400,29 @@ static void Link_ClientWait (int endkind)
 		case LK_CLOSE:		Link_Skip (len); if (link_sock) link_sock->driverdata = NULL; break;
 		case LK_CVAR:		Link_ApplyCvar (len); break;
 		case LK_PRINT:
-			Link_ReadText (text, sizeof(text), len);
-			if (text[0])
-				Con_SafePrintf ("%s", text + 1);
-			else
-				Con_Printf ("%s", text + 1);
-			break;
 		case LK_CBUF:
-			Link_ReadText (text, sizeof(text), len);
-			if (text[0])
-				Cbuf_InsertText ((char *)text + 1);
-			else
-				Cbuf_AddText ((char *)text + 1);
+			qog_link_read (text, 1);
+			flag = text[0];
+			len--;
+			if (kind == LK_CBUF && flag)
+			{	// an insert must be one piece (only id's QUAKE2 code inserts here)
+				Link_ReadText (text, sizeof(text), len);
+				Cbuf_InsertText ((char *)text);
+				break;
+			}
+			while (len > 0)
+			{
+				n = len > LINK_CLTEXT ? LINK_CLTEXT : len;
+				qog_link_read (text, n);
+				text[n] = 0;
+				len -= n;
+				if (kind == LK_CBUF)
+					Cbuf_AddText ((char *)text);
+				else if (flag)
+					Con_SafePrintf ("%s", text);
+				else
+					Con_Printf ("%s", text);
+			}
 			break;
 		case LK_CLEXEC:
 			Link_ReadText (text, sizeof(text), len);
@@ -470,6 +492,15 @@ void Link_ClientFrame (void)
 		ls_max_s2c = s2c;
 		ls_max_frame = host_framecount;
 	}
+	if (ls_signed && cls.signon == SIGNONS)
+	{	// a frame of play: signed on before and after it
+		ls_play++;
+		if (c2s > ls_play_c2s)
+			ls_play_c2s = c2s;
+		if (s2c > ls_play_s2c)
+			ls_play_s2c = s2c;
+	}
+	ls_signed = cls.signon == SIGNONS;
 }
 
 void Link_ForwardCommand (char *text)
@@ -624,7 +655,7 @@ static void Link_ServerFinish (int kind)
 // the client's part of the frame: items up to LK_TICK, console lines run as they come
 void Link_ServerWaitTick (void)
 {
-	static byte	text[LINK_TEXTMAX + 2];
+	static byte	text[LINK_SVTEXT + 2];
 	int		kind, len;
 
 	if (!link_started)
