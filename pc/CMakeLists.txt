@@ -164,3 +164,9 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
+
+# Renderer-only fly-through (Agent N): the board app apps/qogfly runs the same host.
+# -qogfly runs it standalone, qog_fly and qog_fly_ref compare it with the game.
+target_sources(quakeog_pc PRIVATE
+    ${ROOT}/port/common/qog_fly.c
+    ${ROOT}/port/pc/fly_pc.c)

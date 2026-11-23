@@ -259,6 +259,10 @@ int main(int argc, char **argv) {
     parms.cachedir = NULL;
 
     printf("QuakeOG PC: basedir %s, hunk %d KB\n", parms.basedir, heap_kb);
+    if (COM_CheckParm("-qogfly")) {   /* renderer-only fly-through (port/pc/fly_pc.c), never returns */
+        extern void qog_fly_pc_main(quakeparms_t *parms);
+        qog_fly_pc_main(&parms);
+    }
     Host_Init(&parms);   /* qog_mem is registered from VID_Init: commands must exist before init ends */
 
     int frame = 0;
@@ -276,6 +280,8 @@ int main(int argc, char **argv) {
         {
             extern void qog_tour_frame(void);
             qog_tour_frame();   /* PC test tool, idle unless qog_tour runs */
+            extern void qog_fly_frame(void);
+            qog_fly_frame();    /* PC test tool, idle unless qog_fly_ref runs */
         }
         /* host_framecount only advances on frames that really ran (Host_Frame
            skips calls to cap the rate), and the first real one runs quake.rc
