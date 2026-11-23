@@ -285,6 +285,23 @@ typedef struct edge_s
 } edge_t;
 #endif
 
+// QuakeOG: the z-buffer as short-lived memory (QOG_EDGES_IN_ZBUFFER,
+// QOG_EDGECACHE_ZBUFFER). VID_Init sets r_ztemp_base and r_ztemp_bytes to
+// the whole z-buffer allocation (a multiple of 4 bytes, 4-byte aligned).
+// Who owns its bytes when:
+//  - from the end of one R_RenderView to the start of the next: the first
+//    320 x 48 bytes hold the status bar rows with QOG_HUD_IN_ZBUFFER (while
+//    the 2D overlay is drawn and the frame is shown), the rest is free
+//  - R_RenderView up to R_EdgeDrawing: free
+//  - R_EdgeDrawing: the edge cache, the brush clip buffers and the edge
+//    table, see R_EdgeDrawing and R_QogScanRows
+//  - from R_EdgeDrawing's first drawn span to the end of R_RenderView: z
+#if defined(QOG_EDGES_IN_ZBUFFER) || defined(QOG_EDGECACHE_ZBUFFER)
+#define QOG_ZTEMP
+extern byte	*r_ztemp_base;
+extern int	r_ztemp_bytes;
+#endif
+
 #endif	// _R_SHARED_H_
 
 #endif	// GLQUAKE

@@ -22,6 +22,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef GLQUAKE
 #include "r_shared.h"
 
+// QuakeOG: QOG_EDGES_IN_ZBUFFER moves the edge table into the z-buffer and
+// the spans into the surface table, which replaces QOG_SPANS_IN_EDGES
+#ifdef QOG_EDGES_IN_ZBUFFER
+#undef QOG_SPANS_IN_EDGES
+#ifndef QOG_EDGE_T_PACKED
+#error "QOG_EDGES_IN_ZBUFFER needs QOG_EDGE_T_PACKED"
+#endif
+#endif
+
 #define ALIAS_BASE_SIZE_RATIO		(1.0 / 11.0)
 					// normalizing factor so player model works out to about
 					//  1 pixel per triangle
@@ -306,7 +315,25 @@ extern	edge_t	*r_edgesentinels;
 #define edge_tail		(r_edgesentinels[1])
 #define edge_aftertail	(r_edgesentinels[2])
 #define edge_sentinel	(r_edgesentinels[3])
-#ifdef QOG_SPANS_IN_EDGES
+#if defined(QOG_EDGES_IN_ZBUFFER)
+// QuakeOG: the edge table (sentinels first) lives at the end of the
+// z-buffer during R_EdgeDrawing, ZEDGE_BYTES of it, and nothing of it is on
+// the stack. R_ScanEdges keeps its spans in the surface table after the last
+// surface of the frame, up to r_spanpool_end. The table has room for
+// QOG_SPAN_MIN spans past the surface limit, so the limit is unchanged. See
+// R_EdgeDrawing (r_main.c) and R_QogScanRows (r_edge.c).
+#if !defined(QOG_ESPAN_T_PACKED)
+#error "QOG_EDGES_IN_ZBUFFER needs QOG_ESPAN_T_PACKED"
+#endif
+#ifndef QOG_SPAN_MIN
+#define QOG_SPAN_MIN	512
+#endif
+#define SPAN_RESERVE_SURFS	((QOG_SPAN_MIN * sizeof(espan_t) + sizeof(surf_t) - 1) / sizeof(surf_t))
+#define ZEDGE_BYTES(n)		((EDGE_SENTINELS + (n)) * (int)sizeof(edge_t))
+extern	byte	*r_spanpool_end;
+// measurements for the PC qog_rpeaks command (r_edge.c)
+extern	int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;
+#elif defined(QOG_SPANS_IN_EDGES)
 // QuakeOG: R_ScanEdges puts its spans in the edge table after the last edge
 // of the frame, up to r_spanpool_end. The table has room for QOG_SPAN_MIN
 // spans past the edge limit, so the edge limit is unchanged. Where the spans

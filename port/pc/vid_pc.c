@@ -187,6 +187,16 @@ static void cmd_qog_rpeaks(void) {
     Con_Printf("qog_rpeaks: edge+surf bytes %d, spans per frame %d, per flush %d, span room %d..%d\n",
                r_qog_peakedgesurfbytes, r_qog_peakframespans, r_qog_peakflushspans,
                r_qog_minspanroom, r_qog_peakspanroom);
+#ifdef QOG_EDGES_IN_ZBUFFER
+    {   /* QuakeOG: edges in the z-buffer (engine/r_edge.c, R_QogScanRows) */
+        extern int r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;
+        Con_Printf("qog_rpeaks: z edges, flushes before the edges %d, edge moves %d, "
+                   "stack fallbacks %d, most waiting spans %d\n",
+                   r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans);
+        if (Cmd_Argc() > 1)
+            r_qog_zforced = r_qog_zcompacts = r_qog_zstack = r_qog_peakheldspans = 0;
+    }
+#endif
     if (Cmd_Argc() > 1)
         r_qog_peakedgesurfbytes = r_qog_peakspanroom = r_qog_minspanroom =
             r_qog_peakframespans = r_qog_peakflushspans = 0;
@@ -346,6 +356,11 @@ void VID_Init(unsigned char *palette) {
 #ifdef QOG_HUD_IN_ZBUFFER
     r_zalias_row = QOG_PC_ZROWS;
 #endif
+#ifdef QOG_ZTEMP
+    /* QuakeOG: short-lived renderer tables use the z-buffer (engine/r_shared.h) */
+    r_ztemp_base = (byte *)zbuffer;
+    r_ztemp_bytes = ZBUFFER_BYTES & ~3;
+#endif
 #ifdef QOG_SURFCACHE
     surfcache_size = D_SurfaceCacheForRes(QOG_PC_W, QOG_PC_H);
 #else
@@ -398,6 +413,16 @@ void VID_Init(unsigned char *palette) {
 }
 
 void VID_Shutdown(void) {
+#ifdef QOG_EDGES_IN_ZBUFFER
+    {   /* QuakeOG: the whole run's figures for the edges in the z-buffer */
+        extern int r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans,
+                   r_qog_minspanroom, r_qog_peakframespans;
+        Sys_Printf("z edges at exit: flushes before the edges %d, edge moves %d, stack fallbacks %d, "
+                   "most waiting spans %d, least span room %d, most spans in a frame %d\n",
+                   r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans,
+                   r_qog_minspanroom, r_qog_peakframespans);
+    }
+#endif
     if (s_wnd) DestroyWindow(s_wnd);
     s_wnd = NULL;
 }
