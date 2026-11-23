@@ -558,13 +558,19 @@ void Host_Savegame_f (void)
 Host_Loadgame_f
 ===============
 */
+// QuakeOG: the 32 KB line buffer was on the stack. It now lives in a
+// temporary block on the high hunk, taken once for the header and again
+// after the map has loaded, so the level loads with that space free.
+#define LOADGAME_STRSIZE	32768
+
 void Host_Loadgame_f (void)
 {
 	char	name[MAX_OSPATH];
 	FILE	*f;
 	char	mapname[MAX_QPATH];
 	float	time, tfloat;
-	char	str[32768], *start;
+	char	*str, *start;	// QuakeOG: str was a stack array
+	int		himark;
 	int		i, r;
 	edict_t	*ent;
 	int		entnum;
@@ -604,7 +610,12 @@ void Host_Loadgame_f (void)
 		Con_Printf ("Savegame is version %i, not %i\n", version, SAVEGAME_VERSION);
 		return;
 	}
+	himark = Hunk_HighMark ();	// QuakeOG: buffer for the comment line
+	str = Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame");
+	if (!str)
+		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
 	fscanf (f, "%s\n", str);
+	Hunk_FreeToHighMark (himark);	// QuakeOG: free while the map loads
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		fscanf (f, "%f\n", &spawn_parms[i]);
 // this silliness is so we can load 1.06 save files, which have float skill values
@@ -636,6 +647,11 @@ void Host_Loadgame_f (void)
 	sv.paused = true;		// pause until all clients connect
 	sv.loadgame = true;
 
+	himark = Hunk_HighMark ();	// QuakeOG: buffer for the rest of the file
+	str = Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame");
+	if (!str)
+		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
+
 // load the light styles
 
 	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
@@ -649,7 +665,7 @@ void Host_Loadgame_f (void)
 	entnum = -1;		// -1 is the globals
 	while (!feof(f))
 	{
-		for (i=0 ; i<sizeof(str)-1 ; i++)
+		for (i=0 ; i<LOADGAME_STRSIZE-1 ; i++)	// QuakeOG: was sizeof(str)
 		{
 			r = fgetc (f);
 			if (r == EOF || !r)
@@ -661,7 +677,7 @@ void Host_Loadgame_f (void)
 				break;
 			}
 		}
-		if (i == sizeof(str)-1)
+		if (i == LOADGAME_STRSIZE-1)	// QuakeOG: was sizeof(str)
 			Sys_Error ("Loadgame buffer overflow");
 		str[i] = 0;
 		start = str;
@@ -695,6 +711,7 @@ void Host_Loadgame_f (void)
 	sv.time = time;
 
 	fclose (f);
+	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the line buffer
 
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		svs.clients->spawn_parms[i] = spawn_parms[i];
