@@ -29,7 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define	PAINTBUFFER_SIZE	512
 portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
-int		snd_scaletable[32][256];
+// QuakeOG: snd_scaletable removed, see SND_PaintChannelFrom8
 int 	*snd_p, snd_linear_count, snd_vol;
 short	*snd_out;
 
@@ -333,11 +333,7 @@ void S_PaintChannels(int endtime)
 
 void SND_InitScaletable (void)
 {
-	int		i, j;
-	
-	for (i=0 ; i<32 ; i++)
-		for (j=0 ; j<256 ; j++)
-			snd_scaletable[i][j] = ((signed char)j) * i * 8;
+	// QuakeOG: nothing to build, the mixer multiplies instead
 }
 
 
@@ -346,7 +342,7 @@ void SND_InitScaletable (void)
 void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 {
 	int 	data;
-	int		*lscale, *rscale;
+	int		lmul, rmul;
 	unsigned char *sfx;
 	int		i;
 
@@ -355,8 +351,11 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 	if (ch->rightvol > 255)
 		ch->rightvol = 255;
 		
-	lscale = snd_scaletable[ch->leftvol >> 3];
-	rscale = snd_scaletable[ch->rightvol >> 3];
+	// QuakeOG: id looked these up in snd_scaletable[vol >> 3][byte], which
+	// held (signed char)byte * (vol >> 3) * 8. Multiplying gives the same
+	// integers without the 32 KB table.
+	lmul = (ch->leftvol >> 3) * 8;
+	rmul = (ch->rightvol >> 3) * 8;
 
 	if (sc->flash)
 	{	// QuakeOG: unsigned samples in flash; flipping the top bit gives the
@@ -364,9 +363,9 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 		sfx = sc->flash + ch->pos;
 		for (i=0 ; i<count ; i++)
 		{
-			data = sfx[i] ^ 0x80;
-			paintbuffer[i].left += lscale[data];
-			paintbuffer[i].right += rscale[data];
+			data = (signed char)(sfx[i] ^ 0x80);
+			paintbuffer[i].left += data * lmul;
+			paintbuffer[i].right += data * rmul;
 		}
 		ch->pos += count;
 		return;
@@ -376,9 +375,9 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 
 	for (i=0 ; i<count ; i++)
 	{
-		data = sfx[i];
-		paintbuffer[i].left += lscale[data];
-		paintbuffer[i].right += rscale[data];
+		data = (signed char)sfx[i];
+		paintbuffer[i].left += data * lmul;
+		paintbuffer[i].right += data * rmul;
 	}
 	
 	ch->pos += count;
