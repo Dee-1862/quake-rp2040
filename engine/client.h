@@ -122,7 +122,14 @@ typedef struct
 
 // personalization data sent to server	
 	char		mapstring[MAX_QPATH];
+#ifdef QOG_STATIC_TRIM
+	// QuakeOG: built from the arguments of one console line, which must fit
+	// Cbuf_Execute's 1024-byte line buffer, each argument followed by one
+	// space where the line had at least one separator before it
+	char		spawnparms[1024];	// to restart a level
+#else
 	char		spawnparms[MAX_MAPSTRING];	// to restart a level
+#endif
 
 // demo loop control
 	int			demonum;		// -1 = don't play demos

@@ -99,6 +99,7 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_TRANSLATE_ONDRAW
     QOG_CBUF_INPLACE
     QOG_LOOP_INPLACE
+    QOG_STATIC_TRIM
     QOG_CMDBUF_SIZE=4096            # board only, command buffer, measured peak 2158 B (PC keeps 8192 for test scripts)
     QOG_ZONE_BOARD_KB=16)           # board only, zone, peak 7920 B, 12 KB fragmented (PC keeps 24 KB)
 

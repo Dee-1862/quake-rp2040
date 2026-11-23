@@ -21,7 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "net_loop.h"
 
-net_driver_t net_drivers[MAX_NET_DRIVERS] =
+net_driver_t net_drivers[NET_DRIVER_SLOTS] =	// QuakeOG: was MAX_NET_DRIVERS
 {
 	{
 	"Loopback",
@@ -42,5 +42,5 @@ net_driver_t net_drivers[MAX_NET_DRIVERS] =
 };
 int net_numdrivers = 1;
 
-net_landriver_t	net_landrivers[MAX_NET_DRIVERS];
+net_landriver_t	net_landrivers[NET_LANDRIVER_SLOTS];	// QuakeOG: was MAX_NET_DRIVERS
 int net_numlandrivers = 0;
