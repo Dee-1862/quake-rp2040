@@ -36,7 +36,32 @@ prstack_t	pr_stack[MAX_STACK_DEPTH];
 int			pr_depth;
 
 #define	LOCALSTACK_SIZE		2048
+#ifdef QOG_LOCALSTACK_FROM_PROGS
+// QuakeOG: sized per progs on the hunk. Locals are saved for at most
+// MAX_STACK_DEPTH-1 nested calls (the depth check comes first), each at most
+// the largest function's locals, so this never overflows where id's 2048
+// would not. Shareware progs: 16 locals, so 496 ints instead of 2048.
+int			*localstack;
+int			localstack_size;
+
+void PR_SizeLocalStack (void)
+{
+	int		i, most;
+
+	most = 1;
+	for (i=0 ; i<progs->numfunctions ; i++)
+		if (pr_functions[i].locals > most)
+			most = pr_functions[i].locals;
+	localstack_size = (MAX_STACK_DEPTH - 1) * most;
+	if (localstack_size > LOCALSTACK_SIZE)
+		localstack_size = LOCALSTACK_SIZE;
+	localstack = Hunk_AllocName (localstack_size * sizeof(int), "localstk");
+}
+#else
 int			localstack[LOCALSTACK_SIZE];
+#define	localstack_size		LOCALSTACK_SIZE
+void PR_SizeLocalStack (void) {}
+#endif
 int			localstack_used;
 
 
@@ -308,7 +333,7 @@ int PR_EnterFunction (dfunction_t *f)
 
 // save off any locals that the new function steps on
 	c = f->locals;
-	if (localstack_used + c > LOCALSTACK_SIZE)
+	if (localstack_used + c > localstack_size)	// QuakeOG: was LOCALSTACK_SIZE
 		PR_RunError ("PR_ExecuteProgram: locals stack overflow\n");
 
 	for (i=0 ; i < c ; i++)
