@@ -195,11 +195,34 @@ double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
 uint8_t qog_rp2040_buttons;
 
 #ifndef QOG_SYS_NO_MAIN
+#ifdef QOG_STACK_KB
+/* QuakeOG: the game's stack, in main RAM so the link counts it (the SDK's
+   default is 2 KB in a scratch bank). Sized from the deepest call chain
+   that tools/stack_chain.py finds (apps/quake/CMakeLists.txt). Thread mode
+   runs on MSP, so interrupts use this stack too, as in apps/qogfly. */
+static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
+
+static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
+    __asm volatile ("mov sp, r0\n\tbx r1\n");
+}
+
+static void __attribute__((noreturn)) game_main(void);
+
 int main(void) {
+    board_init();
+    run_on_stack(s_stack + sizeof s_stack / sizeof s_stack[0], game_main);
+}
+
+static void __attribute__((noreturn)) game_main(void) {
+#else
+int main(void) {
+#endif
     static char *argv[] = { "quake", "-nosound" };
     quakeparms_t parms;
 
+#ifndef QOG_STACK_KB
     board_init();
+#endif
     memset(&parms, 0, sizeof parms);
     COM_InitArgv(2, argv);
     parms.argc = com_argc;
