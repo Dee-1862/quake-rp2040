@@ -104,7 +104,14 @@ static adivtab_t	adivtab[32*32] = {
 #include "adivtab.h"
 };
 
+#ifdef QOG_NO_ROWTABLES
+// QuakeOG: skin rows are computed (one multiply) instead of read from the
+// 480-entry skintable (1.9 KB of RAM). Same addresses.
+#define D_SKINROW(t)	(skinstart + (t) * skinwidth)
+#else
 byte	*skintable[MAX_LBM_HEIGHT];
+#define D_SKINROW(t)	skintable[t]
+#endif
 int		skinwidth;
 byte	*skinstart;
 
@@ -162,15 +169,15 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 			(fv->v[1] < r_refdef.vrectbottom))
 		{
 			z = fv->v[5]>>16;
-			zbuf = zspantable[fv->v[1]] + fv->v[0];
+			zbuf = D_ZSPANTABLE(fv->v[1]) + fv->v[0];	// QuakeOG: QOG_NO_ROWTABLES
 			if (z >= *zbuf)
 			{
 				int		pix;
 				
 				*zbuf = z;
-				pix = skintable[fv->v[3]>>16][fv->v[2]>>16];
+				pix = D_SKINROW(fv->v[3]>>16)[fv->v[2]>>16];
 				pix = ((byte *)acolormap)[pix + (fv->v[4] & 0xFF00) ];
-				d_viewbuffer[d_scantable[fv->v[1]] + fv->v[0]] = pix;
+				d_viewbuffer[D_SCANTABLE(fv->v[1]) + fv->v[0]] = pix;
 			}
 		}
 	}
@@ -372,14 +379,14 @@ split:
 
 
 	z = new[5]>>16;
-	zbuf = zspantable[new[1]] + new[0];
+	zbuf = D_ZSPANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
 	if (z >= *zbuf)
 	{
 		int		pix;
 		
 		*zbuf = z;
-		pix = d_pcolormap[skintable[new[3]>>16][new[2]>>16]];
-		d_viewbuffer[d_scantable[new[1]] + new[0]] = pix;
+		pix = d_pcolormap[D_SKINROW(new[3]>>16)[new[2]>>16]];
+		d_viewbuffer[D_SCANTABLE(new[1]) + new[0]] = pix;
 	}
 
 nodraw:
@@ -406,9 +413,11 @@ void D_PolysetUpdateTables (void)
 	{
 		skinwidth = r_affinetridesc.skinwidth;
 		skinstart = r_affinetridesc.pskin;
+#ifndef QOG_NO_ROWTABLES
 		s = skinstart;
 		for (i=0 ; i<MAX_LBM_HEIGHT ; i++, s+=skinwidth)
 			skintable[i] = s;
+#endif
 	}
 }
 
@@ -1064,13 +1073,13 @@ split:
 	new[4] = (lp1[4] + lp2[4]) >> 1;
 
 // draw the point
-	ofs = d_scantable[new[1]] + new[0];
+	ofs = D_SCANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
 	if (new[5] > d_pzbuffer[ofs])
 	{
 		int		pix;
 		
 		d_pzbuffer[ofs] = new[5];
-		pix = skintable[new[3]>>16][new[2]>>16];
+		pix = D_SKINROW(new[3]>>16)[new[2]>>16];
 //		pix = ((byte *)acolormap)[pix + (new[4] & 0xFF00)];
 		d_viewbuffer[ofs] = pix;
 	}

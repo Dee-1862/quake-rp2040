@@ -97,7 +97,17 @@ extern short *d_pzbuffer;
 extern unsigned int d_zrowbytes, d_zwidth;
 
 extern int	*d_pscantable;
+#ifdef QOG_NO_ROWTABLES
+// QuakeOG: row offsets are computed (one multiply) instead of read from
+// d_scantable and zspantable (1.6 KB of RAM). Same values.
+extern int	d_scanrowbytes;
+#define D_SCANTABLE(v)		((v) * d_scanrowbytes)
+#define D_ZSPANTABLE(v)		(d_pzbuffer + (v) * (int)d_zwidth)
+#else
 extern int	d_scantable[MAXHEIGHT];
+#define D_SCANTABLE(v)		d_scantable[v]
+#define D_ZSPANTABLE(v)		zspantable[v]
+#endif
 
 extern int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 
@@ -105,7 +115,9 @@ extern int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
 
 extern pixel_t	*d_viewbuffer;
 
+#ifndef QOG_NO_ROWTABLES
 extern short	*zspantable[MAXHEIGHT];
+#endif
 
 extern int		d_minmip;
 extern float	d_scalemip[3];

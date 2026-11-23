@@ -85,7 +85,7 @@ void D_DrawParticle (particle_t *pparticle)
 	}
 
 	pz = d_pzbuffer + (d_zwidth * v) + u;
-	pdest = d_viewbuffer + d_scantable[v] + u;
+	pdest = d_viewbuffer + D_SCANTABLE(v) + u;	// QuakeOG: QOG_NO_ROWTABLES
 	izi = (int)(zi * 0x8000);
 
 	pix = izi >> d_pix_shift;

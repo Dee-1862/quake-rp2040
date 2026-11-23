@@ -140,4 +140,5 @@ add_custom_command(OUTPUT ${PROGS_AOT} APPEND
 # Video memory and renderer tables (Agent H). The QOG_ flags that change the
 # picture (docs/changes.md) are not in this list.
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_CONST_RTABLES)              # turbulence, normal and edge tables as constants in flash
+    QOG_CONST_RTABLES               # turbulence, normal and edge tables as constants in flash
+    QOG_NO_ROWTABLES)               # screen, z and skin row offsets computed, not tabled (3.5 KB)
