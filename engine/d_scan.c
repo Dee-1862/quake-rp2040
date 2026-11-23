@@ -483,7 +483,7 @@ void D_DrawZSpans (espan_t *pspan)
 {
 	int				count, doublecount, izistep;
 	int				izi;
-	short			*pdest;
+	d_zval_t		*pdest;
 	unsigned		ltemp;
 	double			zi;
 	float			du, dv;
@@ -491,6 +491,25 @@ void D_DrawZSpans (espan_t *pspan)
 // FIXME: check for clamping/range problems
 // we count on FP exceptions being turned off to avoid range problems
 	izistep = (int)(d_zistepu * 0x8000 * 0x10000);
+#ifdef QOG_ZBUFFER8
+	(void)ltemp; (void)doublecount;
+	do
+	{
+		pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+		count = pspan->count;
+		du = (float)pspan->u;
+		dv = (float)pspan->v;
+		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
+		izi = (int)(zi * 0x8000 * 0x10000);
+		do
+		{
+			int	z = izi >> 16;
+			*pdest++ = D_ZQ(z);
+			izi += izistep;
+		} while (--count > 0);
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));
+	return;
+#endif
 
 	do
 	{

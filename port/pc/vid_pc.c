@@ -50,7 +50,17 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 #else
 #define QOG_PC_ZROWS QOG_PC_H
 #endif
-#define ZBUFFER_BYTES   (QOG_PC_W * QOG_PC_ZROWS * 2)
+/* z-buffer width and rows. QuakeOG: with QOG_RENDER_SCALE (changes the
+   picture, off in the shipped flag lists) the 3D view is drawn smaller and
+   the z-buffer only covers it (QOG_ZBUFFER_VIEW, engine/d_local.h). */
+#ifdef QOG_RENDER_SCALE
+#define QOG_PC_ZW ((QOG_PC_W * QOG_RENDER_SCALE / 100) & ~7)
+#define QOG_PC_ZH ((QOG_PC_ZROWS * QOG_RENDER_SCALE / 100) & ~1)
+#else
+#define QOG_PC_ZW QOG_PC_W
+#define QOG_PC_ZH QOG_PC_ZROWS
+#endif
+#define ZBUFFER_BYTES   (QOG_PC_ZW * QOG_PC_ZH * (int)sizeof(d_zval_t))
 #define FRAME_BYTES     (QOG_PC_W * QOG_PC_H)
 #ifdef QOG_HUD_IN_ZBUFFER
 /* QuakeOG: the frame's rows below the 3D view (the status bar) are the first
@@ -64,11 +74,11 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 static __declspec(align(16)) byte video_mem[QOG_PC_W * QOG_PC_ZROWS +
                                             (ZBUFFER_BYTES > HUD_BYTES ? ZBUFFER_BYTES : HUD_BYTES)];
 #define vid_buffer      video_mem
-#define zbuffer         ((short *)(video_mem + QOG_PC_W * QOG_PC_ZROWS))
+#define zbuffer         ((d_zval_t *)(video_mem + QOG_PC_W * QOG_PC_ZROWS))
 #define VIDEO_BYTES     ((int)sizeof video_mem)
 #else
 static byte  vid_buffer[FRAME_BYTES];
-static short zbuffer[QOG_PC_W * QOG_PC_ZROWS];
+static d_zval_t zbuffer[QOG_PC_ZW * QOG_PC_ZH];
 #define VIDEO_BYTES     ((int)(sizeof vid_buffer + sizeof zbuffer))
 #endif
 static byte *surfcache;
@@ -330,6 +340,9 @@ void VID_Init(unsigned char *palette) {
     vid.rowbytes = vid.conrowbytes = QOG_PC_W;
 
     d_pzbuffer = zbuffer;
+#if defined(QOG_ZBUFFER_VIEW) || defined(QOG_RENDER_SCALE)
+    d_zbase = zbuffer;
+#endif
 #ifdef QOG_HUD_IN_ZBUFFER
     r_zalias_row = QOG_PC_ZROWS;
 #endif

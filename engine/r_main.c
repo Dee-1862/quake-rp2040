@@ -457,6 +457,40 @@ Called every time the vid structure or r_refdef changes.
 Guaranteed to be called before the first refresh
 ===============
 */
+#ifdef QOG_RENDER_SCALE
+vrect_t		r_qog_screenvrect;	// QuakeOG: where the scaled view goes on screen
+
+/*
+===============
+R_QogScaleUp
+
+QuakeOG: enlarges the view drawn in r_refdef.vrect to r_qog_screenvrect
+(same top left corner) in place, nearest pixel. Rows and pixels are written
+from the last to the first, and each one reads a source pixel at or before
+its own position that is not yet overwritten.
+===============
+*/
+static void R_QogScaleUp (void)
+{
+	vrect_t	*src = &r_refdef.vrect, *dst = &r_qog_screenvrect;
+	short	xmap[MAXWIDTH];
+	byte	*row, *srow;
+	int		x, y;
+
+	if (src->width == dst->width && src->height == dst->height)
+		return;
+	for (x = 0 ; x < dst->width ; x++)
+		xmap[x] = x * src->width / dst->width;
+	for (y = dst->height - 1 ; y >= 0 ; y--)
+	{
+		srow = vid.buffer + (src->y + y * src->height / dst->height) * vid.rowbytes + src->x;
+		row = vid.buffer + (dst->y + y) * vid.rowbytes + dst->x;
+		for (x = dst->width - 1 ; x >= 0 ; x--)
+			row[x] = srow[xmap[x]];
+	}
+}
+#endif
+
 void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 {
 	int		i;
@@ -465,6 +499,18 @@ void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 	r_viewchanged = true;
 
 	R_SetVrect (pvrect, &r_refdef.vrect, lineadj);
+
+#ifdef QOG_RENDER_SCALE
+	// QuakeOG (changes the picture, off in the shipped flag lists): the 3D
+	// view is drawn at QOG_RENDER_SCALE percent of its screen size into the
+	// top left of its screen rectangle, and R_QogScaleUp enlarges it in place
+	// before the 2D overlay is drawn at full resolution. The field of view is
+	// unchanged. Fewer pixels to draw, and with QOG_ZBUFFER_VIEW the z-buffer
+	// only covers the smaller view.
+	r_qog_screenvrect = r_refdef.vrect;
+	r_refdef.vrect.width = (r_refdef.vrect.width * QOG_RENDER_SCALE / 100) & ~7;
+	r_refdef.vrect.height = (r_refdef.vrect.height * QOG_RENDER_SCALE / 100) & ~1;
+#endif
 
 	r_refdef.horizontalFieldOfView = 2.0 * tan (r_refdef.fov_x/360*M_PI);
 	r_refdef.fvrectx = (float)r_refdef.vrect.x;
@@ -1171,8 +1217,21 @@ SetVisibilityByPassages ();
 	if (r_dspeeds.value)
 		dp_time2 = Sys_FloatTime ();
 
+#ifdef QOG_RENDER_SCALE
+	R_QogScaleUp ();
+	if (r_dowarp)
+	{
+		// QuakeOG: the scaled up view fills the screen rectangle, so warp that
+		vrect_t	drawn = r_refdef.vrect;
+
+		r_refdef.vrect = r_qog_screenvrect;
+		D_WarpScreen ();
+		r_refdef.vrect = drawn;
+	}
+#else
 	if (r_dowarp)
 		D_WarpScreen ();
+#endif
 
 	V_SetContentsColor (r_viewleaf->contents);
 

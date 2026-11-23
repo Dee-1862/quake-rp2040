@@ -31,12 +31,13 @@ D_DrawZPoint
 void D_DrawZPoint (void)
 {
 	byte	*pdest;
-	short	*pz;
+	d_zval_t	*pz;
 	int		izi;
 	
 	pz = d_pzbuffer + (d_zwidth * r_zpointdesc.v) + r_zpointdesc.u;
 	pdest = d_viewbuffer + D_SCANTABLE(r_zpointdesc.v) + r_zpointdesc.u;	// QuakeOG: QOG_NO_ROWTABLES
 	izi = (int)(r_zpointdesc.zi * 0x8000);
+	izi = D_ZQ(izi);	// QuakeOG: QOG_ZBUFFER8
 
 	if (*pz <= izi)
 	{

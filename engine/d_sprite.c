@@ -43,7 +43,7 @@ void D_SpriteDrawSpans (sspan_t *pspan)
 	float		sdivz, tdivz, zi, z, du, dv, spancountminus1;
 	float		sdivz8stepu, tdivz8stepu, zi8stepu;
 	byte		btemp;
-	short		*pz;
+	d_zval_t	*pz;
 
 	sstep = 0;	// keep compiler happy
 	tstep = 0;	// ditto
@@ -163,9 +163,12 @@ void D_SpriteDrawSpans (sspan_t *pspan)
 				btemp = *(pbase + (s >> 16) + (t >> 16) * cachewidth);
 				if (btemp != 255)
 				{
-					if (*pz <= (izi >> 16))
+					int	z = izi >> 16;
+
+					z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
+					if (*pz <= z)
 					{
-						*pz = izi >> 16;
+						*pz = z;
 						*pdest = btemp;
 					}
 				}

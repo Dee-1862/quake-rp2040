@@ -57,7 +57,7 @@ void D_DrawParticle (particle_t *pparticle)
 	vec3_t	local, transformed;
 	float	zi;
 	byte	*pdest;
-	short	*pz;
+	d_zval_t	*pz;
 	int		i, izi, pix, count, u, v;
 
 // transform point
@@ -94,6 +94,8 @@ void D_DrawParticle (particle_t *pparticle)
 		pix = d_pix_min;
 	else if (pix > d_pix_max)
 		pix = d_pix_max;
+
+	izi = D_ZQ(izi);	// QuakeOG: QOG_ZBUFFER8 (after the size, which uses id's value)
 
 	switch (pix)
 	{

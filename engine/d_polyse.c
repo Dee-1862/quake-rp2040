@@ -32,7 +32,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct {
 	void			*pdest;
-	short			*pz;
+	d_zval_t		*pz;
 	int				count;
 	byte			*ptex;
 	int				sfrac, tfrac, light, zi;
@@ -86,7 +86,7 @@ spanpackage_t			*a_spans;
 spanpackage_t			*d_pedgespanpackage;
 static int				ystart;
 byte					*d_pdest, *d_ptex;
-short					*d_pz;
+d_zval_t				*d_pz;
 int						d_sfrac, d_tfrac, d_light, d_zi;
 int						d_ptexextrastep, d_sfracextrastep;
 int						d_tfracextrastep, d_lightextrastep, d_pdestextrastep;
@@ -159,7 +159,7 @@ D_PolysetDrawFinalVerts
 void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 {
 	int		i, z;
-	short	*zbuf;
+	d_zval_t	*zbuf;
 
 	for (i=0 ; i<numverts ; i++, fv++)
 	{
@@ -169,6 +169,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 			(fv->v[1] < r_refdef.vrectbottom))
 		{
 			z = fv->v[5]>>16;
+			z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
 			zbuf = D_ZSPANTABLE(fv->v[1]) + fv->v[0];	// QuakeOG: QOG_NO_ROWTABLES
 			if (z >= *zbuf)
 			{
@@ -324,7 +325,7 @@ void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 	int		d;
 	int		new[6];
 	int		z;
-	short	*zbuf;
+	d_zval_t	*zbuf;
 
 	d = lp2[0] - lp1[0];
 	if (d < -1 || d > 1)
@@ -379,6 +380,7 @@ split:
 
 
 	z = new[5]>>16;
+	z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
 	zbuf = D_ZSPANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
 	if (z >= *zbuf)
 	{
@@ -630,7 +632,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 	int		lsfrac, ltfrac;
 	int		llight;
 	int		lzi;
-	short	*lpz;
+	d_zval_t	*lpz;
 
 	do
 	{
@@ -659,12 +661,23 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 			do
 			{
+#ifdef QOG_ZBUFFER8
+				int	lz = lzi >> 16;
+
+				lz = D_ZQ(lz);
+				if (lz >= *lpz)
+				{
+					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
+					*lpz = lz;
+				}
+#else
 				if ((lzi >> 16) >= *lpz)
 				{
 					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
 // gel mapping					*lpdest = gelmap[*lpdest];
 					*lpz = lzi >> 16;
 				}
+#endif
 				lpdest++;
 				lzi += r_zistepx;
 				lpz++;
