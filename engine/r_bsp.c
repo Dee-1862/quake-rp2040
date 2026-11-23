@@ -41,12 +41,22 @@ int				r_currentbkey;
 
 typedef enum {touchessolid, drawnode, nodrawnode} solidstate_t;
 
+// QuakeOG: these hold one brush entity polygon after clipping against the
+// world, and are reset for every polygon. Shareware peaks are 22 vertices
+// and 74 edges over all three demos (qog_mem prints them). Overflow only
+// drops that fragment with a console message, as in id's code.
+#ifdef QOG_MAX_BMODEL_VERTS
+#define MAX_BMODEL_VERTS	QOG_MAX_BMODEL_VERTS
+#define MAX_BMODEL_EDGES	QOG_MAX_BMODEL_EDGES
+#else
 #define MAX_BMODEL_VERTS	500			// 6K
 #define MAX_BMODEL_EDGES	1000		// 12K
+#endif
 
 static mvertex_t	*pbverts;
 static bedge_t		*pbedges;
 static int			numbverts, numbedges;
+int					r_qog_peakbverts, r_qog_peakbedges;	// QuakeOG: high-water marks, printed by qog_mem
 
 static mvertex_t	*pfrontenter, *pfrontexit;
 
@@ -392,6 +402,12 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 				pbedge[j-1].pnext = NULL;	// mark end of edges
 
 				R_RecursiveClipBPoly (pbedge, currententity->topnode, psurf);
+
+				// QuakeOG: high-water marks, to size bverts and bedges from measurements
+				if (numbverts > r_qog_peakbverts)
+					r_qog_peakbverts = numbverts;
+				if (numbedges > r_qog_peakbedges)
+					r_qog_peakbedges = numbedges;
 			}
 			else
 			{

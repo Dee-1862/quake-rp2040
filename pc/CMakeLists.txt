@@ -97,7 +97,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_STATICS_ON_HUNK             # static entities and efrags from the hunk per level, peaks 44 and 197 (id 33 KB static)
     QOG_ZONE_KB=24                  # zone, measured peak 7.4 KB plus an 8 KB command buffer copy (id 48 KB)
     QOG_CONST_LOCALMODELS           # inline model names as a constant table in flash (id 1.25 KB RAM)
-    QOG_SURF_T_PACKED)              # edge-drawing surface entries 52 bytes, not id's assembly-padded 64
+    QOG_SURF_T_PACKED               # edge-drawing surface entries 52 bytes, not id's assembly-padded 64
+    QOG_MAX_BMODEL_VERTS=128        # one clipped brush entity polygon, measured peak 22 (id 500)
+    QOG_MAX_BMODEL_EDGES=256)       #   and 74 edges (id 1000)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}
