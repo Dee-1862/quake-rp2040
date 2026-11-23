@@ -1126,7 +1126,14 @@ int SV_EdictsForMap (char *entities)
 		n++;
 	}
 	sv_edictestimate = n;
+#ifdef QOG_EDICT_MARGIN_BOARD
+	// QuakeOG: board-only margin (apps/quake/CMakeLists.txt). The fight tour
+	// of every map never went more than 35 slots past the estimate, and a
+	// full array still reuses the slot freed longest ago (QOG_EDICT_REUSE).
+	n += svs.maxclients + QOG_EDICT_MARGIN_BOARD;
+#else
 	n += svs.maxclients + QOG_EDICT_MARGIN;
+#endif
 	if (n > MAX_EDICTS)
 		n = MAX_EDICTS;
 	Con_DPrintf ("%i edicts for this map\n", n);

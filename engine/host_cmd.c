@@ -562,6 +562,20 @@ Host_Loadgame_f
 // temporary block on the high hunk, taken once for the header and again
 // after the map has loaded, so the level loads with that space free.
 #define LOADGAME_STRSIZE	32768
+#ifdef QOG_LOADGAME_ZTEMP
+// QuakeOG: the line buffer at the end of the z-buffer, which is free between
+// frames (r_shared.h): a load runs from the command buffer, before the
+// frame is drawn, and while it runs the client is not signed on, so no 3D
+// view is drawn. The status bar rows at the start of the z-buffer stay
+// clear. A z-buffer too small for both takes the high hunk block as before.
+extern byte	*r_ztemp_base;
+extern int	r_ztemp_bytes;
+#define LOADGAME_HUDBYTES	(320 * 48)
+#define LOADGAME_ZROOM		(r_ztemp_base && r_ztemp_bytes >= LOADGAME_STRSIZE + LOADGAME_HUDBYTES)
+#define LOADGAME_ALLOC()	(LOADGAME_ZROOM ? (char *)(r_ztemp_base + r_ztemp_bytes - LOADGAME_STRSIZE) : (char *)Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame"))
+#else
+#define LOADGAME_ALLOC()	((char *)Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame"))
+#endif
 
 void Host_Loadgame_f (void)
 {
@@ -611,7 +625,7 @@ void Host_Loadgame_f (void)
 		return;
 	}
 	himark = Hunk_HighMark ();	// QuakeOG: buffer for the comment line
-	str = Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame");
+	str = LOADGAME_ALLOC ();
 	if (!str)
 		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
 	fscanf (f, "%s\n", str);
@@ -648,7 +662,7 @@ void Host_Loadgame_f (void)
 	sv.loadgame = true;
 
 	himark = Hunk_HighMark ();	// QuakeOG: buffer for the rest of the file
-	str = Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame");
+	str = LOADGAME_ALLOC ();
 	if (!str)
 		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
 

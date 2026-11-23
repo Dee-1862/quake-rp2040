@@ -225,6 +225,10 @@ CL_ParseServerInfo
 // and freed before the level starts.
 static char	*cl_precachenames;
 static int	cl_precacheleft;
+#ifdef QOG_PRECACHE_ZTEMP
+extern byte	*r_ztemp_base;	// QuakeOG: the z-buffer as temporary memory (r_shared.h)
+extern int	r_ztemp_bytes;
+#endif
 
 static char *CL_KeepPrecacheName (char *str)
 {
@@ -293,6 +297,15 @@ void CL_ParseServerInfo (void)
 // QuakeOG: temporary block for the precache names, freed below
 	himark = Hunk_HighMark ();
 	cl_precacheleft = net_message.cursize - msg_readcount + 1;
+#ifdef QOG_PRECACHE_ZTEMP
+	// QuakeOG: at the end of the z-buffer, which is free between frames
+	// (r_shared.h). Server info is read before the frame is drawn, and until
+	// the client is signed on no 3D view is drawn. The status bar rows at the
+	// start of the z-buffer stay clear.
+	if (r_ztemp_base && r_ztemp_bytes >= ((cl_precacheleft + 3) & ~3) + 320 * 48)
+		cl_precachenames = (char *)r_ztemp_base + r_ztemp_bytes - ((cl_precacheleft + 3) & ~3);
+	else
+#endif
 	cl_precachenames = Hunk_HighAllocName (cl_precacheleft, "precache");
 	if (!cl_precachenames)
 		Sys_Error ("CL_ParseServerInfo: no room for the precache names");

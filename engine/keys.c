@@ -44,8 +44,14 @@ keydest_t	key_dest;
 int		key_count;			// incremented every key event
 
 char	*keybindings[256];
+#ifdef QOG_KEYS_BYTES
+// QuakeOG: true or false in a byte each, not in a 4-byte enum (2.3 KB)
+byte	consolekeys[256];	// if true, can't be rebound while in console
+byte	menubound[256];	// if true, can't be rebound while in menu
+#else
 qboolean	consolekeys[256];	// if true, can't be rebound while in console
 qboolean	menubound[256];	// if true, can't be rebound while in menu
+#endif
 #ifdef QOG_STATIC_TRIM
 // QuakeOG: bytes, not ints. Key numbers are below 256, and the repeat count
 // stops at 255, which keeps the only test made of it (> 1) as id had it.
@@ -55,7 +61,11 @@ byte	key_repeats[256];	// if > 1, it is autorepeating
 int		keyshift[256];		// key to map to if shift held down in console
 int		key_repeats[256];	// if > 1, it is autorepeating
 #endif
+#ifdef QOG_KEYS_BYTES
+byte	keydown[256];
+#else
 qboolean	keydown[256];
+#endif
 
 typedef struct
 {
