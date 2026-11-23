@@ -92,6 +92,9 @@ list(APPEND QOG_ENGINE_DEFS
 list(APPEND QOG_ENGINE_DEFS
     QOG_BAKE_STUBS
     QOG_DEMOS_OPTIONAL)
+# Per-level map arrays (Agent L), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_FRAMEBITS)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

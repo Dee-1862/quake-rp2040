@@ -164,3 +164,6 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
+# Per-level map arrays (Agent L)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_FRAMEBITS)                  # visframe stamps of surfaces, nodes and leafs as one bit each with a frame tag

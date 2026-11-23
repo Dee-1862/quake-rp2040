@@ -527,7 +527,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		{
 			do
 			{
-				FS_SET (MODFRAME (cl.worldmodel)->surf_visframe, MARKSURF_NUM (cl.worldmodel, mark), r_framecount);	// QuakeOG: MODFRAME, QOG_MOD_FLASH
+				SURF_VISFRAME_SETNUM (cl.worldmodel, MARKSURF_NUM (cl.worldmodel, mark), r_framecount);	// QuakeOG: MODFRAME, QOG_MOD_FLASH, QOG_FRAMEBITS
 				mark++;
 			} while (--c);
 		}
