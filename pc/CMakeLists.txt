@@ -74,7 +74,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_MAXSPANS=1000               # span buffer, overflow only flushes early (id 3000)
     QOG_MAXWIDTH=320                # screen size limit for row and column tables (id 1280x1024)
     QOG_MAXHEIGHT=200
-    QOG_MAXALIASVERTS=384           # alias model vertex limit, largest shareware model 325 (id 2000)
+    QOG_MAXALIASVERTS=328           # alias model vertex limit, largest full-game model boss.mdl 325 (id 2000)
     QOG_MAX_BTOFPOLYS=0             # unused back to front debug list compiled out (id 5000)
     QOG_WARP_INPLACE=1)             # underwater warp in the frame buffer, same output (id 64 KB stack buffer)
 # BSP structures built at map load, each flag explained where engine/model.h uses it.

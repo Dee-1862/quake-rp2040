@@ -24,7 +24,7 @@ set(QOG_ENGINE_DEFS
     QOG_MAXSPANS=1000
     QOG_MAXWIDTH=320
     QOG_MAXHEIGHT=200
-    QOG_MAXALIASVERTS=384
+    QOG_MAXALIASVERTS=328
     QOG_MAX_BTOFPOLYS=0
     QOG_WARP_INPLACE=1)
 # BSP structures built at map load (engine/model.c), same as pc/CMakeLists.txt.
