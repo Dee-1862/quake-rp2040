@@ -2,6 +2,25 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Sparse edicts, baseline pool, compiled QuakeC globals (Agent F, PC and ARM build, registered data)
+
+Edicts on E1M1 went from 277,712 to 84,992 bytes of hunk (edicts, field arena, baselines, field map), and on e4m3, the largest array, from 447,664 to 139,888. With compiled QuakeC the globals also went from 45,904 to 7,280 bytes. Hunk low: E1M1 995.5 → 807.3 KB interpreted, 769.6 KB compiled. e4m7 1,338.0 → 1,040.2 / 1,002.5 KB. Nothing ran on hardware.
+
+| Step | Flag | E1M1 hunk | e4m3 hunk |
+| --- | --- | ---: | ---: |
+| Core fields in place, the rest as (field, value) pairs in a compacting arena, 12 words per slot | `QOG_EDICT_SPARSE` | 277,712 → 105,504 | 447,664 → 169,920 |
+| Baselines only for edicts that get one at spawn, 16-bit index | `QOG_BASELINE_POOL` | → 95,136 | → 156,240 |
+| avelocity, ltime, blocked, effects, skin, colormap out of the core (38 words, slot 208 B) | `QOG_EDICT_SPARSE` | → 84,992 | → 139,888 |
+| Compiled QuakeC: constants as literals, most temporaries as C locals, packed RAM globals (1,813 of 11,471 words) | `QOG_AOT_GLOBALS` | progglobals 45,904 → 7,280 | same |
+
+- Measured with `qog_tour` (32 maps, noclip, notarget) and the new `qog_tour_fight` (same tour, monsters awake, rocket launcher firing). Most edicts in use: 389 high water on e4m3 in the fight tour, 365 on e4m5 and e4m7 in the plain tour. The high water never went more than 35 slots over `SV_EdictsForMap`'s estimate, and every map kept at least 92 spare slots, so `QOG_EDICT_MARGIN` 128 stays. The arena peaked at 9.2 words per slot (12 allocated), and it compacts when full.
+- Real play can go further than the tours: nails live up to 6 s, gibs 10 to 20 s, backpacks 120 s. A long fight with many gibs and packs could pass the margin. Overflow is still id's `Sys_Error`.
+- Field access: engine code uses `EV_` macros for non-core entvars fields, QuakeC goes through `ED_FieldGet` and `ED_FieldSet`, and `OP_ADDRESS` returns the edict offset times 256 plus the field number. qc2c inlines the core words and the engine checks its map at load, falling back to the interpreter if they differ. The PC build regenerates the compiled code when `progs.h` changes.
+- Compiled QuakeC (`-DQOG_AOT=ON`, registered `progs.dat` from pak0) is 496 KB of Cortex-M0+ flash with 27 KB of tables, and its largest generated stack frame is 64 bytes. On the PC, server frame time over the bench script was 0.84 to 0.96 s compiled, 0.96 to 1.04 s interpreted with sparse edicts, and 0.89 to 0.98 s interpreted with id's edicts (noisy, PC only).
+- Board static RAM: overflow 187,264 → 187,500 bytes (+236, the arena bookkeeping and a vector ring). Engine flash +3 KB.
+- Verification: identical `qog_statehash` to the untouched build on E1M1 (`qogtest_hash.cfg`) and on eight registered maps with combat, save and load (`qogtest_f_hash.cfg`). Checked interpreted, compiled, compiled with id's edict layout, and `-noaot`. Demo 3, sky and map frames were byte-identical. `qogtest_reg.cfg` (all 32 maps) logs matched apart from the memory lines, and hunk low was 148 to 301 KB smaller on every map.
+- Not done: `leafnums` (36 bytes per slot) stays inline. The estimate still counts entities that skill flags inhibit (15 to 75 per map). `SV_PushMove` keeps its 9.7 KB stack frame (two `MAX_EDICTS` arrays).
+
 ## 2026-11-23: Agent B and C merged, renderer stack cut (PC and ARM build)
 
 - Agent B (packed BSP structures) and Agent C (message buffers and client tables) are merged into main. Each merge was checked hidden and silent against the build before it: same state hashes, same all-level manifest output, and byte-identical demo and spawn frames.
