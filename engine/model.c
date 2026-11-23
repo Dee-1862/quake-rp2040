@@ -861,7 +861,11 @@ void Mod_LoadFaces (lump_t *l)
 		planenum = LittleShort(in->planenum);
 		side = LittleShort(in->side);
 		if (side)
-			out->flags |= SURF_PLANEBACK;			
+			out->flags |= SURF_PLANEBACK;
+#ifdef QOG_PLANES_EXACT
+		if (planenum < 0 || planenum >= loadmodel->numplanes)	// QuakeOG
+			Sys_Error ("Mod_LoadFaces: bad plane number %i in %s", planenum, loadmodel->name);
+#endif
 
 		out->plane = loadmodel->planes + planenum;
 
@@ -944,6 +948,10 @@ void Mod_LoadNodes (lump_t *l)
 		}
 	
 		p = LittleLong(in->planenum);
+#ifdef QOG_PLANES_EXACT
+		if (p < 0 || p >= loadmodel->numplanes)	// QuakeOG
+			Sys_Error ("Mod_LoadNodes: bad plane number %i in %s", p, loadmodel->name);
+#endif
 		out->plane = loadmodel->planes + p;
 
 		out->firstsurface = LittleShort (in->firstface);
@@ -1053,6 +1061,14 @@ void Mod_LoadClipnodes (lump_t *l)
 	hull->clip_maxs[1] = 32;
 	hull->clip_maxs[2] = 64;
 
+#ifdef QOG_PLANES_EXACT
+	for (i=0 ; i<count ; i++)	// QuakeOG
+	{
+		int		p = LittleLong (in[i].planenum);
+		if (p < 0 || p >= loadmodel->numplanes)
+			Sys_Error ("Mod_LoadClipnodes: bad plane number %i in %s", p, loadmodel->name);
+	}
+#endif
 	if (out == in)
 		return;
 	for (i=0 ; i<count ; i++, out++, in++)
@@ -1176,8 +1192,15 @@ void Mod_LoadPlanes (lump_t *l)
 	if (l->filelen % sizeof(*in))
 		Sys_Error ("MOD_LoadBmodel: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = Hunk_AllocName ( count*2*sizeof(*out), loadname);	
-	
+#ifdef QOG_PLANES_EXACT
+	// QuakeOG: id allocates twice the planes and never touches the second
+	// half. Allocate only what the file holds, and check every plane number
+	// against it at load (faces, nodes, clipnodes) so nothing can read past.
+	out = Hunk_AllocName ( count*sizeof(*out), loadname);
+#else
+	out = Hunk_AllocName ( count*2*sizeof(*out), loadname);
+#endif
+
 	loadmodel->planes = out;
 	loadmodel->numplanes = count;
 

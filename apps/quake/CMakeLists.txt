@@ -22,6 +22,9 @@ set(QOG_ENGINE_DEFS
     QOG_NUMSTACKEDGES=1600
     QOG_NUMSTACKSURFACES=640
     QOG_MAXSPANS=1000)
+# BSP structures built at map load (engine/model.c), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_PLANES_EXACT)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
