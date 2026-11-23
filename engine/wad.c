@@ -72,6 +72,35 @@ void W_LoadWadFile (char *filename)
 	unsigned		i;
 	int				infotableofs;
 	
+	// QuakeOG: read in place from flash when the port maps the pack. Only the
+	// lump directory is copied to RAM, because loading lowercases its names;
+	// the pictures are never written (the swaps are no-ops on little-endian).
+	{
+		int		flen;
+		byte	*f = COM_FlashFile (filename, &flen);
+		if (f && !(((int)f) & 3))
+		{
+			header = (wadinfo_t *)f;
+			if (header->identification[0] != 'W' || header->identification[1] != 'A'
+				|| header->identification[2] != 'D' || header->identification[3] != '2')
+				Sys_Error ("Wad file %s doesn't have WAD2 id\n",filename);
+			wad_base = f;
+			wad_numlumps = LittleLong(header->numlumps);
+			infotableofs = LittleLong(header->infotableofs);
+			wad_lumps = Hunk_AllocName (wad_numlumps * sizeof(lumpinfo_t), "waddir");
+			memcpy (wad_lumps, wad_base + infotableofs, wad_numlumps * sizeof(lumpinfo_t));
+			for (i=0, lump_p = wad_lumps ; i<wad_numlumps ; i++,lump_p++)
+			{
+				lump_p->filepos = LittleLong(lump_p->filepos);
+				lump_p->size = LittleLong(lump_p->size);
+				W_CleanupName (lump_p->name, lump_p->name);
+				if ((lump_p->filepos & 3) && lump_p->type == TYP_QPIC)
+					Sys_Error ("W_LoadWadFile: %s is not 4-byte aligned", lump_p->name);
+			}
+			return;
+		}
+	}
+
 	wad_base = COM_LoadHunkFile (filename);
 	if (!wad_base)
 		Sys_Error ("W_LoadWadFile: couldn't load %s", filename);
