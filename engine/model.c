@@ -47,6 +47,19 @@ model_t	mod_known[MAX_MOD_KNOWN];
 int		mod_numknown;
 
 static qboolean	mod_inflash;	// QuakeOG: see below at mod_base
+static int		mod_flashlen;	// QuakeOG: file length while mod_inflash
+
+// QuakeOG: baked maps, see qogbake_header_t in model.h. id's surface cache
+// keeps per-frame pointers inside msurface_t, so it cannot be baked.
+#ifdef QOG_SURFCACHE
+#undef QOG_BAKE
+#endif
+#ifndef QOG_BAKE
+#undef QOG_BAKE_WRITER
+#endif
+#ifdef QOG_BAKE_WRITER
+static void Mod_Bake_f (void);
+#endif
 
 // values for model_t's needload
 #define NL_PRESENT		0
@@ -61,6 +74,9 @@ Mod_Init
 void Mod_Init (void)
 {
 	memset (mod_novis, 0xff, sizeof(mod_novis));
+#ifdef QOG_BAKE_WRITER
+	Cmd_AddCommand ("qog_bake", Mod_Bake_f);	// QuakeOG
+#endif
 }
 
 /*
@@ -310,6 +326,7 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 		{
 			buf = (unsigned *)f;
 			mod_inflash = true;
+			mod_flashlen = flen;
 		}
 	}
 	if (!buf)
@@ -1325,15 +1342,17 @@ void FS_Refill (framestamp_t *stamps, int counter)
 
 /*
 =================
-Mod_LoadBrushModel
+Mod_LoadBrushLumps
+
+QuakeOG: the first half of id's Mod_LoadBrushModel, which builds the
+structures play only reads. The baked image holds its result.
 =================
 */
-void Mod_LoadBrushModel (model_t *mod, void *buffer)
+static void Mod_LoadBrushLumps (model_t *mod, void *buffer)
 {
-	int			i, j;
+	int			i;
 	dheader_t	*header;
-	dmodel_t 	*bm;
-	
+
 	loadmodel->type = mod_brush;
 	
 	header = (dheader_t *)buffer;
@@ -1368,6 +1387,803 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	Mod_LoadSubmodels (&header->lumps[LUMP_MODELS]);
 
 	Mod_MakeHull0 ();
+}
+
+#ifdef QOG_BAKE
+/*
+===============================================================================
+
+QuakeOG: BAKED MAPS (see qogbake_header_t in model.h)
+
+===============================================================================
+*/
+
+static qogbake_header_t	*mod_bake;		// the mapped image, or NULL
+static qboolean			mod_baketried;
+
+static unsigned Mod_Fnv (unsigned h, const void *data, int n)
+{
+	const byte	*p = data;
+	int			i;
+
+	for (i=0 ; i<n ; i++)
+		h = (h ^ p[i]) * 0x01000193u;
+	return h;
+}
+
+#define MOD_OFS(t, f)	((unsigned)(size_t)&((t *)0)->f)
+
+/*
+=================
+Mod_BakeLayout
+
+A hash of every size, offset and flag the image depends on, so an image
+from a build with other structures is refused instead of misread.
+=================
+*/
+static unsigned Mod_BakeLayout (void)
+{
+	unsigned	key[] = {
+		QOGB_VERSION, sizeof(void *),
+		sizeof(model_t), sizeof(mnode_t), sizeof(mleaf_t), sizeof(msurface_t),
+		sizeof(mtexinfo_t), sizeof(texture_t), sizeof(mplane_t), sizeof(dmodel_t),
+		sizeof(dclipnode_t), sizeof(hull_t), sizeof(marksurf_t), sizeof(medge_t),
+		sizeof(mvertex_t), sizeof(framestamp_t),
+		MOD_OFS(model_t, submodels), MOD_OFS(model_t, hulls), MOD_OFS(model_t, textures),
+		MOD_OFS(model_t, cache), MOD_OFS(model_t, surf_visframe),
+		MOD_OFS(mnode_t, children), MOD_OFS(mnode_t, plane), MOD_OFS(mnode_t, parent),
+		MOD_OFS(mleaf_t, compressed_vis), MOD_OFS(mleaf_t, ambient_sound_level),
+		MOD_OFS(msurface_t, samples), MOD_OFS(msurface_t, styles),
+		MOD_OFS(texture_t, mips), MOD_OFS(texture_t, anim_next), MOD_OFS(mtexinfo_t, texture),
+		0
+#ifdef QOG_SURF_INDEX
+		| 1
+#endif
+#ifdef QOG_MARKSURF16
+		| 2
+#endif
+#ifdef QOG_LEAF_PACKED
+		| 4
+#endif
+#ifdef QOG_SURF_PACKED
+		| 8
+#endif
+#ifdef QOG_PLANES_EXACT
+		| 16
+#endif
+	};
+
+	return Mod_Fnv (0x811C9DC5u, key, sizeof(key));
+}
+
+/*
+=================
+Mod_BspHash
+
+Identifies the .bsp a map was baked from: its header and plane lump.
+=================
+*/
+static unsigned Mod_BspHash (byte *bsp)
+{
+	dheader_t	*h = (dheader_t *)bsp;
+	unsigned	v;
+
+	v = Mod_Fnv (0x811C9DC5u, h, sizeof(*h));
+	return Mod_Fnv (v, bsp + LittleLong (h->lumps[LUMP_PLANES].fileofs),
+		LittleLong (h->lumps[LUMP_PLANES].filelen));
+}
+
+/*
+=================
+Mod_BakeOpen
+
+Maps <gamedir>/qogbake.bin once, at the first brush model, and checks it
+was built by a build with this layout for the address it got. -nobake
+skips it (qog_bake runs that way).
+=================
+*/
+static void Mod_BakeOpen (void)
+{
+	char				path[MAX_OSPATH];
+	int					len, h;
+	qogbake_header_t	*img;
+
+	if (COM_CheckParm ("-nobake"))
+		return;
+	sprintf (path, "%s/qogbake.bin", com_gamedir);
+	len = Sys_FileOpenRead (path, &h);
+	if (len < 0)
+		return;
+	Sys_FileClose (h);
+	if (len < (int)sizeof(qogbake_header_t))
+		return;
+	img = Sys_FlashMap (path, len);
+	if (!img)
+		return;
+	if (img->magic != QOGB_MAGIC || img->version != QOGB_VERSION
+		|| img->layout != Mod_BakeLayout () || img->size != (unsigned)len)
+	{
+		Con_Printf ("qogbake.bin was baked by another build, not used (run qog_bake again)\n");
+		return;
+	}
+	if (img->base != (unsigned)(size_t)img)
+	{
+		Con_Printf ("qogbake.bin is for address %08x but mapped at %p, not used\n", img->base, img);
+		return;
+	}
+	mod_bake = img;
+	Con_Printf ("Baked maps: %i in qogbake.bin, %i KB\n", img->nummaps, img->size / 1024);
+}
+
+/*
+=================
+Mod_LoadBaked
+
+Fills mod from the baked image when it holds this .bsp, and returns true.
+Only the per-frame arrays are then allocated, by the caller.
+=================
+*/
+static qboolean Mod_LoadBaked (model_t *mod, void *buffer)
+{
+	qogbake_entry_t	*e;
+	char			name[MAX_QPATH];
+	texture_t		*tx;
+	int				i;
+
+	if (!mod_baketried)
+	{
+		mod_baketried = true;
+		Mod_BakeOpen ();
+	}
+	if (!mod_bake || !mod_inflash)
+		return false;
+	e = (qogbake_entry_t *)((byte *)mod_bake + mod_bake->dirofs);
+	for (i=0 ; i<mod_bake->nummaps ; i++, e++)
+		if (!strcmp (e->name, mod->name))
+			break;
+	if (i == mod_bake->nummaps)
+		return false;
+	if (e->bspaddr != (unsigned)(size_t)buffer || e->bsplen != (unsigned)mod_flashlen
+		|| e->bsphash != Mod_BspHash (buffer))
+	{
+		Con_Printf ("%s changed since it was baked, loading it the normal way\n", mod->name);
+		return false;
+	}
+
+	memcpy (name, mod->name, sizeof(name));
+	*mod = *(model_t *)e->model;
+	memcpy (mod->name, name, sizeof(name));
+	mod->needload = NL_PRESENT;
+
+	// the one side effect of id's texture loader
+	for (i=0 ; i<mod->numtextures ; i++)
+	{
+		tx = mod->textures[i];
+		if (tx && !Q_strncmp (tx->name, "sky", 3))
+			R_InitSky (tx);
+	}
+	return true;
+}
+
+#ifdef QOG_BAKE_WRITER
+/*
+===============================================================================
+
+QuakeOG: the baker (PC only). The image is built in memory: each structure
+the loader allocated on the hunk is copied in, and every pointer is then
+translated through the table of copied ranges. Pointers into a mapped
+pack are kept. Anything else (a pointer the image could not reach) makes
+the map unbakeable, and it is skipped.
+
+===============================================================================
+*/
+
+typedef struct
+{
+	byte		*lo, *hi;	// the hunk copy
+	unsigned	to;			// its address in the image
+} bakerange_t;
+
+#define	MAX_BAKE_RANGES	2048
+
+static byte			*bk_buf;
+static int			bk_len, bk_max;
+static unsigned		bk_base;
+static bakerange_t	bk_ranges[MAX_BAKE_RANGES];
+static int			bk_numranges;
+static qboolean		bk_failed;
+static char			bk_names[256][40];
+static int			bk_numnames;
+
+static int Bake_Reserve (int size)
+{
+	int		ofs;
+
+	ofs = (bk_len + 15) & ~15;
+	if (ofs + size > bk_max)
+	{
+		bk_max = (ofs + size) * 2 + 0x10000;
+		bk_buf = realloc (bk_buf, bk_max);
+		if (!bk_buf)
+			Sys_Error ("qog_bake: out of memory");
+	}
+	memset (bk_buf + bk_len, 0, ofs + size - bk_len);
+	bk_len = ofs + size;
+	return ofs;
+}
+
+#define BAKE_AT(t, addr)	((t *)(bk_buf + ((addr) - bk_base)))
+
+// copies size bytes from the hunk into the image; data already in flash stays
+static unsigned Bake_Copy (void *p, int size)
+{
+	int		ofs;
+
+	if (!p || COM_InFlash (p))
+		return (unsigned)(size_t)p;
+	if (bk_numranges == MAX_BAKE_RANGES)
+		Sys_Error ("qog_bake: MAX_BAKE_RANGES");
+	ofs = Bake_Reserve (size);
+	memcpy (bk_buf + ofs, p, size);
+	bk_ranges[bk_numranges].lo = p;
+	bk_ranges[bk_numranges].hi = (byte *)p + size;
+	bk_ranges[bk_numranges].to = bk_base + ofs;
+	bk_numranges++;
+	return bk_base + ofs;
+}
+
+static unsigned Bake_Ptr (void *p)
+{
+	int		i;
+
+	if (!p)
+		return 0;
+	for (i=0 ; i<bk_numranges ; i++)
+		if ((byte *)p >= bk_ranges[i].lo && (byte *)p < bk_ranges[i].hi)
+			return bk_ranges[i].to + ((byte *)p - bk_ranges[i].lo);
+	if (COM_InFlash (p))
+		return (unsigned)(size_t)p;
+	if (!bk_failed)
+		Con_Printf ("qog_bake: %s has a pointer outside the map and the packs\n", loadmodel->name);
+	bk_failed = true;
+	return 0;
+}
+
+// rewrites a pointer field of a structure in the image
+#define BAKE_FIX(f)		(*(unsigned *)&(f) = Bake_Ptr (f))
+
+/*
+=================
+Bake_Map
+
+Runs the loader on one map and appends its block. Returns the entry, or
+false if the map could not be baked (nothing is then left in the image).
+=================
+*/
+static qboolean Bake_Map (char *name, qogbake_entry_t *e)
+{
+	model_t		m, *bm;
+	byte		*f;
+	int			flen, mark, start, i, j;
+	unsigned	at, notex;
+	dheader_t	*h;
+	texture_t	*tx;
+	mtexinfo_t	*ti;
+	msurface_t	*s;
+	mleaf_t		*l;
+	mnode_t		*n;
+
+	f = COM_FlashFile (name, &flen);
+	if (!f || (((int)f) & 3) || LittleLong (*(int *)f) != BSPVERSION)
+	{
+		Con_Printf ("qog_bake: %s is not a BSP in a mapped pack, skipped\n", name);
+		return false;
+	}
+	h = (dheader_t *)f;
+
+	// id's loader, into a scratch model on the hunk
+	mark = Hunk_LowMark ();
+	memset (&m, 0, sizeof(m));
+	strcpy (m.name, name);
+	loadmodel = &m;
+	COM_FileBase (name, loadname);
+	mod_inflash = true;
+	mod_flashlen = flen;
+	Mod_LoadBrushLumps (&m, f);
+	mod_inflash = false;
+
+	start = bk_len;
+	bk_numranges = 0;
+	bk_failed = false;
+
+	// the model itself first, then every hunk structure it points at
+	at = bk_base + Bake_Reserve (sizeof(model_t));
+	Bake_Copy (m.planes, m.numplanes * sizeof(mplane_t));
+	if (m.textures)
+	{
+		Bake_Copy (m.textures, m.numtextures * sizeof(texture_t *));
+		for (i=0 ; i<m.numtextures ; i++)
+			if (m.textures[i])
+				Bake_Copy (m.textures[i], sizeof(texture_t));
+	}
+	notex = 0;
+	for (i=0 ; i<m.numtexinfo ; i++)
+		if (m.texinfo[i].texture == r_notexture_mip && !notex)	// the checkerboard, with its pixels
+			notex = Bake_Copy (r_notexture_mip, sizeof(texture_t) + 16*16+8*8+4*4+2*2);
+	Bake_Copy (m.texinfo, m.numtexinfo * sizeof(mtexinfo_t));
+	Bake_Copy (m.surfaces, m.numsurfaces * sizeof(msurface_t));
+	Bake_Copy (m.leafs, m.numleafs * sizeof(mleaf_t));
+	Bake_Copy (m.nodes, m.numnodes * sizeof(mnode_t));
+	Bake_Copy (m.submodels, m.numsubmodels * sizeof(dmodel_t));
+	Bake_Copy (m.hulls[0].clipnodes, m.numnodes * sizeof(dclipnode_t));
+	// read in place from the pack when aligned, otherwise copied too
+	Bake_Copy (m.vertexes, m.numvertexes * sizeof(mvertex_t));
+	Bake_Copy (m.edges, (m.numedges + 1) * sizeof(medge_t));
+	Bake_Copy (m.surfedges, m.numsurfedges * sizeof(int));
+	Bake_Copy (m.clipnodes, m.numclipnodes * sizeof(dclipnode_t));
+	Bake_Copy (m.marksurfaces, m.nummarksurfaces * sizeof(marksurf_t));
+	Bake_Copy (m.lightdata, LittleLong (h->lumps[LUMP_LIGHTING].filelen));
+	Bake_Copy (m.visdata, LittleLong (h->lumps[LUMP_VISIBILITY].filelen));
+	Bake_Copy (m.entities, LittleLong (h->lumps[LUMP_ENTITIES].filelen));
+
+	// translate the pointers inside the copies
+	if (m.textures)
+	{
+		texture_t	**list = BAKE_AT(texture_t *, Bake_Ptr (m.textures));
+
+		for (i=0 ; i<m.numtextures ; i++)
+		{
+			if (!m.textures[i])
+				continue;
+			tx = BAKE_AT(texture_t, Bake_Ptr (m.textures[i]));
+			BAKE_FIX(list[i]);
+			BAKE_FIX(tx->anim_next);
+			BAKE_FIX(tx->alternate_anims);
+			for (j=0 ; j<MIPLEVELS ; j++)
+				BAKE_FIX(tx->mips[j]);
+		}
+	}
+	if (notex)
+	{
+		tx = BAKE_AT(texture_t, notex);
+		for (j=0 ; j<MIPLEVELS ; j++)
+			BAKE_FIX(tx->mips[j]);
+	}
+	if (m.numtexinfo)
+	{
+		ti = BAKE_AT(mtexinfo_t, Bake_Ptr (m.texinfo));
+		for (i=0 ; i<m.numtexinfo ; i++, ti++)
+			BAKE_FIX(ti->texture);
+	}
+	if (m.numsurfaces)
+	{
+		s = BAKE_AT(msurface_t, Bake_Ptr (m.surfaces));
+		for (i=0 ; i<m.numsurfaces ; i++, s++)
+		{
+			BAKE_FIX(s->samples);
+#ifndef QOG_SURF_INDEX
+			BAKE_FIX(s->plane);
+			BAKE_FIX(s->texinfo);
+#endif
+		}
+	}
+	if (m.numleafs)
+	{
+		l = BAKE_AT(mleaf_t, Bake_Ptr (m.leafs));
+		for (i=0 ; i<m.numleafs ; i++, l++)
+		{
+			BAKE_FIX(l->parent);
+			BAKE_FIX(l->compressed_vis);
+#ifndef QOG_LEAF_PACKED
+			BAKE_FIX(l->firstmarksurface);
+#endif
+		}
+	}
+	if (m.numnodes)
+	{
+		n = BAKE_AT(mnode_t, Bake_Ptr (m.nodes));
+		for (i=0 ; i<m.numnodes ; i++, n++)
+		{
+			BAKE_FIX(n->parent);
+			BAKE_FIX(n->plane);
+			BAKE_FIX(n->children[0]);
+			BAKE_FIX(n->children[1]);
+		}
+	}
+#ifndef QOG_MARKSURF16
+	if (m.nummarksurfaces && !COM_InFlash (m.marksurfaces))
+	{
+		marksurf_t	*mk = BAKE_AT(marksurf_t, Bake_Ptr (m.marksurfaces));
+
+		for (i=0 ; i<m.nummarksurfaces ; i++)
+			BAKE_FIX(mk[i]);
+	}
+#endif
+
+	// the model, with the per-frame arrays and the cache left empty
+	bm = BAKE_AT(model_t, at);
+	*bm = m;
+	memset (&bm->cache, 0, sizeof(bm->cache));
+	BAKE_FIX(bm->submodels);
+	BAKE_FIX(bm->planes);
+	BAKE_FIX(bm->leafs);
+	BAKE_FIX(bm->vertexes);
+	BAKE_FIX(bm->edges);
+	BAKE_FIX(bm->nodes);
+	BAKE_FIX(bm->texinfo);
+	BAKE_FIX(bm->surfaces);
+	BAKE_FIX(bm->surfedges);
+	BAKE_FIX(bm->clipnodes);
+	BAKE_FIX(bm->marksurfaces);
+	for (i=0 ; i<MAX_MAP_HULLS ; i++)
+	{
+		BAKE_FIX(bm->hulls[i].clipnodes);
+		BAKE_FIX(bm->hulls[i].planes);
+	}
+	BAKE_FIX(bm->textures);
+	BAKE_FIX(bm->visdata);
+	BAKE_FIX(bm->lightdata);
+	BAKE_FIX(bm->entities);
+
+	Hunk_FreeToLowMark (mark);
+	loadmodel = NULL;
+
+	if (bk_failed)
+	{
+		bk_len = start;
+		return false;
+	}
+	memset (e, 0, sizeof(*e));
+	strcpy (e->name, name);
+	e->model = at;
+	e->size = bk_len - start;
+	e->bspaddr = (unsigned)(size_t)f;
+	e->bsplen = flen;
+	e->bsphash = Mod_BspHash (f);
+	return true;
+}
+
+/*
+=================
+Bake_Check
+
+qog_bake check: loads every baked map again with id's loader and compares
+it with the baked copy, field by field, pointers as indices into their
+arrays (or as the same flash address). Prints each difference found.
+=================
+*/
+static int			bc_errors;
+static const char	*bc_map;
+
+static void Bake_Diff (const char *what, int i)
+{
+	if (bc_errors++ < 20)
+		Con_Printf ("qog_bake check: %s differs in %s, item %i\n", what, bc_map, i);
+}
+
+// the same element of two arrays, or the same address outside them
+static qboolean Bake_SamePtr (void *a, void *abase, void *b, void *bbase, int size, int count)
+{
+	int		ia, ib;
+
+	if (!a || !b)
+		return a == b;
+	ia = (byte *)a - (byte *)abase;
+	ib = (byte *)b - (byte *)bbase;
+	if (abase && ia >= 0 && ia < size * count)
+		return ia == ib;
+	return a == b;
+}
+
+#define BC_SAME(fa, fb, abase, bbase, type, count) \
+	Bake_SamePtr ((void *)(fa), (void *)(abase), (void *)(fb), (void *)(bbase), sizeof(type), (count))
+
+static int Bake_TexIndex (model_t *m, texture_t *t)
+{
+	int		i;
+
+	for (i=0 ; i<m->numtextures ; i++)
+		if (m->textures[i] == t)
+			return i;
+	return t ? -2 : -1;
+}
+
+static void Bake_Check (void)
+{
+	qogbake_entry_t	*e;
+	model_t			m, *b;
+	int				i, j, mark, flen, total;
+	byte			*f;
+
+	if (!mod_baketried)
+	{
+		mod_baketried = true;
+		Mod_BakeOpen ();
+	}
+	if (!mod_bake || sv.active || cls.state == ca_connected)
+	{
+		Con_Printf ("qog_bake check: needs the image mapped (no -nobake) and no map loaded\n");
+		return;
+	}
+	total = 0;
+	e = (qogbake_entry_t *)((byte *)mod_bake + mod_bake->dirofs);
+	for (j=0 ; j<mod_bake->nummaps ; j++, e++)
+	{
+		bc_errors = 0;
+		bc_map = e->name;
+		b = (model_t *)e->model;
+		f = COM_FlashFile (e->name, &flen);
+		if (!f || (unsigned)(size_t)f != e->bspaddr || (unsigned)flen != e->bsplen
+			|| Mod_BspHash (f) != e->bsphash)
+		{
+			Bake_Diff ("bsp file", 0);
+			total += bc_errors;
+			continue;
+		}
+		mark = Hunk_LowMark ();
+		memset (&m, 0, sizeof(m));
+		strcpy (m.name, e->name);
+		loadmodel = &m;
+		COM_FileBase (e->name, loadname);
+		mod_inflash = true;
+		mod_flashlen = flen;
+		Mod_LoadBrushLumps (&m, f);
+		mod_inflash = false;
+
+		// counts, bounds and lumps read in place
+		if (m.type != b->type || m.numsubmodels != b->numsubmodels || m.numplanes != b->numplanes
+			|| m.numleafs != b->numleafs || m.numvertexes != b->numvertexes || m.numedges != b->numedges
+			|| m.numnodes != b->numnodes || m.numtexinfo != b->numtexinfo || m.numsurfaces != b->numsurfaces
+			|| m.numsurfedges != b->numsurfedges || m.numclipnodes != b->numclipnodes
+			|| m.nummarksurfaces != b->nummarksurfaces || m.numtextures != b->numtextures
+			|| m.firstmodelsurface != b->firstmodelsurface || m.nummodelsurfaces != b->nummodelsurfaces
+			|| m.numframes != b->numframes || m.flags != b->flags || m.synctype != b->synctype
+			|| memcmp (m.mins, b->mins, sizeof(m.mins)) || memcmp (m.maxs, b->maxs, sizeof(m.maxs))
+			|| m.radius != b->radius)
+			Bake_Diff ("model counts", 0);
+		if ((COM_InFlash (m.vertexes) && m.vertexes != b->vertexes)
+			|| memcmp (m.vertexes, b->vertexes, m.numvertexes * sizeof(mvertex_t)))
+			Bake_Diff ("vertexes", 0);
+		if (memcmp (m.edges, b->edges, m.numedges * sizeof(medge_t)))
+			Bake_Diff ("edges", 0);
+		if (memcmp (m.surfedges, b->surfedges, m.numsurfedges * sizeof(int)))
+			Bake_Diff ("surfedges", 0);
+		if (memcmp (m.clipnodes, b->clipnodes, m.numclipnodes * sizeof(dclipnode_t)))
+			Bake_Diff ("clipnodes", 0);
+#ifdef QOG_MARKSURF16
+		if (memcmp (m.marksurfaces, b->marksurfaces, m.nummarksurfaces * sizeof(marksurf_t)))
+			Bake_Diff ("marksurfaces", 0);
+#endif
+		if (m.lightdata != b->lightdata || m.visdata != b->visdata || m.entities != b->entities)
+			Bake_Diff ("light, vis or entity lump", 0);
+		if (memcmp (m.planes, b->planes, m.numplanes * sizeof(mplane_t)))
+			Bake_Diff ("planes", 0);
+		if (memcmp (m.submodels, b->submodels, m.numsubmodels * sizeof(dmodel_t)))
+			Bake_Diff ("submodels", 0);
+
+		for (i=0 ; i<MAX_MAP_HULLS ; i++)
+		{
+			hull_t	*ha = &m.hulls[i], *hb = &b->hulls[i];
+
+			if (ha->firstclipnode != hb->firstclipnode || ha->lastclipnode != hb->lastclipnode
+				|| memcmp (ha->clip_mins, hb->clip_mins, sizeof(vec3_t))
+				|| memcmp (ha->clip_maxs, hb->clip_maxs, sizeof(vec3_t))
+				|| !BC_SAME (ha->planes, hb->planes, m.planes, b->planes, mplane_t, m.numplanes))
+				Bake_Diff ("hull", i);
+			if ((ha->clipnodes == NULL) != (hb->clipnodes == NULL)
+				|| (ha->clipnodes && ha->lastclipnode >= 0 && memcmp (ha->clipnodes, hb->clipnodes,
+					(ha->lastclipnode + 1) * sizeof(dclipnode_t))))
+				Bake_Diff ("hull clipnodes", i);
+		}
+
+		for (i=0 ; i<m.numtextures ; i++)
+		{
+			texture_t	*ta = m.textures[i], *tb = b->textures[i];
+
+			if (!ta || !tb)
+			{
+				if (ta != tb)
+					Bake_Diff ("texture", i);
+				continue;
+			}
+			if (memcmp (ta->name, tb->name, sizeof(ta->name)) || ta->width != tb->width
+				|| ta->height != tb->height || ta->anim_total != tb->anim_total
+				|| ta->anim_min != tb->anim_min || ta->anim_max != tb->anim_max
+				|| Bake_TexIndex (&m, ta->anim_next) != Bake_TexIndex (b, tb->anim_next)
+				|| Bake_TexIndex (&m, ta->alternate_anims) != Bake_TexIndex (b, tb->alternate_anims)
+				|| memcmp (ta->mips, tb->mips, sizeof(ta->mips)))
+				Bake_Diff ("texture", i);
+		}
+
+		for (i=0 ; i<m.numtexinfo ; i++)
+		{
+			mtexinfo_t	*ta = &m.texinfo[i], *tb = &b->texinfo[i];
+			texture_t	*xa = ta->texture, *xb = tb->texture;
+
+			if (memcmp (ta->vecs, tb->vecs, sizeof(ta->vecs)) || ta->mipadjust != tb->mipadjust
+				|| ta->flags != tb->flags || Bake_TexIndex (&m, xa) != Bake_TexIndex (b, xb))
+				Bake_Diff ("texinfo", i);
+			else if (Bake_TexIndex (&m, xa) == -2)	// the checkerboard
+			{
+				if (xa != r_notexture_mip || memcmp (xb->name, xa->name, sizeof(xa->name))
+					|| xb->width != xa->width || memcmp (xb->mips[0], xa->mips[0], 16*16+8*8+4*4+2*2))
+					Bake_Diff ("texinfo checkerboard", i);
+			}
+		}
+
+		for (i=0 ; i<m.numsurfaces ; i++)
+		{
+			msurface_t	*sa = &m.surfaces[i], *sb = &b->surfaces[i];
+
+			if (sa->flags != sb->flags || sa->firstedge != sb->firstedge || sa->numedges != sb->numedges
+				|| memcmp (sa->texturemins, sb->texturemins, sizeof(sa->texturemins))
+				|| memcmp (sa->extents, sb->extents, sizeof(sa->extents))
+				|| memcmp (sa->styles, sb->styles, sizeof(sa->styles))
+				|| sa->samples != sb->samples
+#ifdef QOG_SURF_INDEX
+				|| sa->planenum != sb->planenum || sa->texinfonum != sb->texinfonum
+#else
+				|| !BC_SAME (sa->plane, sb->plane, m.planes, b->planes, mplane_t, m.numplanes)
+				|| !BC_SAME (sa->texinfo, sb->texinfo, m.texinfo, b->texinfo, mtexinfo_t, m.numtexinfo)
+#endif
+				)
+				Bake_Diff ("surface", i);
+		}
+
+		for (i=0 ; i<m.numleafs ; i++)
+		{
+			mleaf_t		*la = &m.leafs[i], *lb = &b->leafs[i];
+
+			if (la->contents != lb->contents || memcmp (la->minmaxs, lb->minmaxs, sizeof(la->minmaxs))
+				|| !BC_SAME (la->parent, lb->parent, m.nodes, b->nodes, mnode_t, m.numnodes)
+				|| la->compressed_vis != lb->compressed_vis
+				|| la->nummarksurfaces != lb->nummarksurfaces
+#ifdef QOG_LEAF_PACKED
+				|| la->firstmarksurface != lb->firstmarksurface
+#else
+				|| !BC_SAME (la->firstmarksurface, lb->firstmarksurface, m.marksurfaces, b->marksurfaces, marksurf_t, m.nummarksurfaces)
+#endif
+				|| memcmp (la->ambient_sound_level, lb->ambient_sound_level, sizeof(la->ambient_sound_level)))
+				Bake_Diff ("leaf", i);
+		}
+
+		for (i=0 ; i<m.numnodes ; i++)
+		{
+			mnode_t		*na = &m.nodes[i], *nb = &b->nodes[i];
+			int			c;
+
+			if (na->contents != nb->contents || memcmp (na->minmaxs, nb->minmaxs, sizeof(na->minmaxs))
+				|| !BC_SAME (na->parent, nb->parent, m.nodes, b->nodes, mnode_t, m.numnodes)
+				|| !BC_SAME (na->plane, nb->plane, m.planes, b->planes, mplane_t, m.numplanes)
+				|| na->firstsurface != nb->firstsurface || na->numsurfaces != nb->numsurfaces)
+				Bake_Diff ("node", i);
+			for (c=0 ; c<2 ; c++)
+			{
+				if (na->children[c]->contents < 0
+					? !BC_SAME (na->children[c], nb->children[c], m.leafs, b->leafs, mleaf_t, m.numleafs)
+					: !BC_SAME (na->children[c], nb->children[c], m.nodes, b->nodes, mnode_t, m.numnodes))
+					Bake_Diff ("node child", i);
+			}
+		}
+
+		Hunk_FreeToLowMark (mark);
+		loadmodel = NULL;
+		if (bc_errors)
+			Con_Printf ("qog_bake check: %s has %i differences\n", e->name, bc_errors);
+		total += bc_errors;
+	}
+	Con_Printf ("qog_bake check: %i maps compared, %i differences\n", mod_bake->nummaps, total);
+}
+
+static void Bake_AddName (char *name)
+{
+	int		i, n = strlen (name);
+
+	if (n < 9 || n >= sizeof(bk_names[0]) || Q_strncmp (name, "maps/", 5) || Q_strcmp (name + n - 4, ".bsp"))
+		return;
+	for (i=0 ; i<bk_numnames ; i++)
+		if (!Q_strcmp (bk_names[i], name))
+			return;
+	if (bk_numnames < 256)
+		strcpy (bk_names[bk_numnames++], name);
+}
+
+/*
+=================
+Mod_Bake_f
+
+qog_bake [map ...]: bakes the named maps ("e1m1"), or with no argument
+every maps/*.bsp in the packs, into <gamedir>/qogbake.bin for the address
+the image will be mapped at in a run with the same packs. Run it with
+-nobake and before any map is loaded.
+=================
+*/
+static void Mod_Bake_f (void)
+{
+	qogbake_entry_t		dir[256];
+	qogbake_header_t	*hd;
+	char				path[MAX_OSPATH];
+	int					i, n, hnd, dirofs;
+
+	if (Cmd_Argc () == 2 && !Q_strcmp (Cmd_Argv (1), "check"))
+	{
+		Bake_Check ();
+		return;
+	}
+	if (mod_bake || sv.active || cls.state == ca_connected)
+	{
+		Con_Printf ("qog_bake: run it with -nobake, before any map is loaded\n");
+		return;
+	}
+	bk_numnames = 0;
+	if (Cmd_Argc () > 1)
+	{
+		for (i=1 ; i<Cmd_Argc () ; i++)
+		{
+			sprintf (path, "maps/%s.bsp", Cmd_Argv (i));
+			Bake_AddName (path);
+		}
+	}
+	else
+		COM_ForEachPackFile (Bake_AddName);
+
+	bk_base = (unsigned)(size_t)Sys_FlashNext ();
+	bk_len = 0;
+	Bake_Reserve (sizeof(qogbake_header_t));
+	n = 0;
+	for (i=0 ; i<bk_numnames ; i++)
+	{
+		if (Bake_Map (bk_names[i], &dir[n]))
+		{
+			Con_Printf ("qog_bake: %-20s %7i bytes\n", dir[n].name, dir[n].size);
+			n++;
+		}
+	}
+	dirofs = Bake_Reserve (n * sizeof(qogbake_entry_t));
+	memcpy (bk_buf + dirofs, dir, n * sizeof(qogbake_entry_t));
+	Bake_Reserve (0);	// round the size to 16
+
+	hd = (qogbake_header_t *)bk_buf;
+	hd->magic = QOGB_MAGIC;
+	hd->version = QOGB_VERSION;
+	hd->layout = Mod_BakeLayout ();
+	hd->base = bk_base;
+	hd->size = bk_len;
+	hd->nummaps = n;
+	hd->dirofs = dirofs;
+
+	sprintf (path, "%s/qogbake.bin", com_gamedir);
+	hnd = Sys_FileOpenWrite (path);
+	if (hnd == -1)
+	{
+		Con_Printf ("qog_bake: cannot write %s\n", path);
+		return;
+	}
+	Sys_FileWrite (hnd, bk_buf, bk_len);
+	Sys_FileClose (hnd);
+	Con_Printf ("qog_bake: %i maps, %i bytes, for address %08x, in qogbake.bin\n", n, bk_len, bk_base);
+	free (bk_buf);
+	bk_buf = NULL;
+	bk_max = bk_len = 0;
+}
+#endif	// QOG_BAKE_WRITER
+#endif	// QOG_BAKE
+
+/*
+=================
+Mod_LoadBrushModel
+=================
+*/
+void Mod_LoadBrushModel (model_t *mod, void *buffer)
+{
+	int			i, j;
+	dmodel_t 	*bm;
+
+#ifdef QOG_BAKE
+	// QuakeOG: the read-only structures from the baked image when it has them
+	if (!Mod_LoadBaked (mod, buffer))
+#endif
+	Mod_LoadBrushLumps (mod, buffer);
 
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels

@@ -31,6 +31,8 @@ CFLAGS = ["-std=gnu11", "-mcpu=cortex-m0plus", "-mthumb", "-Os", "-fno-common", 
 CFLAGS += ["-DQOG_PLANES_EXACT", "-DQOG_MARKSURF16", "-DQOG_SURF_PACKED", "-DQOG_EDGECACHE16", "-DQOG_LEAF_PACKED", "-DQOG_SURF_INDEX", "-DQOG_FRAME16"]
 # Buffer and client table flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_LOOP_SERVER_RX=2048", "-DQOG_MAX_MSGLEN=6500", "-DQOG_SIGNON_SIZE=6500", "-DQOG_LOOP_CLIENT_RX=7532", "-DQOG_LOCALSTACK_FROM_PROGS", "-DQOG_MAX_CACHED_PICS=56", "-DQOG_CACHEPIC_NAME=24", "-DQOG_STATICS_ON_HUNK", "-DQOG_ZONE_KB=24", "-DQOG_CONST_LOCALMODELS", "-DQOG_SURF_T_PACKED", "-DQOG_MAX_BMODEL_VERTS=128", "-DQOG_MAX_BMODEL_EDGES=256"]
+# Baked map loader (pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_BAKE"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

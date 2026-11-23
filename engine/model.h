@@ -494,6 +494,41 @@ typedef struct model_s
 	? FS_SET ((m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
 	: FS_SET ((m)->node_visframe, (n) - (m)->nodes, c))
 
+// QuakeOG: baked maps (QOG_BAKE). The PC command qog_bake runs the loader
+// above on every map and writes what it builds (everything in model_t that
+// play never writes: planes, textures, texinfo, surfaces, leafs, nodes,
+// clip hulls, submodels) into one image, id1/qogbake.bin, with every
+// pointer resolved for the flash address the image is mapped at. Pointers
+// into the packs (light, vis, texture pixels, edges, vertexes) are kept as
+// they are, so an image only fits the packs it was baked against. A map
+// load then copies the baked model_t and allocates only the per-frame
+// arrays above. Layout in docs/game-data.md. Little-endian, 32-bit.
+#define QOGB_MAGIC		0x42474F51	// "QOGB"
+#define QOGB_VERSION	1
+
+typedef struct
+{
+	unsigned	magic;
+	unsigned	version;
+	unsigned	layout;		// hash of this build's structure layout, see Mod_BakeLayout
+	unsigned	base;		// flash address the image is built for
+	unsigned	size;		// bytes, this header included
+	unsigned	nummaps;
+	unsigned	dirofs;		// directory, from base
+	unsigned	pad[9];
+} qogbake_header_t;			// 64 bytes
+
+typedef struct
+{
+	char		name[40];	// model name, "maps/e1m1.bsp"
+	unsigned	model;		// address of the baked model_t, the start of the map's block
+	unsigned	size;		// bytes in the map's block
+	unsigned	bspaddr;	// flash address and length of the .bsp it was baked from
+	unsigned	bsplen;
+	unsigned	bsphash;	// FNV-1a of the .bsp header and plane lump
+	unsigned	pad;
+} qogbake_entry_t;			// 64 bytes
+
 //============================================================================
 
 void	Mod_Init (void);

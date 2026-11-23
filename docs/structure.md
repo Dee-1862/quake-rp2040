@@ -36,6 +36,7 @@ Start from a full Quake source, then remove whole subsystems before optimising a
 
 - The flash map lives in `platform/qog_flashmap.h`. `tools/check_app_size.py` reads it, and `tools/mkdata.py` must match it (both say so).
 - The data format lives in `platform/qog_data.h`, mirrored by `tools/mkdata.py` with a test.
+- The baked map image (`qogbake.bin`) is defined once, in `engine/model.h` (`qogbake_header_t`), and written only by the engine's own loader (`qog_bake`), so there is no second copy of the BSP structures to keep in step. A layout hash in its header makes a build refuse an image written by a build with other structures. Format and use: `docs/game-data.md`.
 - Resolution, buffer sizes and cache sizes go in one `engine/qog_config.h`, not scattered `#define`s.
 
 ## 5. Budgets are enforced by the build, not by memory
@@ -47,6 +48,7 @@ Start from a full Quake source, then remove whole subsystems before optimising a
 ## 6. Data lives in flash, read in place
 
 - Never copy a lump into RAM just to read it. `qog_data_find()` returns an XIP pointer.
+- What the engine builds from the data and then only reads (the BSP structures) is built once on the PC and baked into flash at the address it will be read from (`qog_bake`, `QOG_BAKE`). RAM keeps only what play writes.
 - Do conversions on the PC (`tools/`), not on the board: pre-swizzled textures, precomputed tables, QuakeC compiled to C. The device should only read.
 - **Check:** at boot, the engine has no `malloc` of a size that depends on a lump's size.
 

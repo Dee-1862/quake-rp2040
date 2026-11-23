@@ -40,6 +40,9 @@ void Sys_mkdir (char *path);
 // RP2040, read-only pages on the PC), or NULL if the port cannot map files.
 // The image stays valid for the whole run and must never be written.
 void *Sys_FlashMap (char *path, int length);
+// QuakeOG: the address the next Sys_FlashMap image would get (PC only, used
+// by the map baker to build an image for the address it will be mapped at)
+void *Sys_FlashNext (void);
 
 //
 // memory protection
