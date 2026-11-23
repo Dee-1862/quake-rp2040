@@ -68,7 +68,11 @@ typedef struct
 	byte		reliable_datagram_buf[MAX_DATAGRAM];
 
 	sizebuf_t	signon;
+#ifdef QOG_SIGNON_SIZE	// QuakeOG: the signon is copied into client_t.message, so
+	byte		signon_buf[QOG_SIGNON_SIZE];	// more than MAX_MSGLEN never reaches a client
+#else
 	byte		signon_buf[8192];
+#endif
 } server_t;
 
 
