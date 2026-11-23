@@ -19,12 +19,32 @@
 #define ZROWS H
 #endif
 
+#define ZBUFFER_BYTES   (W * ZROWS * 2)
+
 viddef_t vid;
 unsigned short d_8to16table[256];
 unsigned d_8to24table[256];
 
+#ifdef QOG_HUD_IN_ZBUFFER
+/* QuakeOG: the frame's rows below the 3D view (the status bar) are the first
+   bytes of the z-buffer. The z-buffer is idle while the 2D overlay is drawn
+   and while core 1 scans the frame out (VID_Update waits for the scanout
+   before the next frame can draw), and R_RenderView repaints those rows
+   after each 3D view (engine/r_main.c). Same pixels, 15 KB less. */
+#if !defined(QOG_MAX_VIEWSIZE)
+#error "QOG_HUD_IN_ZBUFFER needs QOG_MAX_VIEWSIZE"
+#endif
+#define HUD_BYTES       (W * (H - ZROWS))
+static byte  video_mem[W * ZROWS + (ZBUFFER_BYTES > HUD_BYTES ? ZBUFFER_BYTES : HUD_BYTES)]
+    __attribute__((aligned(4)));
+#define vid_buffer      video_mem
+#define zbuffer         ((short *)(video_mem + W * ZROWS))
+#define VIDEO_BYTES     ((int)sizeof video_mem)
+#else
 static byte  vid_buffer[W * H] __attribute__((aligned(4)));
 static short zbuffer[W * ZROWS];
+#define VIDEO_BYTES     ((int)(sizeof vid_buffer + sizeof zbuffer))
+#endif
 static byte  surfcache[1024];   /* no surface cache (engine/d_scanlit.c); D_InitCaches still writes a header */
 
 static void vid_menu_draw(void) { Draw_String(8 * 8, 6 * 8, "Video mode is fixed: 320x200"); }
@@ -47,18 +67,24 @@ void VID_Init(unsigned char *palette) {
     vid.buffer = vid.conbuffer = vid_buffer;
     vid.rowbytes = vid.conrowbytes = W;
     d_pzbuffer = zbuffer;
+#ifdef QOG_HUD_IN_ZBUFFER
+    r_zalias_row = ZROWS;
+#endif
     D_InitCaches(surfcache, sizeof surfcache);
     if (!qog_video_init(&vc)) Sys_Error("VID_Init: LCD did not start");
     VID_SetPalette(palette);
     qog_mem_register();
     qog_aim_register();
-    qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer + sizeof surfcache));
+    qog_mem_set_video(VIDEO_BYTES + (int)sizeof surfcache);
 }
 
 void VID_Shutdown(void) {}
 
 void VID_Update(vrect_t *rects) {
     (void)rects;
+#ifdef QOG_HUD_IN_ZBUFFER
+    R_HudFrameEnd();
+#endif
     qog_video_present(vid_buffer);
     qog_video_wait();   /* single buffer: the next frame may not draw until scanout ends */
 }

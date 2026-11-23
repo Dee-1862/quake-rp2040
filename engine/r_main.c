@@ -29,6 +29,74 @@ vec3_t		viewlightvec;
 alight_t	r_viewlighting = {128, 192, viewlightvec};
 float		r_time1;
 int			r_numallocatededges;
+#ifdef QOG_HUD_IN_ZBUFFER
+int			r_zalias_row = 0x7fff;	// QuakeOG: first screen row stored in the z-buffer (set by VID_Init)
+
+// QuakeOG: what Sbar_Draw reads from cl in single player, as it was the
+// last time the status bar was drawn (see R_RenderView)
+typedef struct
+{
+	int		stats[MAX_CL_STATS];
+	int		items;
+	float	item_gettime[32];
+	float	faceanimtime;
+	double	time;
+	char	levelname[40];
+	int		viewentity, maxclients, gametype;
+} r_hudstate_t;
+
+static r_hudstate_t	r_hudshot;
+static qboolean		r_hudshot_valid;
+static int			r_hud_sbbefore = -1;	// sb_updates when this frame's view was done
+
+static void R_HudStateGet (r_hudstate_t *s)
+{
+	memcpy (s->stats, cl.stats, sizeof(s->stats));
+	s->items = cl.items;
+	memcpy (s->item_gettime, cl.item_gettime, sizeof(s->item_gettime));
+	s->faceanimtime = cl.faceanimtime;
+	s->time = cl.time;
+	memcpy (s->levelname, cl.levelname, sizeof(s->levelname));
+	s->viewentity = cl.viewentity;
+	s->maxclients = cl.maxclients;
+	s->gametype = cl.gametype;
+}
+
+static void R_HudStateSet (const r_hudstate_t *s)
+{
+	memcpy (cl.stats, s->stats, sizeof(s->stats));
+	cl.items = s->items;
+	memcpy (cl.item_gettime, s->item_gettime, sizeof(s->item_gettime));
+	cl.faceanimtime = s->faceanimtime;
+	cl.time = s->time;
+	memcpy (cl.levelname, s->levelname, sizeof(s->levelname));
+	cl.viewentity = s->viewentity;
+	cl.maxclients = s->maxclients;
+	cl.gametype = s->gametype;
+}
+
+/*
+===============
+R_HudFrameEnd
+
+QuakeOG: called by VID_Update. If Sbar_Draw drew the status bar in this
+frame (sb_updates went up from below vid.numpages), keep the state it drew
+from, so R_RenderView can draw the same picture again in frames where id's
+code would have left it on screen.
+===============
+*/
+void R_HudFrameEnd (void)
+{
+	extern int	sb_updates;
+
+	if (r_hud_sbbefore >= 0 && r_hud_sbbefore < vid.numpages && sb_updates >= vid.numpages)
+	{
+		R_HudStateGet (&r_hudshot);
+		r_hudshot_valid = true;
+	}
+	r_hud_sbbefore = -1;
+}
+#endif
 qboolean	r_drawpolys;
 qboolean	r_drawculledpolys;
 qboolean	r_worldpolysbacktofront;
@@ -1131,6 +1199,40 @@ void R_RenderView (void)
 		Sys_Error ("Globals are missaligned");
 
 	R_RenderView_ ();
+
+#ifdef QOG_HUD_IN_ZBUFFER
+	// QuakeOG: the screen rows from r_zalias_row down (the status bar) share
+	// memory with the start of the z-buffer, which this view has just
+	// overwritten. Repaint what a separate frame buffer would still hold:
+	// the tile background a full screen update leaves there, and, when
+	// Sbar_Draw is going to skip this frame (sb_updates), the status bar as
+	// it was last drawn, from the state saved by R_HudFrameEnd. Sbar_Draw
+	// redraws by itself in the other frames. The 2D overlay comes after this.
+	if (r_zalias_row < vid.height)
+	{
+		extern int	sb_updates;
+
+		Draw_TileClear (0, r_zalias_row, vid.width, vid.height - r_zalias_row);
+		r_hud_sbbefore = sb_updates;
+		if (sb_updates >= vid.numpages && !cl.intermission)
+		{
+			if (r_hudshot_valid)
+			{
+				r_hudstate_t	now;
+				int				updates = sb_updates;
+
+				R_HudStateGet (&now);
+				R_HudStateSet (&r_hudshot);
+				sb_updates = 0;
+				Sbar_Draw ();
+				sb_updates = updates;
+				R_HudStateSet (&now);
+			}
+			else
+				Sbar_Changed ();	// nothing drawn yet, draw it now
+		}
+	}
+#endif
 }
 
 /*

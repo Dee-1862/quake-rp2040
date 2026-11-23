@@ -94,6 +94,10 @@ extern void D_PolysetAff8End (void);
 #endif
 
 extern short *d_pzbuffer;
+#ifdef QOG_HUD_IN_ZBUFFER
+extern int	r_zalias_row;	// QuakeOG: screen rows from here down live in the z-buffer (r_main.c)
+void R_HudFrameEnd (void);	// QuakeOG: VID_Update calls it at the end of every frame
+#endif
 extern unsigned int d_zrowbytes, d_zwidth;
 
 extern int	*d_pscantable;

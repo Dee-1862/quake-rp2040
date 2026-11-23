@@ -43,7 +43,6 @@ static void vid_menu_key(int key) {
 void (*vid_menudrawfn)(void) = vid_menu_draw;
 void (*vid_menukeyfn)(int key) = vid_menu_key;
 
-static byte  vid_buffer[QOG_PC_W * QOG_PC_H];
 /* With QOG_MAX_VIEWSIZE 100 the 3D view stops above the 48-row status bar
    (engine/screen.c, r_main.c), so the z-buffer only needs those rows. */
 #ifdef QOG_MAX_VIEWSIZE
@@ -51,7 +50,27 @@ static byte  vid_buffer[QOG_PC_W * QOG_PC_H];
 #else
 #define QOG_PC_ZROWS QOG_PC_H
 #endif
+#define ZBUFFER_BYTES   (QOG_PC_W * QOG_PC_ZROWS * 2)
+#define FRAME_BYTES     (QOG_PC_W * QOG_PC_H)
+#ifdef QOG_HUD_IN_ZBUFFER
+/* QuakeOG: the frame's rows below the 3D view (the status bar) are the first
+   bytes of the z-buffer, which is idle while the 2D overlay is drawn and the
+   frame is shown. R_RenderView repaints them after each 3D view
+   (engine/r_main.c), so the frame holds the same pixels as with two arrays. */
+#ifndef QOG_MAX_VIEWSIZE
+#error "QOG_HUD_IN_ZBUFFER needs QOG_MAX_VIEWSIZE"
+#endif
+#define HUD_BYTES       (QOG_PC_W * (QOG_PC_H - QOG_PC_ZROWS))
+static __declspec(align(16)) byte video_mem[QOG_PC_W * QOG_PC_ZROWS +
+                                            (ZBUFFER_BYTES > HUD_BYTES ? ZBUFFER_BYTES : HUD_BYTES)];
+#define vid_buffer      video_mem
+#define zbuffer         ((short *)(video_mem + QOG_PC_W * QOG_PC_ZROWS))
+#define VIDEO_BYTES     ((int)sizeof video_mem)
+#else
+static byte  vid_buffer[FRAME_BYTES];
 static short zbuffer[QOG_PC_W * QOG_PC_ZROWS];
+#define VIDEO_BYTES     ((int)(sizeof vid_buffer + sizeof zbuffer))
+#endif
 static byte *surfcache;
 static int   surfcache_size;
 
@@ -127,6 +146,9 @@ static void framehash_print(void) {
 
 void VID_Update(vrect_t *rects) {
     (void)rects;
+#ifdef QOG_HUD_IN_ZBUFFER
+    R_HudFrameEnd();
+#endif
     if (s_framehash) framehash_print();
     qog_mem_sample();   /* peaks need every frame, not just title updates */
     HDC dc = GetDC(s_wnd);
@@ -294,6 +316,9 @@ void VID_Init(unsigned char *palette) {
     vid.rowbytes = vid.conrowbytes = QOG_PC_W;
 
     d_pzbuffer = zbuffer;
+#ifdef QOG_HUD_IN_ZBUFFER
+    r_zalias_row = QOG_PC_ZROWS;
+#endif
 #ifdef QOG_SURFCACHE
     surfcache_size = D_SurfaceCacheForRes(QOG_PC_W, QOG_PC_H);
 #else
@@ -304,8 +329,8 @@ void VID_Init(unsigned char *palette) {
     surfcache = malloc(surfcache_size);
     if (!surfcache) Sys_Error("no memory for the surface cache");
     D_InitCaches(surfcache, surfcache_size);
-    Sys_Printf("VID: %dx%d, frame %d KB, z-buffer %d KB, surface cache %d KB\n", QOG_PC_W, QOG_PC_H,
-               (int)(sizeof vid_buffer / 1024), (int)(sizeof zbuffer / 1024), surfcache_size / 1024);
+    Sys_Printf("VID: %dx%d, frame %d KB, z-buffer %d KB, video memory %d KB, surface cache %d KB\n", QOG_PC_W,
+               QOG_PC_H, FRAME_BYTES / 1024, ZBUFFER_BYTES / 1024, VIDEO_BYTES / 1024, surfcache_size / 1024);
 
     s_bmi.h.biSize = sizeof s_bmi.h;
     s_bmi.h.biWidth = QOG_PC_W;
@@ -326,7 +351,7 @@ void VID_Init(unsigned char *palette) {
         extern void qog_tour_register(void);
         qog_tour_register();
     }
-    qog_mem_set_video((int)(sizeof vid_buffer + sizeof zbuffer) + surfcache_size);
+    qog_mem_set_video(VIDEO_BYTES + surfcache_size);
 
     WNDCLASSA wc = {0};
     wc.lpfnWndProc = wnd_proc;
