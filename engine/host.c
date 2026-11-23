@@ -880,7 +880,12 @@ void Host_Init (quakeparms_t *parms)
 		host_basepal = (byte *)COM_LoadHunkFile ("gfx/palette.lmp");
 		if (!host_basepal)
 			Sys_Error ("Couldn't load gfx/palette.lmp");
-		host_colormap = (byte *)COM_LoadHunkFile ("gfx/colormap.lmp");
+		// QuakeOG: the colormap (16 KB) is only ever read, so use it in place
+		// when the pack is mapped. The image is aligned, so vid.fullbright can
+		// still read the int after the table.
+		host_colormap = COM_FlashFile ("gfx/colormap.lmp", NULL);
+		if (!host_colormap)
+			host_colormap = (byte *)COM_LoadHunkFile ("gfx/colormap.lmp");
 		if (!host_colormap)
 			Sys_Error ("Couldn't load gfx/colormap.lmp");
 

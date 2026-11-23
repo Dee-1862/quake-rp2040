@@ -253,7 +253,7 @@ void VID_Init(unsigned char *palette) {
     vid.aspect = ((float)vid.height / (float)vid.width) * (320.0f / 240.0f);
     vid.numpages = 1;
     vid.colormap = host_colormap;
-    vid.fullbright = 256 - LittleLong(*((int *)vid.colormap + 2048));
+    vid.fullbright = 256 - vid.colormap[16384];   /* one byte after the 64x256 table; the colormap may be read in place from flash, where the 3 bytes after the file are not ours */
     vid.buffer = vid.conbuffer = vid_buffer;
     vid.rowbytes = vid.conrowbytes = QOG_PC_W;
 
