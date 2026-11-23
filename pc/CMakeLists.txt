@@ -76,7 +76,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_PLANES_EXACT                # planes allocated once, not twice (id's unused second half)
     QOG_MARKSURF16                  # mark surfaces as the file's 16-bit numbers, in place
     QOG_SURF_PACKED                 # surface flags and edge count share a word
-    QOG_EDGECACHE16)                # 16-bit edge cache entries, frame window cleared on wrap
+    QOG_EDGECACHE16                 # 16-bit edge cache entries, frame window cleared on wrap
+    QOG_LEAF_PACKED)                # leaf mark surface index and count as the file's 16 bits
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

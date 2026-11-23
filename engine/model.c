@@ -1001,9 +1001,17 @@ void Mod_LoadLeafs (lump_t *l)
 		p = LittleLong(in->contents);
 		out->contents = p;
 
+#ifdef QOG_LEAF_PACKED
+		// QuakeOG: kept as the file's 16-bit index, see LEAF_MARKSURFACES
+		out->firstmarksurface = (unsigned short)LittleShort(in->firstmarksurface);
+		out->nummarksurfaces = (unsigned short)LittleShort(in->nummarksurfaces);
+		if (out->firstmarksurface + out->nummarksurfaces > loadmodel->nummarksurfaces)
+			Sys_Error ("Mod_LoadLeafs: bad mark surfaces in %s", loadmodel->name);
+#else
 		out->firstmarksurface = loadmodel->marksurfaces +
 			LittleShort(in->firstmarksurface);
 		out->nummarksurfaces = LittleShort(in->nummarksurfaces);
+#endif
 		
 		p = LittleLong(in->visofs);
 		if (p == -1)

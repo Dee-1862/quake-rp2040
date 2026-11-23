@@ -504,7 +504,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	{
 		pleaf = (mleaf_t *)node;
 
-		mark = pleaf->firstmarksurface;
+		mark = LEAF_MARKSURFACES (cl.worldmodel, pleaf);	// QuakeOG
 		c = pleaf->nummarksurfaces;
 
 		if (c)

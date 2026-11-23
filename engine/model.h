@@ -180,10 +180,24 @@ typedef struct mleaf_s
 	byte		*compressed_vis;
 	// QuakeOG: efrags and key moved to model_t (LEAF_EFRAGS, LEAF_KEY)
 
+#ifdef QOG_LEAF_PACKED
+	// QuakeOG: the file's 16-bit first index and count (mleaf_t 36 to 32 B),
+	// use LEAF_MARKSURFACES
+	unsigned short	firstmarksurface;
+	unsigned short	nummarksurfaces;
+#else
 	marksurf_t	*firstmarksurface;	// QuakeOG: see marksurf_t
 	int			nummarksurfaces;
+#endif
 	byte		ambient_sound_level[NUM_AMBIENTS];
 } mleaf_t;
+
+// QuakeOG: a leaf's first mark surface in model m
+#ifdef QOG_LEAF_PACKED
+#define LEAF_MARKSURFACES(m, l)	((m)->marksurfaces + (l)->firstmarksurface)
+#else
+#define LEAF_MARKSURFACES(m, l)	((l)->firstmarksurface)
+#endif
 
 // !!! if this is changed, it must be changed in asm_i386.h too !!!
 typedef struct
