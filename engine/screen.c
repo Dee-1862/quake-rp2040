@@ -235,6 +235,11 @@ static void SCR_CalcRefdef (void)
 		Cvar_Set ("viewsize","30");
 	if (scr_viewsize.value > 120)
 		Cvar_Set ("viewsize","120");
+#ifdef QOG_MAX_VIEWSIZE	// QuakeOG: the 3D view never grows past the status bar, so the
+						// z-buffer only covers those rows (MG24Quake does the same)
+	if (scr_viewsize.value > QOG_MAX_VIEWSIZE)
+		Cvar_SetValue ("viewsize", QOG_MAX_VIEWSIZE);
+#endif
 
 // bound field of view
 	if (scr_fov.value < 10)
@@ -250,6 +255,10 @@ static void SCR_CalcRefdef (void)
 		size = 120;
 	else
 		size = scr_viewsize.value;
+#ifdef QOG_MAX_VIEWSIZE
+	if (size > QOG_MAX_VIEWSIZE)	// intermission too: keep the 3D view inside the z-buffer
+		size = QOG_MAX_VIEWSIZE;
+#endif
 
 	if (size >= 120)
 		sb_lines = 0;		// no status bar at all

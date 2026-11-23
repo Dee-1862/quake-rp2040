@@ -316,7 +316,9 @@ void R_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 	if (cl.intermission)
 	{
 		size = 100;
+#ifndef QOG_MAX_VIEWSIZE	// QuakeOG: keep the status bar rows out of the 3D view (z-buffer size)
 		lineadj = 0;
+#endif
 	}
 	size /= 100;
 

@@ -44,7 +44,14 @@ void (*vid_menudrawfn)(void) = vid_menu_draw;
 void (*vid_menukeyfn)(int key) = vid_menu_key;
 
 static byte  vid_buffer[QOG_PC_W * QOG_PC_H];
-static short zbuffer[QOG_PC_W * QOG_PC_H];
+/* With QOG_MAX_VIEWSIZE 100 the 3D view stops above the 48-row status bar
+   (engine/screen.c, r_main.c), so the z-buffer only needs those rows. */
+#ifdef QOG_MAX_VIEWSIZE
+#define QOG_PC_ZROWS (QOG_PC_H - 48)
+#else
+#define QOG_PC_ZROWS QOG_PC_H
+#endif
+static short zbuffer[QOG_PC_W * QOG_PC_ZROWS];
 static byte *surfcache;
 static int   surfcache_size;
 
