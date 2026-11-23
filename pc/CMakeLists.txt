@@ -166,4 +166,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
 # Server, client and system memory (Agent M)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_HUNK_PACKED)                # entity strings and command entries share hunk blocks (id 32 B block each)
+    QOG_HUNK_PACKED                 # entity strings and command entries share hunk blocks (id 32 B block each)
+    QOG_TRANSLATE_ONDRAW)           # player colour table built on the stack when drawn (id 16 KB per player on the hunk)

@@ -44,7 +44,15 @@ typedef struct
 	float	entertime;
 	int		frags;
 	int		colors;			// two 4 bit fields
+#ifdef QOG_TRANSLATE_ONDRAW
+	qboolean	translated;		// CL_NewTranslation has run for this slot
+#else
 	byte	translations[VID_GRADES*256];
+#endif
+	// QuakeOG: with QOG_TRANSLATE_ONDRAW an entity in player colours has
+	// colormap pointing at its scoreboard_t, and the alias renderer builds
+	// the 16 KB table on its stack for that draw only (r_alias.c). Only chase
+	// view and copies of the player body ever draw one.
 } scoreboard_t;
 
 typedef struct
@@ -362,6 +370,10 @@ void CL_TimeDemo_f (void);
 //
 void CL_ParseServerMessage (void);
 void CL_NewTranslation (int slot);
+#ifdef QOG_TRANSLATE_ONDRAW
+int CL_TranslationSlot (void *colormap);	// QuakeOG: scoreboard slot an entity colormap names, or -1
+void CL_BuildTranslation (byte *dest, int slot);
+#endif
 
 //
 // view
