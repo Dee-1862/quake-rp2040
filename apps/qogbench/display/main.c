@@ -11,6 +11,28 @@
  *               a power of two). This is what the game does today.
  *   lit_ram     the same code placed in RAM (__not_in_flash_func).
  *   lit_pow2    lit_ram with a 64x64 texture and masks instead of modulos.
+ *   old_p2      lit_flash on a 256x128 texture in flash (the first 32 KB of
+ *               the picture), the texture origin whole light cells as in the
+ *               game: today's code on a power-of-two texture, the common case.
+ *   fast_p2     the same scene with the engine's QOG_LITSPAN_FAST drawer
+ *               (engine/d_litspan.h, included, not copied): no modulo, the
+ *               origin folded into the light pointer, two passes per run.
+ *   fast_any    QOG_LITSPAN_FAST on the 320x200 picture (not a power of
+ *               two): wrapped coordinates, compare and subtract.
+ *   lin_p2      approximate QOG_LITSPAN_LINLIGHT on the fast_p2 scene: light
+ *               blended at both ends of each run, stepped linearly between.
+ *   s16_p2      approximate QOG_LITSPAN16: one float divide per 16 pixels.
+ *   s16lin_p2   both approximations.
+ *   *_short     the same on game-like spans: each row cut into spans of 17
+ *               to 47 pixels (E1M1's fly-through averages 30 pixels a span,
+ *               1,600 spans a frame), so the per-span float work shows.
+ *   zid_short   the engine's D_DrawZSpans as id wrote it: 1/z in double
+ *               (float to double, two double multiplies, double to int).
+ *   zfast_short QOG_ZSPANS_FAST: the same z values from the float's bits.
+ *   chk_z       zid against zfast over both span sets, 0 or differing z.
+ *   chk_p2, chk_any   QOG_LITSPAN_FAST against the old code, byte for byte,
+ *               at every mip level (lshift 4 to 1), on full and ragged
+ *               spans: 0 or the number of differing pixels.
  *   surfcache   id's D_DrawSpans8 from a lit surface cache in RAM (no
  *               lighting per pixel), for comparison with id's design.
  *   zspans      id's D_DrawZSpans: 16-bit depth for every view pixel.
@@ -57,6 +79,10 @@ static fixed16_t sadjust, tadjust, bbextents, bbextentt;
 static const uint8_t *lit_tex;
 static int lit_tw, lit_th, lit_soff, lit_toff, lit_smax, lit_lshift;
 static const uint8_t *lit_colormap = s_colormap;
+/* QOG_LITSPAN_FAST state, the names engine/d_litspan.h uses */
+static int lit_kind, lit_soff16, lit_toff16, lit_smask, lit_tshift, lit_tw16, lit_th16;
+static unsigned lit_tmask2;
+static const unsigned *lit_lgrid, *lit_lbase;
 
 /* ---- engine/d_scanlit.c, copied ---- */
 #define LITPIXEL_BODY(MODX, MODY)                                              \
@@ -151,6 +177,76 @@ static void __not_in_flash_func(DrawSpans_lit_ram)(espan_t *pspan) { DRAWSPANS_B
 static void __not_in_flash_func(DrawSpans_lit_pow2)(espan_t *pspan) { DRAWSPANS_BODY(LitPixel_pow2) }
 static void __not_in_flash_func(DrawSpans_cache)(espan_t *pspan) { DRAWSPANS_BODY(CachePixel) }
 
+/* The engine's QOG_LITSPAN_FAST span drawer, compiled from the engine's own
+   header. In flash like the engine's (the XIP cache holds the loop). */
+#define NOINLINE __attribute__((noinline))
+#define LITSPAN_NEXT(p)	(((p) = (p)->pnext) != NULL)
+#define QOG_LITSPAN_TAILMUL   /* as in the shipped engine */
+#include "../../../engine/d_litspan.h"
+static NOINLINE void DrawSpans_lit_fast(espan_t *pspan) { D_LITSPANS8_BODY }
+static NOINLINE void DrawSpans_lit_lin(espan_t *pspan) { D_LITSPANS8LIN_BODY }
+static NOINLINE void DrawSpans_lit_s16(espan_t *pspan) { D_LITSPANS16_BODY }
+static NOINLINE void DrawSpans_lit_s16lin(espan_t *pspan) { D_LITSPANS16LIN_BODY }
+
+/* engine/d_scan.c D_DrawZSpans (16-bit z) with id's double 1/z or with
+   QOG_ZSPANS_FAST's D_QogZiFixed (copied from engine/d_scan.c). */
+static int D_QogZiFixed(float zi) {
+    union { float f; unsigned u; } v;
+    unsigned m;
+    int e, r;
+    v.f = zi;
+    e = (int)((v.u >> 23) & 0xFF);
+    if (e >= 127) return (int)((double)zi * 0x8000 * 0x10000);
+    if (e < 96) return 0;
+    m = (v.u & 0x7FFFFF) | 0x800000;
+    if (e >= 119) r = (int)(m << (e - 119));
+    else r = (int)(m >> (119 - e));
+    return (v.u & 0x80000000) ? -r : r;
+}
+#define ZSPANS_BODY(ZITYPE, IZI)                                               \
+    int count, doublecount, izistep, izi;                                      \
+    short *pdest;                                                              \
+    unsigned ltemp;                                                            \
+    ZITYPE zi;                                                                 \
+    float du, dv;                                                              \
+    izistep = (int)(d_zistepu * 0x8000 * 0x10000);                             \
+    do {                                                                       \
+        pdest = s_z + W * pspan->v + pspan->u;                                 \
+        count = pspan->count;                                                  \
+        du = (float)pspan->u;                                                  \
+        dv = (float)pspan->v;                                                  \
+        zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;                         \
+        izi = IZI;                                                             \
+        if ((uintptr_t)pdest & 0x02) { *pdest++ = (short)(izi >> 16); izi += izistep; count--; } \
+        if ((doublecount = count >> 1) > 0) {                                  \
+            do {                                                               \
+                ltemp = izi >> 16; izi += izistep;                             \
+                ltemp |= izi & 0xFFFF0000; izi += izistep;                     \
+                *(int *)pdest = (int)ltemp;                                    \
+                pdest += 2;                                                    \
+            } while (--doublecount > 0);                                       \
+        }                                                                      \
+        if (count & 1) *pdest = (short)(izi >> 16);                            \
+    } while ((pspan = pspan->pnext) != NULL);
+static NOINLINE void DrawZSpans_id(espan_t *pspan) { ZSPANS_BODY(double, (int)(zi * 0x8000 * 0x10000)) }
+static NOINLINE void DrawZSpans_fast(espan_t *pspan) { ZSPANS_BODY(float, D_QogZiFixed(zi)) }
+
+/* Game-like spans: every row cut into spans of 17 to 47 pixels. */
+static espan_t s_short[VIEW_H * 13];   /* at most 12 spans a row with these lengths */
+static void short_spans(void) {
+    int n = 0, len = 17;
+    for (int v = 0; v < VIEW_H; v++)
+        for (int u = 0; u < W; ) {
+            int c = W - u < len ? W - u : len;
+            s_short[n].u = u; s_short[n].v = v; s_short[n].count = c;
+            s_short[n].pnext = &s_short[n + 1];
+            n++;
+            u += c;
+            len = len >= 47 ? 17 : len + 3;
+        }
+    s_short[n - 1].pnext = NULL;
+}
+
 /* id's D_DrawZSpans (d_scan.c), C version. */
 static void __not_in_flash_func(DrawZSpans)(espan_t *pspan) {
     int count, doublecount, izistep, izi;
@@ -196,6 +292,68 @@ static void setup_scene(int tw, int th) {
         s_spans[v].u = 0; s_spans[v].v = v; s_spans[v].count = W;
         s_spans[v].pnext = (v + 1 < VIEW_H) ? &s_spans[v + 1] : NULL;
     }
+}
+
+/* The scene with a texture and mip level of the game's kind: texture origin
+   whole light cells (multiples of 16 texels at mip 0), extents as
+   D_CalcGradients sets them for a 256-texel face at that mip. */
+static void setup_game_scene(const uint8_t *tex, int tw, int th, int mip) {
+    setup_scene(tw, th);
+    lit_tex = tex;
+    lit_lshift = 4 - mip;
+    lit_soff = (32 >> mip) % tw;
+    lit_toff = (48 >> mip) % th;
+    bbextents = ((16 * 16 << 16) >> mip) - 1;
+    bbextentt = ((16 * 16 << 16) >> mip) - 1;
+    LITSPAN_SETUP (blocklights)
+}
+
+/* Spans of uneven length and start, so the last run of a span has 1 to 8
+   pixels and runs start at every alignment. */
+static void ragged_spans(void) {
+    for (int v = 0; v < VIEW_H; v++) {
+        s_spans[v].u = (v * 7) % 23;
+        s_spans[v].count = W - s_spans[v].u - (v * 13) % 41;
+    }
+}
+
+/* Old against new, byte for byte. Returns the number of differing pixels. */
+static uint32_t check_fast(const uint8_t *tex, int tw, int th) {
+    uint8_t *ref = (uint8_t *)s_z;   /* the z-buffer is scratch until the z timing */
+    uint32_t bad = 0;
+    for (int mip = 0; mip < 4; mip++)
+        for (int ragged = 0; ragged < 2; ragged++) {
+            setup_game_scene(tex, tw, th, mip);
+            if (ragged) ragged_spans();
+            memset(s_fb, 0, W * VIEW_H);
+            DrawSpans_lit_flash(s_spans);
+            memcpy(ref, s_fb, W * VIEW_H);
+            memset(s_fb, 0, W * VIEW_H);
+            DrawSpans_lit_fast(s_spans);
+            for (int i = 0; i < W * VIEW_H; i++) bad += ref[i] != s_fb[i];
+        }
+    return bad;
+}
+
+static uint32_t time_frames_on(void (*fn)(espan_t *), espan_t *spans) {
+    const uint64_t t0 = time_us_64();
+    for (int i = 0; i < FRAMES; i++) fn(spans);
+    return (uint32_t)((time_us_64() - t0) / FRAMES);
+}
+
+/* id's double z against QOG_ZSPANS_FAST, value for value, in two halves
+   (the frame buffer holds 100 rows of z as scratch). */
+static uint32_t check_z(espan_t *spans) {
+    uint32_t bad = 0;
+    short *ref = (short *)s_fb;
+    for (int half = 0; half < 2; half++) {
+        const int first = half ? 100 : 0, rows = half ? VIEW_H - 100 : 100;
+        DrawZSpans_id(spans);
+        memcpy(ref, s_z + W * first, (size_t)W * rows * 2);
+        DrawZSpans_fast(spans);
+        for (int i = 0; i < W * rows; i++) bad += ref[i] != s_z[W * first + i];
+    }
+    return bad;
 }
 
 static uint32_t time_frames(void (*fn)(espan_t *)) {
@@ -252,6 +410,12 @@ int main(void) {
 
     uint32_t r_lit_flash = 0, r_lit_ram = 0, r_lit_pow2 = 0, r_cache = 0, r_z = 0;
     uint32_t r_fdiv_ns = 0, r_xip_seq = 0, r_xip_rand = 0, rounds = 0;
+    uint32_t r_old_p2 = 0, r_fast_p2 = 0, r_fast_any = 0, chk_p2 = 0, chk_any = 0;
+    uint32_t r_lin_p2 = 0, r_s16_p2 = 0, r_s16lin_p2 = 0;
+    uint32_t r_old_short = 0, r_fast_short = 0, r_zid_short = 0, r_zfast_short = 0, chk_z = 0;
+    const uint8_t *game_tex = tex_in_flash ? flash_tex : ram_tex;
+    const int any_w = tex_in_flash ? W : 64, any_h = tex_in_flash ? H : 48;
+    const int p2_w = tex_in_flash ? 256 : 64, p2_h = tex_in_flash ? 128 : 64;
     absolute_time_t next_report = make_timeout_time_ms(2000);
     absolute_time_t next_bench = get_absolute_time();
 
@@ -271,6 +435,37 @@ int main(void) {
             setup_scene(64, 64);
             lit_tex = s_tex64;
             r_lit_pow2 = time_frames(DrawSpans_lit_pow2);
+
+            /* The new drawers, one group per round so a round stays near the
+               original 2.5 s and fwog_power_poll keeps running often. */
+            if (rounds % 3 == 0) {
+                /* QOG_LITSPAN_FAST against today's code, texture in flash */
+                setup_game_scene(game_tex, p2_w, p2_h, 0);
+                r_old_p2 = time_frames(DrawSpans_lit_flash);
+                r_fast_p2 = time_frames(DrawSpans_lit_fast);
+                setup_game_scene(game_tex, any_w, any_h, 0);
+                r_fast_any = time_frames(DrawSpans_lit_fast);
+            } else if (rounds % 3 == 1) {
+                /* approximate drawers on the fast_p2 scene */
+                setup_game_scene(game_tex, p2_w, p2_h, 0);
+                r_lin_p2 = time_frames(DrawSpans_lit_lin);
+                r_s16_p2 = time_frames(DrawSpans_lit_s16);
+                r_s16lin_p2 = time_frames(DrawSpans_lit_s16lin);
+            } else {
+                /* game-like span lengths, then the byte checks */
+                setup_game_scene(game_tex, p2_w, p2_h, 0);
+                short_spans();
+                r_old_short = time_frames_on(DrawSpans_lit_flash, s_short);
+                r_fast_short = time_frames_on(DrawSpans_lit_fast, s_short);
+                r_zid_short = time_frames_on(DrawZSpans_id, s_short);
+                r_zfast_short = time_frames_on(DrawZSpans_fast, s_short);
+                chk_z = check_z(s_short) + check_z(s_spans);
+                chk_p2 = check_fast(game_tex, p2_w, p2_h);
+                chk_any = check_fast(game_tex, any_w, any_h);
+            }
+
+            setup_scene(64, 64);
+            lit_tex = s_tex64;
             r_cache    = time_frames(DrawSpans_cache);
             r_z        = time_frames(DrawZSpans);
 
@@ -317,6 +512,14 @@ int main(void) {
                  (unsigned long)r_lit_flash, (unsigned long)r_lit_ram, (unsigned long)r_lit_pow2,
                  (unsigned long)r_cache, (unsigned long)r_z,
                  (unsigned long)r_fdiv_ns, (unsigned long)r_xip_seq, (unsigned long)r_xip_rand);
+            DIAG("[bench] fast old_p2=%luus fast_p2=%luus fast_any=%luus chk_p2=%lu chk_any=%lu | "
+                 "approx lin_p2=%luus s16_p2=%luus s16lin_p2=%luus | "
+                 "short old=%luus fast=%luus zid=%luus zfast=%luus chk_z=%lu\n",
+                 (unsigned long)r_old_p2, (unsigned long)r_fast_p2, (unsigned long)r_fast_any,
+                 (unsigned long)chk_p2, (unsigned long)chk_any,
+                 (unsigned long)r_lin_p2, (unsigned long)r_s16_p2, (unsigned long)r_s16lin_p2,
+                 (unsigned long)r_old_short, (unsigned long)r_fast_short,
+                 (unsigned long)r_zid_short, (unsigned long)r_zfast_short, (unsigned long)chk_z);
         }
         sleep_ms(1);
     }
