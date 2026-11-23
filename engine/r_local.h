@@ -274,15 +274,26 @@ extern edge_t	*auxedges;
 extern int		r_numallocatededges;
 extern edge_t	*r_edges, *edge_p, *edge_max;
 
-extern	edge_t	*newedges[MAXHEIGHT];
-extern	edge_t	*removeedges[MAXHEIGHT];
+extern	edgeref_t	newedges[MAXHEIGHT];	// QuakeOG: edgeref_t, see r_shared.h
+extern	edgeref_t	removeedges[MAXHEIGHT];
 
 extern	int	screenwidth;
 
+#ifdef QOG_EDGE_T_PACKED
+// QuakeOG: the sentinels are the first entries of the edge buffer, so they
+// can be linked with 16-bit offsets (set up in R_EdgeDrawing)
+#define EDGE_SENTINELS	4
+extern	edge_t	*r_edgesentinels;
+#define edge_head		(r_edgesentinels[0])
+#define edge_tail		(r_edgesentinels[1])
+#define edge_aftertail	(r_edgesentinels[2])
+#define edge_sentinel	(r_edgesentinels[3])
+#else
 // FIXME: make stack vars when debugging done
 extern	edge_t	edge_head;
 extern	edge_t	edge_tail;
 extern	edge_t	edge_aftertail;
+#endif
 extern int		r_bmodelactive;
 extern vrect_t	*pconupdate;
 

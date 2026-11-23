@@ -284,14 +284,31 @@ void R_NewMap (void)
 	if (r_numallocatededges < MINEDGES)
 		r_numallocatededges = MINEDGES;
 
+#ifdef QOG_EDGE_T_PACKED
+	// QuakeOG: packed edges link with 16-bit byte offsets and name their
+	// owner by a 16-bit world edge index (r_shared.h)
+	if ((r_numallocatededges + EDGE_SENTINELS + 1) * sizeof(edge_t) > 0x10000)
+		Sys_Error ("R_NewMap: %d edges, 16-bit edge links allow %d",
+			r_numallocatededges, (int)(0x10000 / sizeof(edge_t)) - EDGE_SENTINELS - 1);
+	if (cl.worldmodel->numedges >= EDGE_OWNER_NONE)
+		Sys_Error ("R_NewMap: %d map edges, packed edges allow %d",
+			cl.worldmodel->numedges, EDGE_OWNER_NONE - 1);
+#endif
+
 	if (r_numallocatededges <= NUMSTACKEDGES)
 	{
 		auxedges = NULL;
 	}
 	else
 	{
+#ifdef QOG_EDGE_T_PACKED
+		// QuakeOG: room for the sentinels in front, see R_EdgeDrawing
+		auxedges = Hunk_AllocName ((r_numallocatededges + EDGE_SENTINELS) * sizeof(edge_t),
+								   "edges");
+#else
 		auxedges = Hunk_AllocName (r_numallocatededges * sizeof(edge_t),
 								   "edges");
+#endif
 	}
 
 	r_dowarpold = false;
@@ -879,11 +896,30 @@ int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG: see the end of R_EdgeDrawing
 
 void R_EdgeDrawing (void)
 {
+#ifdef QOG_EDGE_T_PACKED
+	// QuakeOG: the four sentinel edges come first, then the edge table.
+	// r_edgebase is one entry before the sentinels, so offset 0 (EDGE_NONE)
+	// never addresses an edge. 24-byte edges gain nothing from id's cache
+	// line alignment, so the table is not aligned.
+	extern medge_t		*r_qog_owneredges;
+	extern unsigned int	r_qog_ownerbytes;
+	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES];
+#else
 	edge_t	ledges[NUMSTACKEDGES +
 				((CACHE_SIZE - 1) / sizeof(edge_t)) + 1];
+#endif
 	surf_t	lsurfs[NUMSTACKSURFACES +
 				((CACHE_SIZE - 1) / sizeof(surf_t)) + 1];
 
+#ifdef QOG_EDGE_T_PACKED
+	r_edgesentinels = auxedges ? auxedges : ledges;
+	r_edgebase = (byte *)r_edgesentinels - sizeof(edge_t);
+	r_edges = r_edgesentinels + EDGE_SENTINELS;
+	// id's sentinels were zeroed statics, and R_ScanEdges sets only some fields
+	memset (r_edgesentinels, 0, EDGE_SENTINELS * sizeof(edge_t));
+	r_qog_owneredges = cl.worldmodel->edges;
+	r_qog_ownerbytes = cl.worldmodel->numedges * sizeof(medge_t);
+#else
 	if (auxedges)
 	{
 		r_edges = auxedges;
@@ -893,6 +929,7 @@ void R_EdgeDrawing (void)
 		r_edges =  (edge_t *)
 				(((long)&ledges[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
 	}
+#endif
 
 	if (r_surfsonstack)
 	{

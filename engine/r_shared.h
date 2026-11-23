@@ -181,6 +181,38 @@ extern int	ubasestep, errorterm, erroradjustup, erroradjustdown;
 #define ALIAS_XY_CLIP_MASK			0x000F
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
+#ifdef QOG_EDGE_T_PACKED
+// QuakeOG: 24 bytes, not 32. Edges live only in the edge table of one
+// R_EdgeDrawing call, so the links are 16-bit byte offsets from r_edgebase
+// (EDGE_NONE is 0, which never addresses an edge, see R_EdgeDrawing). The
+// four sentinel edges sit in front of r_edges in the same buffer, so they
+// have offsets too. owner is only compared with the world medge_t being
+// drawn (R_RenderFace's cache check), so it is the medge_t's index in the
+// world's edge array, or EDGE_OWNER_NONE for anything else (other models'
+// edges and the clip edge tedge). R_NewMap checks that both forms fit.
+typedef unsigned short	edgeref_t;
+#define EDGE_NONE		0
+#define EDGE_OWNER_NONE	0xFFFF
+extern byte	*r_edgebase;
+#define EDGE_PTR(r)		((edge_t *)(r_edgebase + (r)))
+#define EDGE_REF(p)		((edgeref_t)((byte *)(p) - r_edgebase))
+
+typedef struct edge_s
+{
+	fixed16_t		u;
+	fixed16_t		u_step;
+	edgeref_t		prev, next;
+	unsigned short	surfs[2];
+	edgeref_t		nextremove;
+	unsigned short	owner;
+	float			nearzi;
+} edge_t;
+#else
+typedef struct edge_s	*edgeref_t;
+#define EDGE_NONE		NULL
+#define EDGE_PTR(r)		(r)
+#define EDGE_REF(p)		(p)
+
 typedef struct edge_s
 {
 	fixed16_t		u;
@@ -191,6 +223,7 @@ typedef struct edge_s
 	float			nearzi;
 	medge_t			*owner;
 } edge_t;
+#endif
 
 #endif	// _R_SHARED_H_
 

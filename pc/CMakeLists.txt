@@ -101,6 +101,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SURF_T_PACKED               # edge-drawing surface entries 52 bytes, not id's assembly-padded 64
     QOG_MAX_BMODEL_VERTS=128        # one clipped brush entity polygon, measured peak 22 (id 500)
     QOG_MAX_BMODEL_EDGES=256)       #   and 74 edges (id 1000)
+# Renderer stack frames and render tables (Agent D)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_EDGE_T_PACKED)              # edge_t 24 bytes with 16-bit links and owner (id 32)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}
