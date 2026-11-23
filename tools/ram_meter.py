@@ -26,7 +26,7 @@ NM = os.path.join(TOOLCHAIN, "arm-none-eabi-nm" + EXE)
 # Same files the PC build compiles (pc/CMakeLists.txt): the real mixer, not the null stub.
 EXCLUDE = {"snd_null.c"}
 CFLAGS = ["-std=gnu11", "-mcpu=cortex-m0plus", "-mthumb", "-Os", "-fno-common", "-ffunction-sections",
-          "-fdata-sections", "-w", "-Wno-implicit-function-declaration", "-DQOG_RP2040_METER", "-DQOG_SINGLE_PLAYER", "-DQOG_EDICT_MARGIN=128", "-DQOG_MAX_MOD_KNOWN=192", "-I", os.path.join(ROOT, "engine")]
+          "-fdata-sections", "-w", "-Wno-implicit-function-declaration", "-DQOG_RP2040_METER", "-DQOG_SINGLE_PLAYER", "-DQOG_EDICT_MARGIN=128", "-DQOG_MAX_MOD_KNOWN=192", "-DQOG_MAX_PARTICLES=512", "-DQOG_CON_TEXTSIZE=4096", "-DQOG_KEY_HISTORY=8", "-I", os.path.join(ROOT, "engine")]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

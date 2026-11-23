@@ -64,7 +64,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SINGLE_PLAYER               # one client slot, loopback sockets only
     QOG_EDICT_MARGIN=128            # edicts per map: entity blocks + clients + this
     QOG_MAX_MOD_KNOWN=192           # model table: one level's models, 160 max in shareware
-    QOG_MAX_PARTICLES=512)          # id's floor; visual trade-off, see docs/changes.md
+    QOG_MAX_PARTICLES=512           # id's floor; visual trade-off, see docs/changes.md
+    QOG_CON_TEXTSIZE=4096           # console scrollback, about 100 lines (id 16 KB, also on the stack)
+    QOG_KEY_HISTORY=8)              # console command history lines (id 32)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}

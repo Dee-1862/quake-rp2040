@@ -32,7 +32,13 @@ int 		con_linewidth;
 
 float		con_cursorspeed = 4;
 
+// QuakeOG: QOG_CON_TEXTSIZE shrinks the scrollback; Con_CheckResize also
+// puts a copy of it on the stack, so this cuts peak stack too
+#ifdef QOG_CON_TEXTSIZE
+#define		CON_TEXTSIZE	QOG_CON_TEXTSIZE
+#else
 #define		CON_TEXTSIZE	16384
+#endif
 
 qboolean 	con_forcedup;		// because no entities to refresh
 
@@ -53,7 +59,10 @@ int			con_vislines;
 qboolean	con_debuglog;
 
 #define		MAXCMDLINE	256
-extern	char	key_lines[32][MAXCMDLINE];
+#ifndef QOG_KEY_HISTORY
+#define QOG_KEY_HISTORY 32
+#endif
+extern	char	key_lines[QOG_KEY_HISTORY][MAXCMDLINE];
 extern	int		edit_line;
 extern	int		key_linepos;
 		
