@@ -96,10 +96,10 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 	{
 		// QuakeOG: id indexes the world's surfaces here even for brush
 		// entities, so the world's arrays are the right ones
-		if (SURF_DLIGHTFRAME (cl.worldmodel, surf) != r_dlightframecount)
+		if (!SURF_DLIGHTFRAME_IS (cl.worldmodel, surf, r_dlightframecount))	// QuakeOG
 		{
 			SURF_DLIGHTBITS (cl.worldmodel, surf) = 0;
-			SURF_DLIGHTFRAME (cl.worldmodel, surf) = r_dlightframecount;
+			SURF_DLIGHTFRAME_SET (cl.worldmodel, surf, r_dlightframecount);
 		}
 		SURF_DLIGHTBITS (cl.worldmodel, surf) |= bit;
 	}

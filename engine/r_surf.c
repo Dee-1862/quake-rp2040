@@ -187,7 +187,7 @@ void R_BuildLightMap (void)
 		}
 
 // add all the dynamic lights
-	if (SURF_DLIGHTFRAME (r_drawsurf.model, surf) == r_framecount)
+	if (SURF_DLIGHTFRAME_IS (r_drawsurf.model, surf, r_framecount))	// QuakeOG
 		R_AddDynamicLights ();
 
 // bound, invert, and shift

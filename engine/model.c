@@ -1280,6 +1280,44 @@ float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 
 /*
 =================
+Mod_AllocFrameStamps
+
+QuakeOG: a zeroed array of per-frame stamps (see framestamp_t in model.h).
+With QOG_FRAME16 the array's length and base counter (zero) come first.
+=================
+*/
+static framestamp_t *Mod_AllocFrameStamps (int count)
+{
+#ifdef QOG_FRAME16
+	int		*head;
+
+	head = Hunk_AllocName (2 * sizeof(int) + count * sizeof(framestamp_t), loadname);
+	head[0] = count;	// FS_COUNT
+	head[1] = 0;		// FS_BASE
+	return (framestamp_t *)(head + 2);
+#else
+	return Hunk_AllocName (count * sizeof(framestamp_t), loadname);
+#endif
+}
+
+#ifdef QOG_FRAME16
+/*
+=================
+FS_Refill
+
+QuakeOG: start a new window at counter. Every old stamp becomes 0xFFFF,
+which matches no counter, as id's older stamps never match again.
+=================
+*/
+void FS_Refill (framestamp_t *stamps, int counter)
+{
+	memset (stamps, 0xFF, FS_COUNT (stamps) * sizeof(framestamp_t));
+	FS_BASE (stamps) = counter;
+}
+#endif
+
+/*
+=================
 Mod_LoadBrushModel
 =================
 */
@@ -1327,11 +1365,11 @@ void Mod_LoadBrushModel (model_t *mod, void *buffer)
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels
 	// below with the rest of the model, so they share it like the arrays.
-	loadmodel->surf_visframe = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
-	loadmodel->surf_dlightframe = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+	loadmodel->surf_visframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
+	loadmodel->surf_dlightframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
 	loadmodel->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
-	loadmodel->node_visframe = Hunk_AllocName (loadmodel->numnodes * sizeof(int), loadname);
-	loadmodel->leaf_visframe = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
+	loadmodel->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
+	loadmodel->leaf_visframe = Mod_AllocFrameStamps (loadmodel->numleafs);
 	loadmodel->leaf_efrags = Hunk_AllocName (loadmodel->numleafs * sizeof(efrag_t *), loadname);
 	loadmodel->leaf_key = Hunk_AllocName (loadmodel->numleafs * sizeof(int), loadname);
 #ifdef QOG_EDGECACHE16

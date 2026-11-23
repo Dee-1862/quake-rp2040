@@ -511,9 +511,9 @@ void R_MarkLeaves (void)
 			node = (mnode_t *)&cl.worldmodel->leafs[i+1];
 			do
 			{
-				if (NODE_VISFRAME (cl.worldmodel, node) == r_visframecount)
+				if (NODE_VISFRAME_IS (cl.worldmodel, node, r_visframecount))	// QuakeOG
 					break;
-				NODE_VISFRAME (cl.worldmodel, node) = r_visframecount;
+				NODE_VISFRAME_SET (cl.worldmodel, node, r_visframecount);
 				node = node->parent;
 			} while (node);
 		}
