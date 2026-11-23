@@ -381,8 +381,13 @@ void R_NewMap (void)
 	{
 #ifdef QOG_EDGE_T_PACKED
 		// QuakeOG: room for the sentinels in front, see R_EdgeDrawing
+#ifdef QOG_SPANS_IN_EDGES
+		auxedges = Hunk_AllocName ((r_numallocatededges + EDGE_SENTINELS + SPAN_RESERVE_EDGES) *
+								   sizeof(edge_t), "edges");
+#else
 		auxedges = Hunk_AllocName ((r_numallocatededges + EDGE_SENTINELS) * sizeof(edge_t),
 								   "edges");
+#endif
 #else
 		auxedges = Hunk_AllocName (r_numallocatededges * sizeof(edge_t),
 								   "edges");
@@ -971,6 +976,7 @@ R_EdgeDrawing
 ================
 */
 int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG: see the end of R_EdgeDrawing
+int		r_qog_peakedgesurfbytes;			// QuakeOG: most edge plus surface bytes in one frame
 
 void R_EdgeDrawing (void)
 {
@@ -981,7 +987,13 @@ void R_EdgeDrawing (void)
 	// line alignment, so the table is not aligned.
 	extern medge_t		*r_qog_owneredges;
 	extern unsigned int	r_qog_ownerbytes;
+#ifdef QOG_SPANS_IN_EDGES
+	// QuakeOG: R_ScanEdges keeps its spans in the part of this table the
+	// edges left free, with QOG_SPAN_MIN spans of room past the edge limit
+	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES + SPAN_RESERVE_EDGES];
+#else
 	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES];
+#endif
 #else
 	edge_t	ledges[NUMSTACKEDGES +
 				((CACHE_SIZE - 1) / sizeof(edge_t)) + 1];
@@ -993,6 +1005,10 @@ void R_EdgeDrawing (void)
 	r_edgesentinels = auxedges ? auxedges : ledges;
 	r_edgebase = (byte *)r_edgesentinels - sizeof(edge_t);
 	r_edges = r_edgesentinels + EDGE_SENTINELS;
+#ifdef QOG_SPANS_IN_EDGES
+	r_spanpool_end = (byte *)(r_edges + (auxedges ? r_numallocatededges : NUMSTACKEDGES) +
+							  SPAN_RESERVE_EDGES);
+#endif
 	// id's sentinels were zeroed statics, and R_ScanEdges sets only some fields
 	memset (r_edgesentinels, 0, EDGE_SENTINELS * sizeof(edge_t));
 	r_qog_owneredges = cl.worldmodel->edges;
@@ -1063,6 +1079,8 @@ void R_EdgeDrawing (void)
 		r_qog_peakedges = edge_p - r_edges;
 	if (surface_p - surfaces > r_qog_peaksurfs)
 		r_qog_peaksurfs = surface_p - surfaces;
+	if ((int)((edge_p - r_edges) * sizeof(edge_t) + (surface_p - surfaces) * sizeof(surf_t)) > r_qog_peakedgesurfbytes)
+		r_qog_peakedgesurfbytes = (edge_p - r_edges) * sizeof(edge_t) + (surface_p - surfaces) * sizeof(surf_t);
 
 	if (!(r_drawpolys | r_drawculledpolys))
 		R_ScanEdges ();

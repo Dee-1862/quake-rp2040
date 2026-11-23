@@ -168,6 +168,20 @@ void VID_HandlePause(qboolean pause) { (void)pause; }
 
 /* `qog_shot [name]` writes the current 8-bit frame as build-pc-shots/<name>.bmp
    so renderer changes can be compared frame by frame. */
+/* `qog_rpeaks [reset]` prints renderer table measurements kept by the engine
+   (r_main.c, r_edge.c): edge plus surface bytes in one frame, spans in one
+   frame and in one flush, and the span room R_ScanEdges had. */
+static void cmd_qog_rpeaks(void) {
+    extern int r_qog_peakedgesurfbytes, r_qog_peakspanroom, r_qog_minspanroom,
+               r_qog_peakframespans, r_qog_peakflushspans;
+    Con_Printf("qog_rpeaks: edge+surf bytes %d, spans per frame %d, per flush %d, span room %d..%d\n",
+               r_qog_peakedgesurfbytes, r_qog_peakframespans, r_qog_peakflushspans,
+               r_qog_minspanroom, r_qog_peakspanroom);
+    if (Cmd_Argc() > 1)
+        r_qog_peakedgesurfbytes = r_qog_peakspanroom = r_qog_minspanroom =
+            r_qog_peakframespans = r_qog_peakflushspans = 0;
+}
+
 static void cmd_qog_shot(void) {
     write_shot(Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot");
 }
@@ -345,6 +359,7 @@ void VID_Init(unsigned char *palette) {
     qog_aim_register();
     Cmd_AddCommand("qog_shot", cmd_qog_shot);
     Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
+    Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
     {
         extern void qog_manifest_register(void);
         qog_manifest_register();

@@ -143,4 +143,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_CONST_RTABLES               # turbulence, normal and edge tables as constants in flash
     QOG_NO_ROWTABLES                # screen, z and skin row offsets computed, not tabled (3.5 KB)
     QOG_SKY_DIRECT                  # sky composed per drawn pixel, no 16 KB composite
-    QOG_HUD_IN_ZBUFFER)             # status bar rows of the frame share the z-buffer (15 KB)
+    QOG_HUD_IN_ZBUFFER              # status bar rows of the frame share the z-buffer (15 KB)
+    QOG_SPANS_IN_EDGES)             # spans in the free end of the edge table, no 8 KB span buffer
