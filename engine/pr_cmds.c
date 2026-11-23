@@ -1593,8 +1593,8 @@ void PF_makestatic (void)
 	MSG_WriteByte (&sv.signon, SV_ModelIndex(pr_strings + ent->v.model));
 
 	MSG_WriteByte (&sv.signon, ent->v.frame);
-	MSG_WriteByte (&sv.signon, ent->v.colormap);
-	MSG_WriteByte (&sv.signon, ent->v.skin);
+	MSG_WriteByte (&sv.signon, EV_FLOAT(ent, colormap));
+	MSG_WriteByte (&sv.signon, EV_FLOAT(ent, skin));
 	for (i=0 ; i<3 ; i++)
 	{
 		MSG_WriteCoord(&sv.signon, ent->v.origin[i]);

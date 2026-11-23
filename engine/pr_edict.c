@@ -104,12 +104,12 @@ int			ed_coldlive, ed_coldlivepeak;		// words in live lists
 // QuakeC field numbers of the core fields (id's layout) and their place in entcore_t
 #define	CORE(f,n)	{ EV_OFS(f), (int)((size_t)&((entcore_t *)0)->f / 4), n }
 static const struct { short qc, core, n; } ed_coremap[] = {
-	CORE(modelindex,1), CORE(absmin,3), CORE(absmax,3), CORE(ltime,1), CORE(movetype,1),
-	CORE(solid,1), CORE(origin,3), CORE(velocity,3), CORE(angles,3), CORE(avelocity,3),
-	CORE(classname,1), CORE(model,1), CORE(frame,1), CORE(skin,1), CORE(effects,1),
+	CORE(modelindex,1), CORE(absmin,3), CORE(absmax,3), CORE(movetype,1),
+	CORE(solid,1), CORE(origin,3), CORE(velocity,3), CORE(angles,3),
+	CORE(classname,1), CORE(model,1), CORE(frame,1),
 	CORE(mins,3), CORE(maxs,3), CORE(size,3), CORE(touch,1), CORE(think,1),
-	CORE(blocked,1), CORE(nextthink,1), CORE(groundentity,1), CORE(flags,1),
-	CORE(colormap,1), CORE(owner,1), CORE(waterlevel,1), CORE(watertype,1)
+	CORE(nextthink,1), CORE(groundentity,1), CORE(flags,1),
+	CORE(owner,1), CORE(waterlevel,1), CORE(watertype,1)
 };
 
 static void ED_BuildFieldMap (void)
@@ -398,8 +398,8 @@ void ED_Free (edict_t *ed)
 	ed->v.model = 0;
 	EV_SETFLOAT(ed, takedamage, 0);	// QuakeOG: was ed->v.takedamage = 0
 	ed->v.modelindex = 0;
-	ed->v.colormap = 0;
-	ed->v.skin = 0;
+	EV_SETFLOAT(ed, colormap, 0);
+	EV_SETFLOAT(ed, skin, 0);
 	ed->v.frame = 0;
 	VectorCopy (vec3_origin, ed->v.origin);
 	VectorCopy (vec3_origin, ed->v.angles);

@@ -1323,7 +1323,7 @@ void Host_Spawn_f (void)
 		ent = host_client->edict;
 
 		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
-		ent->v.colormap = NUM_FOR_EDICT(ent);
+		EV_SETFLOAT(ent, colormap, NUM_FOR_EDICT(ent));
 		EV_SETFLOAT(ent, team, (host_client->colors & 15) + 1);
 		EV_SETINT(ent, netname, host_client->name - pr_strings);
 

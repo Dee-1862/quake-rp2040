@@ -448,7 +448,7 @@ void SV_PushMove (edict_t *pusher, float movetime)
 
 	if (!pusher->v.velocity[0] && !pusher->v.velocity[1] && !pusher->v.velocity[2])
 	{
-		pusher->v.ltime += movetime;
+		EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) + (movetime));
 		return;
 	}
 
@@ -464,7 +464,7 @@ void SV_PushMove (edict_t *pusher, float movetime)
 // move the pusher to it's final position
 
 	VectorAdd (pusher->v.origin, move, pusher->v.origin);
-	pusher->v.ltime += movetime;
+	EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) + (movetime));
 	SV_LinkEdict (pusher, false);
 
 
@@ -532,15 +532,15 @@ void SV_PushMove (edict_t *pusher, float movetime)
 
 			VectorCopy (pushorig, pusher->v.origin);
 			SV_LinkEdict (pusher, false);
-			pusher->v.ltime -= movetime;
+			EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) - (movetime));
 
 			// if the pusher has a "blocked" function, call it
 			// otherwise, just stay in place until the obstacle is gone
-			if (pusher->v.blocked)
+			if (EV_INT(pusher, blocked))
 			{
 				pr_global_struct->self = EDICT_TO_PROG(pusher);
 				pr_global_struct->other = EDICT_TO_PROG(check);
-				PR_ExecuteProgram (pusher->v.blocked);
+				PR_ExecuteProgram (EV_INT(pusher, blocked));
 			}
 			
 		// move back any entities we already moved
@@ -575,14 +575,14 @@ void SV_PushRotate (edict_t *pusher, float movetime)
 	vec3_t		org, org2;
 	vec3_t		forward, right, up;
 
-	if (!pusher->v.avelocity[0] && !pusher->v.avelocity[1] && !pusher->v.avelocity[2])
+	if (!EV_VECTOR(pusher, avelocity)[0] && !EV_VECTOR(pusher, avelocity)[1] && !EV_VECTOR(pusher, avelocity)[2])
 	{
-		pusher->v.ltime += movetime;
+		EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) + (movetime));
 		return;
 	}
 
 	for (i=0 ; i<3 ; i++)
-		amove[i] = pusher->v.avelocity[i] * movetime;
+		amove[i] = EV_VECTOR(pusher, avelocity)[i] * movetime;
 
 	VectorSubtract (vec3_origin, amove, a);
 	AngleVectors (a, forward, right, up);
@@ -592,7 +592,7 @@ void SV_PushRotate (edict_t *pusher, float movetime)
 // move the pusher to it's final position
 
 	VectorAdd (pusher->v.angles, amove, pusher->v.angles);
-	pusher->v.ltime += movetime;
+	EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) + (movetime));
 	SV_LinkEdict (pusher, false);
 
 
@@ -665,15 +665,15 @@ void SV_PushRotate (edict_t *pusher, float movetime)
 
 			VectorCopy (pushorig, pusher->v.angles);
 			SV_LinkEdict (pusher, false);
-			pusher->v.ltime -= movetime;
+			EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) - (movetime));
 
 			// if the pusher has a "blocked" function, call it
 			// otherwise, just stay in place until the obstacle is gone
-			if (pusher->v.blocked)
+			if (EV_INT(pusher, blocked))
 			{
 				pr_global_struct->self = EDICT_TO_PROG(pusher);
 				pr_global_struct->other = EDICT_TO_PROG(check);
-				PR_ExecuteProgram (pusher->v.blocked);
+				PR_ExecuteProgram (EV_INT(pusher, blocked));
 			}
 			
 		// move back any entities we already moved
@@ -707,12 +707,12 @@ void SV_Physics_Pusher (edict_t *ent)
 	float	oldltime;
 	float	movetime;
 
-	oldltime = ent->v.ltime;
+	oldltime = EV_FLOAT(ent, ltime);
 	
 	thinktime = ent->v.nextthink;
-	if (thinktime < ent->v.ltime + host_frametime)
+	if (thinktime < EV_FLOAT(ent, ltime) + host_frametime)
 	{
-		movetime = thinktime - ent->v.ltime;
+		movetime = thinktime - EV_FLOAT(ent, ltime);
 		if (movetime < 0)
 			movetime = 0;
 	}
@@ -722,14 +722,14 @@ void SV_Physics_Pusher (edict_t *ent)
 	if (movetime)
 	{
 #ifdef QUAKE2
-		if (ent->v.avelocity[0] || ent->v.avelocity[1] || ent->v.avelocity[2])
+		if (EV_VECTOR(ent, avelocity)[0] || EV_VECTOR(ent, avelocity)[1] || EV_VECTOR(ent, avelocity)[2])
 			SV_PushRotate (ent, movetime);
 		else
 #endif
 			SV_PushMove (ent, movetime);	// advances ent->v.ltime if not blocked
 	}
 		
-	if (thinktime > oldltime && thinktime <= ent->v.ltime)
+	if (thinktime > oldltime && thinktime <= EV_FLOAT(ent, ltime))
 	{
 		ent->v.nextthink = 0;
 		pr_global_struct->time = sv.time;
@@ -1175,7 +1175,7 @@ void SV_Physics_Noclip (edict_t *ent)
 	if (!SV_RunThink (ent))
 		return;
 	
-	VectorMA (ent->v.angles, host_frametime, ent->v.avelocity, ent->v.angles);
+	VectorMA (ent->v.angles, host_frametime, EV_VECTOR(ent, avelocity), ent->v.angles);
 	VectorMA (ent->v.origin, host_frametime, ent->v.velocity, ent->v.origin);
 
 	SV_LinkEdict (ent, false);
@@ -1293,7 +1293,7 @@ void SV_Physics_Toss (edict_t *ent)
 #endif
 
 // move angles
-	VectorMA (ent->v.angles, host_frametime, ent->v.avelocity, ent->v.angles);
+	VectorMA (ent->v.angles, host_frametime, EV_VECTOR(ent, avelocity), ent->v.angles);
 
 // move origin
 #ifdef QUAKE2
@@ -1332,7 +1332,7 @@ void SV_Physics_Toss (edict_t *ent)
 			ent->v.flags = (int)ent->v.flags | FL_ONGROUND;
 			ent->v.groundentity = EDICT_TO_PROG(trace.ent);
 			VectorCopy (vec3_origin, ent->v.velocity);
-			VectorCopy (vec3_origin, ent->v.avelocity);
+			EV_SETVECTOR(ent, avelocity, vec3_origin);
 		}
 	}
 	
@@ -1597,7 +1597,7 @@ trace_t SV_Trace_Toss (edict_t *ent, edict_t *ignore)
 	{
 		SV_CheckVelocity (tent);
 		SV_AddGravity (tent);
-		VectorMA (tent->v.angles, host_frametime, tent->v.avelocity, tent->v.angles);
+		VectorMA (tent->v.angles, host_frametime, EV_VECTOR(tent, avelocity), tent->v.angles);
 		VectorScale (tent->v.velocity, host_frametime, move);
 		VectorAdd (tent->v.origin, move, end);
 		trace = SV_Move (tent->v.origin, tent->v.mins, tent->v.maxs, end, MOVE_NORMAL, tent);	

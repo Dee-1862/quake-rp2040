@@ -506,16 +506,16 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 		if (ent->v.movetype == MOVETYPE_STEP)
 			bits |= U_NOLERP;	// don't mess up the step animation
 	
-		if (SV_BASELINE(ent)->colormap != ent->v.colormap)
+		if (SV_BASELINE(ent)->colormap != EV_FLOAT(ent, colormap))
 			bits |= U_COLORMAP;
 			
-		if (SV_BASELINE(ent)->skin != ent->v.skin)
+		if (SV_BASELINE(ent)->skin != EV_FLOAT(ent, skin))
 			bits |= U_SKIN;
 			
 		if (SV_BASELINE(ent)->frame != ent->v.frame)
 			bits |= U_FRAME;
 		
-		if (SV_BASELINE(ent)->effects != ent->v.effects)
+		if (SV_BASELINE(ent)->effects != EV_FLOAT(ent, effects))
 			bits |= U_EFFECTS;
 		
 		if (SV_BASELINE(ent)->modelindex != ent->v.modelindex)
@@ -544,11 +544,11 @@ void SV_WriteEntitiesToClient (edict_t	*clent, sizebuf_t *msg)
 		if (bits & U_FRAME)
 			MSG_WriteByte (msg, ent->v.frame);
 		if (bits & U_COLORMAP)
-			MSG_WriteByte (msg, ent->v.colormap);
+			MSG_WriteByte (msg, EV_FLOAT(ent, colormap));
 		if (bits & U_SKIN)
-			MSG_WriteByte (msg, ent->v.skin);
+			MSG_WriteByte (msg, EV_FLOAT(ent, skin));
 		if (bits & U_EFFECTS)
-			MSG_WriteByte (msg, ent->v.effects);
+			MSG_WriteByte (msg, EV_FLOAT(ent, effects));
 		if (bits & U_ORIGIN1)
 			MSG_WriteCoord (msg, ent->v.origin[0]);		
 		if (bits & U_ANGLE1)
@@ -578,7 +578,7 @@ void SV_CleanupEnts (void)
 	ent = NEXT_EDICT(sv.edicts);
 	for (e=1 ; e<sv.num_edicts ; e++, ent = NEXT_EDICT(ent))
 	{
-		ent->v.effects = (int)ent->v.effects & ~EF_MUZZLEFLASH;
+		EV_SETFLOAT(ent, effects, (int)EV_FLOAT(ent, effects) & ~EF_MUZZLEFLASH);
 	}
 
 }
@@ -976,7 +976,7 @@ void SV_CreateBaseline (void)
 		VectorCopy (svent->v.origin, SV_BASELINE(svent)->origin);
 		VectorCopy (svent->v.angles, SV_BASELINE(svent)->angles);
 		SV_BASELINE(svent)->frame = svent->v.frame;
-		SV_BASELINE(svent)->skin = svent->v.skin;
+		SV_BASELINE(svent)->skin = EV_FLOAT(svent, skin);
 		if (entnum > 0 && entnum <= svs.maxclients)
 		{
 			SV_BASELINE(svent)->colormap = entnum;
