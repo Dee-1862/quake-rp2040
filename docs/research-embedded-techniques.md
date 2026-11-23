@@ -460,3 +460,7 @@ Measurement first, for every speed item: build an on-target profiler from the Sy
 - Z. Hakura, A. Gupta, *The Design and Analysis of a Cache Architecture for Texture Mapping*, ISCA 1997. https://graphics.stanford.edu/papers/texture_cache/
 - [NR-patent] Newton-Raphson reciprocal refinement (background for 3.2). https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10146504
 - element14 forum, *Probing the RP2040 QSPI flash interface* (EBh continuous mode in boot2; anecdotal performance). https://community.element14.com/products/raspberry-pi/f/forum/52035/probing-the-rp2040-qspi-flash-interface
+
+## Addendum: how RP2350-Quake fits (from its own docs, 2026-11-22)
+
+It does not fit 264 KB. It allocates **439,248 bytes of SRAM** on the RP2350, which has 520 KB: 32 + 4 KB of stacks, a 128 KB game zone (43 KB peak), a 32 KB metadata pool (14 KB peak), and about 91 KB of libc heap headroom. Its main savings come from the MG24Quake engine: per-class edict structs (monster 212 B, player 312 B, trigger 116 B, against stock Quake's uniform ~876 B), immutable BSP and model data baked into XIP at fixed addresses, deduplicated textures, 400 edicts, 512 particles, 1,500 edges, 4-bit ADPCM sound with 8 channels, and no saves or multiplayer. For our 245 KB, per-class edicts are the largest remaining lever. They are generated from QuakeC, so they wait for registered data.

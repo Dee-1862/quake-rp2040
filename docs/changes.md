@@ -12,8 +12,10 @@ Newest first. Each entry says what changed, why, and whether it ran on hardware.
 | D | Mixer volume table replaced by an equivalent multiply | 32 KB static |
 | E | `gfx.wad` read in place; only its 5 KB directory is copied | 105 KB hunk |
 | F | Model table 192 instead of 256 (`QOG_MAX_MOD_KNOWN`); the most one level references is 160 | 27 KB static |
+| G | Sky composited straight from its texture (front if non-zero, else back): no masked copies, 128×128 output. Equivalent on both sky textures at all 128 scroll positions | 49 KB static |
+| H | Particle pool 512 instead of 2,048 (`QOG_MAX_PARTICLES`), id's own minimum, as MG24Quake and RP2350-Quake use. **Visual trade-off** | 66 KB hunk |
 
-E1M1 now: hunk low 1,705 KB, total dynamic 2,019 KB, static 320 KB (interpreter, since QuakeC translation waits for registered data). State hashes are unchanged throughout. Demo frames are identical to the reference build, status bar included. All nine levels and every menu run. Sound was verified by level only (peak 19,193, RMS 6,395), never played aloud.
+E1M1 now: hunk low 1,639 KB, total dynamic 1,953 KB, static 271 KB (interpreter, since QuakeC translation waits for registered data). State hashes are unchanged throughout. Demo frames are identical to the reference build, status bar included. All nine levels and every menu run. Sound was verified by level only (peak 19,193, RMS 6,395), never played aloud.
 
 Testing changes: `-hidden` now also mutes the speakers and drives playback by game time. New `tools/pctest.ps1` and `qog_soundlevel`.
 
