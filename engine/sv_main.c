@@ -24,7 +24,21 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 server_t		sv;
 server_static_t	svs;
 
+#ifdef QOG_CONST_LOCALMODELS
+// QuakeOG: the same "*0" to "*255" names as a constant table, so they stay in
+// flash instead of 1.25 KB of RAM filled in by SV_Init
+#define	LM10(p)	p "0", p "1", p "2", p "3", p "4", p "5", p "6", p "7", p "8", p "9"
+static const char	localmodels[MAX_MODELS][5] = {
+	LM10("*"), LM10("*1"), LM10("*2"), LM10("*3"), LM10("*4"),
+	LM10("*5"), LM10("*6"), LM10("*7"), LM10("*8"), LM10("*9"),
+	LM10("*10"), LM10("*11"), LM10("*12"), LM10("*13"), LM10("*14"),
+	LM10("*15"), LM10("*16"), LM10("*17"), LM10("*18"), LM10("*19"),
+	LM10("*20"), LM10("*21"), LM10("*22"), LM10("*23"), LM10("*24"),
+	"*250", "*251", "*252", "*253", "*254", "*255"
+};
+#else
 char	localmodels[MAX_MODELS][5];			// inline model names for precache
+#endif
 
 //============================================================================
 
@@ -58,8 +72,10 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_aim);
 	Cvar_RegisterVariable (&sv_nostep);
 
+#ifndef QOG_CONST_LOCALMODELS
 	for (i=0 ; i<MAX_MODELS ; i++)
 		sprintf (localmodels[i], "*%i", i);
+#endif
 }
 
 /*
@@ -1216,8 +1232,8 @@ void SV_SpawnServer (char *server)
 	sv.model_precache[1] = sv.modelname;
 	for (i=1 ; i<sv.worldmodel->numsubmodels ; i++)
 	{
-		sv.model_precache[1+i] = localmodels[i];
-		sv.models[i+1] = Mod_ForName (localmodels[i], false);
+		sv.model_precache[1+i] = (char *)localmodels[i];	// QuakeOG: may be const, never written
+		sv.models[i+1] = Mod_ForName ((char *)localmodels[i], false);
 	}
 
 //

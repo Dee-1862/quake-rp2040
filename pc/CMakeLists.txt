@@ -79,7 +79,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_MAX_CACHED_PICS=56          # menu pics, 51 possible names in the engine (id 128)
     QOG_CACHEPIC_NAME=24            # menu pic names, longest 16 characters (id 64)
     QOG_STATICS_ON_HUNK             # static entities and efrags from the hunk per level, peaks 44 and 197 (id 33 KB static)
-    QOG_ZONE_KB=24)                 # zone, measured peak 7.4 KB plus an 8 KB command buffer copy (id 48 KB)
+    QOG_ZONE_KB=24                  # zone, measured peak 7.4 KB plus an 8 KB command buffer copy (id 48 KB)
+    QOG_CONST_LOCALMODELS)          # inline model names as a constant table in flash (id 1.25 KB RAM)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}
