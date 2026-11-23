@@ -2,6 +2,16 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: E1M1 fly-through runs on the board (hardware)
+
+- The renderer-only fly-through (apps/qogfly) draws the real E1M1 from the flash data image on the display CPU, the camera following a 79-point route. Measured over 75 s: 5.7 to 9.3 fps (average 7.0), 85 to 152 ms render per frame, plus a 22.5 ms wait for the single-buffered scanout. 13 KB of an 18 KB hunk in use, 3.3 KB of RAM free. The user's photo shows E1M1's textures, lighting and palette correctly.
+- Board engine built with 4-byte enums (`-fno-short-enums`, lessons L46). Without it the board refused the baked image.
+- `QOG_SND_ONINIT` and `QOG_LOOP_ONINIT`: sound channels, the paint buffer and the loopback receive buffers come from the hunk when those systems start, so hosts that never start them pay nothing. Static RAM 97.0 to 80.3 KB, hunk +20 KB in the game (the same bytes, moved).
+- `QOG_PACKDIR_CHUNKED`: the pack directory is read 2 KB at a time instead of through a 21 KB temporary block. Same CRC, checks and hunk order.
+- `QOG_PARTICLES_PRESET`: a host may keep its own particle array, so the fly-through takes no 18 KB particle block.
+- apps/qogfly builds its own engine library with 480 edge-drawing surfaces (E1M1 tour peak 443). The game keeps 800. Hunk 18 KB, stack 34 KB.
+- Data image: start plus E1M1 with map stubs, 7.15 MB (tools/mkboard.py, built with the same build so the image layout matches).
+
 ## 2026-11-23: Renderer tables in the z-buffer (Agent K, PC and ARM build, registered data)
 
 R_EdgeDrawing's stack frame on the ARM build 84,768 → 36,184 bytes (−48,584). The world's edge cache leaves the hunk: E1M1 hunk low 364.0 → 337.3 KB (−27,312 bytes), about 33,870 bytes on the largest map (e3m5, 16,923 edges). Engine static RAM +40 bytes (board overflow 59,148 → 59,188 bytes). The picture is unchanged. Nothing ran on hardware.

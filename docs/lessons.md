@@ -105,3 +105,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L45. Pushes must not prompt.** Use `GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git push`. If it fails, ask the user to sign in once (a terminal `git push` or GitHub Desktop) rather than leaving a Credential Manager popup waiting.
 
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
+
+**L46. The ARM bare-metal ABI makes enums as small as their values.** `qboolean`, `modtype_t` and `synctype_t` are one byte on the RP2040 build and four on the PC, so every engine struct with an enum had a different layout and the board refused the PC-baked flash image ("maps/e1m1.bsp is a stub ... does not match"). `-Q --help=optimizers` showed `-fshort-enums [disabled]`, which was misleading. The engine and every file that includes its headers now build with `-fno-short-enums` (PUBLIC on qog_engine). Check struct sizes on both compilers with a probe file whenever a layout must match across PC and board.
+
+**L47. Read only the memory map section of a GNU ld map file.** The "Discarded input sections" list at the top uses the same line format, so a naive parse counted buffers that the linker had already dropped (a whole change saved nothing on the fly-through because of this). Start parsing at "Linker script and memory map".
+
+**L48. Quake's vector macros name their arguments more than once.** `VectorCopy (p, arr[n++])` increments `n` three times. Never pass an expression with side effects to `VectorCopy`, `VectorAdd` and friends.
+
+**L49. A board app's RAM is found by measuring each peak on the PC first.** For the fly-through: `-heapsize` and `-zone` on the PC give the true hunk floor (init peaks came from the particle pool and the pack directory read), and the stack is the deepest chain of `.su` frames. Then the link's overflow figure says exactly how much is still missing.
