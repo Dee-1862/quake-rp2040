@@ -121,4 +121,5 @@ set_target_properties(quakeog_pc PROPERTIES WIN32_EXECUTABLE OFF)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_EDICT_STATS                 # edict use peaks in qog_mem (PC measurement only)
     QOG_EDICT_SPARSE                # edicts keep 46 core field words, the rest as pairs in an arena
-    QOG_BASELINE_POOL)              # entity baselines only for edicts that get one at spawn
+    QOG_BASELINE_POOL               # entity baselines only for edicts that get one at spawn
+    QOG_AOT_GLOBALS)                # compiled QuakeC: constants in code, temporaries in C locals, packed RAM globals

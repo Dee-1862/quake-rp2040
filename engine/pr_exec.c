@@ -337,11 +337,11 @@ int PR_EnterFunction (dfunction_t *f)
 		PR_RunError ("PR_ExecuteProgram: locals stack overflow\n");
 
 	for (i=0 ; i < c ; i++)
-		localstack[localstack_used+i] = ((int *)pr_globals)[f->parm_start + i];
+		localstack[localstack_used+i] = ((int *)pr_globals)[PR_PARMSTART(f) + i];	// QuakeOG: was f->parm_start
 	localstack_used += c;
 
 // copy parameters
-	o = f->parm_start;
+	o = PR_PARMSTART(f);	// QuakeOG: was f->parm_start
 	for (i=0 ; i<f->numparms ; i++)
 	{
 		for (j=0 ; j<f->parm_size[i] ; j++)
@@ -374,7 +374,7 @@ int PR_LeaveFunction (void)
 		PR_RunError ("PR_ExecuteProgram: locals stack underflow\n");
 
 	for (i=0 ; i < c ; i++)
-		((int *)pr_globals)[pr_xfunction->parm_start + i] = localstack[localstack_used+i];
+		((int *)pr_globals)[PR_PARMSTART(pr_xfunction) + i] = localstack[localstack_used+i];	// QuakeOG: was pr_xfunction->parm_start
 
 // up stack
 	pr_depth--;

@@ -168,6 +168,16 @@ extern const int		pr_aot_numstatements;
 extern const unsigned	pr_aot_fingerprint;
 extern const int		pr_aot_numfields;	// QuakeOG: QOG_EDICT_SPARSE layout the code assumes
 extern const signed char	pr_aot_coremap[];
+extern const int		pr_aot_numram;		// QuakeOG: QOG_AOT_GLOBALS, globals the code keeps in RAM
+extern const short		pr_aot_globalmap[];	// each global's word in pr_globals, -1 if it stays in progs.dat
+extern const short		pr_aot_parmstart[];	// each function's first local in pr_globals
+extern qboolean			pr_aot_globals;		// pr_globals holds only those words
+int *PR_GlobalPtr (int ofs);				// a global by its number in progs.dat, wherever it is
+#ifdef QOG_AOT_GLOBALS
+#define	PR_PARMSTART(f)	(pr_aot_globals ? pr_aot_parmstart[(f) - pr_functions] : (f)->parm_start)
+#else
+#define	PR_PARMSTART(f)	((f)->parm_start)
+#endif
 extern qboolean			pr_aot_active;
 void PR_AOT_Call (func_t fnum);
 void PR_AOT_Check (void);

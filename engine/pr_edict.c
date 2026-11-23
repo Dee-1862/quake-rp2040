@@ -661,7 +661,7 @@ char *PR_GlobalString (int ofs)
 	void	*val;
 	static char	line[128];
 	
-	val = (void *)&pr_globals[ofs];
+	val = (void *)PR_GlobalPtr (ofs);	// QuakeOG: was &pr_globals[ofs]
 	def = ED_GlobalAtOfs(ofs);
 	if (!def)
 		sprintf (line,"%i(???)", ofs);
@@ -925,7 +925,7 @@ void ED_WriteGlobals (FILE *f)
 
 		name = pr_strings + def->s_name;		
 		fprintf (f,"\"%s\" ", name);
-		fprintf (f,"\"%s\"\n", PR_UglyValueString(type, (eval_t *)&pr_globals[def->ofs]));		
+		fprintf (f,"\"%s\"\n", PR_UglyValueString(type, (eval_t *)PR_GlobalPtr (def->ofs)));	// QuakeOG: was &pr_globals[def->ofs]
 	}
 	fprintf (f,"}\n");
 }
@@ -966,6 +966,31 @@ void ED_ParseGlobals (char *data)
 			continue;
 		}
 
+#ifdef QOG_AOT_GLOBALS
+		if (pr_aot_globals)
+		{	// QuakeOG: parse a copy, then store it where the global lives
+			int		val[3], n, i, type = key->type & ~DEF_SAVEGLOBAL;
+			ddef_t	at0 = *key;
+
+			n = type == ev_vector ? 3 : 1;
+			for (i=0 ; i<n ; i++)
+				if (pr_aot_globalmap[key->ofs + i] < 0)
+					break;
+			if (i < n)
+			{
+				Con_Printf ("'%s' is a constant here\n", keyname);
+				continue;
+			}
+			for (i=0 ; i<n ; i++)
+				val[i] = *PR_GlobalPtr (key->ofs + i);
+			at0.ofs = 0;
+			if (!ED_ParseEpair ((void *)val, &at0, com_token))
+				Host_Error ("ED_ParseGlobals: parse error");
+			for (i=0 ; i<n ; i++)
+				*PR_GlobalPtr (key->ofs + i) = val[i];
+			continue;
+		}
+#endif
 		if (!ED_ParseEpair ((void *)pr_globals, key, com_token))
 			Host_Error ("ED_ParseGlobals: parse error");
 	}
@@ -1060,7 +1085,7 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
 			Con_Printf ("Can't find field %s\n", s);
 			return false;
 		}
-		*(int *)d = G_INT(def->ofs);
+		*(int *)d = *PR_GlobalPtr (def->ofs);	// QuakeOG: was G_INT(def->ofs)
 		break;
 	
 	case ev_function:
@@ -1351,25 +1376,47 @@ void PR_LoadProgs (void)
 	pr_statements = (dstatement_t *)((byte *)progs + progs->ofs_statements);
 
 	pr_global_struct = (globalvars_t *)((byte *)progs + progs->ofs_globals);
-	if (pr_inflash)
-	{	// the globals change at run time: the only part that needs RAM
-		globalvars_t *g = Hunk_AllocName (progs->numglobals * 4, "progglobals");
-		memcpy (g, pr_global_struct, progs->numglobals * 4);
-		pr_global_struct = g;
-	}
-	pr_globals = (float *)pr_global_struct;
-
 #ifdef QOG_EDICT_SPARSE
 	pr_edict_size = sizeof (edict_t);	// QuakeOG: core fields only
 	ED_BuildFieldMap ();
 #else
 	pr_edict_size = progs->entityfields * 4 + sizeof (edict_t) - sizeof(entvars_t);
 #endif
+	pr_aot_globals = false;
+	if (pr_inflash)
+	{	// the globals change at run time: the only part that needs RAM
+#ifdef QOG_AOT_GLOBALS
+		// QuakeOG: compiled QuakeC keeps constants in its code and most
+		// temporaries in C locals, so it needs only the globals listed in
+		// pr_aot_globalmap, packed. Decide which code runs first.
+		PR_AOT_Check ();
+		if (pr_aot_active && pr_aot_numram)
+		{
+			int		*g = Hunk_AllocName (pr_aot_numram * 4, "progglobals");
+			int		*src = (int *)pr_global_struct;
+
+			for (i=0 ; i<progs->numglobals ; i++)
+				if (pr_aot_globalmap[i] >= 0)
+					g[pr_aot_globalmap[i]] = src[i];
+			pr_global_struct = (globalvars_t *)g;
+			pr_aot_globals = true;
+		}
+		else
+#endif
+		{
+		globalvars_t *g = Hunk_AllocName (progs->numglobals * 4, "progglobals");
+		memcpy (g, pr_global_struct, progs->numglobals * 4);
+		pr_global_struct = g;
+		}
+	}
+	pr_globals = (float *)pr_global_struct;
 
 	if (pr_inflash)
 	{
 		PR_SizeLocalStack ();	// QuakeOG: locals stack sized for these progs
+#ifndef QOG_AOT_GLOBALS
 		PR_AOT_Check ();
+#endif
 		return;	// the swaps below are no-ops on little-endian, and flash is read only
 	}
 
@@ -1425,6 +1472,26 @@ the interpreter, for comparison.
 ===============
 */
 qboolean	pr_inflash;
+qboolean	pr_aot_globals;	// QuakeOG: pr_globals holds only the compiled code's RAM globals
+
+/*
+QuakeOG: a global by its number in progs.dat. With QOG_AOT_GLOBALS active a
+constant is read from progs.dat in flash, so only RAM globals may be written
+through the pointer.
+*/
+int *PR_GlobalPtr (int ofs)
+{
+#ifdef QOG_AOT_GLOBALS
+	if (pr_aot_globals)
+	{
+		int		m = pr_aot_globalmap[ofs];
+		if (m >= 0)
+			return (int *)pr_globals + m;
+		return (int *)((byte *)progs + progs->ofs_globals) + ofs;
+	}
+#endif
+	return (int *)pr_globals + ofs;
+}
 
 qboolean PR_AOT_Matches (dprograms_t *p)
 {
@@ -1462,6 +1529,13 @@ void PR_AOT_Check (void)
 		|| memcmp (pr_aot_coremap, pr_fieldmap, progs->entityfields))
 	{	// QuakeOG: the generated code inlines the core field words
 		Con_Printf ("QuakeC: interpreter (compiled progs assume another edict layout)\n");
+		return;
+	}
+#endif
+#ifdef QOG_AOT_GLOBALS
+	if (!pr_inflash || !pr_aot_numram)
+	{	// QuakeOG: the compiled code reads constants from progs.dat in place
+		Con_Printf ("QuakeC: interpreter (compiled progs need progs.dat in flash)\n");
 		return;
 	}
 #endif

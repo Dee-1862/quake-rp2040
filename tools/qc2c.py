@@ -96,17 +96,226 @@ def parse(progs):
         n = OPS[op] if op < len(OPS) else ""
         if n.startswith("STORE_"):
             written.add(b)
-        elif n not in ("IF", "IFNOT", "GOTO", "RETURN", "DONE", "STATE") and not n.startswith("STOREP")                 and not n.startswith("CALL"):
+        elif n not in ("IF", "IFNOT", "GOTO", "RETURN", "DONE", "STATE") and not n.startswith("STOREP") \
+                and not n.startswith("CALL"):
             written.add(c)
     constfields = {g: globs[g] for g in fielddefs - written}
     funcs = []
     for i in range(nfn):
         first, parm_start, locs, prof, s_name, s_file, nparms = struct.unpack_from("<7i", progs, ofn + 36 * i)
-        funcs.append((first, s_name))
+        sizes = struct.unpack_from("<8B", progs, ofn + 36 * i + 28)
+        # PR_EnterFunction copies the parameters to parm_start even when
+        # locals (the words it saves) is smaller, so the block is the larger
+        funcs.append((first, s_name, parm_start, max(locs, sum(sizes[:max(0, min(nparms, 8))]))))
+    named, saveg = set(), set()
+    for i in range(ngd):
+        typ, ofs, _ = struct.unpack_from("<HHi", progs, ogd + 8 * i)
+        k = 3 if (typ & 0x7fff) == 3 else 1
+        named.update(range(ofs, ofs + k))
+        if typ & 0x8000:
+            saveg.update(range(ofs, ofs + k))
     strings = progs[ostr:ostr + nstr]
     stmt_bytes = progs[ost:ost + 8 * nst]
     return dict(crc=crc, stmts=stmts, funcs=funcs, strings=strings, nglob=nglob,
-                fingerprint=fnv1a(stmt_bytes), nst=nst, nfn=nfn, entf=entf, constfields=constfields)
+                fingerprint=fnv1a(stmt_bytes), nst=nst, nfn=nfn, entf=entf, constfields=constfields,
+                globs=globs, named=named, saveg=saveg)
+
+
+# ---------------------------------------------------------------------------
+# Globals: which stay in RAM, which are constants, which become C locals
+#
+# id's qcc gives every statement result its own global ("temp"), so most of
+# progs.dat's 11,000 globals are temps used by one function, and most of the
+# rest are constants no statement writes. The interpreter needs them all in
+# RAM. Compiled code does not:
+#   - a temp used by one function only, always written before it is read on
+#     every path, and never live across a call becomes a C local (a call could
+#     recurse into the same function, which in id's code would overwrite it),
+#   - a global no statement writes, outside the engine's area, not a local and
+#     not saved in savegames, is a constant and is written into the code,
+#   - everything else stays in RAM, packed into a smaller array (pr_globals
+#     when QOG_AOT_GLOBALS is on) in which each function's locals stay
+#     contiguous for PR_EnterFunction.
+# ---------------------------------------------------------------------------
+RESERVED = 28 + 64      # OFS_RETURN, the parameters, then globalvars_t
+VEC_A = {"ADD_V", "SUB_V", "MUL_V", "EQ_V", "NE_V", "NOT_V", "MUL_VF"}
+VEC_B = {"ADD_V", "SUB_V", "MUL_V", "EQ_V", "NE_V", "MUL_FV"}
+VEC_C = {"ADD_V", "SUB_V", "MUL_FV", "MUL_VF", "LOAD_V"}
+
+
+def uses(st):
+    """(globals read, globals written) by one statement, as word indices."""
+    op, a, b, c = st
+    n = OPS[op] if op < len(OPS) else ""
+    r, w = [], []
+    if n.startswith("STORE_"):
+        k = 3 if n == "STORE_V" else 1
+        r += range(a, a + k)
+        w += range(b, b + k)
+    elif n.startswith("STOREP"):
+        r += range(a, a + (3 if n == "STOREP_V" else 1))
+        r.append(b)
+    elif n in ("IF", "IFNOT"):
+        r.append(a)
+    elif n == "GOTO":
+        pass
+    elif n in ("RETURN", "DONE"):
+        r += range(a, a + 3)
+    elif n.startswith("CALL"):
+        r.append(a)
+    elif n == "STATE":
+        r += [a, b]
+    elif n in ("NOT_F", "NOT_S", "NOT_ENT", "NOT_FNC"):
+        r.append(a)
+        w.append(c)
+    elif n == "NOT_V":
+        r += range(a, a + 3)
+        w.append(c)
+    elif n in ("LOAD_F", "LOAD_FLD", "LOAD_ENT", "LOAD_S", "LOAD_FNC", "ADDRESS"):
+        r += [a, b]
+        w.append(c)
+    elif n == "LOAD_V":
+        r += [a, b]
+        w += range(c, c + 3)
+    else:
+        r += range(a, a + (3 if n in VEC_A else 1))
+        r += range(b, b + (3 if n in VEC_B else 1))
+        w += range(c, c + (3 if n in VEC_C else 1))
+    return r, w
+
+
+def successors(stmts, s, end):
+    op, a, b, c = stmts[s]
+    n = OPS[op] if op < len(OPS) else ""
+    if n == "GOTO":
+        return [s + a]
+    if n in ("IF", "IFNOT"):
+        return [s + 1, s + b]
+    if n in ("RETURN", "DONE"):
+        return []
+    return [s + 1] if s + 1 < end else []
+
+
+def plan_globals(p, bodies):
+    stmts, funcs, nglob = p["stmts"], p["funcs"], p["nglob"]
+    locals_ = set()
+    for f in funcs:
+        if f[0] > 0:
+            locals_.update(range(f[2], f[2] + f[3]))
+    written, user = set(), {}
+    for fi, (first, end) in bodies.items():
+        for s in range(first, end):
+            r, w = uses(stmts[s])
+            written.update(w)
+            for g in r + w:
+                user.setdefault(g, set()).add(fi)
+    cand = {g for g in written
+            if g >= RESERVED and g not in p["named"] and g not in locals_ and len(user[g]) == 1}
+    clocal = {}
+    for fi, (first, end) in bodies.items():
+        mine = frozenset(g for g in cand if fi in user[g])
+        if not mine:
+            continue
+        succ = {s: successors(stmts, s, end) for s in range(first, end)}
+        pred = {s: [] for s in range(first, end)}
+        for s, ss in succ.items():
+            for x in ss:
+                if first <= x < end:
+                    pred[x].append(s)
+        U = {s: uses(stmts[s]) for s in range(first, end)}
+        Wm = {s: frozenset(g for g in U[s][1] if g in mine) for s in range(first, end)}
+        # written on every path from the function's entry (forward, intersection)
+        din = {s: mine for s in range(first, end)}
+        din[first] = frozenset()
+        changed = True
+        while changed:
+            changed = False
+            for s in range(first + 1, end):
+                new = mine
+                for q in pred[s]:
+                    new = new & (din[q] | Wm[q])
+                if new != din[s]:
+                    din[s] = new
+                    changed = True
+        bad = set()
+        for s in range(first, end):
+            bad.update(g for g in U[s][0] if g in mine and g not in din[s])
+        # live after a call (backward liveness)
+        lin = {s: frozenset() for s in range(first, end)}
+        changed = True
+        while changed:
+            changed = False
+            for s in range(end - 1, first - 1, -1):
+                out = frozenset()
+                for x in succ[s]:
+                    if first <= x < end:
+                        out |= lin[x]
+                new = (out - frozenset(U[s][1])) | frozenset(g for g in U[s][0] if g in mine)
+                if new != lin[s]:
+                    lin[s] = new
+                    changed = True
+        for s in range(first, end):
+            if OPS[stmts[s][0]].startswith("CALL"):
+                for x in succ[s]:
+                    if first <= x < end:
+                        bad |= lin[x]
+        clocal[fi] = sorted(mine - bad)
+    cl = {g for v in clocal.values() for g in v}
+    inram = set(range(RESERVED)) | (written - cl) | p["saveg"] | locals_
+    ram = {g: g for g in range(RESERVED)}
+    parmstart = [0] * len(funcs)
+    k = RESERVED
+    for fi, f in enumerate(funcs):
+        if f[0] <= 0 or f[3] <= 0:
+            continue
+        parmstart[fi] = k
+        for g in range(f[2], f[2] + f[3]):
+            if g in ram:
+                sys.exit("qc2c: the locals of function %d overlap others" % fi)
+            ram[g] = k
+            k += 1
+    for g in sorted(inram):
+        if g not in ram:
+            ram[g] = k
+            k += 1
+    if k > 32767:
+        sys.exit("qc2c: %d RAM globals, at most 32767" % k)
+    p["clocal"], p["ram"], p["parmstart"], p["numram"] = clocal, ram, parmstart, k
+
+
+def literal(bits, as_float):
+    """A constant global's value written into the code, bit for bit."""
+    if not as_float:
+        return "(%d)" % bits
+    v = struct.unpack("<f", struct.pack("<i", bits))[0]
+    if v != v or v in (float("inf"), float("-inf")):
+        return "QK(%d)" % bits
+    s = repr(v)
+    if "e" not in s and "." not in s:
+        s += ".0"
+    return "(%sf)" % s
+
+
+CUR = {}   # set per function by generate(): how each global is reached
+
+
+def G(o):
+    return glob(o, True)
+
+
+def I(o):
+    return glob(o, False)
+
+
+def glob(o, as_float):
+    if not CUR:
+        return ("G[%d]" if as_float else "I[%d]") % o
+    if o in CUR["clocal"]:
+        return "t%d.%s" % (o, "f" if as_float else "i")
+    k = CUR["ram"].get(o)
+    if k is not None:
+        return "%s(%d,%d)" % ("QG" if as_float else "QI", o, k)
+    return literal(CUR["globs"][o], as_float)
 
 
 def cstr(strings, ofs):
@@ -115,15 +324,11 @@ def cstr(strings, ofs):
     return "".join(c if c.isalnum() or c in "_." else "_" for c in s)[:48]
 
 
-def G(o): return "G[%d]" % o
-def I(o): return "I[%d]" % o
-
-
 def field_ld(ctx, ed, b, k):
     """Word k of the field whose number is in global b, as a C int expression."""
     f = ctx["constfields"].get(b)
     if f is None:
-        return "QC_LDX(%s, I[%d] + %d)" % (ed, b, k)
+        return "QC_LDX(%s, %s + %d)" % (ed, I(b), k)
     return "QC_LD(%s, %d, %d)" % (ed, f + k, ctx["coremap"][f + k])
 
 
@@ -180,7 +385,7 @@ def emit_stmt(s, op, a, b, c, out, label, ctx):
         w("%s = %s;" % (I(b), I(a)))
     elif n == "STORE_V":
         for k in range(3):
-            w("%s = %s;" % (G(b + k), G(a + k)))
+            w("%s = %s;" % (I(b + k), I(a + k)))   # copied as bits
     elif n in ("STOREP_F", "STOREP_ENT", "STOREP_FLD", "STOREP_S", "STOREP_FNC", "STOREP_V"):
         nw = 3 if n == "STOREP_V" else 1
         prev = ctx.get("addr")
@@ -214,7 +419,7 @@ def emit_stmt(s, op, a, b, c, out, label, ctx):
     elif n and n.startswith("CALL"):
         w("pr_argc = %d; PR_AOT_Call (%s);" % (op - OP["CALL0"], I(a)))
     elif n in ("DONE", "RETURN"):
-        w("G[1] = %s; G[2] = %s; G[3] = %s; return;" % (G(a), G(a + 1), G(a + 2)))
+        w("I[1] = %s; I[2] = %s; I[3] = %s; return;" % (I(a), I(a + 1), I(a + 2)))
     elif n == "STATE":
         w("{ edict_t *ed = PROG_TO_EDICT(pr_global_struct->self); "
           "ed->v.nextthink = pr_global_struct->time + 0.1; "
@@ -231,6 +436,19 @@ HEADER = """/* Generated by tools/qc2c.py from %s -- do not edit, do not commit.
 void PR_AOT_Call (func_t fnum);
 #define G pr_globals
 #define I ((int *)pr_globals)
+
+/* Globals that stay in RAM: QG and QI take the global's number in
+ * progs.dat and its place in the packed array (QOG_AOT_GLOBALS). Constants
+ * are written into the code and most temporaries are C locals. */
+#ifdef QOG_AOT_GLOBALS
+#define QG(n,k)	G[k]
+#define QI(n,k)	I[k]
+#else
+#define QG(n,k)	G[n]
+#define QI(n,k)	I[n]
+#endif
+union qcv { int i; float f; };
+static float QK (int bits) { union qcv u; u.i = bits; return u.f; }
 
 /* Edict field access, the same as engine/pr_exec.c does it for each layout.
  * QC_LD and QC_ST take the field number and its entcore_t word (-1 for a
@@ -259,7 +477,9 @@ def generate(p, src_name):
     nxt = {s: (starts[i + 1] if i + 1 < len(starts) else len(stmts)) for i, s in enumerate(starts)}
     out = [HEADER % src_name]
     names = []
-    for fi, (first, s_name) in enumerate(funcs):
+    bodies = {fi: (f[0], nxt[f[0]]) for fi, f in enumerate(funcs) if f[0] > 0}
+    plan_globals(p, bodies)
+    for fi, (first, f_name, _parm_start, _locals) in enumerate(funcs):
         if first <= 0:
             names.append(None)
             continue
@@ -273,7 +493,11 @@ def generate(p, src_name):
                 targets.add(s + a)
         fname = "qc_%d" % fi
         names.append(fname)
-        out.append("/* %s */\nstatic void %s (void)\n{" % (cstr(p["strings"], s_name), fname))
+        out.append("/* %s */\nstatic void %s (void)\n{" % (cstr(p["strings"], f_name), fname))
+        mine = p["clocal"].get(fi, [])
+        if mine:
+            out.append("\tunion qcv %s;" % ", ".join("t%d" % g for g in mine))
+        CUR.update(clocal=set(mine), ram=p["ram"], globs=p["globs"])
         body = []
         label = lambda t: "L%d" % t
         ctx = dict(constfields=p["constfields"], coremap=p["coremap"])
@@ -290,6 +514,7 @@ def generate(p, src_name):
             sys.exit("function %d jumps outside its body" % fi)
         out += body
         out.append("}\n")
+        CUR.clear()
     out.append("void (*const pr_aot_functions[%d]) (void) = {" % len(funcs))
     out.append(",\n".join("\t%s" % (n or "0") for n in names))
     out.append("};")
@@ -298,7 +523,13 @@ def generate(p, src_name):
     out.append("const unsigned pr_aot_fingerprint = 0x%08Xu;" % p["fingerprint"])
     out.append("/* QOG_EDICT_SPARSE: the entcore_t word of each field number that the code above assumes */")
     out.append("const int pr_aot_numfields = %d;" % p["entf"])
-    out.append("const signed char pr_aot_coremap[%d] = {%s};\n" % (p["entf"], ",".join(str(x) for x in p["coremap"])))
+    out.append("const signed char pr_aot_coremap[%d] = {%s};" % (p["entf"], ",".join(str(x) for x in p["coremap"])))
+    gm = [p["ram"].get(g, -1) for g in range(p["nglob"])]
+    out.append("/* QOG_AOT_GLOBALS: RAM words, each global's place among them (-1 if it")
+    out.append(" * stays in progs.dat), and where each function's locals start */")
+    out.append("const int pr_aot_numram = %d;" % p["numram"])
+    out.append("const short pr_aot_globalmap[%d] = {%s};" % (len(gm), ",".join(str(x) for x in gm)))
+    out.append("const short pr_aot_parmstart[%d] = {%s};\n" % (len(funcs), ",".join(str(x) for x in p["parmstart"])))
     return "\n".join(out)
 
 
@@ -312,6 +543,9 @@ const int pr_aot_numstatements = 0;
 const unsigned pr_aot_fingerprint = 0u;
 const int pr_aot_numfields = 0;
 const signed char pr_aot_coremap[1] = { 0 };
+const int pr_aot_numram = 0;
+const short pr_aot_globalmap[1] = { 0 };
+const short pr_aot_parmstart[1] = { 0 };
 """
 
 
@@ -332,7 +566,8 @@ def main(argv=None):
         p = parse(progs)
         p["coremap"] = core_map(p["entf"])
         text = generate(p, os.path.basename(a.progs or a.pak))
-        msg = "qc2c: %d functions, %d statements -> %s" % (p["nfn"], p["nst"], a.out)
+        msg = "qc2c: %d functions, %d statements, %d of %d globals in RAM, %d as C locals -> %s" % (
+            p["nfn"], p["nst"], p["numram"], p["nglob"], sum(len(v) for v in p["clocal"].values()), a.out)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     old = open(a.out).read() if os.path.exists(a.out) else None
     if old != text:   # keep the timestamp when nothing changed

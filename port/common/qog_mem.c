@@ -204,15 +204,13 @@ static unsigned hash_value(unsigned h, int type, const int *p) {
         const char *s = pr_strings + *p;
         return fnv(h, s, (int)strlen(s) + 1);
     }
-#ifdef QOG_EDICT_SPARSE
     if (type == ev_entity) {
         /* An entity reference is the edict's byte offset. Hash it as id's
            offset (edict number times id's edict size) so a smaller edict
-           layout still hashes the same. */
+           layout (QOG_EDICT_SPARSE, QOG_BASELINE_POOL) still hashes the same. */
         int id = (*p / pr_edict_size) * (progs->entityfields * 4 + ED_ID_HEADERSIZE);
         return fnv(h, &id, 4);
     }
-#endif
     return fnv(h, p, type == ev_vector ? 12 : 4);
 }
 
@@ -232,7 +230,9 @@ static void cmd_qog_statehash(void) {
     unsigned h = 0x811C9DC5u, e = 0x811C9DC5u;
     for (int i = 0; i < progs->numglobaldefs; i++) {
         const ddef_t *d = &pr_globaldefs[i];
-        h = hash_value(h, d->type, (const int *)pr_globals + d->ofs);
+        int copy[3];   /* PR_GlobalPtr: QOG_AOT_GLOBALS packs the RAM globals */
+        for (int k = 0; k < 3 && d->ofs + k < progs->numglobals; k++) copy[k] = *PR_GlobalPtr(d->ofs + k);
+        h = hash_value(h, d->type, copy);
     }
     for (int n = 0; n < sv.num_edicts; n++) {
         edict_t *ed = EDICT_NUM(n);
@@ -259,7 +259,7 @@ static void cmd_qog_statedump(void) {
     static byte head[ED_ID_HEADERSIZE];
     int hdr[3] = { progs->numglobals, sv.num_edicts, ED_ID_HEADERSIZE + progs->entityfields * 4 };
     fwrite(hdr, sizeof hdr, 1, f);
-    fwrite(pr_globals, 4, progs->numglobals, f);
+    for (int i = 0; i < progs->numglobals; i++) fwrite(PR_GlobalPtr(i), 4, 1, f);
     for (int n = 0; n < sv.num_edicts; n++) {
         edict_t *ed = EDICT_NUM(n);
         memcpy(head, &ed->free, sizeof ed->free);
@@ -272,7 +272,7 @@ static void cmd_qog_statedump(void) {
 #else
     int hdr[3] = { progs->numglobals, sv.num_edicts, pr_edict_size };
     fwrite(hdr, sizeof hdr, 1, f);
-    fwrite(pr_globals, 4, progs->numglobals, f);
+    for (int i = 0; i < progs->numglobals; i++) fwrite(PR_GlobalPtr(i), 4, 1, f);
     fwrite(sv.edicts, pr_edict_size, sv.num_edicts, f);
 #endif
     fclose(f);
