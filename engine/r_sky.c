@@ -36,14 +36,20 @@ int r_skymade;
 int r_skydirect;		// not used?
 
 
-// TODO: clean up these routines
+// QuakeOG: the sky is composited straight from the texture (read in place
+// from flash). id kept two pre-masked 128x131 copies of the front layer
+// (bottomsky, bottommask) and a back-layer copy in the right half of a
+// 256-wide newsky; the result is the same pixel rule, front if non-zero
+// else back, so only the 128x128 output remains in RAM (49 KB less).
 
-byte	bottomsky[128*131];
-byte	bottommask[128*131];
-byte	newsky[128*256];	// newsky and topsky both pack in here, 128 bytes
-							//  of newsky on the left of each scan, 128 bytes
-							//  of topsky on the right, because the low-level
-							//  drawers need 256-byte scan widths
+static byte	*r_skytex;			// 256x128: left half front layer (0 = clear), right half back layer
+byte	newsky[128*128];		// composited sky, 128 wide (d_sky.c reads it with that stride)
+
+static byte SkyPixel (int x, int y, int xshift, int yshift)
+{
+	byte	front = r_skytex[((y + yshift) & SKYMASK) * 256 + ((x + xshift) & SKYMASK)];
+	return front ? front : r_skytex[y * 256 + 128 + x];
+}
 
 
 /*
@@ -55,36 +61,7 @@ A sky texture is 256*128, with the right side being a masked overlay
 */
 void R_InitSky (texture_t *mt)
 {
-	int			i, j;
-	byte		*src;
-
-	src = mt->mips[0];
-
-	for (i=0 ; i<128 ; i++)
-	{
-		for (j=0 ; j<128 ; j++)
-		{
-			newsky[(i*256) + j + 128] = src[i*256 + j + 128];
-		}
-	}
-
-	for (i=0 ; i<128 ; i++)
-	{
-		for (j=0 ; j<131 ; j++)
-		{
-			if (src[i*256 + (j & 0x7F)])
-			{
-				bottomsky[(i*131) + j] = src[i*256 + (j & 0x7F)];
-				bottommask[(i*131) + j] = 0;
-			}
-			else
-			{
-				bottomsky[(i*131) + j] = 0;
-				bottommask[(i*131) + j] = 0xff;
-			}
-		}
-	}
-	
+	r_skytex = mt->mips[0];
 	r_skysource = newsky;
 }
 
@@ -97,9 +74,8 @@ R_MakeSky
 void R_MakeSky (void)
 {
 	int			x, y;
-	int			ofs, baseofs;
 	int			xshift, yshift;
-	unsigned	*pnewsky;
+	byte		*out;
 	static int	xlast = -1, ylast = -1;
 
 	xshift = skytime*skyspeed;
@@ -110,44 +86,11 @@ void R_MakeSky (void)
 
 	xlast = xshift;
 	ylast = yshift;
-	
-	pnewsky = (unsigned *)&newsky[0];
 
+	out = newsky;
 	for (y=0 ; y<SKYSIZE ; y++)
-	{
-		baseofs = ((y+yshift) & SKYMASK) * 131;
-
-// FIXME: clean this up
-#if UNALIGNED_OK
-
-		for (x=0 ; x<SKYSIZE ; x += 4)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-		// PORT: unaligned dword access to bottommask and bottomsky
-
-			*pnewsky = (*(pnewsky + (128 / sizeof (unsigned))) &
-						*(unsigned *)&bottommask[ofs]) |
-						*(unsigned *)&bottomsky[ofs];
-			pnewsky++;
-		}
-
-#else
-
 		for (x=0 ; x<SKYSIZE ; x++)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-			*(byte *)pnewsky = (*((byte *)pnewsky + 128) &
-						*(byte *)&bottommask[ofs]) |
-						*(byte *)&bottomsky[ofs];
-			pnewsky = (unsigned *)((byte *)pnewsky + 1);
-		}
-
-#endif
-
-		pnewsky += 128 / sizeof (unsigned);
-	}
+			*out++ = SkyPixel (x, y, xshift, yshift);
 
 	r_skymade = 1;
 }
@@ -161,54 +104,16 @@ R_GenSkyTile
 void R_GenSkyTile (void *pdest)
 {
 	int			x, y;
-	int			ofs, baseofs;
 	int			xshift, yshift;
-	unsigned	*pnewsky;
-	unsigned	*pd;
+	byte		*pd;
 
 	xshift = skytime*skyspeed;
 	yshift = skytime*skyspeed;
 
-	pnewsky = (unsigned *)&newsky[0];
-	pd = (unsigned *)pdest;
-
+	pd = (byte *)pdest;
 	for (y=0 ; y<SKYSIZE ; y++)
-	{
-		baseofs = ((y+yshift) & SKYMASK) * 131;
-
-// FIXME: clean this up
-#if UNALIGNED_OK
-
-		for (x=0 ; x<SKYSIZE ; x += 4)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-		// PORT: unaligned dword access to bottommask and bottomsky
-
-			*pd = (*(pnewsky + (128 / sizeof (unsigned))) &
-				   *(unsigned *)&bottommask[ofs]) |
-				   *(unsigned *)&bottomsky[ofs];
-			pnewsky++;
-			pd++;
-		}
-
-#else
-
 		for (x=0 ; x<SKYSIZE ; x++)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-			*(byte *)pd = (*((byte *)pnewsky + 128) &
-						*(byte *)&bottommask[ofs]) |
-						*(byte *)&bottomsky[ofs];
-			pnewsky = (unsigned *)((byte *)pnewsky + 1);
-			pd = (unsigned *)((byte *)pd + 1);
-		}
-
-#endif
-
-		pnewsky += 128 / sizeof (unsigned);
-	}
+			*pd++ = SkyPixel (x, y, xshift, yshift);
 }
 
 
@@ -220,36 +125,16 @@ R_GenSkyTile16
 void R_GenSkyTile16 (void *pdest)
 {
 	int				x, y;
-	int				ofs, baseofs;
 	int				xshift, yshift;
-	byte			*pnewsky;
 	unsigned short	*pd;
 
 	xshift = skytime * skyspeed;
 	yshift = skytime * skyspeed;
 
-	pnewsky = (byte *)&newsky[0];
 	pd = (unsigned short *)pdest;
-
 	for (y=0 ; y<SKYSIZE ; y++)
-	{
-		baseofs = ((y+yshift) & SKYMASK) * 131;
-
-// FIXME: clean this up
-// FIXME: do faster unaligned version?
 		for (x=0 ; x<SKYSIZE ; x++)
-		{
-			ofs = baseofs + ((x+xshift) & SKYMASK);
-
-			*pd = d_8to16table[(*(pnewsky + 128) &
-					*(byte *)&bottommask[ofs]) |
-					*(byte *)&bottomsky[ofs]];
-			pnewsky++;
-			pd++;
-		}
-
-		pnewsky += TILE_SIZE;
-	}
+			*pd++ = d_8to16table[SkyPixel (x, y, xshift, yshift)];
 }
 
 

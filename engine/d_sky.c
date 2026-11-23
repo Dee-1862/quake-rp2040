@@ -122,7 +122,7 @@ void D_DrawSkyScans8 (espan_t *pspan)
 
 			do
 			{
-				*pdest++ = r_skysource[((t & R_SKY_TMASK) >> 8) +
+				*pdest++ = r_skysource[((t & R_SKY_TMASK) >> 9) +	// QuakeOG: newsky is 128 wide now (was 256)
 						((s & R_SKY_SMASK) >> 16)];
 				s += sstep;
 				t += tstep;
