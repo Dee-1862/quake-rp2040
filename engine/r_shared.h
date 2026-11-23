@@ -30,8 +30,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define MAXWORKINGVERTS	(MAXVERTS+4)	// max points in an intermediate
 										//  polygon (while processing)
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
+// QuakeOG: the board's screen is fixed at 320x200, and every per-row or
+// per-column table (scan tables, edge lists, model and sprite span lists,
+// the warp tables, the turbulence sine tables) is sized from these.
+// D_ViewChanged stops with an error if the video mode is larger.
+#ifdef QOG_MAXHEIGHT
+#define	MAXHEIGHT		QOG_MAXHEIGHT
+#else
 #define	MAXHEIGHT		1024
+#endif
+#ifdef QOG_MAXWIDTH
+#define	MAXWIDTH		QOG_MAXWIDTH
+#else
 #define	MAXWIDTH		1280
+#endif
 #define MAXDIMENSION	((MAXHEIGHT > MAXWIDTH) ? MAXHEIGHT : MAXWIDTH)
 
 #define SIN_BUFFER_SIZE	(MAXDIMENSION+CYCLE)

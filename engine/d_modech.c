@@ -60,6 +60,11 @@ void D_ViewChanged (void)
 {
 	int rowbytes;
 
+	// QuakeOG: the scan and span tables are sized for MAXWIDTH x MAXHEIGHT
+	if (vid.width > MAXWIDTH || vid.height > MAXHEIGHT)
+		Sys_Error ("D_ViewChanged: video mode %dx%d is larger than MAXWIDTH x MAXHEIGHT (%dx%d)",
+				   vid.width, vid.height, MAXWIDTH, MAXHEIGHT);
+
 	if (r_dowarp)
 		rowbytes = WARP_WIDTH;
 	else
