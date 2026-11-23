@@ -33,6 +33,10 @@ int			r_numallocatededges;
 byte		*r_ztemp_base;	// QuakeOG: the z-buffer memory, set by VID_Init (r_shared.h)
 int			r_ztemp_bytes;
 #endif
+#ifdef QOG_EDGECACHE_ZBUFFER
+unsigned short	*r_qog_edgecache;	// QuakeOG: the world's edge cache (r_draw.c), see R_NewMap
+int				r_qog_edgecachebytes;
+#endif
 #ifdef QOG_HUD_IN_ZBUFFER
 int			r_zalias_row = 0x7fff;	// QuakeOG: first screen row stored in the z-buffer (set by VID_Init)
 
@@ -411,6 +415,31 @@ void R_NewMap (void)
 								   "edges");
 #endif
 	}
+
+#ifdef QOG_EDGECACHE_ZBUFFER
+	// QuakeOG: the world's 16-bit edge cache (r_draw.c) is only used while
+	// R_RenderWorld runs, so it lives at the start of the z-buffer, in front
+	// of the edge table with QOG_EDGES_IN_ZBUFFER (R_EdgeDrawing). A map with
+	// more edges than that room has it on the hunk, as the model loader did.
+	{
+		int	room = r_ztemp_bytes;
+
+#ifdef QOG_EDGES_IN_ZBUFFER
+		room -= ZEDGE_BYTES (r_numallocatededges);
+#endif
+#ifdef QOG_EDGECACHE_TEST_HUNK	// only to test the hunk path
+		room = 0;
+#endif
+		if (r_numallocatededges >= 0x7FFF)
+			Sys_Error ("R_NewMap: %d edges, the 16-bit edge cache allows %d",
+				r_numallocatededges, 0x7FFF - 1);
+		r_qog_edgecachebytes = cl.worldmodel->numedges * sizeof(unsigned short);
+		if (r_ztemp_base && r_qog_edgecachebytes <= room)
+			r_qog_edgecache = (unsigned short *)r_ztemp_base;
+		else
+			r_qog_edgecache = Hunk_AllocName (r_qog_edgecachebytes, "edgecache");
+	}
+#endif
 
 	r_dowarpold = false;
 	r_viewchanged = false;
@@ -1125,6 +1154,12 @@ void R_EdgeDrawing (void)
 #endif
 
 	R_BeginEdgeFrame ();
+
+#ifdef QOG_EDGECACHE_ZBUFFER
+	// QuakeOG: entries from earlier frames never match (r_draw.c), and the
+	// z-buffer has held z since, so the cache starts empty every frame
+	memset (r_qog_edgecache, 0xFF, r_qog_edgecachebytes);
+#endif
 
 	if (r_dspeeds.value)
 	{

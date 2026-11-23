@@ -46,7 +46,7 @@ CFLAGS += ["-DQOG_CONST_RTABLES", "-DQOG_NO_ROWTABLES", "-DQOG_SKY_DIRECT", "-DQ
 # Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
 # Renderer temporary memory in the z-buffer (Agent K, pc/CMakeLists.txt)
-CFLAGS += ["-DQOG_EDGES_IN_ZBUFFER"]
+CFLAGS += ["-DQOG_EDGES_IN_ZBUFFER", "-DQOG_EDGECACHE_ZBUFFER"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

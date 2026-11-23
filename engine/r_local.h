@@ -31,6 +31,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 #endif
 
+// QuakeOG: QOG_EDGECACHE_ZBUFFER keeps the world's 16-bit edge cache in the
+// z-buffer while R_RenderWorld runs (r_draw.c, R_NewMap), not on the hunk
+#ifdef QOG_EDGECACHE_ZBUFFER
+#ifndef QOG_EDGECACHE16
+#error "QOG_EDGECACHE_ZBUFFER needs QOG_EDGECACHE16"
+#endif
+extern unsigned short	*r_qog_edgecache;
+extern int				r_qog_edgecachebytes;
+#endif
+
 #define ALIAS_BASE_SIZE_RATIO		(1.0 / 11.0)
 					// normalizing factor so player model works out to about
 					//  1 pixel per triangle

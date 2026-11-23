@@ -94,7 +94,8 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DEMOS_OPTIONAL)
 # Renderer temporary memory in the z-buffer (Agent K), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
-    QOG_EDGES_IN_ZBUFFER)
+    QOG_EDGES_IN_ZBUFFER
+    QOG_EDGECACHE_ZBUFFER)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

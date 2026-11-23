@@ -166,4 +166,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
 # Renderer temporary memory in the z-buffer (Agent K)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_EDGES_IN_ZBUFFER)           # edge table in the z-buffer while it holds no z, spans in the surface table
+    QOG_EDGES_IN_ZBUFFER            # edge table in the z-buffer while it holds no z, spans in the surface table
+    QOG_EDGECACHE_ZBUFFER)          # the world's edge cache in the z-buffer while the world is drawn, not on the hunk

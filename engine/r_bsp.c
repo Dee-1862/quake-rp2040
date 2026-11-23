@@ -337,8 +337,9 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 	mplane_t	*pplane;
 #if defined(QOG_EDGES_IN_ZBUFFER)
 	// QuakeOG: the clip buffers sit at the start of the z-buffer, which
-	// holds no z yet and only the world's (dead) edge cache before them
-	// (R_EdgeDrawing, R_NewMap checks the room)
+	// holds no z yet. With QOG_EDGECACHE_ZBUFFER the world's edge cache was
+	// there, which nothing reads after R_RenderWorld (R_EdgeDrawing, R_NewMap
+	// checks the room).
 	mvertex_t	*bverts = (mvertex_t *)r_ztemp_base;
 	bedge_t		*bedges = (bedge_t *)(bverts + MAX_BMODEL_VERTS), *pbedge;
 #elif defined(QOG_SPANS_IN_EDGES)
