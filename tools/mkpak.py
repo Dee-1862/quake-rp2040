@@ -33,6 +33,16 @@ ALIGN = 16
 MIX_RATE = 11025
 # Read by the engine at startup or by name from code, not via precache lists.
 ALWAYS = ["gfx.wad", "gfx/*.lmp", "progs.dat", "quake.rc", "default.cfg"]
+# Sounds the client loads by name with sound on (the manifests are recorded
+# without sound, so they miss these): the ambient loops (snd_dma.c S_Init),
+# the temp entity sounds (cl_tent.c CL_InitTEnts), the menu sounds (menu.c)
+# and the chat beep (console.c).
+ENGINE_SOUNDS = ["sound/ambience/water1.wav", "sound/ambience/wind2.wav",
+                 "sound/wizard/hit.wav", "sound/hknight/hit.wav", "sound/weapons/tink1.wav",
+                 "sound/weapons/ric1.wav", "sound/weapons/ric2.wav", "sound/weapons/ric3.wav",
+                 "sound/weapons/r_exp3.wav",
+                 "sound/misc/menu1.wav", "sound/misc/menu2.wav", "sound/misc/menu3.wav",
+                 "sound/misc/talk.wav"]
 
 
 def read_pak(path):
@@ -179,7 +189,7 @@ def main(argv=None):
         sys.exit("no manifest for: %s" % " ".join(missing))
 
     keep = set(common)
-    for pat in ALWAYS + (["demo*.dem"] if a.demos else []):
+    for pat in ALWAYS + ENGINE_SOUNDS + (["demo*.dem"] if a.demos else []):
         keep |= {n for n in files if fnmatch.fnmatch(n, pat)}
     for m in maps:
         keep |= mans[m]
