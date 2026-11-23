@@ -201,13 +201,36 @@ void CL_KeepaliveMessage (void)
 CL_ParseServerInfo
 ==================
 */
+// QuakeOG: the precache names were two 16 KB arrays on the stack. They are
+// now packed into a temporary block on the high hunk, sized to what is left
+// of the server info message (the names come from it, so they always fit),
+// and freed before the level starts.
+static char	*cl_precachenames;
+static int	cl_precacheleft;
+
+static char *CL_KeepPrecacheName (char *str)
+{
+	char	*name;
+	int		len;
+
+	len = strlen (str) + 1;
+	if (len > cl_precacheleft)
+		Sys_Error ("CL_ParseServerInfo: precache names overflow");
+	name = cl_precachenames;
+	memcpy (name, str, len);
+	cl_precachenames += len;
+	cl_precacheleft -= len;
+	return name;
+}
+
 void CL_ParseServerInfo (void)
 {
 	char	*str;
 	int		i;
 	int		nummodels, numsounds;
-	char	model_precache[MAX_MODELS][MAX_QPATH];
-	char	sound_precache[MAX_SOUNDS][MAX_QPATH];
+	char	*model_precache[MAX_MODELS];	// QuakeOG: names on the high hunk, see above
+	char	*sound_precache[MAX_SOUNDS];
+	int		himark;
 	
 	Con_DPrintf ("Serverinfo packet received.\n");
 //
@@ -249,6 +272,13 @@ void CL_ParseServerInfo (void)
 // needlessly purge it
 //
 
+// QuakeOG: temporary block for the precache names, freed below
+	himark = Hunk_HighMark ();
+	cl_precacheleft = net_message.cursize - msg_readcount + 1;
+	cl_precachenames = Hunk_HighAllocName (cl_precacheleft, "precache");
+	if (!cl_precachenames)
+		Sys_Error ("CL_ParseServerInfo: no room for the precache names");
+
 // precache models
 	memset (cl.model_precache, 0, sizeof(cl.model_precache));
 	for (nummodels=1 ; ; nummodels++)
@@ -259,9 +289,10 @@ void CL_ParseServerInfo (void)
 		if (nummodels==MAX_MODELS)
 		{
 			Con_Printf ("Server sent too many model precaches\n");
+			Hunk_FreeToHighMark (himark);	// QuakeOG
 			return;
 		}
-		strcpy (model_precache[nummodels], str);
+		model_precache[nummodels] = CL_KeepPrecacheName (str);	// QuakeOG: was strcpy
 		Mod_TouchModel (str);
 	}
 
@@ -275,9 +306,10 @@ void CL_ParseServerInfo (void)
 		if (numsounds==MAX_SOUNDS)
 		{
 			Con_Printf ("Server sent too many sound precaches\n");
+			Hunk_FreeToHighMark (himark);	// QuakeOG
 			return;
 		}
-		strcpy (sound_precache[numsounds], str);
+		sound_precache[numsounds] = CL_KeepPrecacheName (str);	// QuakeOG: was strcpy
 		S_TouchSound (str);
 	}
 
@@ -291,6 +323,7 @@ void CL_ParseServerInfo (void)
 		if (cl.model_precache[i] == NULL)
 		{
 			Con_Printf("Model %s not found\n", model_precache[i]);
+			Hunk_FreeToHighMark (himark);	// QuakeOG
 			return;
 		}
 		CL_KeepaliveMessage ();
@@ -303,6 +336,7 @@ void CL_ParseServerInfo (void)
 		CL_KeepaliveMessage ();
 	}
 	S_EndPrecaching ();
+	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the precache names
 
 
 // local state
