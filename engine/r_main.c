@@ -436,6 +436,14 @@ void R_NewMap (void)
 		r_qog_edgecachebytes = cl.worldmodel->numedges * sizeof(unsigned short);
 		if (r_ztemp_base && r_qog_edgecachebytes <= room)
 			r_qog_edgecache = (unsigned short *)r_ztemp_base;
+#ifdef QOG_EDGECACHE_FRAME
+		// QuakeOG: else in the frame buffer's first rows, which nothing
+		// reads before the world's spans draw over them (R_EdgeDrawing
+		// checks every frame that the 3D view covers them). For a smaller
+		// z-buffer (QOG_ZBUFFER8), whose room the edge table takes.
+		else if (r_qog_edgecachebytes <= vid.rowbytes * QOG_EDGECACHE_FRAME)
+			r_qog_edgecache = (unsigned short *)vid.buffer;
+#endif
 		else
 			r_qog_edgecache = Hunk_AllocName (r_qog_edgecachebytes, "edgecache");
 	}
@@ -736,7 +744,7 @@ void R_DrawEntitiesOnList (void)
 	{
 		currententity = cl_visedicts[i];
 
-		if (currententity == &cl_entities[cl.viewentity])
+		if (currententity == CL_ENTITY_IFANY (cl.viewentity))
 			continue;	// don't draw the player
 
 		switch (currententity->model->type)
@@ -1156,6 +1164,19 @@ void R_EdgeDrawing (void)
 	R_BeginEdgeFrame ();
 
 #ifdef QOG_EDGECACHE_ZBUFFER
+#ifdef QOG_EDGECACHE_FRAME
+	extern pixel_t	*d_viewbuffer;	// d_local.h
+
+	// QuakeOG: a cache in the frame buffer needs the 3D view to draw over
+	// all of it in this frame (a full-width view from the top, drawn in the
+	// frame buffer itself) and nothing on screen (the previous frame's
+	// scanout has ended, VID_Update waits for it)
+	if ((byte *)r_qog_edgecache == vid.buffer
+		&& (r_refdef.vrect.x || r_refdef.vrect.y || r_refdef.vrect.width != vid.width
+			|| r_refdef.vrect.height * (int)vid.rowbytes < r_qog_edgecachebytes
+			|| d_viewbuffer != vid.buffer))
+		Sys_Error ("R_EdgeDrawing: the 3D view does not cover the edge cache in the frame buffer");
+#endif
 	// QuakeOG: entries from earlier frames never match (r_draw.c), and the
 	// z-buffer has held z since, so the cache starts empty every frame
 	memset (r_qog_edgecache, 0xFF, r_qog_edgecachebytes);

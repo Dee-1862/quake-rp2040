@@ -9,3 +9,8 @@ typedef struct quakeparms_s quakeparms_t;
 void qog_fly_register(void) {}
 void qog_fly_frame(void) {}
 void qog_fly_pc_main(quakeparms_t *parms) { (void)parms; }
+/* the demo playback host (port/common/qog_demo.c) and its PC commands are
+   single-process tools too */
+void qog_demo_register(void) {}
+void qog_demo_frame_pc(void) {}
+void qog_demo_pc_main(quakeparms_t *parms) { (void)parms; }

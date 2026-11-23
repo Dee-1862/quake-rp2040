@@ -105,3 +105,9 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L45. Pushes must not prompt.** Use `GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git push`. If it fails, ask the user to sign in once (a terminal `git push` or GitHub Desktop) rather than leaving a Credential Manager popup waiting.
 
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
+
+**L46. Only engine files are built with `-Drand=qog_rand`.** A host file in `port/` or `apps/` that calls `rand()` gets MSVC's or newlib's, so the shared random sequence skips a step and every particle after it lands elsewhere. Call `qog_rand()` by name there (port/common/qog_demo.c does for `_Host_Frame`'s per-frame call).
+
+**L47. A client without a server still reads server cvars.** The client's particles fall by `sv_gravity`, which only SV_Init registers. Unregistered, its value is 0 and blood and debris float. Any host that leaves the server out must register it (or define it, on the board).
+
+**L48. Text a demo stuffs waits behind a script's `wait`s.** `stufftext "bf"` is appended to the command buffer, so in a scripted run it runs only after the rest of the script, and the bonus flashes come late or not at all. A script that compares demo frames must end right after starting the demo and leave the buffer free (`qog_quitafter`, port/pc/demo_pc.c).
