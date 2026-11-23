@@ -2,6 +2,21 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-22: Engine-only RAM cuts (PC, measured, all verified hidden and silent)
+
+| Step | Change | Saved (E1M1) |
+| --- | --- | ---: |
+| A | Single player: one client slot, two loopback sockets (`QOG_SINGLE_PLAYER`) | 107 KB hunk |
+| B | Edict array sized per map from its entity lump, minus what QuakeC frees at spawn, plus a margin of 128 (`QOG_EDICT_MARGIN`): 247–480 instead of 600 | 242 KB hunk |
+| C | Client entity table sized the same way, on the hunk | 100 KB static |
+| D | Mixer volume table replaced by an equivalent multiply | 32 KB static |
+| E | `gfx.wad` read in place; only its 5 KB directory is copied | 105 KB hunk |
+| F | Model table 192 instead of 256 (`QOG_MAX_MOD_KNOWN`); the most one level references is 160 | 27 KB static |
+
+E1M1 now: hunk low 1,705 KB, total dynamic 2,019 KB, static 320 KB (interpreter, since QuakeC translation waits for registered data). State hashes are unchanged throughout. Demo frames are identical to the reference build, status bar included. All nine levels and every menu run. Sound was verified by level only (peak 19,193, RMS 6,395), never played aloud.
+
+Testing changes: `-hidden` now also mutes the speakers and drives playback by game time. New `tools/pctest.ps1` and `qog_soundlevel`.
+
 ## 2026-11-22: Asset manifests, pak builder, licence decision, BSP state split (PC)
 
 - **Item 2, asset manifests:** a new engine hook `com_fileopened` reports every pack file opened. On the PC, `qog_manifest` writes a map's precached models and sounds plus every file opened, and `tools/mkpak.py` builds a trimmed pak aligned to 16 bytes, plus a UF2, from those lists. It also converts the two 22 kHz sounds. **Start + E1M1 is 7.08 MB and fits. The whole shareware episode is 16.6 MB and does not fit 11.94 MB**: deduplicating textures (−1.72 MB) and a smaller app area would both be needed.

@@ -98,4 +98,10 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L42. A worktree build of an older commit uses that commit's build settings.** Building the pre-opt-in commit regenerated the QuakeC translation from the shareware. Check for derived files after any reference build and delete them.
 
+**L43. Automated PC runs must never show a window or make a sound.** Use `tools/pctest.ps1`, which always passes `-hidden` (draws off-screen, mixes sound without output, playback driven by game time), restores the fixed config, and enforces a timeout. Check sound with `qog_soundlevel` (peak and RMS), never by playing it.
+
+**L44. Two PowerShell traps that cost a session:** `$args` is a reserved automatic variable (a parameter with that name silently arrives empty, so test games started with no script and played the attract demo with sound until killed), and variable names are case-insensitive (`$t` overwrote `$T`). Use descriptive names (`$Runner`, `$case`).
+
+**L45. Pushes must not prompt.** Use `GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git push`. If it fails, ask the user to sign in once (a terminal `git push` or GitHub Desktop) rather than leaving a Credential Manager popup waiting.
+
 **L17. The board may arrive with someone else's BSP firmware** (ours had "wilirehab 002"). Check the USB product strings before flashing. If they start `FWOG display`, the bootloader is already there and `fw bootloader` isn't needed. Flashing replaces that firmware, so ask first.
