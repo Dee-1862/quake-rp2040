@@ -36,6 +36,65 @@ typedef struct efrag_s
 } efrag_t;
 
 
+#ifdef QOG_ENTITY_PACKED
+/*
+QuakeOG: packed client entity (184 bytes in id's layout, 104 here). Every
+client entity_t is kept per level for each edict number, plus the beams and
+the static entities. The fields the renderer reads stay as they are. The
+client-only ones are kept as they arrive from the network:
+- origins as the protocol's shorts (units of 1/8) and angles as its signed
+  bytes (units of 360/256). ENT_COORD and ENT_ANGLE give back exactly the
+  floats MSG_ReadCoord and MSG_ReadAngle return, so interpolation is the same.
+- msgtime as a float. It is only ever set from cl.mtime[0], which only ever
+  holds a float read from the message, so the value and every comparison are
+  the same as id's double.
+- the baseline's model, frame, colormap, skin and effects as the bytes the
+  protocol sends.
+- update_type, dlightframe and dlightbits are never used for entities.
+*/
+typedef short			entcoord_t;
+typedef signed char		entangle_t;
+#define ENT_COORD(c)		((float)(c) * 0.125f)
+#define ENT_ANGLE(a)		((float)(a) * (float)(360.0/256))
+#define ENT_READCOORD()		((entcoord_t)MSG_ReadShort ())
+#define ENT_READANGLE()		((entangle_t)MSG_ReadChar ())
+
+typedef struct
+{
+	entcoord_t		origin[3];
+	entangle_t		angles[3];
+	byte			modelindex, frame, colormap, skin, effects;
+} entbaseline_t;
+
+typedef struct entity_s
+{
+	float					msgtime;		// time of last update
+	vec3_t					origin;
+	vec3_t					angles;
+	struct model_s			*model;			// NULL = no model
+	struct efrag_s			*efrag;			// linked list of efrags
+	int						frame;
+	float					syncbase;		// for client-side animations
+	byte					*colormap;
+	int						effects;		// light, particals, etc
+	int						skinnum;		// for Alias models
+	int						visframe;		// last frame this entity was
+											//  found in an active leaf
+	int						trivial_accept;
+	struct mnode_s			*topnode;		// for bmodels, first world node
+											//  that splits bmodel, or NULL if
+											//  not split
+	entcoord_t				msg_origins[2][3];	// last two updates (0 is newest)
+	entbaseline_t			baseline;		// to fill in defaults in updates
+	entangle_t				msg_angles[2][3];	// last two updates (0 is newest)
+	byte					forcelink;		// model changed
+} entity_t;
+#else
+#define ENT_COORD(c)		(c)
+#define ENT_ANGLE(a)		(a)
+#define ENT_READCOORD()		MSG_ReadCoord ()
+#define ENT_READANGLE()		MSG_ReadAngle ()
+
 typedef struct entity_s
 {
 	qboolean				forcelink;		// model changed
@@ -68,6 +127,10 @@ typedef struct entity_s
 											//  that splits bmodel, or NULL if
 											//  not split
 } entity_t;
+#endif
+// QuakeOG: copy a network origin or angles into a float vector
+#define ENT_COORDCOPY(a,b)	{b[0]=ENT_COORD(a[0]);b[1]=ENT_COORD(a[1]);b[2]=ENT_COORD(a[2]);}
+#define ENT_ANGLECOPY(a,b)	{b[0]=ENT_ANGLE(a[0]);b[1]=ENT_ANGLE(a[1]);b[2]=ENT_ANGLE(a[2]);}
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 typedef struct

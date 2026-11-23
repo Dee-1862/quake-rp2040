@@ -496,29 +496,29 @@ if (bits&(1<<i))
 	VectorCopy (ent->msg_angles[0], ent->msg_angles[1]);
 
 	if (bits & U_ORIGIN1)
-		ent->msg_origins[0][0] = MSG_ReadCoord ();
+		ent->msg_origins[0][0] = ENT_READCOORD ();	// QuakeOG: see render.h
 	else
 		ent->msg_origins[0][0] = ent->baseline.origin[0];
 	if (bits & U_ANGLE1)
-		ent->msg_angles[0][0] = MSG_ReadAngle();
+		ent->msg_angles[0][0] = ENT_READANGLE ();
 	else
 		ent->msg_angles[0][0] = ent->baseline.angles[0];
 
 	if (bits & U_ORIGIN2)
-		ent->msg_origins[0][1] = MSG_ReadCoord ();
+		ent->msg_origins[0][1] = ENT_READCOORD ();	// QuakeOG: see render.h
 	else
 		ent->msg_origins[0][1] = ent->baseline.origin[1];
 	if (bits & U_ANGLE2)
-		ent->msg_angles[0][1] = MSG_ReadAngle();
+		ent->msg_angles[0][1] = ENT_READANGLE ();
 	else
 		ent->msg_angles[0][1] = ent->baseline.angles[1];
 
 	if (bits & U_ORIGIN3)
-		ent->msg_origins[0][2] = MSG_ReadCoord ();
+		ent->msg_origins[0][2] = ENT_READCOORD ();	// QuakeOG: see render.h
 	else
 		ent->msg_origins[0][2] = ent->baseline.origin[2];
 	if (bits & U_ANGLE3)
-		ent->msg_angles[0][2] = MSG_ReadAngle();
+		ent->msg_angles[0][2] = ENT_READANGLE ();
 	else
 		ent->msg_angles[0][2] = ent->baseline.angles[2];
 
@@ -528,9 +528,9 @@ if (bits&(1<<i))
 	if ( forcelink )
 	{	// didn't have an update last message
 		VectorCopy (ent->msg_origins[0], ent->msg_origins[1]);
-		VectorCopy (ent->msg_origins[0], ent->origin);
+		ENT_COORDCOPY (ent->msg_origins[0], ent->origin);	// QuakeOG: packed entity_t
 		VectorCopy (ent->msg_angles[0], ent->msg_angles[1]);
-		VectorCopy (ent->msg_angles[0], ent->angles);
+		ENT_ANGLECOPY (ent->msg_angles[0], ent->angles);
 		ent->forcelink = true;
 	}
 }
@@ -550,8 +550,8 @@ void CL_ParseBaseline (entity_t *ent)
 	ent->baseline.skin = MSG_ReadByte();
 	for (i=0 ; i<3 ; i++)
 	{
-		ent->baseline.origin[i] = MSG_ReadCoord ();
-		ent->baseline.angles[i] = MSG_ReadAngle ();
+		ent->baseline.origin[i] = ENT_READCOORD ();	// QuakeOG: see render.h
+		ent->baseline.angles[i] = ENT_READANGLE ();
 	}
 }
 
@@ -740,8 +740,8 @@ void CL_ParseStatic (void)
 	ent->skinnum = ent->baseline.skin;
 	ent->effects = ent->baseline.effects;
 
-	VectorCopy (ent->baseline.origin, ent->origin);
-	VectorCopy (ent->baseline.angles, ent->angles);	
+	ENT_COORDCOPY (ent->baseline.origin, ent->origin);	// QuakeOG: packed entity_t
+	ENT_ANGLECOPY (ent->baseline.angles, ent->angles);	
 #ifdef QOG_STATICS_ON_HUNK
 	CL_LinkStatic (ent);	// QuakeOG: R_AddEfrags with efrags from the hunk
 #else

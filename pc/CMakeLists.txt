@@ -139,4 +139,5 @@ add_custom_command(OUTPUT ${PROGS_AOT} APPEND
     DEPENDS ${ROOT}/engine/progs.h ${ROOT}/engine/progdefs.q1)
 # Client memory and 2D drawing (Agent G)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_CONBACK_FLASH)              # console background read in place from the mapped pack (id 62.6 KB cache copy)
+    QOG_CONBACK_FLASH               # console background read in place from the mapped pack (id 62.6 KB cache copy)
+    QOG_ENTITY_PACKED)              # client entity_t 104 bytes, network origins and angles kept as sent (id 184)

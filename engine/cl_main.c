@@ -594,15 +594,15 @@ void CL_RelinkEntities (void)
 		if (ent->forcelink)
 		{	// the entity was not updated in the last message
 			// so move to the final spot
-			VectorCopy (ent->msg_origins[0], ent->origin);
-			VectorCopy (ent->msg_angles[0], ent->angles);
+			ENT_COORDCOPY (ent->msg_origins[0], ent->origin);	// QuakeOG: packed entity_t
+			ENT_ANGLECOPY (ent->msg_angles[0], ent->angles);
 		}
 		else
 		{	// if the delta is large, assume a teleport and don't lerp
 			f = frac;
 			for (j=0 ; j<3 ; j++)
 			{
-				delta[j] = ent->msg_origins[0][j] - ent->msg_origins[1][j];
+				delta[j] = ENT_COORD (ent->msg_origins[0][j]) - ENT_COORD (ent->msg_origins[1][j]);
 				if (delta[j] > 100 || delta[j] < -100)
 					f = 1;		// assume a teleportation, not a motion
 			}
@@ -610,14 +610,14 @@ void CL_RelinkEntities (void)
 		// interpolate the origin and angles
 			for (j=0 ; j<3 ; j++)
 			{
-				ent->origin[j] = ent->msg_origins[1][j] + f*delta[j];
+				ent->origin[j] = ENT_COORD (ent->msg_origins[1][j]) + f*delta[j];
 
-				d = ent->msg_angles[0][j] - ent->msg_angles[1][j];
+				d = ENT_ANGLE (ent->msg_angles[0][j]) - ENT_ANGLE (ent->msg_angles[1][j]);
 				if (d > 180)
 					d -= 360;
 				else if (d < -180)
 					d += 360;
-				ent->angles[j] = ent->msg_angles[1][j] + f*d;
+				ent->angles[j] = ENT_ANGLE (ent->msg_angles[1][j]) + f*d;
 			}
 			
 		}
