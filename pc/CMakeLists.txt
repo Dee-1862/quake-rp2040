@@ -166,4 +166,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
 # Per-level map arrays (Agent L)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_FRAMEBITS)                  # visframe stamps of surfaces, nodes and leafs as one bit each with a frame tag
+    QOG_FRAMEBITS                   # visframe stamps of surfaces, nodes and leafs as one bit each with a frame tag
+    QOG_DLIGHT_SPARSE)              # dlight bits only for visible lit surfaces in a 1024 entry hash (QOG_DLIGHT_SURFS), a bit per surface for the stamp

@@ -69,15 +69,25 @@ void R_AddDynamicLights (void)
 	int			i;
 	int			smax, tmax;
 	mtexinfo_t	*tex;
+#ifdef QOG_DLIGHT_SPARSE
+	int			dlbits;
+#endif
 
 	surf = r_drawsurf.surf;
 	smax = (surf->extents[0]>>4)+1;
 	tmax = (surf->extents[1]>>4)+1;
 	tex = SURF_TEXINFO (r_drawsurf.model, surf);	// QuakeOG
+#ifdef QOG_DLIGHT_SPARSE
+	dlbits = R_DlightBits (r_drawsurf.model, surf);	// QuakeOG: kept only for lit surfaces
+#endif
 
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
 	{
+#ifdef QOG_DLIGHT_SPARSE
+		if ( !(dlbits & (1<<lnum) ) )
+#else
 		if ( !(SURF_DLIGHTBITS (r_drawsurf.model, surf) & (1<<lnum) ) )
+#endif
 			continue;		// not lit by this light
 
 		rad = cl_dlights[lnum].radius;

@@ -1539,6 +1539,7 @@ float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 	return Length (corner);
 }
 
+#if !defined(QOG_FRAMEBITS) || !defined(QOG_DLIGHT_SPARSE)	// QuakeOG: else unused
 /*
 =================
 Mod_AllocFrameStamps
@@ -1560,8 +1561,9 @@ static framestamp_t *Mod_AllocFrameStamps (int count)
 	return Hunk_AllocName (count * sizeof(framestamp_t), loadname);
 #endif
 }
+#endif
 
-#ifdef QOG_FRAMEBITS
+#if defined(QOG_FRAMEBITS) || defined(QOG_DLIGHT_SPARSE)
 /*
 =================
 Mod_AllocFrameBits
@@ -3159,8 +3161,17 @@ static void Mod_FinishBrushModel (model_t *mod)
 #else
 	fr->surf_visframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
 #endif
+#ifdef QOG_DLIGHT_SPARSE
+	// QuakeOG: a bit per surface, the dlight bits of the lit surfaces are
+	// kept for the frame in r_light.c (R_DlightMark)
+	if (loadmodel->numsurfaces > 0xFFFF)
+		Sys_Error ("Mod_FinishBrushModel: %s has %i surfaces, QOG_DLIGHT_SPARSE takes 65535", loadmodel->name, loadmodel->numsurfaces);
+	fr->surf_dlightframe = Mod_AllocFrameBits (loadmodel->numsurfaces);
+	fr->surf_dlightbits = NULL;
+#else
 	fr->surf_dlightframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
 	fr->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+#endif
 #ifdef QOG_FRAMEBITS
 	fr->node_visframe = Mod_AllocFrameBits (loadmodel->numnodes);
 	fr->leaf_visframe = Mod_AllocFrameBits (numleafs);

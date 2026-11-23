@@ -389,7 +389,7 @@ typedef int				framestamp_t;
 // stamps. Every read uses the counter of the latest write or a later one
 // (the counters only grow), so the results equal id's. FB_IS and FB_SET
 // evaluate their arguments more than once: pass plain expressions only.
-#ifdef QOG_FRAMEBITS
+#if defined(QOG_FRAMEBITS) || defined(QOG_DLIGHT_SPARSE)
 typedef unsigned char	framebits_t;
 #define FB_TAG(a)		(((int *)(a))[-1])
 #define FB_BYTES(a)		(((int *)(a))[-2])
@@ -410,9 +410,15 @@ typedef framestamp_t	visstamp_t;
 #define VS_IS			FS_IS
 #define VS_SET			FS_SET
 #endif
+#ifdef QOG_DLIGHT_SPARSE
+typedef framebits_t		dlstamp_t;
+#define DS_IS			FB_IS
+#define DS_SET			FB_SET
+#else
 typedef framestamp_t	dlstamp_t;
 #define DS_IS			FS_IS
 #define DS_SET			FS_SET
+#endif
 
 
 #define	EF_ROCKET	1			// leave a trail
@@ -554,8 +560,16 @@ typedef struct model_s
 // QuakeOG: surface number n, as a leaf's mark surfaces give it
 #define SURF_VISFRAME_SETNUM(m, n, c)	VS_SET (MODFRAME (m)->surf_visframe, n, c)
 #define SURF_DLIGHTFRAME_SET(m, s, c)	DS_SET (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
+#ifdef QOG_DLIGHT_SPARSE
+// QuakeOG: no dlightbits array, and the world's marks are made when first
+// asked for, see R_DlightLit and R_DlightBits (r_light.c)
+qboolean	R_DlightLit (model_t *m, msurface_t *surf, int c);
+int		R_DlightBits (model_t *m, msurface_t *surf);
+#define SURF_DLIGHTFRAME_IS(m, s, c)	R_DlightLit (m, s, c)
+#else
 #define SURF_DLIGHTFRAME_IS(m, s, c)	DS_IS (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
 #define SURF_DLIGHTBITS(m, s)	(MODFRAME (m)->surf_dlightbits[(s) - (m)->surfaces])
+#endif
 #define LEAF_EFRAGS(m, l)		(MODFRAME (m)->leaf_efrags[(l) - (m)->leafs])
 #define LEAF_KEY(m, l)			(MODFRAME (m)->leaf_key[(l) - (m)->leafs])
 #define LEAF_KEY_SET(m, l, k)	(LEAF_KEY (m, l) = (k))
