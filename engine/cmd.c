@@ -70,9 +70,16 @@ sizebuf_t	cmd_text;
 Cbuf_Init
 ============
 */
+#ifndef QOG_CMDBUF_SIZE
+// QuakeOG: board-only size in apps/quake/CMakeLists.txt. The measured peak
+// is 2,158 bytes (default.cfg inserted ahead of the rest of quake.rc). The
+// PC builds keep id's size for the long test scripts. Overflow is id's
+// "Cbuf_AddText: overflow" message, the text is dropped.
+#define	QOG_CMDBUF_SIZE	8192
+#endif
 void Cbuf_Init (void)
 {
-	SZ_Alloc (&cmd_text, 8192);		// space for commands and script files
+	SZ_Alloc (&cmd_text, QOG_CMDBUF_SIZE);		// space for commands and script files
 }
 
 

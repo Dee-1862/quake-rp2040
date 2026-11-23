@@ -21,7 +21,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-#ifdef QOG_ZONE_KB
+#if defined(QOG_ZONE_BOARD_KB)
+// QuakeOG: board-only zone size (apps/quake/CMakeLists.txt), used instead of
+// QOG_ZONE_KB. With QOG_CBUF_INPLACE no script passes through the zone, and
+// the measured peak is 7,920 bytes (cvar strings, bindings, aliases and
+// command arguments, PC run over the start, menus, save and load, three
+// maps with fights). The zone fragments: a 12 KB zone failed at startup
+// with 3.5 KB free in pieces of at most 152 bytes, 16 KB ran every test.
+// The PC builds keep QOG_ZONE_KB for the test scripts.
+#define	DYNAMIC_SIZE	(QOG_ZONE_BOARD_KB * 1024)
+#elif defined(QOG_ZONE_KB)
 // QuakeOG: the zone holds cvar strings, aliases, key bindings, command
 // arguments and, for a moment, the rest of the command buffer (up to 8 KB)
 // when a script is inserted. Measured peak 7.4 KB over every shareware
