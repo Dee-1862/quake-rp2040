@@ -35,6 +35,21 @@ typedef enum {
 	pt_static, pt_grav, pt_slowgrav, pt_fire, pt_explode, pt_explode2, pt_blob, pt_blob2
 } ptype_t;
 
+#ifdef QOG_PARTICLE_PACKED
+// QuakeOG: 36 bytes instead of 44 (r_part.c). The colour is always a whole
+// palette index and the type fits a byte. The list link is a 16-bit index
+// (r_part.c's P_NEXT). The drivers read only org and color.
+typedef struct particle_s
+{
+	vec3_t		org;
+	vec3_t		vel;
+	float		ramp;
+	float		die;
+	unsigned short	next;		// index + 1 into particles, 0 = end of list
+	byte		color;
+	byte		type;
+} particle_t;
+#else
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
 typedef struct particle_s
 {
@@ -48,6 +63,7 @@ typedef struct particle_s
 	float		die;
 	ptype_t		type;
 } particle_t;
+#endif
 
 #define PARTICLE_Z_CLIP	8.0
 

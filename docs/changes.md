@@ -2,6 +2,24 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Client memory and 2D pics (Agent G, PC and ARM build, registered data)
+
+E1M1 (`qog_mem`, PC): hunk low 392.8 → 364.0 KB, cache 62.6 → 0 KB, total 613.8 → 522.5 KB. Engine static RAM on the meter 202.8 → 196.5 KB. Board overflow 187,500 (Agent F's figure for main) → 180,112 bytes. Nothing ran on hardware.
+
+| Flag | Change | Saved |
+| --- | --- | --- |
+| `QOG_CONBACK_FLASH` | gfx/conback.lmp read in place from the mapped pack. The version number goes into a copy of each of the 8 rows it covers as that row is drawn | cache 62.6 KB |
+| `QOG_ENTITY_PACKED` | client `entity_t` 184 → 104 bytes. Network origins and angles kept as the protocol's shorts and signed bytes (`ENT_COORD` and `ENT_ANGLE` give back the exact floats), `msgtime` a float (only ever set from a float read from the message), baseline as bytes, `update_type`, `dlightframe`, `dlightbits` gone. Renderer fields unchanged | E1M1 cl_ents 58,352 → 32,992 hunk, `cl_temp_entities` 11.5 → 6.5 KB static |
+| `QOG_PARTICLE_PACKED` | `particle_t` 44 → 36 bytes: colour and type as bytes, list link a 16-bit index (d_iface.h, r_part.c) | hunk 4,096 |
+| `QOG_PARTICLE_AVEL8` | entity particle rates as bytes, scaled to the same floats on use | static 1.4 KB |
+| `QOG_CACHEPIC_FLASH` | `Draw_CachePic` returns menu, intermission, finale and plaque pics in place (little endian only, conback excluded since id writes into it) | cache 30.6 KB at an intermission, 222.9 KB with every menu open |
+
+- Peaks: the fight tour (`qog_tour_fight e1m1 e3m6 e4m7`) fills all 512 particles, so `QOG_MAX_PARTICLES` stays. MG24Quake's 16-byte particle stores positions and velocities with less precision and would change the picture, so it was not used.
+- Verified hidden and silent against the untouched worktree after each change: identical state hashes (`qogtest_hash`, the 8-map fight with save and load, `qogtest_m_save`), 203 frames byte-identical (demo 3, sky, the 113 D shots, the 64 E map shots, and the new `qogtest_g_con.cfg` console frames), the fight tour logs equal apart from memory lines. The new `qogtest_g_pics.cfg` (every menu and the pause pic) matched too. The only pixel differences are the blinking text cursor of the console input line and the menu name fields, which follow `realtime` and differ between two runs of the untouched build as well. Logs lose the `PackFile:` lines of the pics now read in place.
+- Looked at and left: `scores` (16 KB) is already one entry in single player, it is that player's translation table, which the renderer indexes as a full colormap when chase view draws the player. `sizebuf` is the 8 KB command buffer, the 6.5 KB `net_message` and the 1 KB client message (all sized earlier). `cl_lightstyle` and the temp entity count stay at id's sizes.
+- Found, not changed (server code): the "unknown" hunk blocks on E1M1 are 520 QuakeC strings from the entity lump (`ED_NewString`, pr_edict.c), 4,400 bytes of text in 17,472 bytes of blocks because each gets a 16-byte hunk header and is rounded to 16. One string arena per level would save about 13 KB. The rest (about 5 KB) is console commands at 32 bytes each.
+- Not measured: speed on the board. The board build must map the pack (the pics are read as `qpic_t` with int fields, so their image positions must stay 4-byte aligned).
+
 ## 2026-11-23: Speed benchmark on the board (hardware)
 
 `apps/qogbench` times the engine's world-drawing inner loop on the display CPU (200 MHz Cortex-M0+), drawing a perspective-textured plane over the whole 320×152 view. The span code is a copy of `engine/d_scanlit.c`. The texture is a 320×200 picture read from the flash data region. Flashed with `fw flash qogbench --uf2 build/apps/qogbench/qogbench_main.uf2`, results read from the display CPU's USB console (COM8). Steady over 10+ rounds:

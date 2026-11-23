@@ -137,3 +137,10 @@ target_compile_definitions(quakeog_pc PRIVATE
 # qc2c reads the core edict fields from the engine headers (QOG_EDICT_SPARSE)
 add_custom_command(OUTPUT ${PROGS_AOT} APPEND
     DEPENDS ${ROOT}/engine/progs.h ${ROOT}/engine/progdefs.q1)
+# Client memory and 2D drawing (Agent G)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_CONBACK_FLASH               # console background read in place from the mapped pack (id 62.6 KB cache copy)
+    QOG_ENTITY_PACKED               # client entity_t 104 bytes, network origins and angles kept as sent (id 184)
+    QOG_PARTICLE_PACKED             # particle_t 36 bytes, byte colour and type, 16-bit list link (id 44)
+    QOG_PARTICLE_AVEL8              # entity particle rates as bytes, same floats on use (id 1.9 KB static)
+    QOG_CACHEPIC_FLASH)             # menu and intermission pics read in place from the mapped pack (id cache copies)

@@ -53,6 +53,9 @@ typedef struct cachepic_s
 {
 	char		name[CACHEPIC_NAME];
 	cache_user_t	cache;
+#ifdef QOG_CACHEPIC_FLASH
+	qpic_t		*flash;		// QuakeOG: the pic in a mapped pack, or NULL
+#endif
 } cachepic_t;
 
 #ifdef QOG_MAX_CACHED_PICS
@@ -92,7 +95,20 @@ qpic_t	*Draw_CachePic (char *path)
 			Sys_Error ("Draw_CachePic: %s is too long", path);
 		menu_numcachepics++;
 		strcpy (pic->name, path);
+#ifdef QOG_CACHEPIC_FLASH
+		// QuakeOG: menu, intermission, finale and plaque pics are only ever
+		// read, so a pic in a mapped pack is used in place instead of being
+		// copied into the cache (30.6 KB at an intermission). The console
+		// background is not, because id writes the version into it (see
+		// Draw_ConsoleBackground). Little endian only: SwapPic would write.
+		if (!bigendien && strcmp (path, "gfx/conback.lmp"))
+			pic->flash = (qpic_t *)COM_FlashFile (path, NULL);
+#endif
 	}
+#ifdef QOG_CACHEPIC_FLASH
+	if (pic->flash)
+		return pic->flash;
+#endif
 
 	dat = Cache_Check (&pic->cache);
 
@@ -545,6 +561,88 @@ void Draw_CharToConback (int num, byte *dest)
 
 }
 
+#ifdef QOG_CONBACK_FLASH
+/*
+================
+Draw_ConsoleBackgroundFlash
+
+QuakeOG: id copies gfx/conback.lmp (62.6 KB) into the cache only so the
+version number can be written into it. When the pack is mapped, the picture
+is read in place instead, and the version characters go into a copy of each
+of the 8 rows they cover just before that row is drawn. The output is the
+same as id's for any console size. Returns false when the picture is not in
+a mapped pack (or not 320x200), and id's code runs.
+================
+*/
+static qboolean Draw_ConsoleBackgroundFlash (int lines)
+{
+	static qpic_t	*conback;
+	static qboolean	looked;
+	int				x, y, v, i, n, verx;
+	byte			*src, *dest, *chr;
+	int				f, fstep;
+	char			ver[100];
+	byte			row[320];
+
+	if (r_pixbytes != 1)
+		return false;
+	if (!looked)
+	{
+		looked = true;
+		conback = (qpic_t *)COM_FlashFile ("gfx/conback.lmp", NULL);
+		if (conback && (LittleLong (conback->width) != 320
+			|| LittleLong (conback->height) != 200))
+			conback = NULL;
+	}
+	if (!conback)
+		return false;
+
+	// the text and place of id's non-Win32 branch below
+	sprintf (ver, "%4.2f", VERSION);
+	n = strlen (ver);
+	verx = 320 - 43;
+
+	dest = vid.conbuffer;
+	for (y=0 ; y<lines ; y++, dest += vid.conrowbytes)
+	{
+		v = (vid.conheight - lines + y)*200/vid.conheight;
+		src = conback->data + v*320;
+		if (v >= 186 && v < 186+8)
+		{	// Draw_CharToConback, one row at a time
+			memcpy (row, src, 320);
+			for (i=0 ; i<n ; i++)
+			{
+				chr = draw_chars + ((ver[i]>>4)<<10) + ((ver[i]&15)<<3)
+					+ ((v-186)<<7);
+				for (x=0 ; x<8 ; x++)
+					if (chr[x])
+						row[verx + (i<<3) + x] = 0x60 + chr[x];
+			}
+			src = row;
+		}
+		if (vid.conwidth == 320)
+			memcpy (dest, src, vid.conwidth);
+		else
+		{
+			f = 0;
+			fstep = 320*0x10000/vid.conwidth;
+			for (x=0 ; x<vid.conwidth ; x+=4)
+			{
+				dest[x] = src[f>>16];
+				f += fstep;
+				dest[x+1] = src[f>>16];
+				f += fstep;
+				dest[x+2] = src[f>>16];
+				f += fstep;
+				dest[x+3] = src[f>>16];
+				f += fstep;
+			}
+		}
+	}
+	return true;
+}
+#endif
+
 /*
 ================
 Draw_ConsoleBackground
@@ -560,6 +658,10 @@ void Draw_ConsoleBackground (int lines)
 	qpic_t			*conback;
 	char			ver[100];
 
+#ifdef QOG_CONBACK_FLASH
+	if (Draw_ConsoleBackgroundFlash (lines))	// QuakeOG: read in place
+		return;
+#endif
 	conback = Draw_CachePic ("gfx/conback.lmp");
 
 // hack the version number directly into the pic
