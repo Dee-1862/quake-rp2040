@@ -32,6 +32,26 @@ typedef struct
 
 typedef enum {ss_loading, ss_active} server_state_t;
 
+// QuakeOG: QOG_SV_TABLES sizes the server's precache lists from measured
+// peaks instead of the protocol's 256 (QOG_SV_MAX_MODELS, QOG_SV_MAX_SOUNDS),
+// keeping the last entry NULL so the lists stay NULL terminated, and drops
+// the map's model name copy (sv.worldmodel->name is the same string).
+// Overflow is still id's PF_precache_* error.
+#if defined(QOG_SV_TABLES) && defined(QOG_SV_MAX_MODELS)
+#define	SV_MAX_MODELS		QOG_SV_MAX_MODELS
+#define	SV_PRECACHE_MODELS	(QOG_SV_MAX_MODELS - 1)
+#else
+#define	SV_MAX_MODELS		MAX_MODELS
+#define	SV_PRECACHE_MODELS	MAX_MODELS
+#endif
+#if defined(QOG_SV_TABLES) && defined(QOG_SV_MAX_SOUNDS)
+#define	SV_MAX_SOUNDS		QOG_SV_MAX_SOUNDS
+#define	SV_PRECACHE_SOUNDS	(QOG_SV_MAX_SOUNDS - 1)
+#else
+#define	SV_MAX_SOUNDS		MAX_SOUNDS
+#define	SV_PRECACHE_SOUNDS	MAX_SOUNDS
+#endif
+
 typedef struct
 {
 	qboolean	active;				// false if only a net client
@@ -48,11 +68,13 @@ typedef struct
 #ifdef QUAKE2
 	char		startspot[64];
 #endif
+#ifndef QOG_SV_TABLES
 	char		modelname[64];		// maps/<name>.bsp, for model_precache[0]
+#endif
 	struct model_s 	*worldmodel;
-	char		*model_precache[MAX_MODELS];	// NULL terminated
-	struct model_s	*models[MAX_MODELS];
-	char		*sound_precache[MAX_SOUNDS];	// NULL terminated
+	char		*model_precache[SV_MAX_MODELS];	// NULL terminated
+	struct model_s	*models[SV_MAX_MODELS];
+	char		*sound_precache[SV_MAX_SOUNDS];	// NULL terminated
 	char		*lightstyles[MAX_LIGHTSTYLES];
 	int			num_edicts;
 	int			max_edicts;

@@ -388,6 +388,39 @@ typedef int				framestamp_t;
 #define	EF_TRACER2	64			// orange split trail + rotate
 #define	EF_TRACER3	128			// purple trail
 
+#ifdef QOG_MOD_FLASH
+// QuakeOG: with QOG_MOD_FLASH a baked model_t is used in place in the flash
+// image, so it cannot hold the RAM pointers of the per-frame arrays (end of
+// model_t). It holds an index into mod_frames (model.c) instead: 0 for a
+// world map and its inline models, its own index for an item box map
+// (maps/b_*.bsp) that is loaded next to the world.
+typedef struct modframe_s
+{
+	framestamp_t	*surf_visframe;		// [numsurfaces]
+	framestamp_t	*surf_dlightframe;	// [numsurfaces]
+	int				*surf_dlightbits;	// [numsurfaces]
+	framestamp_t	*node_visframe;		// [numnodes]
+	framestamp_t	*leaf_visframe;		// [numleafs]
+	efrag_t			**leaf_efrags;		// [numleafs]
+	int				*leaf_key;			// [numleafs]
+#ifdef QOG_EDGECACHE16
+	unsigned short	*edge_cache;		// [numedges] 16-bit form, see r_draw.c
+#else
+	unsigned int	*edge_cache;		// [numedges] id's cachededgeoffset
+#endif
+} modframe_t;
+
+// 0 the world, 1 to QOG_MOD_FRAMES_BAKED - 1 baked item boxes (numbered by
+// qog_bake), the rest item boxes loaded the normal way
+#define QOG_MOD_FRAMES_BAKED	16
+#define QOG_MOD_FRAMES			32
+extern modframe_t	mod_frames[QOG_MOD_FRAMES];
+#define MODFRAME(m)		(&mod_frames[(m)->frameslot])
+#else
+typedef struct model_s	modframe_t;		// the arrays are in model_t itself
+#define MODFRAME(m)		(m)
+#endif
+
 typedef struct model_s
 {
 	char		name[MAX_QPATH];
@@ -461,6 +494,9 @@ typedef struct model_s
 // so those structures can be read only (flash). Indexed like the arrays
 // above; inline submodels share their world's arrays, as they share its
 // surfaces, nodes and leafs. Use the accessor macros below.
+#ifdef QOG_MOD_FLASH
+	int				frameslot;			// QuakeOG: see modframe_t
+#else
 	framestamp_t	*surf_visframe;		// [numsurfaces]
 	framestamp_t	*surf_dlightframe;	// [numsurfaces]
 	int				*surf_dlightbits;	// [numsurfaces]
@@ -473,26 +509,28 @@ typedef struct model_s
 #else
 	unsigned int	*edge_cache;		// [numedges] id's cachededgeoffset
 #endif
+#endif	// QOG_MOD_FLASH
 
 } model_t;
 
-#define SURF_VISFRAME_IS(m, s, c)	FS_IS ((m)->surf_visframe, (s) - (m)->surfaces, c)
-#define SURF_DLIGHTFRAME_IS(m, s, c)	FS_IS ((m)->surf_dlightframe, (s) - (m)->surfaces, c)
-#define SURF_DLIGHTFRAME_SET(m, s, c)	FS_SET ((m)->surf_dlightframe, (s) - (m)->surfaces, c)
-#define SURF_DLIGHTBITS(m, s)	((m)->surf_dlightbits[(s) - (m)->surfaces])
-#define LEAF_EFRAGS(m, l)		((m)->leaf_efrags[(l) - (m)->leafs])
-#define LEAF_KEY(m, l)			((m)->leaf_key[(l) - (m)->leafs])
-#define EDGE_CACHE(m, e)		((m)->edge_cache[(e) - (m)->edges])
+// QuakeOG: MODFRAME(m) is the model itself, or its arrays in mod_frames
+#define SURF_VISFRAME_IS(m, s, c)	FS_IS (MODFRAME (m)->surf_visframe, (s) - (m)->surfaces, c)
+#define SURF_DLIGHTFRAME_IS(m, s, c)	FS_IS (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
+#define SURF_DLIGHTFRAME_SET(m, s, c)	FS_SET (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
+#define SURF_DLIGHTBITS(m, s)	(MODFRAME (m)->surf_dlightbits[(s) - (m)->surfaces])
+#define LEAF_EFRAGS(m, l)		(MODFRAME (m)->leaf_efrags[(l) - (m)->leafs])
+#define LEAF_KEY(m, l)			(MODFRAME (m)->leaf_key[(l) - (m)->leafs])
+#define EDGE_CACHE(m, e)		(MODFRAME (m)->edge_cache[(e) - (m)->edges])
 // QuakeOG: first frame of the 16-bit edge cache's window, an int stored just
 // before the array so inline submodels share it with their world
-#define EDGE_CACHE_START(m)		(((int *)(m)->edge_cache)[-1])
+#define EDGE_CACHE_START(m)		(((int *)MODFRAME (m)->edge_cache)[-1])
 // nodes and leafs share id's node pointer type; contents < 0 means a leaf
 #define NODE_VISFRAME_IS(m, n, c)	((n)->contents < 0 \
-	? FS_IS ((m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
-	: FS_IS ((m)->node_visframe, (n) - (m)->nodes, c))
+	? FS_IS (MODFRAME (m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
+	: FS_IS (MODFRAME (m)->node_visframe, (n) - (m)->nodes, c))
 #define NODE_VISFRAME_SET(m, n, c)	((n)->contents < 0 \
-	? FS_SET ((m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
-	: FS_SET ((m)->node_visframe, (n) - (m)->nodes, c))
+	? FS_SET (MODFRAME (m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
+	: FS_SET (MODFRAME (m)->node_visframe, (n) - (m)->nodes, c))
 
 // QuakeOG: baked models (QOG_BAKE). The PC command qog_bake runs the loaders
 // above on every map, alias model and sprite and writes what they build
@@ -538,6 +576,7 @@ void	Mod_ClearAll (void);
 model_t *Mod_ForName (char *name, qboolean crash);
 void	*Mod_Extradata (model_t *mod);	// handles caching
 void	Mod_TouchModel (char *name);
+void	Mod_KnownStats (int *known, int *referenced, int *peak);	// QuakeOG: qog_mem
 
 mleaf_t *Mod_PointInLeaf (float *p, model_t *model);
 byte	*Mod_LeafPVS (mleaf_t *leaf, model_t *model);

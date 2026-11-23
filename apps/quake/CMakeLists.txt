@@ -73,6 +73,14 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_PARTICLE_PACKED
     QOG_PARTICLE_AVEL8
     QOG_CACHEPIC_FLASH)
+# Model table, server tables and board wiring (Agent I), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_MOD_FLASH
+    QOG_SV_TABLES
+    QOG_SV_MAX_MODELS=208
+    QOG_SV_MAX_SOUNDS=176
+    QOG_CONST_NOVIS
+    QOG_PVS_LEAFS=4096)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -80,9 +88,25 @@ list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
 # QuakeC runs in id's interpreter, read in place from flash. The compiled
 # path (tools/qc2c.py) is opt-in and needs registered data (docs/lessons.md L39).
 set(QOG_PROGS_AOT ${CMAKE_CURRENT_BINARY_DIR}/progs_aot.c)
+# QuakeOG (Agent I): -DQOG_AOT=ON compiles QuakeC to C, as the PC build does,
+# from the progs.dat in QOG_AOT_PAK. It must be the progs.dat the board's
+# data image holds (tools/mkboard.py copies data/id1/pak0.pak's unchanged).
+# Generated in the build folder from the user's own data, never committed.
+option(QOG_AOT "compile QuakeC to C from QOG_AOT_PAK (registered/retail data only)" OFF)
+set(QOG_AOT_PAK ${QOG_ROOT}/data/id1/pak0.pak CACHE FILEPATH "pak holding progs.dat for QOG_AOT")
+if(QOG_AOT)
+    if(NOT EXISTS ${QOG_AOT_PAK})
+        message(FATAL_ERROR "QOG_AOT: ${QOG_AOT_PAK} not found (set QOG_AOT_PAK)")
+    endif()
+    add_custom_command(OUTPUT ${QOG_PROGS_AOT}
+        COMMAND ${Python3_EXECUTABLE} ${QOG_ROOT}/tools/qc2c.py --pak ${QOG_AOT_PAK} -o ${QOG_PROGS_AOT}
+        DEPENDS ${QOG_ROOT}/tools/qc2c.py ${QOG_AOT_PAK} ${QOG_ROOT}/engine/progs.h ${QOG_ROOT}/engine/progdefs.q1
+        COMMENT "Compiling QuakeC to C (board)")
+else()
 add_custom_command(OUTPUT ${QOG_PROGS_AOT}
     COMMAND ${Python3_EXECUTABLE} ${QOG_ROOT}/tools/qc2c.py --stub -o ${QOG_PROGS_AOT}
     DEPENDS ${QOG_ROOT}/tools/qc2c.py)
+endif()
 
 add_library(qog_engine STATIC EXCLUDE_FROM_ALL
     ${QOG_ENGINE_SRC} ${QOG_PROGS_AOT}
@@ -105,6 +129,10 @@ add_executable(quake_display EXCLUDE_FROM_ALL
     ${QOG_ROOT}/port/rp2040/vid_rp2040.c
     ${QOG_ROOT}/port/rp2040/snd_rp2040.c)
 target_compile_options(quake_display PRIVATE -fstack-usage)
+# QuakeOG (Agent I): hunk size in KB (port/rp2040/sys_rp2040.c). 64 is a
+# placeholder; E1M1 needs about 393 KB interpreted, 355 KB with QOG_AOT.
+set(QOG_HUNK_KB 64 CACHE STRING "board hunk size in KB")
+target_compile_definitions(quake_display PRIVATE QOG_HUNK_KB=${QOG_HUNK_KB})
 target_link_libraries(quake_display qog_engine qog_platform fwog_display_bsp)
 fwog_display_app(quake_display
     VERSION 001

@@ -144,3 +144,11 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_PARTICLE_PACKED             # particle_t 36 bytes, byte colour and type, 16-bit list link (id 44)
     QOG_PARTICLE_AVEL8              # entity particle rates as bytes, same floats on use (id 1.9 KB static)
     QOG_CACHEPIC_FLASH)             # menu and intermission pics read in place from the mapped pack (id cache copies)
+# Model table, server tables and board wiring (Agent I)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_MOD_FLASH                   # baked model_t used in place in flash, the table holds names and pointers
+    QOG_SV_TABLES                   # server precache lists sized below, no map model name copy
+    QOG_SV_MAX_MODELS=208           # precache list sizes, full-game peaks 188 models (e3m4) and 154 sounds
+    QOG_SV_MAX_SOUNDS=176           #   (id 256, the protocol's byte index)
+    QOG_CONST_NOVIS                 # the all-visible PVS row is a constant in flash
+    QOG_PVS_LEAFS=4096)             # server PVS rows, largest full-game map 2156 leafs (id 8192)

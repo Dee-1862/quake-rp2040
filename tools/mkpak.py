@@ -11,6 +11,8 @@ in place, and checks the result against the flash data region.
     python tools/mkpak.py --pak data/id1/pak0.pak \
         --manifests build-pc-dev/manifests -o build/qogpak
     python tools/mkpak.py ... --maps start e1m1        # a subset of maps
+    python tools/mkpak.py --pak data/id1/pak0.pak --pak data/id1/pak1.pak ...
+                                                       # registered: later paks win, like Quake's search order
 
 Writes <out>.pak (for the PC: put it in a game dir) and <out>.uf2 (the same
 bytes at the board's data region). Never commit or share the output: it is
@@ -45,6 +47,20 @@ def read_pak(path):
         name = n.split(b"\0")[0].decode("latin-1")
         files[name] = d[o:o + l]
         order.append(name)
+    return files, order
+
+
+def read_paks(paths):
+    """Several paks merged the way Quake searches them: a file in a later
+    pak (pak1) wins over the same name in an earlier one (pak0). The order
+    is the first pak's, then the names only later paks have."""
+    files, order = {}, []
+    for path in paths:
+        f, o = read_pak(path)
+        for name in o:
+            if name not in files:
+                order.append(name)
+            files[name] = f[name]
     return files, order
 
 
@@ -126,14 +142,16 @@ def build_pak(entries):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--pak", required=True)
+    ap.add_argument("--pak", required=True, action="append",
+                    help="source pak, repeat for more (a later pak overrides an earlier one, as in Quake)")
     ap.add_argument("--manifests", required=True, help="directory of qog_manifest outputs")
     ap.add_argument("--maps", nargs="*", help="maps to keep (default: every manifest)")
     ap.add_argument("--demos", action="store_true", help="keep demo*.dem for the attract loop")
+    ap.add_argument("--no-uf2", action="store_true", help="write only the .pak (tools/mkboard.py)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension")
     a = ap.parse_args(argv)
 
-    files, order = read_pak(a.pak)
+    files, order = read_paks(a.pak)
     mans = {}
     common = set()
     for fn in sorted(os.listdir(a.manifests)):
@@ -175,8 +193,9 @@ def main(argv=None):
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     with open(a.out + ".pak", "wb") as f:
         f.write(pak)
-    with open(a.out + ".uf2", "wb") as f:
-        f.write(mkdata.to_uf2(pak, mkdata.XIP_BASE + mkdata.DATA_OFFSET))
+    if not a.no_uf2:
+        with open(a.out + ".uf2", "wb") as f:
+            f.write(mkdata.to_uf2(pak, mkdata.XIP_BASE + mkdata.DATA_OFFSET))
 
     total_in = sum(len(v) for v in files.values())
     print("maps: %s" % " ".join(maps))
@@ -192,7 +211,7 @@ def main(argv=None):
     print("  by folder: " + ", ".join("%s %.2f MB" % (k, v / 2**20) for k, v in sorted(by_kind.items(), key=lambda x: -x[1])))
     fits = len(pak) <= budget
     print("flash data region %.2f MB: %s (%.1f%% used)" % (budget / 2**20, "FITS" if fits else "DOES NOT FIT", 100.0 * len(pak) / budget))
-    print("wrote %s.pak and %s.uf2" % (a.out, a.out))
+    print("wrote %s.pak%s" % (a.out, "" if a.no_uf2 else " and %s.uf2" % a.out))
     return 0 if fits else 2
 
 

@@ -2,6 +2,26 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Model table in flash, server tables, board data image (Agent I, PC and ARM build, registered data)
+
+Engine static RAM on the ARM meter 202.8 → 124.5 KB. Board link overflow (`quake_display`, 64 KB placeholder hunk) 186,540 → 106,428 bytes. Nothing ran on hardware.
+
+| Change | Flag | Static RAM |
+| --- | --- | --- |
+| A baked model's `model_t` is used in place in the image. The table keeps a name, a pointer and a load state per model of the current level (2.2 KB), a map's per-frame arrays hang off `mod_frames` through `model_t.frameslot` (1 KB). A model loaded the normal way gets its `model_t` on the level's hunk | `QOG_MOD_FLASH` | `mod_known` 78.8 → 2.2 KB, +1 KB `mod_frames`, total 202.8 → 127.0 KB |
+| Server precache lists sized from full-game peaks (188 models on e3m4, 154 sounds), no copy of the map's model name | `QOG_SV_TABLES`, `QOG_SV_MAX_MODELS=208`, `QOG_SV_MAX_SOUNDS=176` | `sv` 11.8 → 11.1 KB |
+| The all-visible PVS row is a constant in flash | `QOG_CONST_NOVIS` | −1 KB |
+| Server PVS rows sized for 4,096 leafs (largest full-game map 2,156), checked at map load | `QOG_PVS_LEAFS=4096` | −1 KB |
+
+- Image format: with `QOG_MOD_FLASH` a map's block holds the finished world and its inline models `*1` to `*n` (layout hash bit 32). The registered image grew from 13,448,304 to 14,425,024 bytes. `qog_bake check` also compares every inline model and the frame slot: 0 differences. Hunk use is unchanged in the baked path (the same per-frame arrays are allocated).
+- `-bakefile <path>` reads and writes another image, `-bakebase <address>` bakes for a later address, and the PC maps such an image there.
+- The most models one level used was 187 (e3m4), inside the 192-entry table. The table is emptied at every level change. In the normal path (`-nobake`) an alias model is now loaded again on each level, as its `model_t` is freed with the hunk.
+- `tools/mkboard.py` builds the board's data image: a trimmed pak (mkpak now takes several paks, later ones winning), `qog_bake` run on the PC with that pak alone so the addresses are the board's, and the image at the next 64 KB boundary. `start e1m1 e1m2` is 9.03 MB of pak plus 1.30 MB of image, 10.36 MB of the 11.94 MB region. A whole episode does not fit: its trimmed pak alone is 16.5 MB. The PC ran that layout (`-basedir build-board\qogboard`) with the same state hashes as the full paks and `qog_bake check` 0 differences, also with the image moved to `0x10E00000` by `--bake-base`.
+- `port/rp2040/sys_rp2040.c` serves the image as `id1/qogbake.bin` from the first 64 KB boundary after the pak. The board CMake has `-DQOG_AOT=ON` (with `QOG_AOT_PAK`, off by default) and a `QOG_HUNK_KB` cache value. Compiled QuakeC links on the board: 500 KB of flash, no change to static RAM. With a realistic hunk (about 393 KB for E1M1) the overflow would be about 435 KB.
+- Verification against a build of 4e5dc15, hidden and silent: the same state hashes in `qogtest_hash`, `qogtest_f_hash` (8 maps, fight, save and load) and `qogtest_m_save`, 113 `qogtest_d_shots` frames, 64 `qogtest_e_shots` frames and 8 `qogtest_f_hash` frames byte-identical, the 32-map `qogtest_reg` and the `e1m1 e3m6 e4m7` tour logs equal apart from the model counts and times. With `-nobake` the hashes and the 113 demo frames are identical too.
+- Edits outside Agent I's files: one line each in `engine/r_bsp.c` and `engine/r_draw.c` (the per-frame arrays through `MODFRAME`), two loop bounds and `checkpvs` in `engine/pr_cmds.c`, and the model and precache lines in `port/common/qog_mem.c`.
+- Main must regenerate `data/id1/qogbake.bin` after the merge (the layout hash changed, the old image is refused and models load the normal way until then).
+
 ## 2026-11-23: Client memory and 2D pics (Agent G, PC and ARM build, registered data)
 
 E1M1 (`qog_mem`, PC): hunk low 392.8 → 364.0 KB, cache 62.6 → 0 KB, total 613.8 → 522.5 KB. Engine static RAM on the meter 202.8 → 196.5 KB. Board overflow 187,500 (Agent F's figure for main) → 180,112 bytes. Nothing ran on hardware.

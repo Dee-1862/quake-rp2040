@@ -153,11 +153,17 @@ void *Sys_FlashMap(char *path, int length) {
     const int image = !size && length >= 4 && !memcmp(raw, "QOGB", 4);
     if (image) size = length;
     if (!size) { free(raw); return NULL; }   /* not a pack or an image: load it the normal way */
+    /* QuakeOG: an image built for a later address (qog_bake -bakebase, tools/mkboard.py
+       --bake-base) goes there, so the PC can run the board's data layout */
+    if (image && length >= 16) {
+        unsigned base = *(unsigned *)(raw + 12);
+        if (base > (unsigned)(size_t)next && !(base & 0xFFFF)) next = (byte *)(size_t)base;
+    }
 
     byte *p = VirtualAlloc(next, (SIZE_T)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!p) p = VirtualAlloc(NULL, (SIZE_T)size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!p) { free(raw); return NULL; }
-    if (p == next) s_flash_next += ((size + 0xFFFF) & ~0xFFFF);
+    if (p == next) s_flash_next = next + ((size + 0xFFFF) & ~0xFFFF);
     if (image) memcpy(p, raw, (size_t)length);
     else realign_pack(raw, length, p);
     free(raw);

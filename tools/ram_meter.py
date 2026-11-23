@@ -39,6 +39,8 @@ CFLAGS += ["-DQOG_BAKE"]
 CFLAGS += ["-DQOG_EDICT_SPARSE", "-DQOG_BASELINE_POOL", "-DQOG_AOT_GLOBALS"]
 # Client memory and 2D drawing flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CONBACK_FLASH", "-DQOG_ENTITY_PACKED", "-DQOG_PARTICLE_PACKED", "-DQOG_PARTICLE_AVEL8", "-DQOG_CACHEPIC_FLASH"]
+# Model table, server tables and board wiring (Agent I, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_MOD_FLASH", "-DQOG_SV_TABLES", "-DQOG_SV_MAX_MODELS=208", "-DQOG_SV_MAX_SOUNDS=176", "-DQOG_CONST_NOVIS", "-DQOG_PVS_LEAFS=4096"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 
