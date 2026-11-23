@@ -104,6 +104,11 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_PALETTE_FLASH
     QOG_CMDBUF_SIZE=4096            # board only, command buffer, measured peak 2158 B (PC keeps 8192 for test scripts)
     QOG_ZONE_BOARD_KB=16)           # board only, zone, peak 7920 B, 12 KB fragmented (PC keeps 24 KB)
+# Per-level map arrays (Agent L), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_FRAMEBITS
+    QOG_DLIGHT_SPARSE
+    QOG_LEAF16)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

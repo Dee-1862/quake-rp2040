@@ -1539,6 +1539,7 @@ float RadiusFromBounds (vec3_t mins, vec3_t maxs)
 	return Length (corner);
 }
 
+#if !defined(QOG_FRAMEBITS) || !defined(QOG_DLIGHT_SPARSE)	// QuakeOG: else unused
 /*
 =================
 Mod_AllocFrameStamps
@@ -1560,6 +1561,56 @@ static framestamp_t *Mod_AllocFrameStamps (int count)
 	return Hunk_AllocName (count * sizeof(framestamp_t), loadname);
 #endif
 }
+#endif
+
+#if defined(QOG_FRAMEBITS) || defined(QOG_DLIGHT_SPARSE)
+/*
+=================
+Mod_AllocFrameBits
+
+QuakeOG: a stamp array as bits (see framebits_t in model.h): the byte
+count, tag 0, then every bit set, which is id's zeroed array of stamps.
+=================
+*/
+static framebits_t *Mod_AllocFrameBits (int count)
+{
+	int		*head, bytes;
+
+	bytes = (count + 7) >> 3;
+	head = Hunk_AllocName (2 * sizeof(int) + bytes, loadname);
+	head[0] = bytes;	// FB_BYTES
+	head[1] = 0;		// FB_TAG
+	memset (head + 2, 0xFF, bytes);
+	return (framebits_t *)(head + 2);
+}
+
+/*
+=================
+FB_Clear
+
+QuakeOG: the bits now belong to counter, and no entry holds it yet.
+=================
+*/
+void FB_Clear (framebits_t *bits, int counter)
+{
+	memset (bits, 0, FB_BYTES (bits));
+	FB_TAG (bits) = counter;
+}
+#endif
+
+#ifdef QOG_LEAF16
+/*
+=================
+Mod_LeafKeyOverflow
+
+QuakeOG: LEAF_KEY_SET found a key that 16 bits cannot hold.
+=================
+*/
+void Mod_LeafKeyOverflow (void)
+{
+	Sys_Error ("LEAF_KEY_SET: a key above 0xFFFF, QOG_LEAF16 cannot hold it");
+}
+#endif
 
 #ifdef QOG_FRAME16
 /*
@@ -3118,13 +3169,41 @@ static void Mod_FinishBrushModel (model_t *mod)
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels
 	// below with the rest of the model, so they share it like the arrays.
+#ifdef QOG_FRAMEBITS
+	// QuakeOG: one bit per stamp, see framebits_t in model.h
+	fr->surf_visframe = Mod_AllocFrameBits (loadmodel->numsurfaces);
+#else
 	fr->surf_visframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
+#endif
+#ifdef QOG_DLIGHT_SPARSE
+	// QuakeOG: a bit per surface, the dlight bits of the lit surfaces are
+	// kept for the frame in r_light.c (R_DlightMark)
+	if (loadmodel->numsurfaces > 0xFFFF)
+		Sys_Error ("Mod_FinishBrushModel: %s has %i surfaces, QOG_DLIGHT_SPARSE takes 65535", loadmodel->name, loadmodel->numsurfaces);
+	fr->surf_dlightframe = Mod_AllocFrameBits (loadmodel->numsurfaces);
+	fr->surf_dlightbits = NULL;
+#else
 	fr->surf_dlightframe = Mod_AllocFrameStamps (loadmodel->numsurfaces);
 	fr->surf_dlightbits = Hunk_AllocName (loadmodel->numsurfaces * sizeof(int), loadname);
+#endif
+#ifdef QOG_FRAMEBITS
+	fr->node_visframe = Mod_AllocFrameBits (loadmodel->numnodes);
+	fr->leaf_visframe = Mod_AllocFrameBits (numleafs);
+#else
 	fr->node_visframe = Mod_AllocFrameStamps (loadmodel->numnodes);
 	fr->leaf_visframe = Mod_AllocFrameStamps (numleafs);
+#endif
+#ifdef QOG_LEAF16
+	// QuakeOG: the efrag heads, then a head number per leaf (all head 0,
+	// which stays NULL), and 16-bit keys
+	fr->leaf_efrags = (byte *)((efragheads_t *)Hunk_AllocName (sizeof(efragheads_t)
+		+ numleafs, loadname) + 1);
+	EFRAG_HDR (fr->leaf_efrags)->used = 1;
+	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(unsigned short), loadname);
+#else
 	fr->leaf_efrags = Hunk_AllocName (numleafs * sizeof(efrag_t *), loadname);
 	fr->leaf_key = Hunk_AllocName (numleafs * sizeof(int), loadname);
+#endif
 #ifdef QOG_EDGECACHE16
 	// QuakeOG: window start (an int, zero) in front of the 16-bit entries
 	fr->edge_cache = (unsigned short *)((byte *)Hunk_AllocName (sizeof(int)

@@ -127,6 +127,9 @@ void R_SplitEntityOnNode (mnode_t *node)
 		
 // set the leaf links
 		ef->leaf = leaf;
+#ifdef QOG_LEAF16
+		R_EfragLeafSlot (leaf);	// QuakeOG: give the leaf a head
+#endif
 		ef->leafnext = LEAF_EFRAGS (cl.worldmodel, leaf);
 		LEAF_EFRAGS (cl.worldmodel, leaf) = ef;
 			
@@ -272,5 +275,84 @@ void R_StoreEfrags (efrag_t **ppefrag)
 		}
 	}
 }
+
+#ifdef QOG_LEAF16
+/*
+================
+R_EfragLeafSlot
+
+QuakeOG: give a world leaf that is about to get an efrag its own list head,
+or the shared last head once the others are taken (see efragheads_t).
+================
+*/
+void R_EfragLeafSlot (mleaf_t *leaf)
+{
+	byte			*slot;
+	efragheads_t	*h;
+
+	slot = &MODFRAME (cl.worldmodel)->leaf_efrags[leaf - cl.worldmodel->leafs];
+	if (*slot)
+		return;
+	h = EFRAG_HDR (MODFRAME (cl.worldmodel)->leaf_efrags);
+	if (h->used < QOG_EFRAG_HEADS)
+		h->used++;
+	*slot = h->used - 1;	// the last head, once reached, is shared
+#ifdef QOG_MAPFRAME_STATS
+	{
+		static int	peak;
+
+		if (h->used > peak)
+		{
+			peak = h->used;
+			Sys_Printf ("qog_l: efrag heads %d (%s)\n", peak, cl.worldmodel->name);
+		}
+	}
+#endif
+}
+
+/*
+================
+R_StoreLeafEfrags
+
+QuakeOG: R_StoreEfrags for one leaf. In the shared head's list it passes
+over the efrags of other leafs, the leaf's own come in id's order.
+================
+*/
+void R_StoreLeafEfrags (mleaf_t *leaf)
+{
+	byte		*slots;
+	efrag_t		*pefrag;
+	entity_t	*pent;
+
+	slots = MODFRAME (cl.worldmodel)->leaf_efrags;
+	if (slots[leaf - cl.worldmodel->leafs] != QOG_EFRAG_HEADS - 1)
+	{
+		R_StoreEfrags (&LEAF_EFRAGS (cl.worldmodel, leaf));
+		return;
+	}
+	for (pefrag = LEAF_EFRAGS (cl.worldmodel, leaf) ; pefrag ; pefrag = pefrag->leafnext)
+	{
+		if (pefrag->leaf != leaf)
+			continue;
+		pent = pefrag->entity;
+		switch (pent->model->type)
+		{
+		case mod_alias:
+		case mod_brush:
+		case mod_sprite:
+			if ((pent->visframe != r_framecount) &&
+				(cl_numvisedicts < MAX_VISEDICTS))
+			{
+				cl_visedicts[cl_numvisedicts++] = pent;
+				pent->visframe = r_framecount;
+			}
+			break;
+
+		default:
+			Sys_Error ("R_StoreLeafEfrags: Bad entity type %d\n", pent->model->type);
+		}
+	}
+}
+#endif
 
 

@@ -49,6 +49,8 @@ CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
 CFLAGS += ["-DQOG_HUNK_PACKED", "-DQOG_TRANSLATE_ONDRAW", "-DQOG_CBUF_INPLACE", "-DQOG_LOOP_INPLACE", "-DQOG_STATIC_TRIM", "-DQOG_EDICT_REUSE", "-DQOG_PALETTE_FLASH"]
 # Board-only sizes (apps/quake/CMakeLists.txt only, not pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CMDBUF_SIZE=4096", "-DQOG_ZONE_BOARD_KB=16"]
+# Per-level map arrays (Agent L, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE", "-DQOG_LEAF16"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 
