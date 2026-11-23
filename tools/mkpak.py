@@ -125,6 +125,15 @@ def convert_wav(data):
     return b"RIFF" + struct.pack("<I", 4 + len(chunks)) + b"WAVE" + chunks
 
 
+def is_map(name):
+    return name.startswith("maps/") and name.endswith(".bsp")
+
+
+def maps_last(entries):
+    """The same entries, maps/*.bsp moved after the rest, both in their order."""
+    return [e for e in entries if not is_map(e[0])] + [e for e in entries if is_map(e[0])]
+
+
 def build_pak(entries):
     """entries: list of (name, bytes) -> aligned pak bytes."""
     body = bytearray(b"\0" * ALIGN)
@@ -148,6 +157,8 @@ def main(argv=None):
     ap.add_argument("--maps", nargs="*", help="maps to keep (default: every manifest)")
     ap.add_argument("--demos", action="store_true", help="keep demo*.dem for the attract loop")
     ap.add_argument("--no-uf2", action="store_true", help="write only the .pak (tools/mkboard.py)")
+    ap.add_argument("--maps-last", action="store_true",
+                    help="put maps/*.bsp after every other file (tools/mkboard.py --stub-maps)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension")
     a = ap.parse_args(argv)
 
@@ -187,6 +198,8 @@ def main(argv=None):
                 converted.append((name, len(data), len(new)))
                 data = new
         entries.append((name, data))
+    if a.maps_last:   # the other files keep their place when the maps become stubs
+        entries = maps_last(entries)
 
     pak = build_pak(entries)
     budget = mkdata.DATA_MAX

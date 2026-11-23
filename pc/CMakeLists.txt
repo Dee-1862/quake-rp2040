@@ -152,3 +152,6 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SV_MAX_SOUNDS=176           #   (id 256, the protocol's byte index)
     QOG_CONST_NOVIS                 # the all-visible PVS row is a constant in flash
     QOG_PVS_LEAFS=4096)             # server PVS rows, largest full-game map 2156 leafs (id 8192)
+# Flash budget for the board's data image (Agent J)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_BAKE_STUBS)                 # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak

@@ -81,6 +81,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SV_MAX_SOUNDS=176
     QOG_CONST_NOVIS
     QOG_PVS_LEAFS=4096)
+# Flash budget for the board's data image (Agent J), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_BAKE_STUBS)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
