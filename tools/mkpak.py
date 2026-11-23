@@ -43,6 +43,10 @@ ENGINE_SOUNDS = ["sound/ambience/water1.wav", "sound/ambience/wind2.wav",
                  "sound/weapons/r_exp3.wav",
                  "sound/misc/menu1.wav", "sound/misc/menu2.wav", "sound/misc/menu3.wav",
                  "sound/misc/talk.wav"]
+# Pics in gfx/ that no engine code draws (WinQuake has no sell screen, the
+# video menu draws text and the multiplayer menu has no dim_mult), so the
+# gfx/*.lmp rule above need not keep them.
+NEVER_DRAWN = ["gfx/sell.lmp", "gfx/dim_mult.lmp", "gfx/vidmodes.lmp"]
 
 
 def read_pak(path):
@@ -191,6 +195,7 @@ def main(argv=None):
     keep = set(common)
     for pat in ALWAYS + ENGINE_SOUNDS + (["demo*.dem"] if a.demos else []):
         keep |= {n for n in files if fnmatch.fnmatch(n, pat)}
+    keep -= set(NEVER_DRAWN)
     for m in maps:
         keep |= mans[m]
     unknown = sorted(n for n in keep if n not in files)
