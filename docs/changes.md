@@ -2,6 +2,58 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: E1M1 fly-through, the first real-scene board app (Agent N, PC and ARM build, registered data)
+
+A renderer-only host draws the real E1M1 from the baked image with a camera moving through the level, on the PC and as the board app pair `apps/qogfly`. No game logic, monsters or sound. On the PC its frames are byte-identical to the normal game's renderer at the same camera positions. On the board the display half does not link yet: RAM overflows by 134,644 bytes, as expected before agents K (edge tables out of the stack) and L (per-level map arrays) are merged. Nothing ran on hardware.
+
+| Part | Where |
+| --- | --- |
+| Host: memory, packs, wad, palette and colormap in place, VID_Init, Draw_Init, R_Init, then `maps/e1m1.bsp` through Mod_ForName as `cl.worldmodel`, R_NewMap, every light style `m`, a 320×152 view with fov 90 as SCR_CalcRefdef sets it, R_RenderView per frame, text in the status bar rows | `port/common/qog_fly.c` |
+| Path: info_player_start, then item, weapon and monster origins from the entity lump (eye in solid skipped, closer than 96 units skipped, as qog_tour), moved away from walls within 32 units. Spots that see each other (a line 24 units wide at eye height) form a graph, and the route visits every spot by shortest sight-line paths, back to the start. Where no sight line exists the camera cuts. Closed Catmull-Rom spline at 160 units per second, the view looks along the path's direction averaged over 1.2 s, pitch half the climb, at most 20° | `port/common/qog_fly.c` |
+| PC: `-qogfly` runs the host standalone, `qog_fly` draws the same frames on the world the game loaded, `qog_fly_ref` compares the game's own view of each route point with the host's | `port/pc/fly_pc.c`, one call each in `port/pc/sys_pc.c` and `port/pc/vid_pc.c` |
+| Board: the display app moves its stack into a main RAM array (R_EdgeDrawing alone needs 84,768 bytes), prints a status line every 2 s, and replaces at link time the engine calls that would link the console, menus, sound and server (`--wrap`) | `apps/qogfly`, `port/rp2040/sys_rp2040.c` (`QOG_SYS_NO_MAIN`, `qog_rp2040_hunk`) |
+
+E1M1: 60 spots, a route of 79 points with 7 cuts, a 161.8 s loop. 7 of the 1,618 frames of one loop (0.1 s apart) have the eye in solid, where the spline swings into a wall for a moment. Before the cuts it was 273 of 2,400.
+
+Verification (hidden and silent):
+
+- `-qogfly` against `qog_fly` in the full game after `map e1m1` (new `qogtest_n_flyg.cfg`): 400 frames 0.4 s apart, all view hashes identical, with the full paks and with the board layout.
+- `qog_fly_ref` (new `qogtest_n_ref.cfg`): the player stands at each of the 79 route points (noclip, god, notarget, not solid so it picks nothing up, not on ground), looking the way the path does there as the protocol rounds the angles, with `r_drawentities 0`, `r_drawviewmodel 0`, `crosshair 0` and light styles `m`. After the game has drawn the spot through V_RenderView, the host draws it at the same cl.time. 79 of 79 views identical, with the full paks and with the board layout. Two earlier differences were in the test, not the host: the console still scrolling up on the first spot, and a quad damage picked up on the way, whose light brightened the game's view.
+- Board layout (`build-board\qogfly`, below) against the full paks: 2,400 standalone frames identical.
+- Normal game unchanged against a build of c97750d: `qogtest_hash.cfg` state hashes identical, `qogtest_d_shots.cfg` 113 frames byte-identical.
+
+Hunk: the host's whole hunk is 98,112 bytes on the PC (zone 3 KB, of which 1.3 KB used, 92,128 bytes of E1M1 per-level arrays, the route 1.4 KB, the rest command and cvar blocks). The route work space (6 KB) is on the stack, which is idle at that depth then. R_Init's 18 KB of particles are given back. `-heapsize 96` runs, 95 stops with Hunk_Alloc failed. The board uses `QOGFLY_HUNK_KB` 97.
+
+RAM on the board (`qogfly_display`, region 262,144 bytes):
+
+| User | Bytes |
+| --- | ---: |
+| Frame buffer and z-buffer (`video_mem`) | 145,920 |
+| Hunk (`QOGFLY_HUNK_KB` 97) | 99,328 |
+| Stack (`QOGFLY_STACK_KB` 94, R_EdgeDrawing 84,768 plus the render chain and interrupts) | 96,256 |
+| Engine statics (`sv` 11,344 for R_SetupFrame's `sv.active`, `cl_lightstyle` 4,352, `cl` 2,824, `mod_known` 2,304, `menu_cachepics` 1,792, `blocklights` 1,296, ...) | 38,853 |
+| SDK, BSP, libc, app | 7,881 |
+| qog_video | 2,979 |
+| Heap reserve | 2,048 |
+| Overflow | 134,644 |
+
+What is missing: about 84 KB of stack (agent K's edge tables in the z-buffer) and about 51 KB more, which agent L's per-level map arrays (92 KB of the hunk) can give. With the stack at about 10 KB the hunk may be at most about 45 KB.
+
+Build and flash, once it fits:
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak `
+    --manifests build-pc-dev\manifests --maps start e1m1 `
+    --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps -o build-board\qogfly
+cmake --preset target
+cmake --build build --target qogfly_main
+```
+
+The data image is `build-board\qogfly.uf2` (7,498,464 bytes of data: pak 4,515,568 with map stubs at 0x10400000, qogbake.bin 2,976,480 at 0x10850000, 48 models). The app is `build\apps\qogfly\qogfly_main.uf2` (fw flash qogfly). The USB console prints `[qogfly] e1m1 loaded, 79 route points, 161.8 s loop, hunk <used>/<size>` once (possibly before USB is up) and then every 2 s `[qogfly] fps <f>  ms render <r> present <p>  pt <i>/79  free <bytes>  hunk <used>/<size>`: frames per second over the last 2 s, mean ms per frame in R_RenderView plus the text and in VID_Update (the wait for the scanout), the route point last passed, the RAM between the end of the heap and the heap limit, and the hunk in use. The status bar rows show the fps and render time. Nothing has measured it yet.
+
+- Link setup of the board app, not engine changes: `-Wl,--allow-multiple-definition` (qog_engine links pico_stdlib PUBLIC, so the SDK's sources are in the library and in the app, and `d_local.h` defines five globals in every file that includes it), and `--wrap` for Con_Printf, Con_SafePrintf, Con_DPrintf, Host_Error, S_ExtraUpdate, qog_mem_register and qog_aim_register. The wraps cut 24,688 bytes of statics (the sound mixer, console, keys, menus, statehash). `sv` stays, for R_SetupFrame. `quake_display` has the same duplicate definitions and does not link either way.
+- Engine files changed: none.
+
 ## 2026-11-23: Flash budget for the board's data image (Agent J, PC and ARM build, registered data)
 
 Start plus episode 1 (`start`, `e1m1` to `e1m8`) in the board's data region: 20,833,408 → 16,845,808 bytes (19.87 → 16.07 MB of 11.94). It still does not fit, by 4,328,432 bytes. `start` to `e1m4` now fits (11.89 MB, 45,472 bytes to spare), where before only `start e1m1 e1m2` did. Engine static RAM on the ARM meter unchanged (118.2 KB). Nothing ran on hardware.
