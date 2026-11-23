@@ -21,6 +21,23 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "d_local.h"
+#include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
+
+#ifdef QOG_PHASE_TIME
+// QuakeOG: pixels in a span list, for the phase counts
+static int D_QogSpanPixels (espan_t *pspan)
+{
+	int	n = 0;
+
+	do
+		n += pspan->count;
+	while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR (pspan->pnext)));
+	return n;
+}
+#define QOG_ZSPANS(sp)	{ QOG_PH_T (ph_); D_DrawZSpans (sp); QOG_PH_ADD (QOG_PH_ZSPANS, ph_); 						  QOG_PH_COUNT (QOG_PC_ZPX, D_QogSpanPixels (sp)); }
+#else
+#define QOG_ZSPANS(sp)	D_DrawZSpans (sp)
+#endif
 
 static int	miplevel;
 
@@ -221,8 +238,13 @@ void D_DrawSurfaces (void)
 					R_MakeSky ();
 				}
 
+				{
+				QOG_PH_T (ph);	// QuakeOG
 				D_DrawSkyScans8 (SPAN_PTR (s->spans));	// QuakeOG
-				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
+				QOG_PH_ADD (QOG_PH_SKY, ph);
+				QOG_PH_COUNT (QOG_PC_SKYPX, D_QogSpanPixels (SPAN_PTR (s->spans)));
+				}
+				QOG_ZSPANS (SPAN_PTR (s->spans));	// QuakeOG
 			}
 			else if (s->flags & SURF_DRAWBACKGROUND)
 			{
@@ -233,7 +255,7 @@ void D_DrawSurfaces (void)
 				d_ziorigin = -0.9;
 
 				D_DrawSolidSurface (s, (int)r_clearcolor.value & 0xFF);
-				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
+				QOG_ZSPANS (SPAN_PTR (s->spans));	// QuakeOG
 			}
 			else if (s->flags & SURF_DRAWTURB)
 			{
@@ -257,9 +279,14 @@ void D_DrawSurfaces (void)
 										// make entity passed in
 				}
 
+				{
+				QOG_PH_T (ph);	// QuakeOG
 				D_CalcGradients (pface);
 				Turbulent8 (SPAN_PTR (s->spans));	// QuakeOG
-				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
+				QOG_PH_ADD (QOG_PH_TURB, ph);
+				QOG_PH_COUNT (QOG_PC_TURBPX, D_QogSpanPixels (SPAN_PTR (s->spans)));
+				}
+				QOG_ZSPANS (SPAN_PTR (s->spans));	// QuakeOG
 
 				if (s->insubmodel)
 				{
@@ -310,12 +337,26 @@ void D_DrawSurfaces (void)
 				(*d_drawspans) (SPAN_PTR (s->spans));	// QuakeOG
 #else
 			// QuakeOG: no surface cache, light each pixel as it is drawn (d_scanlit.c)
+				{
+				QOG_PH_T (ph);	// QuakeOG
 				D_SetupLitSurface (pface, miplevel);
+				QOG_PH_ADD (QOG_PH_LIGHTMAP, ph);
+				}
+				{
+				QOG_PH_T (ph);	// QuakeOG
 				D_CalcGradients (pface);
+				QOG_PH_ADD (QOG_PH_GRADIENTS, ph);
+				}
+				{
+				QOG_PH_T (ph);	// QuakeOG
 				D_DrawSpans8Lit (SPAN_PTR (s->spans));	// QuakeOG
+				QOG_PH_ADD (QOG_PH_SPANS, ph);
+				}
 #endif
 
-				D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
+#if !defined(QOG_LITSPAN_ZFUSE) || defined(QOG_SURFCACHE)	// QuakeOG: else D_DrawSpans8Lit wrote z
+				QOG_ZSPANS (SPAN_PTR (s->spans));	// QuakeOG
+#endif
 
 				if (s->insubmodel)
 				{

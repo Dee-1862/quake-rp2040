@@ -161,6 +161,60 @@ The manifests: `start.txt` from the game (`+exec qogtest_o_manifest.cfg`), `demo
 
 - Engine files changed: `engine/cl_demo.c`, `engine/cl_main.c`, `engine/cl_parse.c`, `engine/cl_tent.c`, `engine/client.h`, `engine/d_local.h`, `engine/model.c`, `engine/r_main.c`, `engine/view.c`, all behind the flags above. One new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`, and the `QOG_PC_DEMO_BOARD` and `QOG_PC_DEMO_Z8` test options in `pc/CMakeLists.txt` (off by default).
 - The bake layout hash did not change, so the shared `data/id1/qogbake.bin` still loads.
+## 2026-11-23: World renderer speed (Agent P, PC and ARM build, registered data)
+
+Four exact speedups of the lit span and z span path (byte-identical pictures, on in all three flag lists), two approximate span drawers (off, in no list, for the user to judge), render phase timing for the board's fly-through, and benchmark lines that time and check the engine's own new span code on the board. Nothing ran on hardware. The board savings below are estimates from the generated Thumb code and the E1M1 fly-through's work counts until the benchmark and the fly-through are flashed.
+
+| Change | Flag | Kind | Estimated board saving (E1M1 fly-through) | RAM |
+| --- | --- | --- | --- | --- |
+| Lit spans without modulo. Power-of-two textures wrap with masks, other sizes (3% of demo1's lit pixels, 0.1% of E1M1's) step wrapped coordinates with compare and subtract. The texture origin is folded into the light grid pointer, each mip level has its own pixel loop with constant shifts, and each run of up to 8 pixels is drawn in two unrolled passes (light blend, then texel and colormap) so each pass fits the M0+'s low registers | `QOG_LITSPAN_FAST` | exact | inner loop about 150 → about 65 cycles a pixel (old: 73 instructions and two divider calls, new: 37 + 14 instructions, 4 multiplies, 3 + 3 stack reloads), about 4.1 M cycles or 20 ms a frame at 48,400 lit pixels | +40 B static, D_DrawSpans8Lit stack 216 → 296 B, flash +6.5 KB |
+| The last run of each span reuses `d_*stepu * (spancount - 1)`, computed once per span length per surface | `QOG_LITSPAN_TAILMUL` | exact | an int to float and three float multiplies per span, about 1.4 ms at 1,620 spans | +96 B stack |
+| z span start without double arithmetic. `(int)(zi * 0x8000 * 0x10000)` with zi a double holding a float is exact (both factors are powers of two), so it is the float's mantissa shifted by its exponent, truncated toward zero. abs(zi) >= 1, infinities and NaNs keep id's expression | `QOG_ZSPANS_FAST` | exact | float to double, two double multiplies and double to int per z span (about 200 cycles), about 1.7 ms | 0 |
+| Lit spans write their own z (`D_QogZSpan`) from the 1/z they compute at each span start with id's expression, and D_DrawSurfaces skips D_DrawZSpans for them | `QOG_LITSPAN_ZFUSE` | exact | two int to float, two float multiplies and two float adds per lit span, a second walk of the spans and a call per surface, about 2.4 ms | stack +40 B (D_DrawSpans8Lit 392 → 432 B, D_QogZSpan 32 B) |
+| Light blended exactly at both ends of each run and stepped linearly between them (one pass, up to 16 pixels) | `QOG_LITSPAN_LINLIGHT` | approximate, off | inner loop 21 instructions a pixel plus two blends a run, about 24 cycles a pixel, about 6 ms | 64 B flash table |
+| One float divide per 16 pixels instead of 8, as id's D_DrawSpans16 did on x86 | `QOG_LITSPAN16` | approximate, off | half the per-run float work (3 adds, a divide, 2 multiplies, 2 conversions per run), about 6 to 7 ms | +96 B stack |
+| Render phase times and work counts | `QOG_PHASE_TIME` | measurement, off in shipped builds, on in qogfly (`QOGFLY_PHASE`) | costs about 2,000 timer reads and three span-list walks a frame | +96 B static, qogfly only |
+
+Pixel differences of the approximate drawers over the 113 `qogtest_d_shots` frames (3D view rows only, max colour step is the largest change of one RGB channel through the palette):
+
+| Build | Frames differing | Pixels differing | Max colour step | Worst frame |
+| --- | ---: | ---: | ---: | --- |
+| `QOG_LITSPAN_LINLIGHT` | 113 | 1.27% | 60 | d_spawn_e3m3, 5.2% |
+| `QOG_LITSPAN16` | 113 | 6.2% | 184 | d_demo3_06, 21% (texels shifted by one at grazing angles) |
+| both | 113 | 9.1% | 192 | d_demo3_15, 23% |
+
+- Work counts (PC, `QOG_PHASE_TIME`): E1M1 fly-through (1,618 frames 0.1 s apart) per frame 71 lit surfaces, 2,769 light cells built, 1,622 lit spans, 48,363 lit pixels (39 on the any-size path), 6,811 runs of up to 8 pixels, 45 sky and 224 turbulent pixels. timedemo demo1 per frame 60 lit surfaces, 3,346 light cells, 1,509 spans, 46,506 lit pixels (1,564 any-size), 6,514 runs. Per lit pixel the float work is about 60 cycles (a run's 3 adds, divide, 2 multiplies and 2 conversions plus each span's start), the light grid build about 0.4 ms a frame.
+- PC speed: no measurable change. timedemo demo1 runs at the 60 fps cap with every build, and the `-qogfly` wall time over 8,000 frames varied by 30% between runs of the same build. On x86 the modulos and floats this work removes are cheap. On the PC the phase split of the E1M1 fly-through is 0.24 of 0.43 ms in lit spans.
+- Verification, hidden and silent, against an untouched build of 1f2afb6 (`build-pc-base`), each run with `+_cl_color 0` and the frame-compared scripts after `qogtest_k_quiet.cfg`: `qogtest_hash` state hashes identical, 113 `qogtest_d_shots` and 64 `qogtest_e_shots` frames byte-identical (the 8 files `qogtest_e_shots1` to `7` are chained by `qogtest_e_shots.cfg` and are not meant to run alone), `qogtest_n_flyg` 400 view hashes and 4 shots identical. Per-frame hashes: `qogtest_h_demos` 3,610 frames and `qogtest_h_fight1` to `4` 37,159 frames equal except runs of at most 10 frames at startup and at each map load. Frames 700 to 715 of fight 1 were dumped from both builds: the differing ones differ only in one 6-row console text line scrolling up (the load timing), the 3D view is identical.
+- On the board, `apps/qogbench` now includes `engine/d_litspan.h` and checks the new drawer against the old code byte for byte at every mip level, on a power-of-two and a 320×200 texture, full and ragged spans (`chk_p2`, `chk_any`), and the z start against id's double expression over 2 span sets (`chk_z`). Each should print 0.
+- Engine files changed: `engine/d_scanlit.c`, `engine/d_scan.c` (D_QogZiFixed, D_QogZSpan), `engine/d_edge.c` (phase hooks, the z skip), `engine/r_main.c` (phase hooks only). New: `engine/d_litspan.h`, `engine/qog_phase.h`, `port/common/qog_phase.c`. One new block at the end of each flag list.
+- Looked at and left: placing the span code in RAM (the earlier benchmark showed no gain and RAM is short, the new D_DrawSpans8Lit is 9.5 KB of flash code but one mip variant plus the float part, about 2 KB, is hot per surface), R_BuildLightMap (about 0.4 ms a frame on E1M1, fusing its three passes would save about 0.15 ms), exact replacements of the per-run float divide (the ROM routines are already the fast path, any fixed-point form changes s and t).
+
+Board measurement, prepared and not run (the coordinating session flashes):
+
+```powershell
+cmake --preset target -DQOGFLY_HUNK_KB=18 -DQOGFLY_STACK_KB=34
+cmake --build build --target qogbench_main
+python third_party\wiliOGbsp\tools\fw.py flash qogbench --uf2 build\apps\qogbench\qogbench_main.uf2
+python third_party\wiliOGbsp\tools\fw.py console
+cmake --build build --target qogfly_main
+python third_party\wiliOGbsp\tools\fw.py flash qogfly --uf2 build\apps\qogfly\qogfly_main.uf2
+```
+
+The benchmark keeps its first line and adds a second every 2 s (each group is refreshed every third round, about 3 s):
+
+```
+[bench] fast old_p2=<us> fast_p2=<us> fast_any=<us> chk_p2=<n> chk_any=<n> | approx lin_p2=<us> s16_p2=<us> s16lin_p2=<us> | short old=<us> fast=<us> zid=<us> zfast=<us> chk_z=<n>
+```
+
+old_p2 is today's code on a 256×128 texture in flash with the texture origin a whole light cell, fast_p2 the shipped drawer on the same scene, fast_any the shipped drawer on the 320×200 picture, lin, s16 and s16lin the approximate drawers. short repeats old and new on game-like spans (17 to 47 pixels), and zid and zfast are the z spans with id's double start and with `QOG_ZSPANS_FAST`. Every value is microseconds per 320×152 frame. The fly-through prints after its status line every 2 s:
+
+```
+[phase] frames <n> ms setup <ms> world <ms> bmodels <ms> scan <ms> lmap <ms> grad <ms> spans <ms> zspans <ms> sky <ms> turb <ms> models <ms> vmodel <ms> parts <ms> total <ms> edgescan <ms>
+[phase] per frame: litsurfs <n> lmcells <n> litspans <n> litpx <n> anypx <n> runs <n> zpx <n> skypx <n> turbpx <n>
+```
+
+Times are means per frame over the 2 s. scan includes the surface drawing (lmap, grad, spans, zspans, sky, turb), edgescan is scan less those, the edge sorting and span making. With `QOG_LITSPAN_ZFUSE` the lit surfaces' z is inside spans. `-DQOGFLY_PHASE=OFF` removes it. The fly-through's static RAM grows by 132 bytes (36 for the span drawer, 96 for the phase sums), flash by 8.1 KB.
 
 ## 2026-11-23: Per-level map arrays (Agent L, PC and ARM build, registered data)
 

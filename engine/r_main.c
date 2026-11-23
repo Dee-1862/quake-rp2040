@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
 
 //define	PASSAGES
 
@@ -1187,7 +1188,11 @@ void R_EdgeDrawing (void)
 		rw_time1 = Sys_FloatTime ();
 	}
 
+	{
+	QOG_PH_T (ph);	// QuakeOG
 	R_RenderWorld ();
+	QOG_PH_ADD (QOG_PH_WORLD, ph);
+	}
 
 	if (r_drawculledpolys)
 		R_ScanEdges ();
@@ -1202,7 +1207,11 @@ void R_EdgeDrawing (void)
 		db_time1 = rw_time2;
 	}
 
+	{
+	QOG_PH_T (ph);	// QuakeOG
 	R_DrawBEntitiesOnList ();
+	QOG_PH_ADD (QOG_PH_BMODELS, ph);
+	}
 
 	if (r_dspeeds.value)
 	{
@@ -1227,7 +1236,11 @@ void R_EdgeDrawing (void)
 		r_qog_peakedgesurfbytes = (edge_p - r_edges) * sizeof(edge_t) + (surface_p - surfaces) * sizeof(surf_t);
 
 	if (!(r_drawpolys | r_drawculledpolys))
+	{
+		QOG_PH_T (ph);	// QuakeOG
 		R_ScanEdges ();
+		QOG_PH_ADD (QOG_PH_SCAN, ph);
+	}
 }
 
 
@@ -1252,6 +1265,9 @@ void R_RenderView_ (void)
 	r_warpbuffer = warpbuffer;
 #endif
 
+	QOG_PH_T (ph_total);	// QuakeOG
+	QOG_PH_T (ph);
+
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = Sys_FloatTime ();
 
@@ -1262,6 +1278,7 @@ SetVisibilityByPassages ();
 #else
 	R_MarkLeaves ();	// done here so we know if we're in water
 #endif
+	QOG_PH_ADD (QOG_PH_SETUP, ph);	// QuakeOG
 
 // make FDIV fast. This reduces timing precision after we've been running for a
 // while, so we don't do it globally.  This also sets chop mode, and we do it
@@ -1294,7 +1311,11 @@ SetVisibilityByPassages ();
 		de_time1 = se_time2;
 	}
 
+	{
+	QOG_PH_T (ph);	// QuakeOG
 	R_DrawEntitiesOnList ();
+	QOG_PH_ADD (QOG_PH_ENTITIES, ph);
+	}
 
 	if (r_dspeeds.value)
 	{
@@ -1302,7 +1323,11 @@ SetVisibilityByPassages ();
 		dv_time1 = de_time2;
 	}
 
+	{
+	QOG_PH_T (ph);	// QuakeOG
 	R_DrawViewModel ();
+	QOG_PH_ADD (QOG_PH_VIEWMODEL, ph);
+	}
 
 	if (r_dspeeds.value)
 	{
@@ -1310,7 +1335,11 @@ SetVisibilityByPassages ();
 		dp_time1 = Sys_FloatTime ();
 	}
 
+	{
+	QOG_PH_T (ph);	// QuakeOG
 	R_DrawParticles ();
+	QOG_PH_ADD (QOG_PH_PARTICLES, ph);
+	}
 
 	if (r_dspeeds.value)
 		dp_time2 = Sys_FloatTime ();
@@ -1353,6 +1382,8 @@ SetVisibilityByPassages ();
 
 // back to high floating-point precision
 	Sys_HighFPPrecision ();
+	QOG_PH_ADD (QOG_PH_TOTAL, ph_total);	// QuakeOG
+	QOG_PH_COUNT (QOG_PC_FRAMES, 1);
 }
 
 void R_RenderView (void)
