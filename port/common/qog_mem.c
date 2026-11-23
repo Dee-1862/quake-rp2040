@@ -72,7 +72,9 @@ const qog_mem_t *qog_mem_sample(void) {
 }
 
 void qog_mem_reset_peaks(void) {
+    extern int r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges;
     s_m.peak_low = s_m.peak_high = s_m.peak_cache = s_m.peak_zone = s_m.peak_total = 0;
+    r_qog_peakedges = r_qog_peaksurfs = r_qog_peakbverts = r_qog_peakbedges = 0;
 }
 
 static void kb_line(const char *what, int now, int peak) {
@@ -108,6 +110,8 @@ static void cmd_qog_mem(void) {
         extern int r_qog_peakbverts, r_qog_peakbedges;
         Con_Printf("  render peaks: edges %d, surfaces %d, bmodel verts %d, bmodel edges %d\n",
                    r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges);
+        if (sv.active)
+            Con_Printf("  map %s, signon %d of %d bytes\n", sv.name, sv.signon.cursize, sv.signon.maxsize);
     }
     Con_Printf("More: qog_mem hunk | qog_mem cache | qog_mem reset\n");
     Con_Printf("Static RAM: see build/ram-report.md (tools/ram_meter.py)\n");

@@ -257,6 +257,10 @@ int main(int argc, char **argv) {
         if (dt < 1.0 / 72.0) { Sleep(1); continue; }
         qog_aim_update(newtime);
         Host_Frame((float)dt);
+        {
+            extern void qog_tour_frame(void);
+            qog_tour_frame();   /* PC test tool, idle unless qog_tour runs */
+        }
         /* host_framecount only advances on frames that really ran (Host_Frame
            skips calls to cap the rate), and the first real one runs quake.rc
            and config.cfg. A plain call counter fired too early. */
