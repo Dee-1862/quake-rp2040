@@ -30,6 +30,7 @@ char	loadname[32];	// for hunk tags
 
 void Mod_LoadSpriteModel (model_t *mod, void *buffer);
 void Mod_LoadBrushModel (model_t *mod, void *buffer);
+static void Mod_FinishBrushModel (model_t *mod);	// QuakeOG
 void Mod_LoadAliasModel (model_t *mod, void *buffer);
 model_t *Mod_LoadModel (model_t *mod, qboolean crash);
 
@@ -60,6 +61,22 @@ static int		mod_flashlen;	// QuakeOG: file length while mod_inflash
 #ifdef QOG_BAKE_WRITER
 static void Mod_Bake_f (void);
 #endif
+#ifdef QOG_BAKE
+static qogbake_header_t	*mod_bake;		// the mapped image, or NULL
+static qboolean			mod_baketried;
+static int				mod_aliassize;	// bytes of the last alias model put in the cache
+
+// QuakeOG: a baked alias model's data is in the image, not in the cache
+static qboolean Mod_InBake (void *p)
+{
+	return mod_bake && (byte *)p >= (byte *)mod_bake
+		&& (byte *)p < (byte *)mod_bake + mod_bake->size;
+}
+static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen);
+#define MOD_INBAKE(p)	Mod_InBake (p)
+#else
+#define MOD_INBAKE(p)	false
+#endif
 
 // values for model_t's needload
 #define NL_PRESENT		0
@@ -89,7 +106,9 @@ Caches the data if needed
 void *Mod_Extradata (model_t *mod)
 {
 	void	*r;
-	
+
+	if (MOD_INBAKE (mod->cache.data))	// QuakeOG: baked, read in place
+		return mod->cache.data;
 	r = Cache_Check (&mod->cache);
 	if (r)
 		return r;
@@ -236,7 +255,7 @@ model_t *Mod_FindName (char *name)
 			if (avail)
 			{
 				mod = avail;
-				if (mod->type == mod_alias)
+				if (mod->type == mod_alias && !MOD_INBAKE (mod->cache.data))	// QuakeOG: MOD_INBAKE
 					if (Cache_Check (&mod->cache))
 						Cache_Free (&mod->cache);
 #ifdef QOG_MAX_MOD_KNOWN
@@ -273,7 +292,7 @@ void Mod_TouchModel (char *name)
 	
 	if (mod->needload == NL_PRESENT)
 	{
-		if (mod->type == mod_alias)
+		if (mod->type == mod_alias && !MOD_INBAKE (mod->cache.data))	// QuakeOG: MOD_INBAKE
 			Cache_Check (&mod->cache);
 	}
 }
@@ -292,7 +311,7 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 
 	if (mod->type == mod_alias)
 	{
-		if (Cache_Check (&mod->cache))
+		if (MOD_INBAKE (mod->cache.data) || Cache_Check (&mod->cache))	// QuakeOG: MOD_INBAKE
 		{
 			mod->needload = NL_PRESENT;
 			return mod;
@@ -320,6 +339,11 @@ model_t *Mod_LoadModel (model_t *mod, qboolean crash)
 	{
 		int		flen;
 		byte	*f = COM_FlashFile (mod->name, &flen);
+#ifdef QOG_BAKE
+		// QuakeOG: a baked map, alias model or sprite needs no loading
+		if (f && Mod_LoadBaked (mod, f, flen))
+			return mod;
+#endif
 		if (f && !(((int)f) & 3)
 			&& LittleLong (*(unsigned *)f) != IDSPRITEHEADER
 			&& (LittleLong (*(unsigned *)f) != IDPOLYHEADER || r_pixbytes == 1))
@@ -1393,13 +1417,10 @@ static void Mod_LoadBrushLumps (model_t *mod, void *buffer)
 /*
 ===============================================================================
 
-QuakeOG: BAKED MAPS (see qogbake_header_t in model.h)
+QuakeOG: BAKED MODELS (see qogbake_header_t in model.h)
 
 ===============================================================================
 */
-
-static qogbake_header_t	*mod_bake;		// the mapped image, or NULL
-static qboolean			mod_baketried;
 
 static unsigned Mod_Fnv (unsigned h, const void *data, int n)
 {
@@ -1428,7 +1449,8 @@ static unsigned Mod_BakeLayout (void)
 		sizeof(model_t), sizeof(mnode_t), sizeof(mleaf_t), sizeof(msurface_t),
 		sizeof(mtexinfo_t), sizeof(texture_t), sizeof(mplane_t), sizeof(dmodel_t),
 		sizeof(dclipnode_t), sizeof(hull_t), sizeof(marksurf_t), sizeof(medge_t),
-		sizeof(mvertex_t), sizeof(framestamp_t),
+		sizeof(mvertex_t), sizeof(framestamp_t), sizeof(aliashdr_t), sizeof(msprite_t),
+		sizeof(mspriteframe_t), sizeof(mspritegroup_t),
 		MOD_OFS(model_t, submodels), MOD_OFS(model_t, hulls), MOD_OFS(model_t, textures),
 		MOD_OFS(model_t, cache), MOD_OFS(model_t, surf_visframe),
 		MOD_OFS(mnode_t, children), MOD_OFS(mnode_t, plane), MOD_OFS(mnode_t, parent),
@@ -1458,18 +1480,21 @@ static unsigned Mod_BakeLayout (void)
 
 /*
 =================
-Mod_BspHash
+Mod_FileHash
 
-Identifies the .bsp a map was baked from: its header and plane lump.
+Identifies the file a model was baked from: a map's header and plane
+lump, or the first 4 KB of an alias model or sprite.
 =================
 */
-static unsigned Mod_BspHash (byte *bsp)
+static unsigned Mod_FileHash (byte *f, int len)
 {
-	dheader_t	*h = (dheader_t *)bsp;
+	dheader_t	*h = (dheader_t *)f;
 	unsigned	v;
 
+	if (len < (int)sizeof(*h) || LittleLong (h->version) != BSPVERSION)
+		return Mod_Fnv (0x811C9DC5u, f, len < 4096 ? len : 4096);
 	v = Mod_Fnv (0x811C9DC5u, h, sizeof(*h));
-	return Mod_Fnv (v, bsp + LittleLong (h->lumps[LUMP_PLANES].fileofs),
+	return Mod_Fnv (v, f + LittleLong (h->lumps[LUMP_PLANES].fileofs),
 		LittleLong (h->lumps[LUMP_PLANES].filelen));
 }
 
@@ -1477,7 +1502,7 @@ static unsigned Mod_BspHash (byte *bsp)
 =================
 Mod_BakeOpen
 
-Maps <gamedir>/qogbake.bin once, at the first brush model, and checks it
+Maps <gamedir>/qogbake.bin once, at the first model load, and checks it
 was built by a build with this layout for the address it got. -nobake
 skips it (qog_bake runs that way).
 =================
@@ -1512,18 +1537,19 @@ static void Mod_BakeOpen (void)
 		return;
 	}
 	mod_bake = img;
-	Con_Printf ("Baked maps: %i in qogbake.bin, %i KB\n", img->nummaps, img->size / 1024);
+	Con_Printf ("Baked models: %i in qogbake.bin, %i KB\n", img->nummaps, img->size / 1024);
 }
 
 /*
 =================
 Mod_LoadBaked
 
-Fills mod from the baked image when it holds this .bsp, and returns true.
-Only the per-frame arrays are then allocated, by the caller.
+Fills mod from the baked image when it holds this file (f, flen in a
+mapped pack), and returns true. A map then gets only its per-frame
+arrays. An alias model or sprite points at its data in the image.
 =================
 */
-static qboolean Mod_LoadBaked (model_t *mod, void *buffer)
+static qboolean Mod_LoadBaked (model_t *mod, byte *f, int flen)
 {
 	qogbake_entry_t	*e;
 	char			name[MAX_QPATH];
@@ -1535,7 +1561,7 @@ static qboolean Mod_LoadBaked (model_t *mod, void *buffer)
 		mod_baketried = true;
 		Mod_BakeOpen ();
 	}
-	if (!mod_bake || !mod_inflash)
+	if (!mod_bake || r_pixbytes != 1)	// the image holds 8-bit pixels
 		return false;
 	e = (qogbake_entry_t *)((byte *)mod_bake + mod_bake->dirofs);
 	for (i=0 ; i<mod_bake->nummaps ; i++, e++)
@@ -1543,17 +1569,21 @@ static qboolean Mod_LoadBaked (model_t *mod, void *buffer)
 			break;
 	if (i == mod_bake->nummaps)
 		return false;
-	if (e->bspaddr != (unsigned)(size_t)buffer || e->bsplen != (unsigned)mod_flashlen
-		|| e->bsphash != Mod_BspHash (buffer))
+	if (e->fileaddr != (unsigned)(size_t)f || e->filelen != (unsigned)flen
+		|| e->filehash != Mod_FileHash (f, flen))
 	{
 		Con_Printf ("%s changed since it was baked, loading it the normal way\n", mod->name);
 		return false;
 	}
 
+	COM_FileBase (mod->name, loadname);
+	loadmodel = mod;
 	memcpy (name, mod->name, sizeof(name));
 	*mod = *(model_t *)e->model;
 	memcpy (mod->name, name, sizeof(name));
 	mod->needload = NL_PRESENT;
+	if (mod->type != mod_brush)
+		return true;
 
 	// the one side effect of id's texture loader
 	for (i=0 ; i<mod->numtextures ; i++)
@@ -1562,6 +1592,7 @@ static qboolean Mod_LoadBaked (model_t *mod, void *buffer)
 		if (tx && !Q_strncmp (tx->name, "sky", 3))
 			R_InitSky (tx);
 	}
+	Mod_FinishBrushModel (mod);
 	return true;
 }
 
@@ -1573,7 +1604,7 @@ QuakeOG: the baker (PC only). The image is built in memory: each structure
 the loader allocated on the hunk is copied in, and every pointer is then
 translated through the table of copied ranges. Pointers into a mapped
 pack are kept. Anything else (a pointer the image could not reach) makes
-the map unbakeable, and it is skipped.
+the model unbakeable, and it is skipped.
 
 ===============================================================================
 */
@@ -1592,7 +1623,7 @@ static unsigned		bk_base;
 static bakerange_t	bk_ranges[MAX_BAKE_RANGES];
 static int			bk_numranges;
 static qboolean		bk_failed;
-static char			bk_names[256][40];
+static char			bk_names[512][40];
 static int			bk_numnames;
 
 static int Bake_Reserve (int size)
@@ -1656,15 +1687,14 @@ static unsigned Bake_Ptr (void *p)
 =================
 Bake_Map
 
-Runs the loader on one map and appends its block. Returns the entry, or
-false if the map could not be baked (nothing is then left in the image).
+Runs the loader on one map and appends its block. Returns the address of
+its model_t, or 0 if the map could not be baked.
 =================
 */
-static qboolean Bake_Map (char *name, qogbake_entry_t *e)
+static unsigned Bake_Map (char *name, byte *f, int flen)
 {
 	model_t		m, *bm;
-	byte		*f;
-	int			flen, mark, start, i, j;
+	int			mark, i, j;
 	unsigned	at, notex;
 	dheader_t	*h;
 	texture_t	*tx;
@@ -1673,12 +1703,6 @@ static qboolean Bake_Map (char *name, qogbake_entry_t *e)
 	mleaf_t		*l;
 	mnode_t		*n;
 
-	f = COM_FlashFile (name, &flen);
-	if (!f || (((int)f) & 3) || LittleLong (*(int *)f) != BSPVERSION)
-	{
-		Con_Printf ("qog_bake: %s is not a BSP in a mapped pack, skipped\n", name);
-		return false;
-	}
 	h = (dheader_t *)f;
 
 	// id's loader, into a scratch model on the hunk
@@ -1691,10 +1715,6 @@ static qboolean Bake_Map (char *name, qogbake_entry_t *e)
 	mod_flashlen = flen;
 	Mod_LoadBrushLumps (&m, f);
 	mod_inflash = false;
-
-	start = bk_len;
-	bk_numranges = 0;
-	bk_failed = false;
 
 	// the model itself first, then every hunk structure it points at
 	at = bk_base + Bake_Reserve (sizeof(model_t));
@@ -1827,9 +1847,126 @@ static qboolean Bake_Map (char *name, qogbake_entry_t *e)
 
 	Hunk_FreeToLowMark (mark);
 	loadmodel = NULL;
+	return at;
+}
 
-	if (bk_failed)
+/*
+=================
+Bake_Alias
+
+An alias model: the relocatable block id's loader puts in the cache,
+copied whole. Its offsets are relative to the header, and flashbase
+points into the pack.
+=================
+*/
+static unsigned Bake_Alias (char *name, byte *f, int flen)
+{
+	model_t		m;
+	unsigned	at, data;
+
+	memset (&m, 0, sizeof(m));
+	strcpy (m.name, name);
+	loadmodel = &m;
+	COM_FileBase (name, loadname);
+	mod_inflash = true;
+	mod_flashlen = flen;
+	Mod_LoadAliasModel (&m, f);
+	mod_inflash = false;
+	loadmodel = NULL;
+	if (!m.cache.data)
+		return 0;
+
+	at = bk_base + Bake_Reserve (sizeof(model_t));
+	data = bk_base + Bake_Reserve (mod_aliassize);
+	memcpy (BAKE_AT(byte, data), m.cache.data, mod_aliassize);
+	Cache_Free (&m.cache);
+	m.cache.data = (void *)(size_t)data;
+	*BAKE_AT(model_t, at) = m;
+	return at;
+}
+
+/*
+=================
+Bake_Sprite
+
+A sprite: everything its loader puts on the hunk, copied as one range,
+then the frame and interval pointers translated.
+=================
+*/
+static unsigned Bake_Sprite (char *name, byte *f, int flen)
+{
+	model_t			m;
+	int				mark, i, j;
+	unsigned		at;
+	byte			*end;
+	msprite_t		*ps;
+	mspritegroup_t	*pg;
+
+	mark = Hunk_LowMark ();
+	memset (&m, 0, sizeof(m));
+	strcpy (m.name, name);
+	loadmodel = &m;
+	COM_FileBase (name, loadname);
+	Mod_LoadSpriteModel (&m, f);
+	loadmodel = NULL;
+	end = Hunk_AllocName (16, "bakeend");	// the hunk's end, past the last frame
+
+	at = bk_base + Bake_Reserve (sizeof(model_t));
+	Bake_Copy (m.cache.data, end - (byte *)m.cache.data);
+	ps = BAKE_AT(msprite_t, Bake_Ptr (m.cache.data));
+	for (i=0 ; i<ps->numframes ; i++)
 	{
+		if (ps->frames[i].type != SPR_SINGLE)
+		{
+			pg = BAKE_AT(mspritegroup_t, Bake_Ptr (ps->frames[i].frameptr));
+			BAKE_FIX(pg->intervals);
+			for (j=0 ; j<pg->numframes ; j++)
+				BAKE_FIX(pg->frames[j]);
+		}
+		BAKE_FIX(ps->frames[i].frameptr);
+	}
+	BAKE_FIX(m.cache.data);
+	*BAKE_AT(model_t, at) = m;
+	Hunk_FreeToLowMark (mark);
+	return at;
+}
+
+/*
+=================
+Bake_Model
+
+Bakes one map, alias model or sprite from a mapped pack and appends its
+block and directory entry. False if it could not be baked (nothing is
+then left in the image).
+=================
+*/
+static qboolean Bake_Model (char *name, qogbake_entry_t *e)
+{
+	byte		*f;
+	int			flen, start, id;
+	unsigned	at;
+
+	f = COM_FlashFile (name, &flen);
+	if (!f || (((int)f) & 3) || flen < 4 || r_pixbytes != 1)
+	{
+		Con_Printf ("qog_bake: %s is not in a mapped pack, skipped\n", name);
+		return false;
+	}
+	start = bk_len;
+	bk_numranges = 0;
+	bk_failed = false;
+	id = LittleLong (*(int *)f);
+	if (id == BSPVERSION)
+		at = Bake_Map (name, f, flen);
+	else if (id == IDPOLYHEADER)
+		at = Bake_Alias (name, f, flen);
+	else if (id == IDSPRITEHEADER)
+		at = Bake_Sprite (name, f, flen);
+	else
+		at = 0;
+	if (!at || bk_failed)
+	{
+		Con_Printf ("qog_bake: %s could not be baked, skipped\n", name);
 		bk_len = start;
 		return false;
 	}
@@ -1837,9 +1974,9 @@ static qboolean Bake_Map (char *name, qogbake_entry_t *e)
 	strcpy (e->name, name);
 	e->model = at;
 	e->size = bk_len - start;
-	e->bspaddr = (unsigned)(size_t)f;
-	e->bsplen = flen;
-	e->bsphash = Mod_BspHash (f);
+	e->fileaddr = (unsigned)(size_t)f;
+	e->filelen = flen;
+	e->filehash = Mod_FileHash (f, flen);
 	return true;
 }
 
@@ -1888,6 +2025,86 @@ static int Bake_TexIndex (model_t *m, texture_t *t)
 	return t ? -2 : -1;
 }
 
+static qboolean Bake_SameSpriteFrame (mspriteframe_t *a, mspriteframe_t *b)
+{
+	return a->width == b->width && a->height == b->height && a->up == b->up && a->down == b->down
+		&& a->left == b->left && a->right == b->right
+		&& !memcmp (a->pixels, b->pixels, a->width * a->height);
+}
+
+// an alias model or sprite against its baked copy b
+static void Bake_CheckModel (model_t *b, byte *f, int flen)
+{
+	model_t			m;
+	int				mark, i, k;
+	msprite_t		*pa, *pb;
+	mspritegroup_t	*ga, *gb;
+
+	mark = Hunk_LowMark ();
+	memset (&m, 0, sizeof(m));
+	strcpy (m.name, b->name);
+	loadmodel = &m;
+	COM_FileBase (b->name, loadname);
+	mod_inflash = (b->type == mod_alias);
+	mod_flashlen = flen;
+	if (b->type == mod_alias)
+		Mod_LoadAliasModel (&m, f);
+	else
+		Mod_LoadSpriteModel (&m, f);
+	mod_inflash = false;
+	loadmodel = NULL;
+
+	if (m.type != b->type || m.numframes != b->numframes || m.synctype != b->synctype
+		|| m.flags != b->flags || memcmp (m.mins, b->mins, sizeof(m.mins))
+		|| memcmp (m.maxs, b->maxs, sizeof(m.maxs)) || m.radius != b->radius || !m.cache.data)
+		Bake_Diff ("model fields", 0);
+	else if (b->type == mod_alias)
+	{
+		// id's loader copies the hunk span from the header on, which runs one
+		// hunk header (16 bytes) past its last block: those bytes are unused
+		for (i=0 ; i<mod_aliassize - 16 ; i++)
+			if (((byte *)m.cache.data)[i] != ((byte *)b->cache.data)[i])
+			{
+				Bake_Diff ("alias model data", i);
+				break;
+			}
+	}
+	else
+	{
+		pa = m.cache.data;
+		pb = b->cache.data;
+		if (pa->type != pb->type || pa->maxwidth != pb->maxwidth || pa->maxheight != pb->maxheight
+			|| pa->numframes != pb->numframes || pa->beamlength != pb->beamlength)
+			Bake_Diff ("sprite header", 0);
+		else
+			for (i=0 ; i<pa->numframes ; i++)
+			{
+				if (pa->frames[i].type != pb->frames[i].type)
+					Bake_Diff ("sprite frame type", i);
+				else if (pa->frames[i].type == SPR_SINGLE)
+				{
+					if (!Bake_SameSpriteFrame (pa->frames[i].frameptr, pb->frames[i].frameptr))
+						Bake_Diff ("sprite frame", i);
+				}
+				else
+				{
+					ga = (mspritegroup_t *)pa->frames[i].frameptr;
+					gb = (mspritegroup_t *)pb->frames[i].frameptr;
+					if (ga->numframes != gb->numframes
+						|| memcmp (ga->intervals, gb->intervals, ga->numframes * sizeof(float)))
+						Bake_Diff ("sprite group", i);
+					else
+						for (k=0 ; k<ga->numframes ; k++)
+							if (!Bake_SameSpriteFrame (ga->frames[k], gb->frames[k]))
+								Bake_Diff ("sprite group frame", i);
+				}
+			}
+	}
+	if (b->type == mod_alias && m.cache.data)
+		Cache_Free (&m.cache);
+	Hunk_FreeToLowMark (mark);
+}
+
 static void Bake_Check (void)
 {
 	qogbake_entry_t	*e;
@@ -1913,10 +2130,18 @@ static void Bake_Check (void)
 		bc_map = e->name;
 		b = (model_t *)e->model;
 		f = COM_FlashFile (e->name, &flen);
-		if (!f || (unsigned)(size_t)f != e->bspaddr || (unsigned)flen != e->bsplen
-			|| Mod_BspHash (f) != e->bsphash)
+		if (!f || (unsigned)(size_t)f != e->fileaddr || (unsigned)flen != e->filelen
+			|| Mod_FileHash (f, flen) != e->filehash)
 		{
-			Bake_Diff ("bsp file", 0);
+			Bake_Diff ("source file", 0);
+			total += bc_errors;
+			continue;
+		}
+		if (b->type != mod_brush)
+		{
+			Bake_CheckModel (b, f, flen);
+			if (bc_errors)
+				Con_Printf ("qog_bake check: %s has %i differences\n", e->name, bc_errors);
 			total += bc_errors;
 			continue;
 		}
@@ -2072,19 +2297,23 @@ static void Bake_Check (void)
 			Con_Printf ("qog_bake check: %s has %i differences\n", e->name, bc_errors);
 		total += bc_errors;
 	}
-	Con_Printf ("qog_bake check: %i maps compared, %i differences\n", mod_bake->nummaps, total);
+	Con_Printf ("qog_bake check: %i models compared, %i differences\n", mod_bake->nummaps, total);
 }
 
 static void Bake_AddName (char *name)
 {
 	int		i, n = strlen (name);
 
-	if (n < 9 || n >= sizeof(bk_names[0]) || Q_strncmp (name, "maps/", 5) || Q_strcmp (name + n - 4, ".bsp"))
+	if (n < 9 || n >= sizeof(bk_names[0]))
+		return;
+	if (!(!Q_strncmp (name, "maps/", 5) && !Q_strcmp (name + n - 4, ".bsp"))
+		&& !(!Q_strncmp (name, "progs/", 6) && !Q_strcmp (name + n - 4, ".mdl"))
+		&& !(!Q_strncmp (name, "progs/", 6) && !Q_strcmp (name + n - 4, ".spr")))
 		return;
 	for (i=0 ; i<bk_numnames ; i++)
 		if (!Q_strcmp (bk_names[i], name))
 			return;
-	if (bk_numnames < 256)
+	if (bk_numnames < 512)
 		strcpy (bk_names[bk_numnames++], name);
 }
 
@@ -2092,15 +2321,17 @@ static void Bake_AddName (char *name)
 =================
 Mod_Bake_f
 
-qog_bake [map ...]: bakes the named maps ("e1m1"), or with no argument
-every maps/*.bsp in the packs, into <gamedir>/qogbake.bin for the address
+qog_bake [name ...]: bakes the named maps ("e1m1") and models
+("progs/player.mdl"), or with no argument every maps/*.bsp, progs/*.mdl
+and progs/*.spr in the packs, into <gamedir>/qogbake.bin for the address
 the image will be mapped at in a run with the same packs. Run it with
--nobake and before any map is loaded.
+-nobake and before any map is loaded. qog_bake check compares the image
+with a fresh load (see Bake_Check).
 =================
 */
 static void Mod_Bake_f (void)
 {
-	qogbake_entry_t		dir[256];
+	qogbake_entry_t		dir[512];
 	qogbake_header_t	*hd;
 	char				path[MAX_OSPATH];
 	int					i, n, hnd, dirofs;
@@ -2120,7 +2351,10 @@ static void Mod_Bake_f (void)
 	{
 		for (i=1 ; i<Cmd_Argc () ; i++)
 		{
-			sprintf (path, "maps/%s.bsp", Cmd_Argv (i));
+			if (strchr (Cmd_Argv (i), '.'))
+				Q_strncpy (path, Cmd_Argv (i), sizeof(path) - 1);	// "progs/player.mdl"
+			else
+				sprintf (path, "maps/%s.bsp", Cmd_Argv (i));	// "e1m1"
 			Bake_AddName (path);
 		}
 	}
@@ -2133,7 +2367,7 @@ static void Mod_Bake_f (void)
 	n = 0;
 	for (i=0 ; i<bk_numnames ; i++)
 	{
-		if (Bake_Map (bk_names[i], &dir[n]))
+		if (Bake_Model (bk_names[i], &dir[n]))
 		{
 			Con_Printf ("qog_bake: %-20s %7i bytes\n", dir[n].name, dir[n].size);
 			n++;
@@ -2161,7 +2395,7 @@ static void Mod_Bake_f (void)
 	}
 	Sys_FileWrite (hnd, bk_buf, bk_len);
 	Sys_FileClose (hnd);
-	Con_Printf ("qog_bake: %i maps, %i bytes, for address %08x, in qogbake.bin\n", n, bk_len, bk_base);
+	Con_Printf ("qog_bake: %i models, %i bytes, for address %08x, in qogbake.bin\n", n, bk_len, bk_base);
 	free (bk_buf);
 	bk_buf = NULL;
 	bk_max = bk_len = 0;
@@ -2176,14 +2410,22 @@ Mod_LoadBrushModel
 */
 void Mod_LoadBrushModel (model_t *mod, void *buffer)
 {
+	Mod_LoadBrushLumps (mod, buffer);
+	Mod_FinishBrushModel (mod);
+}
+
+/*
+=================
+Mod_FinishBrushModel
+
+QuakeOG: the second half of id's Mod_LoadBrushModel, run for loaded and
+baked maps alike: the per-frame arrays and the inline submodels.
+=================
+*/
+static void Mod_FinishBrushModel (model_t *mod)
+{
 	int			i, j;
 	dmodel_t 	*bm;
-
-#ifdef QOG_BAKE
-	// QuakeOG: the read-only structures from the baked image when it has them
-	if (!Mod_LoadBaked (mod, buffer))
-#endif
-	Mod_LoadBrushLumps (mod, buffer);
 
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels
@@ -2694,6 +2936,9 @@ void Mod_LoadAliasModel (model_t *mod, void *buffer)
 // move the complete, relocatable alias model to the cache
 //	
 	end = Hunk_LowMark ();
+#ifdef QOG_BAKE
+	mod_aliassize = end - start;	// QuakeOG: what the baker copies
+#endif
 	total = end - start;
 	
 	Cache_Alloc (&mod->cache, total, loadname);
