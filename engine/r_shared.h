@@ -112,18 +112,30 @@ typedef struct surf_s
 	struct espan_s	*spans;			// pointer to linked list of spans to draw
 	int			key;				// sorting key (BSP order)
 	int			last_u;				// set during tracing
+#ifdef QOG_SURF_T_PACKED
+	// QuakeOG: id padded this to 64 bytes for its x86 assembly, which no
+	// QuakeOG build uses. spanstate only counts overlapping edges of one
+	// surface and insubmodel is 0 or 1, so they share a word (52 bytes).
+	short		spanstate;			// 0 = not in span, 1 = in span, -1 = inverted
+	short		insubmodel;
+#else
 	int			spanstate;			// 0 = not in span
 									// 1 = in span
 									// -1 = in inverted span (end before
 									//  start)
+#endif
 	int			flags;				// currentface flags
 	void		*data;				// associated data like msurface_t
 	entity_t	*entity;
 	float		nearzi;				// nearest 1/z on surface, for mipmapping
+#ifndef QOG_SURF_T_PACKED
 	qboolean	insubmodel;
+#endif
 	float		d_ziorigin, d_zistepu, d_zistepv;
 
+#ifndef QOG_SURF_T_PACKED
 	int			pad[2];				// to 64 bytes
+#endif
 } surf_t;
 
 extern	surf_t	*surfaces, *surface_p, *surf_max;
