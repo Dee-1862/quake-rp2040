@@ -216,11 +216,24 @@ int main(void) {
     }
     const bool tex_in_flash = flash_tex && tex_sz == W * H;
 
-    /* Light grid, colormap and the small textures: deterministic contents. */
-    uint32_t seed = 12345;
-    for (int i = 0; i < 18 * 18; i++) { seed = seed * 1103515245u + 12345u; blocklights[i] = (seed >> 8) & 0x3FFF; }
-    for (int lvl = 0; lvl < 64; lvl++)
-        for (int c = 0; c < 256; c++) s_colormap[lvl * 256 + c] = (uint8_t)((c * (63 - lvl)) / 63);
+    /* Light grid in the form R_BuildLightMap leaves it: (light & 0xFF00) picks
+       a colormap row, row 0 brightest, row 63 black. A bright pool in the
+       middle that fades towards the edges, like a lamp on a wall. */
+    for (int y = 0; y < 18; y++)
+        for (int x = 0; x < 18; x++) {
+            const int dx = x - 8, dy = y - 6, d2 = dx * dx + dy * dy;
+            int t = 0x0600 + d2 * 0x0050;
+            blocklights[y * 18 + x] = (unsigned)(t > 0x3600 ? 0x3600 : t);
+        }
+    /* The real colormap from the data image (the game reads it in place from
+       flash too). Without it, a stand-in with the same cost but meaningless colours. */
+    uint32_t cm_sz = 0;
+    const uint8_t *flash_cm = (ds == QOG_DATA_OK) ? qog_data_find("colormap", &cm_sz) : NULL;
+    const bool cm_in_flash = flash_cm && cm_sz >= 64u * 256u;
+    if (cm_in_flash) lit_colormap = flash_cm;
+    else
+        for (int lvl = 0; lvl < 64; lvl++)
+            for (int c = 0; c < 256; c++) s_colormap[lvl * 256 + c] = (uint8_t)((c * (63 - lvl)) / 63);
     for (int i = 0; i < 64 * 64; i++) { s_tex64[i] = (uint8_t)(i * 7); s_cache[i] = (uint8_t)(i * 3); }
     static uint8_t ram_tex[64 * 64];
     if (!tex_in_flash) memcpy(ram_tex, s_tex64, sizeof ram_tex);
@@ -295,11 +308,11 @@ int main(void) {
 
         if (time_reached(next_report)) {
             next_report = make_timeout_time_ms(2000);
-            DIAG("[bench] clk=%luMHz view=%dx%d tex=%s data=%s round=%lu | "
+            DIAG("[bench] clk=%luMHz view=%dx%d tex=%s cmap=%s data=%s round=%lu | "
                  "lit_flash=%luus lit_ram=%luus lit_pow2=%luus surfcache=%luus zspans=%luus | "
                  "fdiv=%luns xip_seq64K=%luus xip_rand64K=%luus\n",
                  (unsigned long)(clock_get_hz(clk_sys) / 1000000u), W, VIEW_H,
-                 tex_in_flash ? "flash320x200" : "ram64x64", qog_data_status_text(ds),
+                 tex_in_flash ? "flash320x200" : "ram64x64", cm_in_flash ? "flash" : "standin", qog_data_status_text(ds),
                  (unsigned long)rounds,
                  (unsigned long)r_lit_flash, (unsigned long)r_lit_ram, (unsigned long)r_lit_pow2,
                  (unsigned long)r_cache, (unsigned long)r_z,
