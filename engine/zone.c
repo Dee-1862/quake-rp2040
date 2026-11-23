@@ -21,7 +21,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#ifdef QOG_ZONE_KB
+// QuakeOG: the zone holds cvar strings, aliases, key bindings, command
+// arguments and, for a moment, the rest of the command buffer (up to 8 KB)
+// when a script is inserted. Measured peak 7.4 KB over every shareware
+// level, the menus and the demos. -zone still overrides it.
+#define	DYNAMIC_SIZE	(QOG_ZONE_KB * 1024)
+#else
 #define	DYNAMIC_SIZE	0xc000
+#endif
 
 #define	ZONEID	0x1d4a11
 #define MINFRAGMENT	64
