@@ -31,6 +31,49 @@ typedef union eval_s
 	int				edict;
 } eval_t;	
 
+#ifdef QOG_EDICT_SPARSE
+/*
+QuakeOG: sparse edict fields. Each edict keeps only the "core" fields below
+in place: the ones the engine's physics, world links and entity messages
+touch for every kind of entity. Every other QuakeC field lives in a small
+per-edict list of (field number, value) pairs in a shared arena, and a field
+that was never written reads as zero, exactly as with id's zeroed array.
+Engine code reads and writes non-core entvars_t fields through the EV_
+macros below. QuakeC reaches every field through ED_FieldGet/ED_FieldSet.
+*/
+typedef struct
+{
+	float	modelindex;
+	vec3_t	absmin;
+	vec3_t	absmax;
+	float	ltime;
+	float	movetype;
+	float	solid;
+	vec3_t	origin;
+	vec3_t	velocity;
+	vec3_t	angles;
+	vec3_t	avelocity;
+	string_t	classname;
+	string_t	model;
+	float	frame;
+	float	skin;
+	float	effects;
+	vec3_t	mins;
+	vec3_t	maxs;
+	vec3_t	size;
+	func_t	touch;
+	func_t	think;
+	func_t	blocked;
+	float	nextthink;
+	int	groundentity;
+	float	flags;
+	float	colormap;
+	int	owner;
+	float	waterlevel;
+	float	watertype;
+} entcore_t;
+#endif
+
 #define	MAX_ENT_LEAFS	16
 typedef struct edict_s
 {
@@ -41,12 +84,54 @@ typedef struct edict_s
 	short		leafnums[MAX_ENT_LEAFS];
 
 	entity_state_t	baseline;
-	
+
 	float		freetime;			// sv.time when the object was freed
+#ifdef QOG_EDICT_SPARSE
+	unsigned short	coldofs;		// QuakeOG: word offset of the field list in ed_cold, 0 for none
+	unsigned char	coldn, coldcap;	// QuakeOG: pairs used and room in the list
+	entcore_t	v;					// QuakeOG: core fields only, the rest are in the list
+#else
 	entvars_t	v;					// C exported fields from progs
 // other fields from progs come immediately after
+#endif
 } edict_t;
 #define	EDICT_FROM_AREA(l) STRUCT_FROM_LINK(l,edict_t,area)
+
+// QuakeOG: the QuakeC field number of an entvars_t field (id's layout)
+#define	EV_OFS(f)	((int)((size_t)&((entvars_t *)0)->f / 4))
+// QuakeOG: bytes before the fields in id's edict_t, whatever the layout here
+#define	ED_ID_HEADERSIZE	((int)(sizeof(qboolean) + sizeof(link_t) + sizeof(int) \
+	+ MAX_ENT_LEAFS * sizeof(short) + sizeof(entity_state_t) + sizeof(float)))
+
+#ifdef QOG_EDICT_SPARSE
+int		ED_FieldGet (edict_t *e, int ofs);			// any field, by QuakeC field number
+void	ED_FieldSet (edict_t *e, int ofs, int val);
+int		ED_ColdGet (edict_t *e, int ofs);			// non-core fields only
+void	ED_ColdSet (edict_t *e, int ofs, int val);
+float	ED_ColdFloat (edict_t *e, int ofs);
+void	ED_ColdSetFloat (edict_t *e, int ofs, float val);
+float	*ED_ColdVector (edict_t *e, int ofs);		// a copy, valid for a few calls
+void	ED_ColdSetVector (edict_t *e, int ofs, const float *val);
+void	ED_ClearFields (edict_t *e);
+void	ED_ColdInit (void);
+extern signed char	*pr_fieldmap;	// QuakeC field number -> core word, or -1
+// Engine access to the non-core entvars_t fields
+#define	EV_FLOAT(e,f)		ED_ColdFloat (e, EV_OFS(f))
+#define	EV_INT(e,f)			ED_ColdGet (e, EV_OFS(f))
+#define	EV_VECTOR(e,f)		ED_ColdVector (e, EV_OFS(f))
+#define	EV_SETFLOAT(e,f,x)	ED_ColdSetFloat (e, EV_OFS(f), x)
+#define	EV_SETINT(e,f,x)	ED_ColdSet (e, EV_OFS(f), x)
+#define	EV_SETVECTOR(e,f,x)	ED_ColdSetVector (e, EV_OFS(f), x)
+#define	ED_CLEARFIELDS(e)	ED_ClearFields (e)
+#else
+#define	EV_FLOAT(e,f)		((e)->v.f)
+#define	EV_INT(e,f)			((e)->v.f)
+#define	EV_VECTOR(e,f)		((e)->v.f)
+#define	EV_SETFLOAT(e,f,x)	((e)->v.f = (x))
+#define	EV_SETINT(e,f,x)	((e)->v.f = (x))
+#define	EV_SETVECTOR(e,f,x)	VectorCopy ((x), (e)->v.f)
+#define	ED_CLEARFIELDS(e)	memset (&(e)->v, 0, progs->entityfields * 4)
+#endif
 
 //============================================================================
 
@@ -74,6 +159,8 @@ extern void (*const pr_aot_functions[]) (void);
 extern const int		pr_aot_numfunctions;
 extern const int		pr_aot_numstatements;
 extern const unsigned	pr_aot_fingerprint;
+extern const int		pr_aot_numfields;	// QuakeOG: QOG_EDICT_SPARSE layout the code assumes
+extern const signed char	pr_aot_coremap[];
 extern qboolean			pr_aot_active;
 void PR_AOT_Call (func_t fnum);
 void PR_AOT_Check (void);
@@ -120,10 +207,15 @@ int NUM_FOR_EDICT(edict_t *e);
 #define	G_STRING(o) (pr_strings + *(string_t *)&pr_globals[o])
 #define	G_FUNCTION(o) (*(func_t *)&pr_globals[o])
 
+#ifdef QOG_EDICT_SPARSE	// QuakeOG: read only, by QuakeC field number
+#define	E_INT(e,o) ED_FieldGet (e, o)
+#define	E_STRING(e,o) (pr_strings + ED_FieldGet (e, o))
+#else
 #define	E_FLOAT(e,o) (((float*)&e->v)[o])
 #define	E_INT(e,o) (*(int *)&((float*)&e->v)[o])
 #define	E_VECTOR(e,o) (&((float*)&e->v)[o])
 #define	E_STRING(e,o) (pr_strings + *(string_t *)&((float*)&e->v)[o])
+#endif
 
 extern	int		type_size[8];
 

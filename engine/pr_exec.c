@@ -615,6 +615,56 @@ while (1)
 		b->vector[2] = a->vector[2];
 		break;
 		
+#ifdef QOG_EDICT_SPARSE
+	// QuakeOG: a "pointer" from OP_ADDRESS is the edict's offset times 256
+	// plus the field number, and only OP_STOREP ever reads it
+	case OP_STOREP_F:
+	case OP_STOREP_ENT:
+	case OP_STOREP_FLD:		// integers
+	case OP_STOREP_S:
+	case OP_STOREP_FNC:		// pointers
+		ED_FieldSet (PROG_TO_EDICT((b->_int >> 8)), b->_int & 255, a->_int);
+		break;
+	case OP_STOREP_V:
+		ed = PROG_TO_EDICT((b->_int >> 8));
+		ED_FieldSet (ed, b->_int & 255, a->_int);
+		ED_FieldSet (ed, (b->_int & 255) + 1, (&a->_int)[1]);
+		ED_FieldSet (ed, (b->_int & 255) + 2, (&a->_int)[2]);
+		break;
+
+	case OP_ADDRESS:
+		ed = PROG_TO_EDICT(a->edict);
+#ifdef PARANOID
+		NUM_FOR_EDICT(ed);		// make sure it's in range
+#endif
+		if (ed == (edict_t *)sv.edicts && sv.state == ss_active)
+			PR_RunError ("assignment to world entity");
+		c->_int = (a->edict << 8) | b->_int;
+		break;
+
+	case OP_LOAD_F:
+	case OP_LOAD_FLD:
+	case OP_LOAD_ENT:
+	case OP_LOAD_S:
+	case OP_LOAD_FNC:
+		ed = PROG_TO_EDICT(a->edict);
+#ifdef PARANOID
+		NUM_FOR_EDICT(ed);		// make sure it's in range
+#endif
+		c->_int = ED_FieldGet (ed, b->_int);
+		break;
+
+	case OP_LOAD_V:
+		ed = PROG_TO_EDICT(a->edict);
+#ifdef PARANOID
+		NUM_FOR_EDICT(ed);		// make sure it's in range
+#endif
+		i = b->_int;
+		(&c->_int)[0] = ED_FieldGet (ed, i);
+		(&c->_int)[1] = ED_FieldGet (ed, i + 1);
+		(&c->_int)[2] = ED_FieldGet (ed, i + 2);
+		break;
+#else
 	case OP_STOREP_F:
 	case OP_STOREP_ENT:
 	case OP_STOREP_FLD:		// integers
@@ -629,7 +679,7 @@ while (1)
 		ptr->vector[1] = a->vector[1];
 		ptr->vector[2] = a->vector[2];
 		break;
-		
+
 	case OP_ADDRESS:
 		ed = PROG_TO_EDICT(a->edict);
 #ifdef PARANOID
@@ -639,7 +689,7 @@ while (1)
 			PR_RunError ("assignment to world entity");
 		c->_int = (byte *)((int *)&ed->v + b->_int) - (byte *)sv.edicts;
 		break;
-		
+
 	case OP_LOAD_F:
 	case OP_LOAD_FLD:
 	case OP_LOAD_ENT:
@@ -663,6 +713,7 @@ while (1)
 		c->vector[1] = a->vector[1];
 		c->vector[2] = a->vector[2];
 		break;
+#endif
 		
 //==================
 

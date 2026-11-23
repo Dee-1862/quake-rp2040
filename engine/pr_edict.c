@@ -69,9 +69,280 @@ Sets everything to NULL
 */
 void ED_ClearEdict (edict_t *e)
 {
-	memset (&e->v, 0, progs->entityfields * 4);
+	ED_CLEARFIELDS(e);	// QuakeOG: was memset (&e->v, 0, progs->entityfields * 4)
 	e->free = false;
 }
+
+#ifdef QOG_EDICT_SPARSE
+/*
+==============================================================================
+
+QuakeOG: sparse edict fields (progs.h). Core fields sit in edict_t.v. Every
+other field an edict has written since it was cleared is a pair in its list
+in ed_cold: a header word (owner edict number, capacity << 16), the values,
+then the field numbers as bytes. A list that grows moves to the top of the
+arena. When the top reaches the end, live lists slide down over dead ones.
+Nothing outside this file keeps a pointer into the arena across a write.
+Freed edicts keep their lists until they are reused, so QuakeC that still
+reads a removed entity's fields sees what id's code would.
+
+==============================================================================
+*/
+signed char	*pr_fieldmap;		// QuakeC field number -> core word, or -1
+static int	*ed_cold;			// the arena
+static int	ed_coldsize;		// words
+static int	ed_coldtop;			// first free word, word 0 is never used
+int			ed_coldpeak, ed_coldcompactions;	// for qog_mem
+int			ed_coldlive, ed_coldlivepeak;		// words in live lists
+
+#define	COLD_DEAD		0xffff
+#define	COLD_WORDS(cap)	(1 + (cap) + ((cap) + 3) / 4)
+#ifndef QOG_EDICT_COLD_STEP
+#define	QOG_EDICT_COLD_STEP	4	// pairs added each time a list grows
+#endif
+
+// QuakeC field numbers of the core fields (id's layout) and their place in entcore_t
+#define	CORE(f,n)	{ EV_OFS(f), (int)((size_t)&((entcore_t *)0)->f / 4), n }
+static const struct { short qc, core, n; } ed_coremap[] = {
+	CORE(modelindex,1), CORE(absmin,3), CORE(absmax,3), CORE(ltime,1), CORE(movetype,1),
+	CORE(solid,1), CORE(origin,3), CORE(velocity,3), CORE(angles,3), CORE(avelocity,3),
+	CORE(classname,1), CORE(model,1), CORE(frame,1), CORE(skin,1), CORE(effects,1),
+	CORE(mins,3), CORE(maxs,3), CORE(size,3), CORE(touch,1), CORE(think,1),
+	CORE(blocked,1), CORE(nextthink,1), CORE(groundentity,1), CORE(flags,1),
+	CORE(colormap,1), CORE(owner,1), CORE(waterlevel,1), CORE(watertype,1)
+};
+
+static void ED_BuildFieldMap (void)
+{
+	int		i, j, words = 0;
+
+	if (progs->entityfields > 256)
+		Sys_Error ("QOG_EDICT_SPARSE: %i entity fields, at most 256", progs->entityfields);
+	pr_fieldmap = Hunk_AllocName (progs->entityfields, "fieldmap");
+	memset (pr_fieldmap, -1, progs->entityfields);
+	for (i=0 ; i<sizeof(ed_coremap)/sizeof(ed_coremap[0]) ; i++)
+		for (j=0 ; j<ed_coremap[i].n ; j++)
+		{
+			pr_fieldmap[ed_coremap[i].qc + j] = ed_coremap[i].core + j;
+			words++;
+		}
+	if (words * 4 != sizeof(entcore_t))
+		Sys_Error ("QOG_EDICT_SPARSE: core map covers %i of %i bytes", words * 4, (int)sizeof(entcore_t));
+}
+
+/*
+Called once the edicts are allocated: the arena comes from the hunk too.
+*/
+void ED_ColdInit (void)
+{
+#ifndef QOG_EDICT_COLD_WORDS
+#define	QOG_EDICT_COLD_WORDS	12	// words of arena per edict slot, measured peak 9.2
+#endif
+	ed_coldsize = sv.max_edicts * QOG_EDICT_COLD_WORDS;
+	if (ed_coldsize > 65535)
+		ed_coldsize = 65535;	// edict_t.coldofs is 16 bits
+	ed_cold = Hunk_AllocName (ed_coldsize * 4, "edcold");
+	ed_coldtop = 1;
+	ed_coldpeak = 1;
+	ed_coldcompactions = 0;
+	ed_coldlive = ed_coldlivepeak = 0;
+}
+
+static void ED_ColdCompact (void)
+{
+	int		r, dst, hdr, words;
+
+	ed_coldcompactions++;
+	for (r = dst = 1 ; r < ed_coldtop ; r += words)
+	{
+		hdr = ed_cold[r];
+		words = COLD_WORDS((unsigned)hdr >> 16);
+		if ((hdr & 0xffff) == COLD_DEAD)
+			continue;
+		if (dst != r)
+			memmove (ed_cold + dst, ed_cold + r, words * 4);
+		EDICT_NUM(hdr & 0xffff)->coldofs = dst;
+		dst += words;
+	}
+	ed_coldtop = dst;
+}
+
+static int ED_ColdAlloc (int words)
+{
+	int		r;
+
+	if (ed_coldtop + words > ed_coldsize)
+	{
+		ED_ColdCompact ();
+		if (ed_coldtop + words > ed_coldsize)
+			Sys_Error ("ED_ColdAlloc: edict field arena full (%i words)", ed_coldsize);
+	}
+	r = ed_coldtop;
+	ed_coldtop += words;
+	return r;
+}
+
+static void ED_ColdFree (edict_t *e)
+{
+	if (!e->coldofs)
+		return;
+	ed_cold[e->coldofs] |= COLD_DEAD;
+	ed_coldlive -= COLD_WORDS(e->coldcap);
+	if (e->coldofs + COLD_WORDS(e->coldcap) == ed_coldtop)
+		ed_coldtop = e->coldofs;	// the last list: give the space straight back
+	e->coldofs = 0;
+	e->coldn = e->coldcap = 0;
+}
+
+static int *ED_ColdFind (edict_t *e, int ofs)
+{
+	int				*vals, i, n = e->coldn;
+	unsigned char	*keys;
+
+	if (!n)
+		return NULL;
+	vals = ed_cold + e->coldofs + 1;
+	keys = (unsigned char *)(vals + e->coldcap);
+	for (i=0 ; i<n ; i++)
+		if (keys[i] == ofs)
+			return vals + i;
+	return NULL;
+}
+
+// Adds a pair for a field that has none. May move every list in the arena.
+static int *ED_ColdAdd (edict_t *e, int ofs)
+{
+	int				*vals, n = e->coldn;
+	unsigned char	*keys;
+
+	if (n == e->coldcap)
+	{
+		int		cap = e->coldcap + QOG_EDICT_COLD_STEP;
+		int		r, *oldv;
+
+		if (cap > 255)
+			cap = 255;
+		r = ED_ColdAlloc (COLD_WORDS(cap));	// may compact, which moves e's list
+		// not NUM_FOR_EDICT: a savegame load fills edicts past sv.num_edicts
+		ed_cold[r] = (int)(((byte *)e - (byte *)sv.edicts) / pr_edict_size) | (cap << 16);
+		if (e->coldofs)
+		{
+			oldv = ed_cold + e->coldofs + 1;
+			memcpy (ed_cold + r + 1, oldv, n * 4);
+			memcpy ((unsigned char *)(ed_cold + r + 1 + cap), oldv + e->coldcap, n);
+			ed_cold[e->coldofs] |= COLD_DEAD;
+			ed_coldlive -= COLD_WORDS(e->coldcap);
+		}
+		e->coldofs = r;
+		e->coldcap = cap;
+		ed_coldlive += COLD_WORDS(cap);
+		if (ed_coldlive > ed_coldlivepeak)
+			ed_coldlivepeak = ed_coldlive;
+		if (ed_coldtop > ed_coldpeak)
+			ed_coldpeak = ed_coldtop;
+	}
+	vals = ed_cold + e->coldofs + 1;
+	keys = (unsigned char *)(vals + e->coldcap);
+	keys[n] = ofs;
+	vals[n] = 0;
+	e->coldn = n + 1;
+	return vals + n;
+}
+
+int ED_ColdGet (edict_t *e, int ofs)
+{
+	int		*p = ED_ColdFind (e, ofs);
+	return p ? *p : 0;
+}
+
+void ED_ColdSet (edict_t *e, int ofs, int val)
+{
+	int		*p = ED_ColdFind (e, ofs);
+
+	if (p)
+		*p = val;
+	else if (val)	// a missing field already reads as zero
+		*ED_ColdAdd (e, ofs) = val;
+}
+
+float ED_ColdFloat (edict_t *e, int ofs)
+{
+	eval_t	v;
+	v._int = ED_ColdGet (e, ofs);
+	return v._float;
+}
+
+void ED_ColdSetFloat (edict_t *e, int ofs, float val)
+{
+	eval_t	v;
+	v._float = val;
+	ED_ColdSet (e, ofs, v._int);
+}
+
+float *ED_ColdVector (edict_t *e, int ofs)
+{
+	static eval_t	ring[8];
+	static int		next;
+	eval_t			*v = &ring[next++ & 7];
+	int				i;
+
+	for (i=0 ; i<3 ; i++)
+		((int *)v->vector)[i] = ED_ColdGet (e, ofs + i);
+	return v->vector;
+}
+
+void ED_ColdSetVector (edict_t *e, int ofs, const float *val)
+{
+	int		i;
+	for (i=0 ; i<3 ; i++)
+		ED_ColdSet (e, ofs + i, ((const int *)val)[i]);
+}
+
+int ED_FieldGet (edict_t *e, int ofs)
+{
+	int		m = pr_fieldmap[ofs];
+	if (m >= 0)
+		return ((int *)&e->v)[m];
+	return ED_ColdGet (e, ofs);
+}
+
+void ED_FieldSet (edict_t *e, int ofs, int val)
+{
+	int		m = pr_fieldmap[ofs];
+	if (m >= 0)
+		((int *)&e->v)[m] = val;
+	else
+		ED_ColdSet (e, ofs, val);
+}
+
+// A pointer to a field that stays valid until the next field write
+static eval_t *ED_FieldPtr (edict_t *e, int ofs)
+{
+	int		m = pr_fieldmap[ofs], *p;
+	if (m >= 0)
+		return (eval_t *)((int *)&e->v + m);
+	p = ED_ColdFind (e, ofs);
+	if (!p)
+		p = ED_ColdAdd (e, ofs);
+	return (eval_t *)p;
+}
+
+void ED_ClearFields (edict_t *e)
+{
+	memset (&e->v, 0, sizeof(e->v));
+	ED_ColdFree (e);
+}
+
+// Fills v with up to three words of a field, for printing and saving
+static void ED_FieldCopy (edict_t *e, int ofs, int n, int *v)
+{
+	int		i;
+	for (i=0 ; i<n ; i++)
+		v[i] = ED_FieldGet (e, ofs + i);
+}
+
+static qboolean ED_ParseEpairEdict (edict_t *ent, ddef_t *key, char *s);
+#endif
 
 /*
 =================
@@ -125,7 +396,7 @@ void ED_Free (edict_t *ed)
 
 	ed->free = true;
 	ed->v.model = 0;
-	ed->v.takedamage = 0;
+	EV_SETFLOAT(ed, takedamage, 0);	// QuakeOG: was ed->v.takedamage = 0
 	ed->v.modelindex = 0;
 	ed->v.colormap = 0;
 	ed->v.skin = 0;
@@ -266,7 +537,11 @@ Done:
 	if (!def)
 		return NULL;
 
+#ifdef QOG_EDICT_SPARSE
+	return ED_FieldPtr (ed, def->ofs);	// QuakeOG: valid until the next field write
+#else
 	return (eval_t *)((char *)&ed->v + def->ofs*4);
+#endif
 }
 
 
@@ -450,16 +725,23 @@ void ED_Print (edict_t *ed)
 	Con_Printf("\nEDICT %i:\n", NUM_FOR_EDICT(ed));
 	for (i=1 ; i<progs->numfielddefs ; i++)
 	{
+#ifdef QOG_EDICT_SPARSE
+		int		copy[3];
+#endif
 		d = &pr_fielddefs[i];
 		name = pr_strings + d->s_name;
 		if (name[strlen(name)-2] == '_')
 			continue;	// skip _x, _y, _z vars
-			
-		v = (int *)((char *)&ed->v + d->ofs*4);
 
 	// if the value is still all 0, skip the field
 		type = d->type & ~DEF_SAVEGLOBAL;
-		
+#ifdef QOG_EDICT_SPARSE
+		ED_FieldCopy (ed, d->ofs, type_size[type], copy);	// QuakeOG
+		v = copy;
+#else
+		v = (int *)((char *)&ed->v + d->ofs*4);
+#endif
+
 		for (j=0 ; j<type_size[type] ; j++)
 			if (v[j])
 				break;
@@ -500,15 +782,22 @@ void ED_Write (FILE *f, edict_t *ed)
 	
 	for (i=1 ; i<progs->numfielddefs ; i++)
 	{
+#ifdef QOG_EDICT_SPARSE
+		int		copy[3];
+#endif
 		d = &pr_fielddefs[i];
 		name = pr_strings + d->s_name;
 		if (name[strlen(name)-2] == '_')
 			continue;	// skip _x, _y, _z vars
-			
-		v = (int *)((char *)&ed->v + d->ofs*4);
 
 	// if the value is still all 0, skip the field
 		type = d->type & ~DEF_SAVEGLOBAL;
+#ifdef QOG_EDICT_SPARSE
+		ED_FieldCopy (ed, d->ofs, type_size[type], copy);	// QuakeOG
+		v = copy;
+#else
+		v = (int *)((char *)&ed->v + d->ofs*4);
+#endif
 		for (j=0 ; j<type_size[type] ; j++)
 			if (v[j])
 				break;
@@ -790,6 +1079,30 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
 	return true;
 }
 
+#ifdef QOG_EDICT_SPARSE
+/*
+QuakeOG: ED_ParseEpair for an edict field: parse into a scratch copy, then
+store the words the parse wrote.
+*/
+static qboolean ED_ParseEpairEdict (edict_t *ent, ddef_t *key, char *s)
+{
+	int		val[3], n, i, type = key->type & ~DEF_SAVEGLOBAL;
+	ddef_t	at0;
+
+	if (type != ev_string && type != ev_float && type != ev_vector
+		&& type != ev_entity && type != ev_field && type != ev_function)
+		return true;	// id's parse writes nothing for these
+	at0 = *key;
+	at0.ofs = 0;
+	if (!ED_ParseEpair ((void *)val, &at0, s))
+		return false;
+	n = type == ev_vector ? 3 : 1;
+	for (i=0 ; i<n ; i++)
+		ED_FieldSet (ent, key->ofs + i, val[i]);
+	return true;
+}
+#endif
+
 /*
 ====================
 ED_ParseEdict
@@ -811,7 +1124,7 @@ char *ED_ParseEdict (char *data, edict_t *ent)
 
 // clear it
 	if (ent != sv.edicts)	// hack
-		memset (&ent->v, 0, progs->entityfields * 4);
+		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
 
 // go through all the dictionary pairs
 	while (1)
@@ -876,7 +1189,11 @@ strcpy (temp, com_token);
 sprintf (com_token, "0 %s 0", temp);
 }
 
+#ifdef QOG_EDICT_SPARSE
+		if (!ED_ParseEpairEdict (ent, key, com_token))	// QuakeOG
+#else
 		if (!ED_ParseEpair ((void *)&ent->v, key, com_token))
+#endif
 			Host_Error ("ED_ParseEdict: parse error");
 	}
 
@@ -931,16 +1248,16 @@ void ED_LoadFromFile (char *data)
 // remove things from different skill levels or deathmatch
 		if (deathmatch.value)
 		{
-			if (((int)ent->v.spawnflags & SPAWNFLAG_NOT_DEATHMATCH))
+			if (((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_DEATHMATCH))	// QuakeOG: EV_
 			{
 				ED_Free (ent);	
 				inhibit++;
 				continue;
 			}
 		}
-		else if ((current_skill == 0 && ((int)ent->v.spawnflags & SPAWNFLAG_NOT_EASY))
-				|| (current_skill == 1 && ((int)ent->v.spawnflags & SPAWNFLAG_NOT_MEDIUM))
-				|| (current_skill >= 2 && ((int)ent->v.spawnflags & SPAWNFLAG_NOT_HARD)) )
+		else if ((current_skill == 0 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_EASY))	// QuakeOG: EV_
+				|| (current_skill == 1 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_MEDIUM))
+				|| (current_skill >= 2 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_HARD)) )
 		{
 			ED_Free (ent);	
 			inhibit++;
@@ -1042,7 +1359,12 @@ void PR_LoadProgs (void)
 	}
 	pr_globals = (float *)pr_global_struct;
 
+#ifdef QOG_EDICT_SPARSE
+	pr_edict_size = sizeof (edict_t);	// QuakeOG: core fields only
+	ED_BuildFieldMap ();
+#else
 	pr_edict_size = progs->entityfields * 4 + sizeof (edict_t) - sizeof(entvars_t);
+#endif
 
 	if (pr_inflash)
 	{
@@ -1135,6 +1457,14 @@ void PR_AOT_Check (void)
 		Con_Printf ("QuakeC: interpreter (compiled progs do not match this progs.dat)\n");
 		return;
 	}
+#ifdef QOG_EDICT_SPARSE
+	if (pr_aot_numfields != progs->entityfields
+		|| memcmp (pr_aot_coremap, pr_fieldmap, progs->entityfields))
+	{	// QuakeOG: the generated code inlines the core field words
+		Con_Printf ("QuakeC: interpreter (compiled progs assume another edict layout)\n");
+		return;
+	}
+#endif
 	if (COM_CheckParm ("-noaot"))
 	{
 		Con_Printf ("QuakeC: interpreter (-noaot)\n");

@@ -51,6 +51,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SURF_T_PACKED
     QOG_MAX_BMODEL_VERTS=128
     QOG_MAX_BMODEL_EDGES=256)
+# Server entities (edicts) and QuakeC memory, same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_EDICT_SPARSE)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

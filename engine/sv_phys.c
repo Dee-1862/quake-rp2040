@@ -767,12 +767,12 @@ void SV_CheckStuck (edict_t *ent)
 
 	if (!SV_TestEntityPosition(ent))
 	{
-		VectorCopy (ent->v.origin, ent->v.oldorigin);
+		EV_SETVECTOR(ent, oldorigin, ent->v.origin);
 		return;
 	}
 
 	VectorCopy (ent->v.origin, org);
-	VectorCopy (ent->v.oldorigin, ent->v.origin);
+	VectorCopy (EV_VECTOR(ent, oldorigin), ent->v.origin);
 	if (!SV_TestEntityPosition(ent))
 	{
 		Con_DPrintf ("Unstuck.\n");
@@ -832,7 +832,7 @@ qboolean SV_CheckWater (edict_t *ent)
 		if (cont <= CONTENTS_WATER)
 		{
 			ent->v.waterlevel = 2;
-			point[2] = ent->v.origin[2] + ent->v.view_ofs[2];
+			point[2] = ent->v.origin[2] + EV_VECTOR(ent, view_ofs)[2];
 			cont = SV_PointContents (point);
 			if (cont <= CONTENTS_WATER)
 				ent->v.waterlevel = 3;
@@ -870,7 +870,7 @@ void SV_WallFriction (edict_t *ent, trace_t *trace)
 	float		d, i;
 	vec3_t		into, side;
 	
-	AngleVectors (ent->v.v_angle, forward, right, up);
+	AngleVectors (EV_VECTOR(ent, v_angle), forward, right, up);
 	d = DotProduct (trace->plane.normal, forward);
 	
 	d += 0.5;
@@ -1508,6 +1508,9 @@ void SV_Physics (void)
 {
 	int		i;
 	edict_t	*ent;
+#ifdef QOG_EDICT_STATS
+	double	qog_t0 = Sys_FloatTime ();	// QuakeOG: server frame time for qog_mem
+#endif
 
 // let the progs know that a new frame has started
 	pr_global_struct->self = EDICT_TO_PROG(sv.edicts);
@@ -1561,6 +1564,14 @@ void SV_Physics (void)
 		pr_global_struct->force_retouch--;	
 
 	sv.time += host_frametime;
+#ifdef QOG_EDICT_STATS
+	{	// QuakeOG: edict use peaks and server time for qog_mem (port/common/qog_mem.c)
+		extern double qog_sv_seconds;
+		void qog_edict_sample (void);
+		qog_sv_seconds += Sys_FloatTime () - qog_t0;
+		qog_edict_sample ();
+	}
+#endif
 }
 
 

@@ -19,6 +19,7 @@ Standard library only.
 """
 import argparse
 import os
+import re
 import struct
 import sys
 
@@ -49,12 +50,55 @@ def read_pak_file(pak_path, name):
     sys.exit("%s not found in %s" % (name, pak_path))
 
 
+def struct_members(text, name):
+    """(member, first word, words) for each member of the C struct `name`:
+    float, int, string_t and func_t take one word, vec3_t three."""
+    end = text.index("} %s;" % name)
+    start = text.rindex("{", 0, end)
+    out, ofs = [], 0
+    for typ, member in re.findall(r"^\s*(float|int|string_t|func_t|vec3_t)\s+(\w+)\s*;", text[start:end], re.M):
+        n = 3 if typ == "vec3_t" else 1
+        out.append((member, ofs, n))
+        ofs += n
+    return out
+
+
+def core_map(nfields):
+    """QOG_EDICT_SPARSE: QuakeC field number -> word in entcore_t (engine/progs.h),
+    or -1 for a field kept in the edict's sparse list. Both structs are read
+    from the engine sources, so the table matches the build, and the engine
+    checks it against its own map before it runs the compiled code."""
+    eng = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "engine")
+    entvars = {m: o for m, o, n in struct_members(open(os.path.join(eng, "progdefs.q1")).read(), "entvars_t")}
+    m = [-1] * nfields
+    for member, k, n in struct_members(open(os.path.join(eng, "progs.h")).read(), "entcore_t"):
+        for w in range(n):
+            m[entvars[member] + w] = k + w
+    return m
+
+
 def parse(progs):
     h = struct.unpack_from("<15i", progs, 0)
     (version, crc, ost, nst, ogd, ngd, ofd, nfd, ofn, nfn, ostr, nstr, oglob, nglob, entf) = h
     if version != 6:
         sys.exit("progs.dat version %d, expected 6" % version)
     stmts = [struct.unpack_from("<Hhhh", progs, ost + 8 * i) for i in range(nst)]
+    globs = struct.unpack_from("<%di" % nglob, progs, oglob)
+    # Field operands that are field definitions no statement writes: their
+    # value is a constant field number, known now.
+    fielddefs = set()
+    for i in range(ngd):
+        typ, ofs, _ = struct.unpack_from("<HHi", progs, ogd + 8 * i)
+        if (typ & 0x7fff) == 5:
+            fielddefs.add(ofs)
+    written = set()
+    for op, a, b, c in stmts:
+        n = OPS[op] if op < len(OPS) else ""
+        if n.startswith("STORE_"):
+            written.add(b)
+        elif n not in ("IF", "IFNOT", "GOTO", "RETURN", "DONE", "STATE") and not n.startswith("STOREP")                 and not n.startswith("CALL"):
+            written.add(c)
+    constfields = {g: globs[g] for g in fielddefs - written}
     funcs = []
     for i in range(nfn):
         first, parm_start, locs, prof, s_name, s_file, nparms = struct.unpack_from("<7i", progs, ofn + 36 * i)
@@ -62,7 +106,7 @@ def parse(progs):
     strings = progs[ostr:ostr + nstr]
     stmt_bytes = progs[ost:ost + 8 * nst]
     return dict(crc=crc, stmts=stmts, funcs=funcs, strings=strings, nglob=nglob,
-                fingerprint=fnv1a(stmt_bytes), nst=nst, nfn=nfn)
+                fingerprint=fnv1a(stmt_bytes), nst=nst, nfn=nfn, entf=entf, constfields=constfields)
 
 
 def cstr(strings, ofs):
@@ -75,7 +119,15 @@ def G(o): return "G[%d]" % o
 def I(o): return "I[%d]" % o
 
 
-def emit_stmt(s, op, a, b, c, out, label):
+def field_ld(ctx, ed, b, k):
+    """Word k of the field whose number is in global b, as a C int expression."""
+    f = ctx["constfields"].get(b)
+    if f is None:
+        return "QC_LDX(%s, I[%d] + %d)" % (ed, b, k)
+    return "QC_LD(%s, %d, %d)" % (ed, f + k, ctx["coremap"][f + k])
+
+
+def emit_stmt(s, op, a, b, c, out, label, ctx):
     n = OPS[op] if op < len(OPS) else None
     w = out.append
     if n in ("ADD_F", "SUB_F", "MUL_F", "DIV_F"):
@@ -129,20 +181,30 @@ def emit_stmt(s, op, a, b, c, out, label):
     elif n == "STORE_V":
         for k in range(3):
             w("%s = %s;" % (G(b + k), G(a + k)))
-    elif n in ("STOREP_F", "STOREP_ENT", "STOREP_FLD", "STOREP_S", "STOREP_FNC"):
-        w("((eval_t *)((byte *)sv.edicts + %s))->_int = %s;" % (I(b), I(a)))
-    elif n == "STOREP_V":
-        w("{ eval_t *p = (eval_t *)((byte *)sv.edicts + %s); p->vector[0] = %s; p->vector[1] = %s; p->vector[2] = %s; }"
-          % (I(b), G(a), G(a + 1), G(a + 2)))
+    elif n in ("STOREP_F", "STOREP_ENT", "STOREP_FLD", "STOREP_S", "STOREP_FNC", "STOREP_V"):
+        nw = 3 if n == "STOREP_V" else 1
+        prev = ctx.get("addr")
+        f = ctx["constfields"].get(prev[2]) if prev else None
+        if prev and prev[0] == b and prev[0] != prev[1] and f is not None:
+            # right after the OP_ADDRESS that made the pointer: store straight
+            # into that edict's field, where the pointer points
+            w("{ edict_t *ed = PROG_TO_EDICT(%s);" % I(prev[1]))
+            for k in range(nw):
+                w("QC_ST(ed, %d, %d, %s);" % (f + k, ctx["coremap"][f + k], I(a + k)))
+            w("}")
+        else:
+            w("QC_STP(%s, %s, %s, %s, %d);" % (I(b), I(a), I(a + 1) if nw == 3 else "0",
+                                              I(a + 2) if nw == 3 else "0", nw))
     elif n == "ADDRESS":
         w("{ edict_t *ed = PROG_TO_EDICT(%s); if (ed == (edict_t *)sv.edicts && sv.state == ss_active) "
-          "PR_RunError (\"assignment to world entity\"); %s = (byte *)((int *)&ed->v + %s) - (byte *)sv.edicts; }"
-          % (I(a), I(c), I(b)))
+          "PR_RunError (\"assignment to world entity\"); %s = QC_ADDR(%s, ed, %s); }"
+          % (I(a), I(c), I(a), I(b)))
     elif n in ("LOAD_F", "LOAD_FLD", "LOAD_ENT", "LOAD_S", "LOAD_FNC"):
-        w("{ edict_t *ed = PROG_TO_EDICT(%s); int *p = (int *)&ed->v + %s; %s = *p; }" % (I(a), I(b), I(c)))
+        w("{ edict_t *ed = PROG_TO_EDICT(%s); %s = %s; }" % (I(a), I(c), field_ld(ctx, "ed", b, 0)))
     elif n == "LOAD_V":
-        w("{ edict_t *ed = PROG_TO_EDICT(%s); eval_t *p = (eval_t *)((int *)&ed->v + %s); "
-          "%s = p->vector[0]; %s = p->vector[1]; %s = p->vector[2]; }" % (I(a), I(b), G(c), G(c + 1), G(c + 2)))
+        w("{ edict_t *ed = PROG_TO_EDICT(%s); %s = %s; %s = %s; %s = %s; }"
+          % (I(a), I(c), field_ld(ctx, "ed", b, 0), I(c + 1), field_ld(ctx, "ed", b, 1),
+             I(c + 2), field_ld(ctx, "ed", b, 2)))
     elif n == "IFNOT":
         w("if (!%s) goto %s;" % (I(a), label(s + b)))
     elif n == "IF":
@@ -169,6 +231,25 @@ HEADER = """/* Generated by tools/qc2c.py from %s -- do not edit, do not commit.
 void PR_AOT_Call (func_t fnum);
 #define G pr_globals
 #define I ((int *)pr_globals)
+
+/* Edict field access, the same as engine/pr_exec.c does it for each layout.
+ * QC_LD and QC_ST take the field number and its entcore_t word (-1 for a
+ * field in the sparse list), both constants here. */
+#ifdef QOG_EDICT_SPARSE
+#define QC_LD(ed,o,k)	((k) >= 0 ? ((int *)&(ed)->v)[(k) >= 0 ? (k) : 0] : ED_ColdGet (ed, o))
+#define QC_ST(ed,o,k,x)	do { if ((k) >= 0) ((int *)&(ed)->v)[(k) >= 0 ? (k) : 0] = (x); else ED_ColdSet (ed, o, x); } while (0)
+#define QC_LDX(ed,o)	ED_FieldGet (ed, o)
+#define QC_ADDR(e,ed,o)	(((e) << 8) | (o))
+#define QC_STP(p,x0,x1,x2,n)	do { edict_t *pe = PROG_TO_EDICT(((p) >> 8)); int po = (p) & 255; \
+	ED_FieldSet (pe, po, x0); if ((n) == 3) { ED_FieldSet (pe, po + 1, x1); ED_FieldSet (pe, po + 2, x2); } } while (0)
+#else
+#define QC_LD(ed,o,k)	(((int *)&(ed)->v)[o])
+#define QC_ST(ed,o,k,x)	(((int *)&(ed)->v)[o] = (x))
+#define QC_LDX(ed,o)	(((int *)&(ed)->v)[o])
+#define QC_ADDR(e,ed,o)	((byte *)((int *)&(ed)->v + (o)) - (byte *)sv.edicts)
+#define QC_STP(p,x0,x1,x2,n)	do { int *pp = (int *)((byte *)sv.edicts + (p)); \
+	pp[0] = (x0); if ((n) == 3) { pp[1] = (x1); pp[2] = (x2); } } while (0)
+#endif
 """
 
 
@@ -195,10 +276,14 @@ def generate(p, src_name):
         out.append("/* %s */\nstatic void %s (void)\n{" % (cstr(p["strings"], s_name), fname))
         body = []
         label = lambda t: "L%d" % t
+        ctx = dict(constfields=p["constfields"], coremap=p["coremap"])
         for s in range(first, end):
             op, a, b, c = stmts[s]
             lines = []
-            emit_stmt(s, op, a, b, c, lines, label)
+            if s in targets:
+                ctx["addr"] = None   # a jump lands here, the statement before may not have run
+            emit_stmt(s, op, a, b, c, lines, label, ctx)
+            ctx["addr"] = (c, a, b) if op == OP["ADDRESS"] else None
             prefix = ("L%d: " % s) if s in targets else "\t"
             body.append(prefix + " ".join(lines))
         if any(t >= end or t < first for t in targets):
@@ -210,7 +295,10 @@ def generate(p, src_name):
     out.append("};")
     out.append("const int pr_aot_numfunctions = %d;" % len(funcs))
     out.append("const int pr_aot_numstatements = %d;" % p["nst"])
-    out.append("const unsigned pr_aot_fingerprint = 0x%08Xu;\n" % p["fingerprint"])
+    out.append("const unsigned pr_aot_fingerprint = 0x%08Xu;" % p["fingerprint"])
+    out.append("/* QOG_EDICT_SPARSE: the entcore_t word of each field number that the code above assumes */")
+    out.append("const int pr_aot_numfields = %d;" % p["entf"])
+    out.append("const signed char pr_aot_coremap[%d] = {%s};\n" % (p["entf"], ",".join(str(x) for x in p["coremap"])))
     return "\n".join(out)
 
 
@@ -222,6 +310,8 @@ void (*const pr_aot_functions[1]) (void) = { 0 };
 const int pr_aot_numfunctions = 0;
 const int pr_aot_numstatements = 0;
 const unsigned pr_aot_fingerprint = 0u;
+const int pr_aot_numfields = 0;
+const signed char pr_aot_coremap[1] = { 0 };
 """
 
 
@@ -240,6 +330,7 @@ def main(argv=None):
     else:
         progs = open(a.progs, "rb").read() if a.progs else read_pak_file(a.pak, "progs.dat")
         p = parse(progs)
+        p["coremap"] = core_map(p["entf"])
         text = generate(p, os.path.basename(a.progs or a.pak))
         msg = "qc2c: %d functions, %d statements -> %s" % (p["nfn"], p["nst"], a.out)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)

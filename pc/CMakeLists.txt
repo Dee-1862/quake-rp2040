@@ -117,3 +117,7 @@ target_link_libraries(quakeog_pc PRIVATE user32 gdi32 winmm)
 # every run has the same memory layout, so qog_statehash is repeatable.
 target_link_options(quakeog_pc PRIVATE /DYNAMICBASE:NO)
 set_target_properties(quakeog_pc PROPERTIES WIN32_EXECUTABLE OFF)
+# Server entities (edicts) and QuakeC memory.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_EDICT_STATS                 # edict use peaks in qog_mem (PC measurement only)
+    QOG_EDICT_SPARSE)               # edicts keep 48 core field words, the rest as pairs in an arena

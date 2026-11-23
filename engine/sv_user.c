@@ -70,7 +70,7 @@ void SV_SetIdealPitch (void)
 	{
 		top[0] = sv_player->v.origin[0] + cosval*(i+3)*12;
 		top[1] = sv_player->v.origin[1] + sinval*(i+3)*12;
-		top[2] = sv_player->v.origin[2] + sv_player->v.view_ofs[2];
+		top[2] = sv_player->v.origin[2] + EV_VECTOR(sv_player, view_ofs)[2];
 		
 		bottom[0] = top[0];
 		bottom[1] = top[1];
@@ -103,13 +103,13 @@ void SV_SetIdealPitch (void)
 	
 	if (!dir)
 	{
-		sv_player->v.idealpitch = 0;
+		EV_SETFLOAT(sv_player, idealpitch, 0);
 		return;
 	}
 	
 	if (steps < 2)
 		return;
-	sv_player->v.idealpitch = -dir * sv_idealpitchscale.value;
+	EV_SETFLOAT(sv_player, idealpitch, -dir * sv_idealpitchscale.value);
 }
 
 
@@ -229,6 +229,18 @@ void SV_AirAccelerate (vec3_t wishveloc)
 void DropPunchAngle (void)
 {
 	float	len;
+#ifdef QOG_EDICT_SPARSE
+	vec3_t	punch;	// QuakeOG: punchangle is not a core field, work on a copy
+
+	VectorCopy (EV_VECTOR(sv_player, punchangle), punch);
+	len = VectorNormalize (punch);
+	
+	len -= 10*host_frametime;
+	if (len < 0)
+		len = 0;
+	VectorScale (punch, len, punch);
+	EV_SETVECTOR(sv_player, punchangle, punch);
+#else
 	
 	len = VectorNormalize (sv_player->v.punchangle);
 	
@@ -236,6 +248,7 @@ void DropPunchAngle (void)
 	if (len < 0)
 		len = 0;
 	VectorScale (sv_player->v.punchangle, len, sv_player->v.punchangle);
+#endif
 }
 
 /*
@@ -253,7 +266,7 @@ void SV_WaterMove (void)
 //
 // user intentions
 //
-	AngleVectors (sv_player->v.v_angle, forward, right, up);
+	AngleVectors (EV_VECTOR(sv_player, v_angle), forward, right, up);
 
 	for (i=0 ; i<3 ; i++)
 		wishvel[i] = forward[i]*cmd.forwardmove + right[i]*cmd.sidemove;
@@ -306,14 +319,14 @@ void SV_WaterMove (void)
 
 void SV_WaterJump (void)
 {
-	if (sv.time > sv_player->v.teleport_time
+	if (sv.time > EV_FLOAT(sv_player, teleport_time)
 	|| !sv_player->v.waterlevel)
 	{
 		sv_player->v.flags = (int)sv_player->v.flags & ~FL_WATERJUMP;
-		sv_player->v.teleport_time = 0;
+		EV_SETFLOAT(sv_player, teleport_time, 0);
 	}
-	sv_player->v.velocity[0] = sv_player->v.movedir[0];
-	sv_player->v.velocity[1] = sv_player->v.movedir[1];
+	sv_player->v.velocity[0] = EV_VECTOR(sv_player, movedir)[0];
+	sv_player->v.velocity[1] = EV_VECTOR(sv_player, movedir)[1];
 }
 
 
@@ -335,7 +348,7 @@ void SV_AirMove (void)
 	smove = cmd.sidemove;
 	
 // hack to not let you back into teleporter
-	if (sv.time < sv_player->v.teleport_time && fmove < 0)
+	if (sv.time < EV_FLOAT(sv_player, teleport_time) && fmove < 0)
 		fmove = 0;
 		
 	for (i=0 ; i<3 ; i++)
@@ -394,7 +407,7 @@ void SV_ClientThink (void)
 //
 // if dead, behave differently
 //
-	if (sv_player->v.health <= 0)
+	if (EV_FLOAT(sv_player, health) <= 0)
 		return;
 
 //
@@ -403,9 +416,9 @@ void SV_ClientThink (void)
 	cmd = host_client->cmd;
 	angles = sv_player->v.angles;
 	
-	VectorAdd (sv_player->v.v_angle, sv_player->v.punchangle, v_angle);
+	VectorAdd (EV_VECTOR(sv_player, v_angle), EV_VECTOR(sv_player, punchangle), v_angle);
 	angles[ROLL] = V_CalcRoll (sv_player->v.angles, sv_player->v.velocity)*4;
-	if (!sv_player->v.fixangle)
+	if (!EV_FLOAT(sv_player, fixangle))
 	{
 		angles[PITCH] = -v_angle[PITCH]/3;
 		angles[YAW] = v_angle[YAW];
@@ -450,7 +463,7 @@ void SV_ReadClientMove (usercmd_t *move)
 	for (i=0 ; i<3 ; i++)
 		angle[i] = MSG_ReadAngle ();
 
-	VectorCopy (angle, host_client->edict->v.v_angle);
+	EV_SETVECTOR(host_client->edict, v_angle, angle);
 		
 // read movement
 	move->forwardmove = MSG_ReadShort ();
@@ -459,12 +472,12 @@ void SV_ReadClientMove (usercmd_t *move)
 	
 // read buttons
 	bits = MSG_ReadByte ();
-	host_client->edict->v.button0 = bits & 1;
-	host_client->edict->v.button2 = (bits & 2)>>1;
+	EV_SETFLOAT(host_client->edict, button0, bits & 1);
+	EV_SETFLOAT(host_client->edict, button2, (bits & 2)>>1);
 
 	i = MSG_ReadByte ();
 	if (i)
-		host_client->edict->v.impulse = i;
+		EV_SETFLOAT(host_client->edict, impulse, i);
 
 #ifdef QUAKE2
 // read light level

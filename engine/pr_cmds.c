@@ -715,7 +715,7 @@ int PF_newcheckclient (int check)
 
 		if (ent->free)
 			continue;
-		if (ent->v.health <= 0)
+		if (EV_FLOAT(ent, health) <= 0)
 			continue;
 		if ((int)ent->v.flags & FL_NOTARGET)
 			continue;
@@ -725,7 +725,7 @@ int PF_newcheckclient (int check)
 	}
 
 // get the PVS for the entity
-	VectorAdd (ent->v.origin, ent->v.view_ofs, org);
+	VectorAdd (ent->v.origin, EV_VECTOR(ent, view_ofs), org);
 	leaf = Mod_PointInLeaf (org, sv.worldmodel);
 	pvs = Mod_LeafPVS (leaf, sv.worldmodel);
 	memcpy (checkpvs, pvs, (sv.worldmodel->numleafs+7)>>3 );
@@ -766,7 +766,7 @@ void PF_checkclient (void)
 
 // return check if it might be visible	
 	ent = EDICT_NUM(sv.lastcheck);
-	if (ent->free || ent->v.health <= 0)
+	if (ent->free || EV_FLOAT(ent, health) <= 0)
 	{
 		RETURN_EDICT(sv.edicts);
 		return;
@@ -774,7 +774,7 @@ void PF_checkclient (void)
 
 // if current entity can't possibly see the check entity, return 0
 	self = PROG_TO_EDICT(pr_global_struct->self);
-	VectorAdd (self->v.origin, self->v.view_ofs, view);
+	VectorAdd (self->v.origin, EV_VECTOR(self, view_ofs), view);
 	leaf = Mod_PointInLeaf (view, sv.worldmodel);
 	l = (leaf - sv.worldmodel->leafs) - 1;
 	if ( (l<0) || !(checkpvs[l>>3] & (1<<(l&7)) ) )
@@ -902,7 +902,7 @@ void PF_findradius (void)
 		if (Length(eorg) > rad)
 			continue;
 			
-		ent->v.chain = EDICT_TO_PROG(chain);
+		EV_SETINT(ent, chain, EDICT_TO_PROG(chain));
 		chain = ent;
 	}
 
@@ -1349,8 +1349,8 @@ void PF_aim (void)
 	VectorCopy (pr_global_struct->v_forward, dir);
 	VectorMA (start, 2048, dir, end);
 	tr = SV_Move (start, vec3_origin, vec3_origin, end, false, ent);
-	if (tr.ent && tr.ent->v.takedamage == DAMAGE_AIM
-	&& (!teamplay.value || ent->v.team <=0 || ent->v.team != tr.ent->v.team) )
+	if (tr.ent && EV_FLOAT(tr.ent, takedamage) == DAMAGE_AIM
+	&& (!teamplay.value || EV_FLOAT(ent, team) <=0 || EV_FLOAT(ent, team) != EV_FLOAT(tr.ent, team)) )
 	{
 		VectorCopy (pr_global_struct->v_forward, G_VECTOR(OFS_RETURN));
 		return;
@@ -1365,11 +1365,11 @@ void PF_aim (void)
 	check = NEXT_EDICT(sv.edicts);
 	for (i=1 ; i<sv.num_edicts ; i++, check = NEXT_EDICT(check) )
 	{
-		if (check->v.takedamage != DAMAGE_AIM)
+		if (EV_FLOAT(check, takedamage) != DAMAGE_AIM)
 			continue;
 		if (check == ent)
 			continue;
-		if (teamplay.value && ent->v.team > 0 && ent->v.team == check->v.team)
+		if (teamplay.value && EV_FLOAT(ent, team) > 0 && EV_FLOAT(ent, team) == EV_FLOAT(check, team))
 			continue;	// don't aim at teammate
 		for (j=0 ; j<3 ; j++)
 			end[j] = check->v.origin[j]
@@ -1416,8 +1416,8 @@ void PF_changeyaw (void)
 	
 	ent = PROG_TO_EDICT(pr_global_struct->self);
 	current = anglemod( ent->v.angles[1] );
-	ideal = ent->v.ideal_yaw;
-	speed = ent->v.yaw_speed;
+	ideal = EV_FLOAT(ent, ideal_yaw);
+	speed = EV_FLOAT(ent, yaw_speed);
 	
 	if (current == ideal)
 		return;

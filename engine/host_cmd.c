@@ -97,7 +97,7 @@ void Host_Status_f (void)
 		}
 		else
 			hours = 0;
-		print ("#%-2u %-16.16s  %3i  %2i:%02i:%02i\n", j+1, client->name, (int)client->edict->v.frags, hours, minutes, seconds);
+		print ("#%-2u %-16.16s  %3i  %2i:%02i:%02i\n", j+1, client->name, (int)EV_FLOAT(client->edict, frags), hours, minutes, seconds);
 		print ("   %s\n", client->netconnection->address);
 	}
 }
@@ -504,7 +504,7 @@ void Host_Savegame_f (void)
 		
 	for (i=0 ; i<svs.maxclients ; i++)
 	{
-		if (svs.clients[i].active && (svs.clients[i].edict->v.health <= 0) )
+		if (svs.clients[i].active && (EV_FLOAT(svs.clients[i].edict, health) <= 0) )
 		{
 			Con_Printf ("Can't savegame with a dead player\n");
 			return;
@@ -695,7 +695,7 @@ void Host_Loadgame_f (void)
 		{	// parse an edict
 
 			ent = EDICT_NUM(entnum);
-			memset (&ent->v, 0, progs->entityfields * 4);
+			ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
 			ent->free = false;
 			ED_ParseEdict (start, ent);
 	
@@ -859,7 +859,7 @@ int LoadGamestate(char *level, char *startspot)
 		// parse an edict
 
 		ent = EDICT_NUM(entnum);
-		memset (&ent->v, 0, progs->entityfields * 4);
+		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
 		ent->free = false;
 		ED_ParseEdict (start, ent);
 	
@@ -953,7 +953,7 @@ void Host_Name_f (void)
 		if (Q_strcmp(host_client->name, newName) != 0)
 			Con_Printf ("%s renamed to %s\n", host_client->name, newName);
 	Q_strcpy (host_client->name, newName);
-	host_client->edict->v.netname = host_client->name - pr_strings;
+	EV_SETINT(host_client->edict, netname, host_client->name - pr_strings);
 	
 // send notification to all clients
 	
@@ -1075,7 +1075,7 @@ void Host_Say(qboolean teamonly)
 	{
 		if (!client || !client->active || !client->spawned)
 			continue;
-		if (teamplay.value && teamonly && client->edict->v.team != save->edict->v.team)
+		if (teamplay.value && teamonly && EV_FLOAT(client->edict, team) != EV_FLOAT(save->edict, team))
 			continue;
 		host_client = client;
 		SV_ClientPrintf("%s", text);
@@ -1193,7 +1193,7 @@ void Host_Color_f(void)
 	}
 
 	host_client->colors = playercolor;
-	host_client->edict->v.team = bottom + 1;
+	EV_SETFLOAT(host_client->edict, team, bottom + 1);
 
 // send notification to all clients
 	MSG_WriteByte (&sv.reliable_datagram, svc_updatecolors);
@@ -1214,7 +1214,7 @@ void Host_Kill_f (void)
 		return;
 	}
 
-	if (sv_player->v.health <= 0)
+	if (EV_FLOAT(sv_player, health) <= 0)
 	{
 		SV_ClientPrintf ("Can't suicide -- allready dead!\n");
 		return;
@@ -1247,11 +1247,11 @@ void Host_Pause_f (void)
 
 		if (sv.paused)
 		{
-			SV_BroadcastPrintf ("%s paused the game\n", pr_strings + sv_player->v.netname);
+			SV_BroadcastPrintf ("%s paused the game\n", pr_strings + EV_INT(sv_player, netname));
 		}
 		else
 		{
-			SV_BroadcastPrintf ("%s unpaused the game\n",pr_strings + sv_player->v.netname);
+			SV_BroadcastPrintf ("%s unpaused the game\n",pr_strings + EV_INT(sv_player, netname));
 		}
 
 	// send notification to all clients
@@ -1322,10 +1322,10 @@ void Host_Spawn_f (void)
 		// set up the edict
 		ent = host_client->edict;
 
-		memset (&ent->v, 0, progs->entityfields * 4);
+		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
 		ent->v.colormap = NUM_FOR_EDICT(ent);
-		ent->v.team = (host_client->colors & 15) + 1;
-		ent->v.netname = host_client->name - pr_strings;
+		EV_SETFLOAT(ent, team, (host_client->colors & 15) + 1);
+		EV_SETINT(ent, netname, host_client->name - pr_strings);
 
 		// copy spawn parms out of the client_t
 
@@ -1566,21 +1566,21 @@ void Host_Give_f (void)
          if (t[0] == '6')
          {
             if (t[1] == 'a')
-               sv_player->v.items = (int)sv_player->v.items | HIT_PROXIMITY_GUN;
+               EV_SETFLOAT(sv_player, items, (int)EV_FLOAT(sv_player, items) | HIT_PROXIMITY_GUN);
             else
-               sv_player->v.items = (int)sv_player->v.items | IT_GRENADE_LAUNCHER;
+               EV_SETFLOAT(sv_player, items, (int)EV_FLOAT(sv_player, items) | IT_GRENADE_LAUNCHER);
          }
          else if (t[0] == '9')
-            sv_player->v.items = (int)sv_player->v.items | HIT_LASER_CANNON;
+            EV_SETFLOAT(sv_player, items, (int)EV_FLOAT(sv_player, items) | HIT_LASER_CANNON);
          else if (t[0] == '0')
-            sv_player->v.items = (int)sv_player->v.items | HIT_MJOLNIR;
+            EV_SETFLOAT(sv_player, items, (int)EV_FLOAT(sv_player, items) | HIT_MJOLNIR);
          else if (t[0] >= '2')
-            sv_player->v.items = (int)sv_player->v.items | (IT_SHOTGUN << (t[0] - '2'));
+            EV_SETFLOAT(sv_player, items, (int)EV_FLOAT(sv_player, items) | (IT_SHOTGUN << (t[0] - '2')));
       }
       else
       {
          if (t[0] >= '2')
-            sv_player->v.items = (int)sv_player->v.items | (IT_SHOTGUN << (t[0] - '2'));
+            EV_SETFLOAT(sv_player, items, (int)EV_FLOAT(sv_player, items) | (IT_SHOTGUN << (t[0] - '2')));
       }
 		break;
 	
@@ -1592,7 +1592,7 @@ void Host_Give_f (void)
 			    val->_float = v;
 		}
 
-        sv_player->v.ammo_shells = v;
+        EV_SETFLOAT(sv_player, ammo_shells, v);
         break;		
     case 'n':
 		if (rogue)
@@ -1601,13 +1601,13 @@ void Host_Give_f (void)
 			if (val)
 			{
 				val->_float = v;
-				if (sv_player->v.weapon <= IT_LIGHTNING)
-					sv_player->v.ammo_nails = v;
+				if (EV_FLOAT(sv_player, weapon) <= IT_LIGHTNING)
+					EV_SETFLOAT(sv_player, ammo_nails, v);
 			}
 		}
 		else
 		{
-			sv_player->v.ammo_nails = v;
+			EV_SETFLOAT(sv_player, ammo_nails, v);
 		}
         break;		
     case 'l':
@@ -1617,8 +1617,8 @@ void Host_Give_f (void)
 			if (val)
 			{
 				val->_float = v;
-				if (sv_player->v.weapon > IT_LIGHTNING)
-					sv_player->v.ammo_nails = v;
+				if (EV_FLOAT(sv_player, weapon) > IT_LIGHTNING)
+					EV_SETFLOAT(sv_player, ammo_nails, v);
 			}
 		}
         break;
@@ -1629,13 +1629,13 @@ void Host_Give_f (void)
 			if (val)
 			{
 				val->_float = v;
-				if (sv_player->v.weapon <= IT_LIGHTNING)
-					sv_player->v.ammo_rockets = v;
+				if (EV_FLOAT(sv_player, weapon) <= IT_LIGHTNING)
+					EV_SETFLOAT(sv_player, ammo_rockets, v);
 			}
 		}
 		else
 		{
-			sv_player->v.ammo_rockets = v;
+			EV_SETFLOAT(sv_player, ammo_rockets, v);
 		}
         break;		
     case 'm':
@@ -1645,13 +1645,13 @@ void Host_Give_f (void)
 			if (val)
 			{
 				val->_float = v;
-				if (sv_player->v.weapon > IT_LIGHTNING)
-					sv_player->v.ammo_rockets = v;
+				if (EV_FLOAT(sv_player, weapon) > IT_LIGHTNING)
+					EV_SETFLOAT(sv_player, ammo_rockets, v);
 			}
 		}
         break;		
     case 'h':
-        sv_player->v.health = v;
+        EV_SETFLOAT(sv_player, health, v);
         break;		
     case 'c':
 		if (rogue)
@@ -1660,13 +1660,13 @@ void Host_Give_f (void)
 			if (val)
 			{
 				val->_float = v;
-				if (sv_player->v.weapon <= IT_LIGHTNING)
-					sv_player->v.ammo_cells = v;
+				if (EV_FLOAT(sv_player, weapon) <= IT_LIGHTNING)
+					EV_SETFLOAT(sv_player, ammo_cells, v);
 			}
 		}
 		else
 		{
-			sv_player->v.ammo_cells = v;
+			EV_SETFLOAT(sv_player, ammo_cells, v);
 		}
         break;		
     case 'p':
@@ -1676,8 +1676,8 @@ void Host_Give_f (void)
 			if (val)
 			{
 				val->_float = v;
-				if (sv_player->v.weapon > IT_LIGHTNING)
-					sv_player->v.ammo_cells = v;
+				if (EV_FLOAT(sv_player, weapon) > IT_LIGHTNING)
+					EV_SETFLOAT(sv_player, ammo_cells, v);
 			}
 		}
         break;		
