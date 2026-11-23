@@ -649,9 +649,16 @@ void R_RenderWorld (void)
 {
 	int			i;
 	model_t		*clmodel;
+#if MAX_BTOFPOLYS > 0
 	btofpoly_t	btofpolys[MAX_BTOFPOLYS];
 
 	pbtofpolys = btofpolys;
+#else
+	// QuakeOG: back to front list compiled out (r_local.h)
+	if (r_worldpolysbacktofront)
+		Sys_Error ("R_RenderWorld: back to front polygons need QOG_MAX_BTOFPOLYS");
+	pbtofpolys = NULL;
+#endif
 
 	currententity = &cl_entities[0];
 	VectorCopy (r_origin, modelorg);
@@ -666,7 +673,7 @@ void R_RenderWorld (void)
 	{
 		for (i=numbtofpolys-1 ; i>=0 ; i--)
 		{
-			R_RenderPoly (btofpolys[i].psurf, btofpolys[i].clipflags);
+			R_RenderPoly (pbtofpolys[i].psurf, pbtofpolys[i].clipflags);	// QuakeOG: was btofpolys
 		}
 	}
 }

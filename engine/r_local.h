@@ -209,7 +209,15 @@ typedef struct btofpoly_s {
 	msurface_t	*psurf;
 } btofpoly_t;
 
+// QuakeOG: only a driver that sets r_worldpolysbacktofront uses this list
+// (a 40 KB array in R_RenderWorld's frame), and D_Init always clears it.
+// QOG_MAX_BTOFPOLYS 0 removes the array, R_RenderWorld then stops with an
+// error if the flag is ever set.
+#ifdef QOG_MAX_BTOFPOLYS
+#define MAX_BTOFPOLYS	QOG_MAX_BTOFPOLYS
+#else
 #define MAX_BTOFPOLYS	5000	// FIXME: tune this
+#endif
 
 extern int			numbtofpolys;
 extern btofpoly_t	*pbtofpolys;

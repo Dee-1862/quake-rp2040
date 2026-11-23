@@ -73,7 +73,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_MAXSPANS=1000               # span buffer, overflow only flushes early (id 3000)
     QOG_MAXWIDTH=320                # screen size limit for row and column tables (id 1280x1024)
     QOG_MAXHEIGHT=200
-    QOG_MAXALIASVERTS=384)          # alias model vertex limit, largest shareware model 325 (id 2000)
+    QOG_MAXALIASVERTS=384           # alias model vertex limit, largest shareware model 325 (id 2000)
+    QOG_MAX_BTOFPOLYS=0)            # unused back to front debug list compiled out (id 5000)
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
 # generated files only: the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}
