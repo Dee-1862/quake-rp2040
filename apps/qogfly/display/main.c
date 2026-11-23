@@ -7,6 +7,8 @@
  * console gets
  *
  *   [qogfly] fps 7.9  ms render 112.3 present 14.1  pt 12/79  free 3120  hunk 97536/102400
+ *   [phase] frames 16 ms setup 0.41 world 9.80 ... total 110.2 edgescan 8.1
+ *   [phase] per frame: litsurfs 180 lmcells 9000 litspans 1500 litpx 45000 ...
  *
  * fps over the last 2 s, the mean time per frame spent drawing (R_RenderView
  * plus the text) and in VID_Update (waiting for the previous scanout and
@@ -27,6 +29,8 @@
 #include <unistd.h>
 #include "quakedef.h"
 #include "qog_fly.h"
+#include "qog_phase.h"
+#include <stdarg.h>
 #include "pico/stdlib.h"
 #include "fwog_display.h"
 
@@ -42,6 +46,17 @@ extern int	hunk_low_used, hunk_high_used, hunk_size;
 extern char	__HeapLimit;				/* Pico SDK linker script */
 
 static uint32_t	fly_stack[QOG_FLY_STACK_KB * 256] __attribute__((aligned(8)));
+
+#ifdef QOG_PHASE_TIME
+static void fly_print (char *fmt, ...)
+{
+	va_list	ap;
+
+	va_start (ap, fmt);
+	vprintf (fmt, ap);
+	va_end (ap);
+}
+#endif
 
 static unsigned free_ram (void)
 {
@@ -99,6 +114,9 @@ static void __attribute__((noreturn)) fly_main (void)
 			DIAG ("[qogfly] fps %.1f  ms render %.1f present %.1f  pt %d/%d  free %u  hunk %d/%d\n",
 				  fps, render_us * 1e-3f / frames, present_us * 1e-3f / frames, pt,
 				  qog_fly_numpoints (), free_ram (), hunk_low_used + hunk_high_used, hunk_size);
+#ifdef QOG_PHASE_TIME
+			qog_phase_report (fly_print);	/* two [phase] lines, see engine/qog_phase.h */
+#endif
 			snprintf (line1, sizeof line1, "E1M1 fly-through  %.1f fps", fps);
 			snprintf (line2, sizeof line2, "render %.0f ms  point %d/%d", render_us * 1e-3f / frames,
 					  pt, qog_fly_numpoints ());

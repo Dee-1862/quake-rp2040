@@ -15,6 +15,7 @@ add_executable(qogfly_display EXCLUDE_FROM_ALL
     display/main.c
     display/fly_wrap.c
     ${QOG_ROOT}/port/common/qog_fly.c
+    ${QOG_ROOT}/port/common/qog_phase.c
     ${QOG_ROOT}/port/rp2040/sys_rp2040.c
     ${QOG_ROOT}/port/rp2040/vid_rp2040.c
     ${QOG_ROOT}/port/rp2040/snd_rp2040.c)
@@ -41,6 +42,12 @@ add_library(qog_engine_fly STATIC EXCLUDE_FROM_ALL ${_fly_src} ${_fly_aot})
 target_include_directories(qog_engine_fly PUBLIC
     ${QOG_ROOT}/engine ${QOG_ROOT}/port/common ${QOG_ROOT}/platform)
 target_compile_definitions(qog_engine_fly PUBLIC ${_fly_defs} QOG_PARTICLES_PRESET)
+# Render phase times over USB every 2 s (engine/qog_phase.h, Agent P).
+# About 2,000 timer reads and three walks of the span lists per frame.
+option(QOGFLY_PHASE "qogfly prints the render phase split" ON)
+if(QOGFLY_PHASE)
+    target_compile_definitions(qog_engine_fly PUBLIC QOG_PHASE_TIME)
+endif()
 target_compile_options(qog_engine_fly PRIVATE -w -Wno-implicit-function-declaration -fstack-usage)
 set_source_files_properties(${_fly_src} ${_fly_aot} PROPERTIES COMPILE_DEFINITIONS "rand=qog_rand")
 target_link_libraries(qog_engine_fly PUBLIC pico_stdlib)
