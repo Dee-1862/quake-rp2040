@@ -71,7 +71,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_NUMSTACKEDGES=1600          # render tables on the stack, measured peaks 1030 edges
     QOG_NUMSTACKSURFACES=640        #   and 435 surfaces (id 2400 and 800)
     QOG_MAXSPANS=1000)              # span buffer, overflow only flushes early (id 3000)
-# BSP structures built at map load (engine/model.c), see docs/changes.md.
+# BSP structures built at map load, each flag explained where engine/model.h uses it.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_PLANES_EXACT                # planes allocated once, not twice (id's unused second half)
     QOG_MARKSURF16                  # mark surfaces as the file's 16-bit numbers, in place
