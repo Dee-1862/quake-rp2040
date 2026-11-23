@@ -1842,6 +1842,31 @@ void Host_Startdemos_f (void)
 	for (i=1 ; i<c+1 ; i++)
 		strncpy (cls.demos[i-1], Cmd_Argv(i), sizeof(cls.demos[0])-1);
 
+#ifdef QOG_DEMOS_OPTIONAL
+	// QuakeOG: the loop keeps only the demos that are present. Without any
+	// (the board's data image leaves them out) it does not start, so the
+	// game opens on the console instead of a missing file error.
+	{
+		char	name[MAX_OSPATH];
+		int		n = 0;
+
+		for (i=0 ; i<c ; i++)
+		{
+			Q_strncpy (name, cls.demos[i], sizeof(name) - 5);
+			COM_DefaultExtension (name, ".dem");
+			if (COM_HasFile (name))
+				memmove (cls.demos[n++], cls.demos[i], sizeof(cls.demos[0]));
+		}
+		if (n < c)
+			cls.demos[n][0] = 0;
+		if (!n)
+		{
+			cls.demonum = -1;
+			return;
+		}
+	}
+#endif
+
 	if (!sv.active && cls.demonum != -1 && !cls.demoplayback)
 	{
 		cls.demonum = 0;

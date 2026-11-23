@@ -42,7 +42,7 @@ CFLAGS += ["-DQOG_CONBACK_FLASH", "-DQOG_ENTITY_PACKED", "-DQOG_PARTICLE_PACKED"
 # Model table, server tables and board wiring (Agent I, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_MOD_FLASH", "-DQOG_SV_TABLES", "-DQOG_SV_MAX_MODELS=208", "-DQOG_SV_MAX_SOUNDS=176", "-DQOG_CONST_NOVIS", "-DQOG_PVS_LEAFS=4096"]
 # Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
-CFLAGS += ["-DQOG_BAKE_STUBS"]
+CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

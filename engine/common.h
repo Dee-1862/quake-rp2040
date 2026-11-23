@@ -182,6 +182,8 @@ byte *COM_FlashFile (char *path, int *length);
 qboolean COM_InFlash (void *p);
 // QuakeOG: calls fn with every file name in every pack (map baker)
 void COM_ForEachPackFile (void (*fn) (char *name));
+// QuakeOG: true if the search path holds path, nothing opened or printed
+qboolean COM_HasFile (char *path);
 // QuakeOG: called with every file found in a pack when set (asset manifests)
 extern void (*com_fileopened) (char *path);
 void COM_LoadCacheFile (char *path, struct cache_user_s *cu);

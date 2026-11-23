@@ -154,4 +154,5 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_PVS_LEAFS=4096)             # server PVS rows, largest full-game map 2156 leafs (id 8192)
 # Flash budget for the board's data image (Agent J)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_BAKE_STUBS)                 # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
+    QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
+    QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none

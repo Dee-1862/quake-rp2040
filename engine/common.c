@@ -1849,6 +1849,40 @@ void COM_ForEachPackFile (void (*fn) (char *name))
 				fn (Pak_Name (search->pack, i));
 }
 
+/*
+============
+COM_HasFile
+
+QuakeOG: true if COM_FindFile would find path, without opening it or
+printing anything (QOG_DEMOS_OPTIONAL in host_cmd.c).
+============
+*/
+qboolean COM_HasFile (char *path)
+{
+	searchpath_t    *search;
+	int             i;
+	char            netpath[MAX_OSPATH];
+
+	for (search = com_searchpaths ; search ; search = search->next)
+	{
+		if (search->pack)
+		{
+			for (i=0 ; i<search->pack->numfiles ; i++)
+				if (!strcmp (Pak_Name (search->pack, i), path))
+					return true;
+		}
+		else
+		{
+			if (!static_registered && (strchr (path, '/') || strchr (path, '\\')))
+				continue;	// same rule as COM_FindFile
+			sprintf (netpath, "%s/%s", search->filename, path);
+			if (Sys_FileTime (netpath) != -1)
+				return true;
+		}
+	}
+	return false;
+}
+
 
 /*
 ================
