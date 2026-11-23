@@ -50,6 +50,14 @@ unsigned int	cacheoffset;
 #ifndef EC16_WINDOW		// frames per window, at most 0x7FFF (smaller only to test)
 #define EC16_WINDOW		0x7FFF
 #endif
+#ifdef QOG_EDGECACHE_ZBUFFER
+// QuakeOG: the world's cache is in the z-buffer (or on the hunk, R_NewMap)
+// and R_EdgeDrawing fills it with EC16_NEVER every frame, so a fully
+// clipped entry carries frame 0 and matches only in the frame that wrote
+// it. Only world faces read the cache (insubmodel is false only while the
+// world is drawn), so brush entity faces do not store in it.
+#define r_qog_ecframe	0
+#else
 static int		r_qog_ecframe;	// r_framecount minus the model's window start
 
 static void R_QogEdgeCacheWindow (model_t *m)
@@ -66,6 +74,7 @@ static void R_QogEdgeCacheWindow (model_t *m)
 	}
 	r_qog_ecframe = r_framecount - *start;
 }
+#endif
 
 static unsigned short R_QogEdgeCacheValue (unsigned int offset)
 {
@@ -76,11 +85,17 @@ static unsigned short R_QogEdgeCacheValue (unsigned int offset)
 	return offset / sizeof(edge_t);
 }
 
-#define EC_IS_CLIPPED(m, e)		(EDGE_CACHE (m, e) & EC16_CLIPPED)
-#define EC_CLIPPED_NOW(m, e)	((EDGE_CACHE (m, e) & ~EC16_CLIPPED) == r_qog_ecframe)
-#define EC_EDGE(m, e)			(r_edges + EDGE_CACHE (m, e))
-#define EC_VALID(m, e)			((edge_p - r_edges) > EDGE_CACHE (m, e))
+#ifdef QOG_EDGECACHE_ZBUFFER
+#define EC_CACHE(m, e)			(r_qog_edgecache[(e) - (m)->edges])
+#define EC_STORE(m, e, v)		do { if (!insubmodel) EC_CACHE (m, e) = R_QogEdgeCacheValue (v); } while (0)
+#else
+#define EC_CACHE(m, e)			EDGE_CACHE (m, e)
 #define EC_STORE(m, e, v)		(EDGE_CACHE (m, e) = R_QogEdgeCacheValue (v))
+#endif
+#define EC_IS_CLIPPED(m, e)		(EC_CACHE (m, e) & EC16_CLIPPED)
+#define EC_CLIPPED_NOW(m, e)	((EC_CACHE (m, e) & ~EC16_CLIPPED) == r_qog_ecframe)
+#define EC_EDGE(m, e)			(r_edges + EC_CACHE (m, e))
+#define EC_VALID(m, e)			((edge_p - r_edges) > EC_CACHE (m, e))
 #else
 #define EC_IS_CLIPPED(m, e)		(EDGE_CACHE (m, e) & FULLY_CLIPPED_CACHED)
 #define EC_CLIPPED_NOW(m, e)	((EDGE_CACHE (m, e) & FRAMECOUNT_MASK) == r_framecount)
@@ -491,7 +506,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	medge_t		*pedges, tedge;
 	clipplane_t	*pclip;
 
-#ifdef QOG_EDGECACHE16
+#if defined(QOG_EDGECACHE16) && !defined(QOG_EDGECACHE_ZBUFFER)
 	R_QogEdgeCacheWindow (currententity->model);	// QuakeOG
 #endif
 

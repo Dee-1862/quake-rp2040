@@ -83,6 +83,11 @@ void VID_Init(unsigned char *palette) {
 #ifdef QOG_HUD_IN_ZBUFFER
     r_zalias_row = ZROWS;
 #endif
+#ifdef QOG_ZTEMP
+    /* QuakeOG: short-lived renderer tables use the z-buffer (engine/r_shared.h) */
+    r_ztemp_base = (byte *)zbuffer;
+    r_ztemp_bytes = ZBUFFER_BYTES & ~3;
+#endif
     D_InitCaches(surfcache, sizeof surfcache);
     if (!qog_video_init(&vc)) Sys_Error("VID_Init: LCD did not start");
     VID_SetPalette(palette);

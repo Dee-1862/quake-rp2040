@@ -21,6 +21,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#ifdef QOG_EDGES_IN_ZBUFFER
+#include "d_local.h"	// QuakeOG: d_pzbuffer, d_zwidth (R_QogScanRows)
+#endif
 
 #if 0
 // FIXME
@@ -49,8 +52,8 @@ edgeref_t	removeedges[MAXHEIGHT];
 espan_t	*span_p, *max_span_p;
 #ifdef QOG_ESPAN_T_PACKED
 byte	*r_spanbase;	// QuakeOG: see espan_t in r_shared.h
-#ifdef QOG_SPANS_IN_EDGES
-byte	*r_spanpool_end;	// QuakeOG: end of the edge table, see r_local.h
+#if defined(QOG_SPANS_IN_EDGES) || defined(QOG_EDGES_IN_ZBUFFER)
+byte	*r_spanpool_end;	// QuakeOG: end of the span room, see r_local.h
 #endif
 // QuakeOG: span measurements for the PC qog_rpeaks command (port/pc/vid_pc.c)
 int		r_qog_peakspanroom, r_qog_minspanroom, r_qog_peakframespans, r_qog_peakflushspans;
@@ -662,6 +665,407 @@ void R_GenerateSpansBackward (void)
 }
 
 
+#ifdef QOG_EDGES_IN_ZBUFFER
+/*
+==============
+QuakeOG: R_ScanEdges with the edge table in the z-buffer
+
+The edge table sits at the end of the z-buffer, and a span writes z only in
+its own scan line's row (d_pzbuffer[v * d_zwidth + u]). Spans are made top
+to bottom, so the spans of rows above the edge table can be drawn whenever
+the span buffer fills, as id does, while those of rows that still hold
+needed edges have to wait. The buffer is flushed:
+ - when it is full and every span in it lies above the edges (id's flush)
+ - before the first scan line whose row reaches the edges, so that the
+   buffer is empty when the waiting starts
+ - when it is full while spans wait. First the edges no longer needed (their
+   last scan line is done) are dropped and the rest moved to the end of the
+   z-buffer (R_QogMoveEdges). If every waiting span then lies above them,
+   the buffer is flushed and the scan goes on.
+ - if not, the edges still needed are moved out of the z-buffer, to auxedges
+   or a table on the stack of the old size (R_QogEdgesToStack), and the scan
+   goes on with id's flushing. This is the exact fallback.
+ - after the last scan line, when no edge is needed any more
+Each pixel is drawn once, by one span, whichever flush draws it, so the
+picture is the same as id's. The surfaces and spans cannot live in the
+z-buffer: the last flush writes every z row while it still reads them.
+==============
+*/
+#if defined(__GNUC__)
+#define QOG_NOINLINE	__attribute__((noinline))
+#define QOG_ALLOCA(n)	__builtin_alloca (n)
+#elif defined(_MSC_VER)
+#include <malloc.h>
+#define QOG_NOINLINE	__declspec(noinline)
+#define QOG_ALLOCA(n)	_alloca (n)
+#else
+#error "QOG_EDGES_IN_ZBUFFER needs alloca"
+#endif
+
+int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;	// measurements
+
+static byte		*r_qog_edgeend;		// end of the edge table
+static espan_t	*r_qog_basespan;	// the span buffer
+static int		r_qog_framespans;	// measurement only
+
+#define EDGE_LIVE	0xFFFE		// marks in edge_t.owner, see R_QogMoveEdges
+#define EDGE_DEAD	0xFFFF
+#define NEWREF(r)	((r) == EDGE_NONE ? EDGE_NONE : EDGE_PTR(r)->owner)
+// end of the z bytes that the spans of scan lines up to iv write
+#define ZROWS_END(iv)	((byte *)(d_pzbuffer + ((iv) + 1) * (int)d_zwidth))
+
+/*
+==============
+R_QogMarkEdges
+
+QuakeOG: marks the edges needed after scan line iv: the active list from
+edge_head to edge_sentinel, and the lists of later scan lines. The owner
+field, which only R_RenderFace reads, holds the mark. Returns their number.
+==============
+*/
+static int R_QogMarkEdges (int iv, int bottom)
+{
+	edge_t		*e;
+	edgeref_t	r;
+	int			w, count;
+
+	for (e=r_edgesentinels ; e<(edge_t *)r_qog_edgeend ; e++)
+		e->owner = EDGE_DEAD;
+	count = 0;
+	for (r = EDGE_REF(&edge_head) ; ; r = EDGE_PTR(r)->next)
+	{
+		EDGE_PTR(r)->owner = EDGE_LIVE;
+		count++;
+		if (r == EDGE_REF(&edge_sentinel))
+			break;
+	}
+	for (w=iv+1 ; w<=bottom ; w++)
+	{
+		for (r = newedges[w] ; r != EDGE_NONE ; r = EDGE_PTR(r)->next)
+		{
+			EDGE_PTR(r)->owner = EDGE_LIVE;
+			count++;
+		}
+	}
+	return count;
+}
+
+/*
+==============
+R_QogMoveEdges
+
+QuakeOG: moves the edges R_QogMarkEdges marked, in their order, so that
+they end at dstend, and rewrites every link to them for the new r_edgebase
+newbase. The others are dropped. owner holds the new offset meanwhile.
+==============
+*/
+static void R_QogMoveEdges (int iv, int bottom, byte *dstend, byte *newbase)
+{
+	edge_t		*e, *first, *last, *newsentinels;
+	byte		*dst;
+	edgeref_t	r, next;
+	int			w;
+
+	first = r_edgesentinels;
+	last = (edge_t *)r_qog_edgeend;
+
+// their new offsets, from the end down
+	dst = dstend;
+	for (e=last-1 ; e>=first ; e--)
+	{
+		if (e->owner == EDGE_LIVE)
+		{
+			dst -= sizeof(edge_t);
+			e->owner = (unsigned short)(dst - newbase);
+		}
+	}
+
+// the links, each read before it is rewritten. The sentinels' unused links
+// are EDGE_NONE (R_EdgeDrawing clears them), and the edges of later scan
+// lines have no prev yet (R_InsertNewEdges sets it).
+	for (r = EDGE_REF(&edge_head) ; ; r = next)
+	{
+		e = EDGE_PTR(r);
+		next = e->next;
+		e->next = NEWREF(next);
+		e->prev = NEWREF(e->prev);
+		e->nextremove = NEWREF(e->nextremove);
+		if (e == &edge_sentinel)
+			break;
+	}
+	for (w=iv+1 ; w<=bottom ; w++)
+	{
+		for (r = newedges[w] ; r != EDGE_NONE ; r = next)
+		{
+			e = EDGE_PTR(r);
+			next = e->next;
+			e->next = NEWREF(next);
+			e->nextremove = NEWREF(e->nextremove);
+		}
+		newedges[w] = NEWREF(newedges[w]);
+		removeedges[w] = NEWREF(removeedges[w]);
+	}
+
+// move them, from the end down: an edge never moves down, so none
+// overwrites one not yet moved
+	newsentinels = (edge_t *)(newbase + r_edgesentinels->owner);
+	for (e=last-1 ; e>=first ; e--)
+	{
+		if (e->owner != EDGE_DEAD)
+			memmove (newbase + e->owner, e, sizeof(edge_t));
+	}
+	r_edgesentinels = newsentinels;
+	r_edgebase = newbase;
+	r_qog_edgeend = dstend;
+}
+
+/*
+==============
+R_QogFlushSpans
+
+QuakeOG: id's mid-scan flush
+==============
+*/
+static void R_QogFlushSpans (void)
+{
+	surf_t	*s;
+
+	VID_UnlockBuffer ();
+	S_ExtraUpdate ();	// don't let sound get messed up if going slow
+	VID_LockBuffer ();
+
+	if (r_drawculledpolys)
+	{
+		R_DrawCulledPolys ();
+	}
+	else
+	{
+		D_DrawSurfaces ();
+	}
+
+// clear the surface span pointers
+	for (s = &surfaces[1] ; s<surface_p ; s++)
+		s->spans = SPAN_NONE;
+
+	r_qog_framespans += span_p - r_qog_basespan;	// measurement only
+	if (span_p - r_qog_basespan > r_qog_peakflushspans)
+		r_qog_peakflushspans = span_p - r_qog_basespan;
+	span_p = r_qog_basespan;
+}
+
+static void R_QogEdgesToStack (int iv, int bottom);
+
+/*
+==============
+R_QogScanRows
+
+QuakeOG: scan lines iv to bottom, see above. edgesinz is true while the
+edge table is in the z-buffer.
+==============
+*/
+static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
+{
+	for ( ; iv<bottom ; iv++)
+	{
+		current_iv = iv;
+		fv = (float)iv;
+
+	// mark that the head (background start) span is pre-included
+		surfaces[1].spanstate = 1;
+
+		if (newedges[iv])
+		{
+			R_InsertNewEdges (EDGE_PTR(newedges[iv]), EDGE_PTR(edge_head.next));
+		}
+
+		(*pdrawfunc) ();
+
+	// the edges whose last scan line this was go before the flush (id
+	// flushed first, neither touches what the other uses)
+		if (removeedges[iv])
+			R_RemoveEdges (EDGE_PTR(removeedges[iv]));
+
+		if (!edgesinz)
+		{
+			if (span_p >= max_span_p)
+				R_QogFlushSpans ();
+		}
+		else if (ZROWS_END(iv) <= (byte *)r_edgesentinels)
+		{
+		// every span so far lies above the edges: flush when full, and
+		// before a scan line whose row reaches the edges
+			if (span_p >= max_span_p)
+			{
+				R_QogFlushSpans ();
+			}
+			else if (ZROWS_END(iv + 1) > (byte *)r_edgesentinels && span_p > r_qog_basespan)
+			{
+				r_qog_zforced++;
+				R_QogFlushSpans ();
+			}
+		}
+		else
+		{
+			if (span_p - r_qog_basespan > r_qog_peakheldspans)
+				r_qog_peakheldspans = span_p - r_qog_basespan;
+			if (span_p >= max_span_p)
+			{
+			// full while spans wait: drop the edges no longer needed
+				r_qog_zcompacts++;
+				R_QogMarkEdges (iv, bottom);
+				R_QogMoveEdges (iv, bottom, r_qog_edgeend, r_edgebase);
+				if (ZROWS_END(iv) > (byte *)r_edgesentinels)
+				{
+					R_QogEdgesToStack (iv, bottom);
+					return;
+				}
+				R_QogFlushSpans ();
+			}
+		}
+
+		if (edge_head.next != EDGE_REF(&edge_tail))
+			R_StepActiveU (EDGE_PTR(edge_head.next));
+	}
+
+// do the last scan (no need to step or sort or remove on the last scan)
+
+	current_iv = iv;
+	fv = (float)iv;
+
+// mark that the head (background start) span is pre-included
+	surfaces[1].spanstate = 1;
+
+	if (newedges[iv])
+		R_InsertNewEdges (EDGE_PTR(newedges[iv]), EDGE_PTR(edge_head.next));
+
+	(*pdrawfunc) ();
+
+// measurement only
+	if (edgesinz && span_p - r_qog_basespan > r_qog_peakheldspans)
+		r_qog_peakheldspans = span_p - r_qog_basespan;
+	r_qog_framespans += span_p - r_qog_basespan;
+	if (span_p - r_qog_basespan > r_qog_peakflushspans)
+		r_qog_peakflushspans = span_p - r_qog_basespan;
+	if (r_qog_framespans > r_qog_peakframespans)
+		r_qog_peakframespans = r_qog_framespans;
+
+// draw whatever's left in the span list, no edge is needed any more
+	if (r_drawculledpolys)
+		R_DrawCulledPolys ();
+	else
+		D_DrawSurfaces ();
+}
+
+/*
+==============
+R_QogEdgesToStack
+
+QuakeOG: the span buffer is full of spans that wait for edges still needed.
+Move those edges out of the z-buffer, to auxedges or a table on the stack
+just large enough (at most the old table's size), and go on with id's
+flushing. Not inlined, so the table is on the stack only when this runs.
+==============
+*/
+static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
+{
+	edge_t	*dst;
+	int		n;
+
+	r_qog_zstack++;
+	n = R_QogMarkEdges (iv, bottom);
+	if (auxedges)
+		dst = auxedges;
+	else
+		dst = (edge_t *)QOG_ALLOCA (n * sizeof(edge_t));
+	R_QogMoveEdges (iv, bottom, (byte *)(dst + n), (byte *)dst - sizeof(edge_t));
+	R_QogFlushSpans ();
+
+	if (edge_head.next != EDGE_REF(&edge_tail))
+		R_StepActiveU (EDGE_PTR(edge_head.next));
+
+	R_QogScanRows (iv + 1, bottom, false);
+}
+
+/*
+==============
+R_ScanEdges
+
+QuakeOG: QOG_EDGES_IN_ZBUFFER version, see above
+==============
+*/
+void R_ScanEdges (void)
+{
+	int		numspans, bytes;
+	byte	*dst;
+
+// move the used part of the edge table (the sentinels and the frame's
+// edges, linked by offsets from r_edgebase) to the end of the z-buffer.
+// The edge cache only looked at it while the edges were made.
+	bytes = (byte *)edge_p - (byte *)r_edgesentinels;
+	r_qog_edgeend = r_ztemp_base + r_ztemp_bytes;
+	dst = r_qog_edgeend - bytes;
+	if (dst != (byte *)r_edgesentinels)
+	{
+		memmove (dst, r_edgesentinels, bytes);
+		r_edgebase += dst - (byte *)r_edgesentinels;
+		r_edgesentinels = (edge_t *)dst;
+	}
+	r_edges = r_edgesentinels + EDGE_SENTINELS;
+	edge_p = (edge_t *)r_qog_edgeend;
+
+// the spans fill the surface table from the first unused entry on
+// (r_local.h). 16-bit links reach (65536 / 8) - 1 spans.
+	r_qog_basespan = (espan_t *)surface_p;
+	numspans = (r_spanpool_end - (byte *)r_qog_basespan) / sizeof(espan_t);
+	if (numspans > 0x10000 / sizeof(espan_t) - 1)
+		numspans = 0x10000 / sizeof(espan_t) - 1;
+#ifdef QOG_ZEDGE_TEST_SPANS
+	// less room, only to test the edge moves and the stack fallback
+	if (numspans > QOG_ZEDGE_TEST_SPANS)
+		numspans = QOG_ZEDGE_TEST_SPANS;
+#endif
+	if (numspans < r_refdef.vrect.width + 1)
+		Sys_Error ("R_ScanEdges: room for %d spans, a scan line needs %d", numspans,
+			r_refdef.vrect.width + 1);
+	if (numspans > r_qog_peakspanroom)
+		r_qog_peakspanroom = numspans;
+	if (!r_qog_minspanroom || numspans < r_qog_minspanroom)
+		r_qog_minspanroom = numspans;
+	r_spanbase = (byte *)r_qog_basespan - sizeof(espan_t);
+	max_span_p = &r_qog_basespan[numspans - r_refdef.vrect.width];
+	span_p = r_qog_basespan;
+	r_qog_framespans = 0;
+
+// clear active edges to just the background edges around the whole screen
+	edge_head.u = r_refdef.vrect.x << 20;
+	edge_head_u_shift20 = edge_head.u >> 20;
+	edge_head.u_step = 0;
+	edge_head.prev = EDGE_NONE;
+	edge_head.next = EDGE_REF(&edge_tail);
+	edge_head.surfs[0] = 0;
+	edge_head.surfs[1] = 1;
+
+	edge_tail.u = (r_refdef.vrectright << 20) + 0xFFFFF;
+	edge_tail_u_shift20 = edge_tail.u >> 20;
+	edge_tail.u_step = 0;
+	edge_tail.prev = EDGE_REF(&edge_head);
+	edge_tail.next = EDGE_REF(&edge_aftertail);
+	edge_tail.surfs[0] = 1;
+	edge_tail.surfs[1] = 0;
+
+	edge_aftertail.u = -1;		// force a move
+	edge_aftertail.u_step = 0;
+	edge_aftertail.next = EDGE_REF(&edge_sentinel);
+	edge_aftertail.prev = EDGE_REF(&edge_tail);
+
+	edge_sentinel.u = 2000 << 24;		// make sure nothing sorts past this
+	edge_sentinel.prev = EDGE_REF(&edge_aftertail);
+
+	R_QogScanRows (r_refdef.vrect.y, r_refdef.vrectbottom - 1, true);
+}
+
+#else	// !QOG_EDGES_IN_ZBUFFER
+
 /*
 ==============
 R_ScanEdges
@@ -835,4 +1239,5 @@ void R_ScanEdges (void)
 		D_DrawSurfaces ();
 }
 
+#endif	// !QOG_EDGES_IN_ZBUFFER
 

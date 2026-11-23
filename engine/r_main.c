@@ -29,6 +29,14 @@ vec3_t		viewlightvec;
 alight_t	r_viewlighting = {128, 192, viewlightvec};
 float		r_time1;
 int			r_numallocatededges;
+#ifdef QOG_ZTEMP
+byte		*r_ztemp_base;	// QuakeOG: the z-buffer memory, set by VID_Init (r_shared.h)
+int			r_ztemp_bytes;
+#endif
+#ifdef QOG_EDGECACHE_ZBUFFER
+unsigned short	*r_qog_edgecache;	// QuakeOG: the world's edge cache (r_draw.c), see R_NewMap
+int				r_qog_edgecachebytes;
+#endif
 #ifdef QOG_HUD_IN_ZBUFFER
 int			r_zalias_row = 0x7fff;	// QuakeOG: first screen row stored in the z-buffer (set by VID_Init)
 
@@ -330,7 +338,12 @@ void R_NewMap (void)
 
 	if (r_cnumsurfs > NUMSTACKSURFACES)
 	{
+#ifdef QOG_EDGES_IN_ZBUFFER
+		// QuakeOG: with room for QOG_SPAN_MIN spans past the last surface
+		surfaces = Hunk_AllocName ((r_cnumsurfs + SPAN_RESERVE_SURFS) * sizeof(surf_t), "surfaces");
+#else
 		surfaces = Hunk_AllocName (r_cnumsurfs * sizeof(surf_t), "surfaces");
+#endif
 		surface_p = surfaces;
 		surf_max = &surfaces[r_cnumsurfs];
 		r_surfsonstack = false;
@@ -373,6 +386,15 @@ void R_NewMap (void)
 			cl.worldmodel->numedges, EDGE_OWNER_NONE - 1);
 #endif
 
+#ifdef QOG_EDGES_IN_ZBUFFER
+	// QuakeOG: the edge table ends at the end of the z-buffer, the brush clip
+	// buffers sit at its start (R_EdgeDrawing). auxedges, if any, is only
+	// where R_QogEdgesToStack moves the edges (r_edge.c).
+	if (!r_ztemp_base || ZEDGE_BYTES (r_numallocatededges) + (int)BMODEL_CLIP_BYTES > r_ztemp_bytes)
+		Sys_Error ("R_NewMap: a z-buffer of %d bytes holds no table of %d edges",
+			r_ztemp_bytes, r_numallocatededges);
+#endif
+
 	if (r_numallocatededges <= NUMSTACKEDGES)
 	{
 		auxedges = NULL;
@@ -393,6 +415,31 @@ void R_NewMap (void)
 								   "edges");
 #endif
 	}
+
+#ifdef QOG_EDGECACHE_ZBUFFER
+	// QuakeOG: the world's 16-bit edge cache (r_draw.c) is only used while
+	// R_RenderWorld runs, so it lives at the start of the z-buffer, in front
+	// of the edge table with QOG_EDGES_IN_ZBUFFER (R_EdgeDrawing). A map with
+	// more edges than that room has it on the hunk, as the model loader did.
+	{
+		int	room = r_ztemp_bytes;
+
+#ifdef QOG_EDGES_IN_ZBUFFER
+		room -= ZEDGE_BYTES (r_numallocatededges);
+#endif
+#ifdef QOG_EDGECACHE_TEST_HUNK	// only to test the hunk path
+		room = 0;
+#endif
+		if (r_numallocatededges >= 0x7FFF)
+			Sys_Error ("R_NewMap: %d edges, the 16-bit edge cache allows %d",
+				r_numallocatededges, 0x7FFF - 1);
+		r_qog_edgecachebytes = cl.worldmodel->numedges * sizeof(unsigned short);
+		if (r_ztemp_base && r_qog_edgecachebytes <= room)
+			r_qog_edgecache = (unsigned short *)r_ztemp_base;
+		else
+			r_qog_edgecache = Hunk_AllocName (r_qog_edgecachebytes, "edgecache");
+	}
+#endif
 
 	r_dowarpold = false;
 	r_viewchanged = false;
@@ -1033,7 +1080,9 @@ void R_EdgeDrawing (void)
 	// line alignment, so the table is not aligned.
 	extern medge_t		*r_qog_owneredges;
 	extern unsigned int	r_qog_ownerbytes;
-#ifdef QOG_SPANS_IN_EDGES
+#if defined(QOG_EDGES_IN_ZBUFFER)
+	// QuakeOG: no edge table here, it is at the end of the z-buffer (below)
+#elif defined(QOG_SPANS_IN_EDGES)
 	// QuakeOG: R_ScanEdges keeps its spans in the part of this table the
 	// edges left free, with QOG_SPAN_MIN spans of room past the edge limit
 	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES + SPAN_RESERVE_EDGES];
@@ -1044,11 +1093,29 @@ void R_EdgeDrawing (void)
 	edge_t	ledges[NUMSTACKEDGES +
 				((CACHE_SIZE - 1) / sizeof(edge_t)) + 1];
 #endif
+#ifdef QOG_EDGES_IN_ZBUFFER
+	// QuakeOG: R_ScanEdges keeps its spans in the part of this table the
+	// surfaces left free, with QOG_SPAN_MIN spans of room past the limit
+	surf_t	lsurfs[NUMSTACKSURFACES + SPAN_RESERVE_SURFS +
+				((CACHE_SIZE - 1) / sizeof(surf_t)) + 1];
+#else
 	surf_t	lsurfs[NUMSTACKSURFACES +
 				((CACHE_SIZE - 1) / sizeof(surf_t)) + 1];
+#endif
 
 #ifdef QOG_EDGE_T_PACKED
+#ifdef QOG_EDGES_IN_ZBUFFER
+	// QuakeOG: z-buffer layout while the edges are built (R_RenderWorld and
+	// R_DrawBEntitiesOnList), byte offsets from r_ztemp_base:
+	//   0: the world's edge cache with QOG_EDGECACHE_ZBUFFER (R_RenderWorld
+	//      only), then the brush clip buffers (r_bsp.c, brush entities only)
+	//   r_ztemp_bytes - ZEDGE_BYTES: the four sentinels and the edge table
+	// Nothing has drawn into the z-buffer yet this frame. R_ScanEdges moves
+	// the used part of the table to the end and draws spans above it only.
+	r_edgesentinels = (edge_t *)(r_ztemp_base + r_ztemp_bytes - ZEDGE_BYTES (r_numallocatededges));
+#else
 	r_edgesentinels = auxedges ? auxedges : ledges;
+#endif
 	r_edgebase = (byte *)r_edgesentinels - sizeof(edge_t);
 	r_edges = r_edgesentinels + EDGE_SENTINELS;
 #ifdef QOG_SPANS_IN_EDGES
@@ -1081,8 +1148,18 @@ void R_EdgeDrawing (void)
 		surfaces--;
 		R_SurfacePatch ();
 	}
+#ifdef QOG_EDGES_IN_ZBUFFER
+	r_spanpool_end = r_surfsonstack ? (byte *)&lsurfs[sizeof(lsurfs) / sizeof(lsurfs[0])] :
+					 (byte *)(surfaces + 1 + r_cnumsurfs + SPAN_RESERVE_SURFS);
+#endif
 
 	R_BeginEdgeFrame ();
+
+#ifdef QOG_EDGECACHE_ZBUFFER
+	// QuakeOG: entries from earlier frames never match (r_draw.c), and the
+	// z-buffer has held z since, so the cache starts empty every frame
+	memset (r_qog_edgecache, 0xFF, r_qog_edgecachebytes);
+#endif
 
 	if (r_dspeeds.value)
 	{
