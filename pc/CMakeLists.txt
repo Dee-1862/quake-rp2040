@@ -54,6 +54,7 @@ add_executable(quakeog_pc
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_aim.c
     ${ROOT}/port/common/qog_rand.c
+    ${ROOT}/port/common/qog_phase.c
     ${ROOT}/platform/qog_input.c)
 target_include_directories(quakeog_pc PRIVATE
     ${ROOT}/engine ${ROOT}/port/common ${ROOT}/platform)
@@ -192,3 +193,22 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LOOP_ONINIT                 # loopback receive buffers on the hunk from Loop_Init
     QOG_PACKDIR_CHUNKED             # pack directory read 2 KB at a time, no 21 KB temporary block
     QOG_PARTICLES_PRESET)           # a host may keep its own particle array (the fly-through)
+# Renderer speed, exact (Agent P). Same pixels as id's code, less work.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_LITSPAN_FAST                # lit spans without modulo, texture origin folded into the light pointer, a loop per mip
+    QOG_LITSPAN_TAILMUL             # the last run of a span reuses the surface's float products for its length
+    QOG_ZSPANS_FAST                 # z span start without double arithmetic (exact integer form of zi * 2^31)
+    QOG_LITSPAN_ZFUSE)              # lit spans write their z from the 1/z they compute anyway, no second span walk
+# Render phase times for profiling (Agent P), off by default: `qog_phase` in
+# the console and the end of `-qogfly` print where render time goes.
+#   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON
+option(QOG_PHASE "render phase times (engine/qog_phase.h)" OFF)
+if(QOG_PHASE)
+    target_compile_definitions(quakeog_pc PRIVATE QOG_PHASE_TIME)
+endif()
+# Extra definitions for test builds of approximate flags (Agent P), for
+# example -DQOG_PC_EXTRA_DEFS="QOG_LITSPAN_LINLIGHT;QOG_LITSPAN16".
+set(QOG_PC_EXTRA_DEFS "" CACHE STRING "extra compile definitions for test builds")
+if(QOG_PC_EXTRA_DEFS)
+    target_compile_definitions(quakeog_pc PRIVATE ${QOG_PC_EXTRA_DEFS})
+endif()

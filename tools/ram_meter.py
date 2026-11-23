@@ -53,6 +53,8 @@ CFLAGS += ["-DQOG_CMDBUF_SIZE=4096", "-DQOG_ZONE_BOARD_KB=16"]
 CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE", "-DQOG_LEAF16"]
 # Renderer temporary memory in the z-buffer (Agent K, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_EDGES_IN_ZBUFFER", "-DQOG_EDGECACHE_ZBUFFER", "-DQOG_SND_ONINIT", "-DQOG_LOOP_ONINIT", "-DQOG_PACKDIR_CHUNKED"]
+# Renderer speed, exact (Agent P, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_LITSPAN_FAST", "-DQOG_LITSPAN_TAILMUL", "-DQOG_ZSPANS_FAST", "-DQOG_LITSPAN_ZFUSE"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

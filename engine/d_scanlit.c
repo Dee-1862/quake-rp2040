@@ -29,6 +29,7 @@ See the GNU General Public License for more details.
 #include "quakedef.h"
 #include "d_local.h"
 #include "r_local.h"
+#include "qog_phase.h"	// QuakeOG: render phase counts (QOG_PHASE_TIME)
 
 #ifndef QOG_SURFCACHE
 
@@ -41,6 +42,25 @@ static int		lit_soff, lit_toff;	// texture origin of the surface, wrapped into t
 static int		lit_smax;			// lightmap row length
 static int		lit_lshift;			// surface pixels at this mip -> lightmap cells
 static byte		*lit_colormap;
+#ifdef QOG_LITSPAN_FAST
+// QuakeOG: state of the restructured span drawer (d_litspan.h)
+static int		lit_kind;			// 0 to 3 power-of-two texture at that mip, 4 any size
+static int		lit_soff16, lit_toff16;	// texture origin in 16.16
+static int		lit_smask, lit_tshift;	// power of two: s mask, log2 of the width
+static unsigned	lit_tmask2;			// power of two: t mask shifted up by lit_tshift
+static int		lit_tw16, lit_th16;	// any size: texture size in 16.16
+static const unsigned	*lit_lgrid;		// blocklights
+static const unsigned	*lit_lbase;		// blocklights moved back by the origin's light cells
+#define LITSPAN_NEXT(p)	((p)->pnext != SPAN_NONE && ((p) = SPAN_PTR ((p)->pnext)))
+#ifdef QOG_LITSPAN_ZFUSE
+// QuakeOG: each span's z is written here from the 1/z the drawer computes
+// at its start (D_QogZSpan, d_scan.c), and D_DrawSurfaces skips D_DrawZSpans
+void D_QogZSpan (espan_t *pspan, float zi, int izistep);
+#define LITSPAN_ZDECL			int izistep_ = (int)(d_zistepu * 0x8000 * 0x10000);
+#define LITSPAN_ZSPAN(p, zi)	D_QogZSpan (p, zi, izistep_);
+#endif
+#include "d_litspan.h"
+#endif
 
 /*
 ================
@@ -75,7 +95,60 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 	lit_smax = (pface->extents[0] >> 4) + 1;
 	lit_lshift = 4 - mip;	// a lightmap cell is 16 texels at mip 0
 	lit_colormap = (byte *)vid.colormap;
+	QOG_PH_COUNT (QOG_PC_LITSURFS, 1);
+	QOG_PH_COUNT (QOG_PC_LMCELLS, lit_smax * ((pface->extents[1] >> 4) + 1));
+#ifdef QOG_LITSPAN_FAST
+	// QuakeOG: the restructured drawer's per-surface values (d_litspan.h)
+	LITSPAN_SETUP (blocklights)
+#endif
 }
+
+#ifdef QOG_LITSPAN_FAST
+/*
+=============
+D_DrawSpans8Lit
+
+QuakeOG: the same pixels as id's D_DrawSpans8 with LitPixel below, with
+no modulo and fewer instructions per pixel (d_litspan.h).
+=============
+*/
+
+#ifdef QOG_PHASE_TIME
+static void D_QogCountLit (espan_t *pspan, int any)
+{
+	do
+	{
+		QOG_PH_COUNT (QOG_PC_LITSPANS, 1);
+		QOG_PH_COUNT (QOG_PC_LITPX, pspan->count);
+		QOG_PH_COUNT (QOG_PC_RUNS, (pspan->count + 7) >> 3);
+		if (any)
+			QOG_PH_COUNT (QOG_PC_LITANYPX, pspan->count);
+#ifdef QOG_LITSPAN_ZFUSE
+		QOG_PH_COUNT (QOG_PC_ZPX, pspan->count);	// z written here too
+#endif
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR (pspan->pnext)));
+}
+#endif
+
+void D_DrawSpans8Lit (espan_t *pspan)
+{
+#ifdef QOG_PHASE_TIME
+	D_QogCountLit (pspan, lit_kind == 4);
+#endif
+	{
+#if defined(QOG_LITSPAN16) && defined(QOG_LITSPAN_LINLIGHT)
+	D_LITSPANS16LIN_BODY	// QuakeOG: approximate, both below
+#elif defined(QOG_LITSPAN16)
+	D_LITSPANS16_BODY		// QuakeOG: approximate, one float divide per 16 pixels
+#elif defined(QOG_LITSPAN_LINLIGHT)
+	D_LITSPANS8LIN_BODY		// QuakeOG: approximate, light linear along each run
+#else
+	D_LITSPANS8_BODY		// QuakeOG: exact
+#endif
+	}
+}
+
+#else	// !QOG_LITSPAN_FAST
 
 /*
 ================
@@ -228,5 +301,7 @@ void D_DrawSpans8Lit (espan_t *pspan)
 
 	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
+
+#endif	// !QOG_LITSPAN_FAST
 
 #endif	// !QOG_SURFCACHE

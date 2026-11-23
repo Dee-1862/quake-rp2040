@@ -116,6 +116,12 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SND_ONINIT
     QOG_LOOP_ONINIT
     QOG_PACKDIR_CHUNKED)
+# Renderer speed, exact (Agent P), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_LITSPAN_FAST
+    QOG_LITSPAN_TAILMUL
+    QOG_ZSPANS_FAST
+    QOG_LITSPAN_ZFUSE)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
