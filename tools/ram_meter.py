@@ -45,6 +45,8 @@ CFLAGS += ["-DQOG_MOD_FLASH", "-DQOG_SV_TABLES", "-DQOG_SV_MAX_MODELS=208", "-DQ
 CFLAGS += ["-DQOG_CONST_RTABLES", "-DQOG_NO_ROWTABLES", "-DQOG_SKY_DIRECT", "-DQOG_HUD_IN_ZBUFFER", "-DQOG_SPANS_IN_EDGES"]
 # Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
+# Server, client and system memory (Agent M, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_HUNK_PACKED"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

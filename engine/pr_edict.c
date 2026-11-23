@@ -1010,7 +1010,18 @@ char *ED_NewString (char *string)
 	int		i,l;
 	
 	l = strlen(string) + 1;
+#ifdef QOG_HUNK_PACKED
+	{	// QuakeOG: exactly the bytes the copy below writes, packed (zone.c)
+		int		n = 0;
+
+		for (i=0 ; i< l ; i++, n++)
+			if (string[i] == '\\' && i < l-1)
+				i++;
+		new = Hunk_AllocPacked (n, 1);
+	}
+#else
 	new = Hunk_Alloc (l);
+#endif
 	new_p = new;
 
 	for (i=0 ; i< l ; i++)

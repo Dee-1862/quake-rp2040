@@ -164,3 +164,6 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
+# Server, client and system memory (Agent M)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_HUNK_PACKED)                # entity strings and command entries share hunk blocks (id 32 B block each)

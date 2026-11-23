@@ -553,7 +553,11 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
 		}
 	}
 
+#ifdef QOG_HUNK_PACKED
+	cmd = Hunk_AllocPacked (sizeof(cmd_function_t), sizeof(void *));	// QuakeOG: packed, zone.c
+#else
 	cmd = Hunk_Alloc (sizeof(cmd_function_t));
+#endif
 	cmd->name = cmd_name;
 	cmd->function = function;
 	cmd->next = cmd_functions;

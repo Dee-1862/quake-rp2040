@@ -444,6 +444,60 @@ void *Hunk_Alloc (int size)
 	return Hunk_AllocName (size, "unknown");
 }
 
+#ifdef QOG_HUNK_PACKED
+/*
+===================
+Hunk_AllocPacked
+
+QuakeOG: small allocations that live as long as the low hunk under them
+(entity lump strings, console command entries, saved light styles) share
+"packed" blocks. id gave each its own block with a 16-byte header and
+16-byte rounding, so a 6-byte string took 32 bytes. The open block grows in
+place while it is the last block on the low hunk, and a new one is started
+when something else was allocated after it. The memory is zero filled and
+freed with the hunk exactly as id's blocks were.
+===================
+*/
+static int	hunk_packed_start = -1;	// offset of the open block's header, -1 none
+static int	hunk_packed_used;		// bytes of its data area handed out
+
+void *Hunk_AllocPacked (int size, int align)
+{
+	hunk_t	*h;
+	int		ofs, room, grow;
+
+	if (size < 0)
+		Sys_Error ("Hunk_Alloc: bad size: %i", size);
+	if (hunk_packed_start >= 0)
+	{
+		h = (hunk_t *)(hunk_base + hunk_packed_start);
+		ofs = (hunk_packed_used + align - 1) & ~(align - 1);
+		room = h->size - (int)sizeof(hunk_t);
+		if (ofs + size <= room)
+		{
+			hunk_packed_used = ofs + size;
+			return (byte *)(h + 1) + ofs;
+		}
+		if (hunk_packed_start + h->size == hunk_low_used)
+		{	// last block on the low hunk: grow it
+			grow = (ofs + size - room + 15) & ~15;
+			if (hunk_size - hunk_low_used - hunk_high_used < grow)
+				Sys_Error ("Hunk_Alloc: failed on %i bytes", grow);
+			memset (hunk_base + hunk_low_used, 0, grow);
+			hunk_low_used += grow;
+			h->size += grow;
+			Cache_FreeLow (hunk_low_used);
+			hunk_packed_used = ofs + size;
+			return (byte *)(h + 1) + ofs;
+		}
+	}
+	h = (hunk_t *)Hunk_AllocName (size, "packed") - 1;
+	hunk_packed_start = (byte *)h - hunk_base;
+	hunk_packed_used = size;
+	return h + 1;
+}
+#endif
+
 int	Hunk_LowMark (void)
 {
 	return hunk_low_used;
@@ -453,6 +507,23 @@ void Hunk_FreeToLowMark (int mark)
 {
 	if (mark < 0 || mark > hunk_low_used)
 		Sys_Error ("Hunk_FreeToLowMark: bad mark %i", mark);
+#ifdef QOG_HUNK_PACKED
+	// QuakeOG: forget a freed open block, or cut it at the mark when it grew
+	// past a mark taken while it was the last block
+	if (hunk_packed_start >= 0)
+	{
+		hunk_t	*h = (hunk_t *)(hunk_base + hunk_packed_start);
+
+		if (mark <= hunk_packed_start)
+			hunk_packed_start = -1;
+		else if (mark < hunk_packed_start + h->size)
+		{
+			h->size = mark - hunk_packed_start;
+			if (hunk_packed_used > h->size - (int)sizeof(hunk_t))
+				hunk_packed_used = h->size - (int)sizeof(hunk_t);
+		}
+	}
+#endif
 	memset (hunk_base + mark, 0, hunk_low_used - mark);
 	hunk_low_used = mark;
 }
