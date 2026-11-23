@@ -223,6 +223,13 @@ model_t *Mod_FindName (char *name)
 				if (mod->type == mod_alias)
 					if (Cache_Check (&mod->cache))
 						Cache_Free (&mod->cache);
+#ifdef QOG_MAX_MOD_KNOWN
+				// QuakeOG: a reused slot starts empty, like one never used.
+				// The brush loader never sets synctype, so a map or inline
+				// model inherited an alias model's ST_RAND and the client
+				// drew a random syncbase (a rand() call) for it.
+				memset (mod, 0, sizeof(*mod));
+#endif
 			}
 			else
 				Sys_Error ("mod_numknown == MAX_MOD_KNOWN");
