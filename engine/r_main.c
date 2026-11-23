@@ -284,6 +284,16 @@ void R_NewMap (void)
 	if (r_numallocatededges < MINEDGES)
 		r_numallocatededges = MINEDGES;
 
+#ifdef QOG_SURF_T_SMALL
+	// QuakeOG: 16-bit surface links and 8-bit flags (r_shared.h)
+	if (r_cnumsurfs >= 0x10000)
+		Sys_Error ("R_NewMap: %d surfaces, 16-bit surface links allow %d",
+			r_cnumsurfs, 0xFFFF);
+	{
+		typedef char surf_flags_fit[(SURF_DRAWBACKGROUND <= 0xFF) ? 1 : -1];
+	}
+#endif
+
 #ifdef QOG_EDGE_T_PACKED
 	// QuakeOG: packed edges link with 16-bit byte offsets and name their
 	// owner by a 16-bit world edge index (r_shared.h)

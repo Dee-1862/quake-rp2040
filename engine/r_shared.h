@@ -129,6 +129,34 @@ typedef struct espan_s
 
 // FIXME: compress, make a union if that will help
 // insubmodel is only 1, flags is fewer than 32, spanstate could be a byte
+#ifdef QOG_SURF_T_SMALL
+// QuakeOG: 40 bytes (needs QOG_ESPAN_T_PACKED). The active surface stack
+// links are indices into surfaces[] (fewer than 65536, R_NewMap checks).
+// last_u is a screen column, flags are SURF_* (at most 0x40), insubmodel
+// is 0 or 1. key stays an int: the background surface uses 0x7FFFFFFF.
+typedef unsigned short	surfref_t;
+#define SURF_PTR(r)		(surfaces + (r))
+#define SURF_REF(p)		((surfref_t)((p) - surfaces))
+
+typedef struct surf_s
+{
+	surfref_t	next;				// active surface stack in r_edge.c
+	surfref_t	prev;				// used in r_edge.c for active surf stack
+	espanref_t	spans;				// linked list of spans to draw
+	short		last_u;				// set during tracing
+	short		spanstate;			// 0 = not in span, 1 = in span, -1 = inverted
+	byte		insubmodel;
+	byte		flags;				// currentface flags
+	int			key;				// sorting key (BSP order)
+	void		*data;				// associated data like msurface_t
+	entity_t	*entity;
+	float		nearzi;				// nearest 1/z on surface, for mipmapping
+	float		d_ziorigin, d_zistepu, d_zistepv;
+} surf_t;
+#else
+#define SURF_PTR(r)		(r)
+#define SURF_REF(p)		(p)
+
 typedef struct surf_s
 {
 	struct surf_s	*next;			// active surface stack in r_edge.c
@@ -162,6 +190,7 @@ typedef struct surf_s
 	int			pad[2];				// to 64 bytes
 #endif
 } surf_t;
+#endif
 
 extern	surf_t	*surfaces, *surface_p, *surf_max;
 

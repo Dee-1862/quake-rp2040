@@ -316,7 +316,7 @@ void R_CleanupSpan ()
 
 // now that we've reached the right edge of the screen, we're done with any
 // unfinished surfaces, so emit a span for whatever's on top
-	surf = surfaces[1].next;
+	surf = SURF_PTR(surfaces[1].next);
 	iu = edge_tail_u_shift20;
 	if (iu > surf->last_u)
 	{
@@ -332,7 +332,7 @@ void R_CleanupSpan ()
 	do
 	{
 		surf->spanstate = 0;
-		surf = surf->next;
+		surf = SURF_PTR(surf->next);
 	} while (surf != &surfaces[1]);
 }
 
@@ -356,7 +356,7 @@ void R_LeadingEdgeBackwards (edge_t *edge)
 // end edge)
 	if (++surf->spanstate == 1)
 	{
-		surf2 = surfaces[1].next;
+		surf2 = SURF_PTR(surfaces[1].next);
 
 		if (surf->key > surf2->key)
 			goto newtop;
@@ -374,7 +374,7 @@ continue_search:
 
 		do
 		{
-			surf2 = surf2->next;
+			surf2 = SURF_PTR(surf2->next);
 		} while (surf->key < surf2->key);
 
 		if (surf->key == surf2->key)
@@ -409,10 +409,10 @@ newtop:
 				
 gotposition:
 	// insert before surf2
-		surf->next = surf2;
+		surf->next = SURF_REF(surf2);	// QuakeOG: SURF_PTR/SURF_REF
 		surf->prev = surf2->prev;
-		surf2->prev->next = surf;
-		surf2->prev = surf;
+		SURF_PTR(surf2->prev)->next = SURF_REF(surf);
+		surf2->prev = SURF_REF(surf);
 	}
 }
 
@@ -435,7 +435,7 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 		if (surf->insubmodel)
 			r_bmodelactive--;
 
-		if (surf == surfaces[1].next)
+		if (surf == SURF_PTR(surfaces[1].next))	// QuakeOG: SURF_PTR
 		{
 		// emit a span (current top going away)
 			iu = edge->u >> 20;
@@ -450,11 +450,11 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 			}
 
 		// set last_u on the surface below
-			surf->next->last_u = iu;
+			SURF_PTR(surf->next)->last_u = iu;
 		}
 
-		surf->prev->next = surf->next;
-		surf->next->prev = surf->prev;
+		SURF_PTR(surf->prev)->next = surf->next;
+		SURF_PTR(surf->next)->prev = surf->prev;
 	}
 }
 
@@ -486,7 +486,7 @@ void R_LeadingEdge (edge_t *edge)
 			if (surf->insubmodel)
 				r_bmodelactive++;
 
-			surf2 = surfaces[1].next;
+			surf2 = SURF_PTR(surfaces[1].next);
 
 			if (surf->key < surf2->key)
 				goto newtop;
@@ -523,7 +523,7 @@ continue_search:
 
 			do
 			{
-				surf2 = surf2->next;
+				surf2 = SURF_PTR(surf2->next);
 			} while (surf->key > surf2->key);
 
 			if (surf->key == surf2->key)
@@ -580,10 +580,10 @@ newtop:
 				
 gotposition:
 		// insert before surf2
-			surf->next = surf2;
+			surf->next = SURF_REF(surf2);	// QuakeOG: SURF_PTR/SURF_REF
 			surf->prev = surf2->prev;
-			surf2->prev->next = surf;
-			surf2->prev = surf;
+			SURF_PTR(surf2->prev)->next = SURF_REF(surf);
+			surf2->prev = SURF_REF(surf);
 		}
 	}
 }
@@ -602,7 +602,7 @@ void R_GenerateSpans (void)
 	r_bmodelactive = 0;
 
 // clear active surfaces to just the background surface
-	surfaces[1].next = surfaces[1].prev = &surfaces[1];
+	surfaces[1].next = surfaces[1].prev = SURF_REF(&surfaces[1]);	// QuakeOG
 	surfaces[1].last_u = edge_head_u_shift20;
 
 // generate spans
@@ -640,7 +640,7 @@ void R_GenerateSpansBackward (void)
 	r_bmodelactive = 0;
 
 // clear active surfaces to just the background surface
-	surfaces[1].next = surfaces[1].prev = &surfaces[1];
+	surfaces[1].next = surfaces[1].prev = SURF_REF(&surfaces[1]);	// QuakeOG
 	surfaces[1].last_u = edge_head_u_shift20;
 
 // generate spans

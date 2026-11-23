@@ -54,7 +54,8 @@ list(APPEND QOG_ENGINE_DEFS
 # Renderer stack frames and render tables, same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_EDGE_T_PACKED
-    QOG_ESPAN_T_PACKED)
+    QOG_ESPAN_T_PACKED
+    QOG_SURF_T_SMALL)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
