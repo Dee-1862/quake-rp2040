@@ -27,7 +27,7 @@ As far as our search found (November 2026), this is the first Quake port to the 
 - **The whole game does not fit:** its display data is about 38 MB against 32 MB of flash on both chips together. The options are one episode at a time, or streaming levels from a PC.
 - **Server RAM:** the server's 160 KB hunk covers most of episode 1, but e1m3 needs about 170 KB with sound (PC measurement).
 - **One-byte depth buffer:** in rare views it needs an edge fallback that the board has no stack for, and the game stops with an error there (4 times in a PC fight tour of episode 1). Open.
-- **Not yet recorded on the board in the docs:** sound through the speaker and saving to the main chip's flash. Both run exactly on the PC.
+- **Sound** plays through the board's speaker (heard by the user). **Saving** to the main chip's flash runs exactly on the PC and is not yet tried on the board.
 - No multiplayer, no CD music, no keyboard console.
 
 Details: [docs/handoff.md](docs/handoff.md) and [docs/changes.md](docs/changes.md).

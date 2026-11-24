@@ -2,6 +2,21 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Board measurements of the split game (lead, on hardware)
+
+Read from the board's USB logs (display COM8, main COM7) with QOG_PHASE_TIME and QOG_LINK_DIAG, standing in E1M1 at the spawn point, each line an average over about 2 s.
+
+| Build | fps | Frame ms | View ms | world | spans | vmodel | edgescan | Server frame ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 200 MHz, flash 50 MHz, sound (f75051b) | 7.5 | 132 | 109 | 38.3 | 43.2 | 7.6 | 7.9 | 17.2 |
+| 250 MHz at 1.20 V, flash 125 MHz (c5fa930) | 10.4 | 96 | 78 | 26.3 | 30.7 | 4.9 | 5.8 | 11.8 |
+| 250 MHz plus Fast mode (agent-aa merge) | 10.9 | 91 | 71 | 22.5 | 29.8 | 4.6 | 6.1 | not read |
+
+- The clock log lines read "clock 250000 kHz at 1200 mV" and "flash 125.0 MHz ok (div 2 from 4, rx delay 1, 128 KB checked)". No fault, hang or error line on either chip in any of these runs.
+- Fast mode cut the span arithmetic by about 2.9 M cycles a view (Agent AA's estimate) but spans fell only 0.9 ms, so the span time looks bound by XIP misses rather than compute. Agent Z's XIP counter build is meant to confirm it.
+- Stack free on the board with sound and the 73 KB client hunk (9192bc9): display 4,192 B, main 19,204 B.
+- Sound through the speaker was heard by the user on f75051b. The game has run 15 minutes in E1M1 without a restart since the strict aliasing fix. Saving on the board has not been tried.
+
 ## 2026-11-24: Fast render mode and single precision front end math (Agent AA, PC and ARM build, registered data)
 
 The user asked for a picture that loses a little, like MG24Quake's, but where the loss is hard to see. The board client now has a render mode switch, the `r_fast` cvar (archived), shown in the board Options menu as `Render  Exact / Fast` (engine/menu.c, item 20, left, right or gray toggles it). It is 1 by default on the board client (`QOG_BOARD_FAST`, on, adds `QOG_RFAST QOG_RFAST_ON` to the client's flags) and 0 in every other build. `r_fast 0` draws exactly what main draws. Nothing ran on hardware. The board savings below are estimates from the generated Thumb code and the PC's work counts, the lead measures them.

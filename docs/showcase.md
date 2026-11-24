@@ -157,7 +157,7 @@ Empty cells are figures we did not find. MG24Quake's speed comes partly from its
 - **Not the whole game.** The display data of the whole game is about 38 MB, and both chips together have 32 MB of flash. Only one episode can be on the board at a time, or levels must come from a PC over USB. Today the board holds start and E1M1. The episode 1 images and the new flash layout they need are in progress.
 - **RAM is nearly all used.** The display client has a 73 KB hunk with about 452 bytes to spare, enough for every episode 1 level on the PC. The whole game would need about 82 KB. The server's 160 KB hunk is short for e1m3 with sound (about 170 KB needed, PC measurement).
 - **The one-byte depth buffer's fallback** stops the game in rare views (see above).
-- **Not yet recorded on the board in the docs:** sound through the speaker, and saving to main's FAT volume. Both are exact on the PC.
+- **Saving** to main's FAT volume is exact on the PC and not yet tried on the board. Sound through the speaker works on the board.
 - **Overclock.** 250 MHz at 1.20 V is above the RP2040's rated 200 MHz point. The flash switch checks itself and falls back, the core clock does not. Builds can keep the stock clock (`-DQOG_SYS_KHZ=0`).
 - **Fast mode is not exact.** It is the board default. Exact mode is one menu switch away.
 - No multiplayer, no CD music, no console keyboard.
@@ -168,5 +168,5 @@ Empty cells are figures we did not find. MG24Quake's speed comes partly from its
 1. Episode 1 on the board: the new flash layout (data offsets moved on both chips) and the episode 1 images, already built and checked on the PC.
 2. More speed. The view is about 71 ms of a 91 ms frame. Ideas recorded in [changes.md](changes.md) include a coarser mip level in Fast mode and a cheaper front end (the BSP walk and edge setup). None of these is done.
 3. Close the one-byte depth buffer's fallback case.
-4. Check sound and saves on the board.
+4. Check saves on the board.
 5. Beyond episode 1: one episode at a time, or a PC companion that streams the next level over USB. Estimates in [changes.md](changes.md) put a level swap at about 6 to 9 s.
