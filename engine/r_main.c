@@ -213,6 +213,18 @@ cvar_t	r_maxedges = {"r_maxedges", "0"};
 cvar_t	r_numedges = {"r_numedges", "0"};
 cvar_t	r_aliastransbase = {"r_aliastransbase", "200"};
 cvar_t	r_aliastransadj = {"r_aliastransadj", "100"};
+#ifdef QOG_RFAST
+// QuakeOG (Agent AA): r_fast 1 draws the world with the Fast lit span drawer
+// (d_litspan.h), approximate and hard to see, r_fast 0 exactly as before.
+// Archived. The board client (QOG_RFAST_ON) defaults to 1, every other
+// build to 0.
+#ifdef QOG_RFAST_ON
+cvar_t	r_fast = {"r_fast", "1", true};
+#else
+cvar_t	r_fast = {"r_fast", "0", true};
+#endif
+int		r_qogfast;		// r_fast as an int, fixed for the whole view (R_RenderView_)
+#endif
 
 extern cvar_t	scr_fov;
 
@@ -290,6 +302,15 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_numedges);
 	Cvar_RegisterVariable (&r_aliastransbase);
 	Cvar_RegisterVariable (&r_aliastransadj);
+#ifdef QOG_RFAST
+	Cvar_RegisterVariable (&r_fast);	// QuakeOG (Agent AA)
+#endif
+#ifdef QOG_RFAST_STATS
+	{
+		void D_QogRfastStats_f (void);
+		Cmd_AddCommand ("qog_rfaststats", D_QogRfastStats_f);	// QuakeOG (Agent AA), PC measurement
+	}
+#endif
 
 	Cvar_SetValue ("r_maxedges", (float)NUMSTACKEDGES);
 	Cvar_SetValue ("r_maxsurfs", (float)NUMSTACKSURFACES);
@@ -1277,6 +1298,9 @@ void R_RenderView_ (void)
 	if (r_timegraph.value || r_speeds.value || r_dspeeds.value)
 		r_time1 = Sys_FloatTime ();
 
+#ifdef QOG_RFAST
+	r_qogfast = r_fast.value != 0;	// QuakeOG (Agent AA): one mode for the whole view
+#endif
 	R_SetupFrame ();
 
 #ifdef PASSAGES

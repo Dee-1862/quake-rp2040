@@ -100,6 +100,10 @@ extern cvar_t	r_fullbright;
 extern cvar_t	r_drawentities;
 extern cvar_t	r_aliasstats;
 extern cvar_t	r_dspeeds;
+#ifdef QOG_RFAST
+extern cvar_t	r_fast;		// QuakeOG (Agent AA): Fast render mode (r_main.c)
+extern int		r_qogfast;	//   and its value for the current view
+#endif
 extern cvar_t	r_drawflat;
 extern cvar_t	r_ambient;
 extern cvar_t	r_reportsurfout;

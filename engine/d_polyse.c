@@ -533,12 +533,30 @@ void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 	}
 	else
 	{
+#ifdef QOG_FLOAT_EXACT
+	// QuakeOG (Agent AA): FloorDivMod's floor quotient and remainder on the
+	// ints themselves, the same values without double arithmetic (tm and tn
+	// are screen distances, so id's double quotient is exact)
+		(void)dm;
+		(void)dn;
+		if (tn <= 0)
+			Sys_Error ("FloorDivMod: bad denominator %d\n", tn);
+		ubasestep = tm / tn;
+		erroradjustup = tm % tn;
+		if (erroradjustup < 0)
+		{
+			ubasestep--;
+			erroradjustup += tn;
+		}
+		erroradjustdown = tn;
+#else
 		dm = (double)tm;
 		dn = (double)tn;
 
 		FloorDivMod (dm, dn, &ubasestep, &erroradjustup);
 
 		erroradjustdown = dn;
+#endif
 	}
 }
 
@@ -560,7 +578,7 @@ void D_PolysetCalcGradients (int skinwidth)
 	p10_minus_p20 = r_p1[0] - r_p2[0];
 	p11_minus_p21 = r_p1[1] - r_p2[1];
 
-	xstepdenominv = 1.0 / (float)d_xdenom;
+	xstepdenominv = QOG_FRECIP ((float)d_xdenom);	// QuakeOG: QOG_FLOAT_EXACT
 
 	ystepdenominv = -xstepdenominv;
 
@@ -570,9 +588,9 @@ void D_PolysetCalcGradients (int skinwidth)
 	t0 = r_p0[4] - r_p2[4];
 	t1 = r_p1[4] - r_p2[4];
 	r_lstepx = (int)
-			ceil((t1 * p01_minus_p21 - t0 * p11_minus_p21) * xstepdenominv);
+			QOG_CEILF((t1 * p01_minus_p21 - t0 * p11_minus_p21) * xstepdenominv);	// QuakeOG: QOG_FLOAT_EXACT
 	r_lstepy = (int)
-			ceil((t1 * p00_minus_p20 - t0 * p10_minus_p20) * ystepdenominv);
+			QOG_CEILF((t1 * p00_minus_p20 - t0 * p10_minus_p20) * ystepdenominv);	// QuakeOG: QOG_FLOAT_EXACT
 
 	t0 = r_p0[2] - r_p2[2];
 	t1 = r_p1[2] - r_p2[2];

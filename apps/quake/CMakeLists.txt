@@ -134,7 +134,8 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_LITSPAN_FAST
     QOG_LITSPAN_TAILMUL
     QOG_ZSPANS_FAST
-    QOG_LITSPAN_ZFUSE)
+    QOG_LITSPAN_ZFUSE
+    QOG_FLOAT_EXACT)                # Agent AA, exact: single precision where id's double gives the same float (mathlib.h)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -311,6 +312,13 @@ if(QOG_SPLIT)
     endif()
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
+    endif()
+    # QuakeOG (Agent AA): the Fast render mode, approximate and hard to see,
+    # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
+    # On by default on the board. r_fast 0 draws exactly as before.
+    option(QOG_BOARD_FAST "the r_fast cvar and the Fast render mode, on by default (d_litspan.h)" ON)
+    if(QOG_BOARD_FAST)
+        list(APPEND _cl_defs QOG_RFAST QOG_RFAST_ON)
     endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
