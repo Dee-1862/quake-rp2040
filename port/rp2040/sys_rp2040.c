@@ -133,8 +133,14 @@ void __attribute__((naked)) isr_hardfault(void) {
 }
 
 /* the last fault, or 0 when the last reset was not one */
+/* once: the record is handed out one time and then cleared, so a report on the console
+   always belongs to the reset just before it */
 const uint32_t *qog_fault_last(void) {
-    return (s_fault[0] == QOG_FAULT_MAGIC || s_fault[0] == QOG_HANG_MAGIC) ? s_fault : 0;
+    static uint32_t copy[24];
+    if (s_fault[0] != QOG_FAULT_MAGIC && s_fault[0] != QOG_HANG_MAGIC) return 0;
+    for (int i = 0; i < 24; i++) copy[i] = s_fault[i];
+    s_fault[0] = 0;
+    return copy;
 }
 
 /* QuakeOG: a hang detector. The server loop and every link wait bump

@@ -176,6 +176,12 @@ target_compile_options(qog_engine PRIVATE -w -Wno-implicit-function-declaration 
 # One random sequence on every port (port/common/qog_rand.c).
 set_source_files_properties(${QOG_ENGINE_SRC} ${QOG_PROGS_AOT}
     PROPERTIES COMPILE_DEFINITIONS "rand=qog_rand")
+# The compiled QuakeC reads a global as a float (G) and writes it back as an int
+# (I) in one loop, like anglemod's while (v < 0) v += 360. With strict aliasing GCC
+# may keep the float in a register, never see the store and spin forever: the
+# board's server hung on exactly that loop. The PC compiler does not do it.
+set_source_files_properties(${QOG_PROGS_AOT} ${QOG_ENGINE_SRC}
+    PROPERTIES COMPILE_OPTIONS "-fno-strict-aliasing")
 target_link_libraries(qog_engine PUBLIC pico_stdlib)
 # The ARM bare-metal ABI makes enums as small as their values (qboolean is
 # one byte), while the PC build and the baked flash image use 4-byte enums.
