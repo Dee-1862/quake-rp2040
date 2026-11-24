@@ -379,7 +379,7 @@ if(QOG_SPLIT)
     get_target_property(_disp_libs quake_display LINK_LIBRARIES)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
-    set(QOG_CL_HUNK_KB 68 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl with the board client flags for E1M1 with a fight, a save and a load (e3m5 79, Agent S)")
+    set(QOG_CL_HUNK_KB 73 CACHE STRING "client half hunk in KB. Agent Y: start and all of episode 1, the worst a fight tour of e1m4 at 70.4 KB and a fight, save and load on e1m3 at 69 KB (docs/changes.md)")
     # Agent W: with sound the client gives 2 KB of its stack to the speaker's ring
     # (the board's watermark had 5.4 KB spare, the sound exchange adds about 1.1 KB)
     if(QOG_SOUND)
