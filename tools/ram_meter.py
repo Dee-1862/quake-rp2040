@@ -59,6 +59,8 @@ CFLAGS += ["-DQOG_MIN_MEMORY=0", "-DQOG_SND_OFF_NOHUNK", "-DQOG_LOADGAME_ZTEMP",
 CFLAGS += ["-DQOG_DEMO_FLASH", "-DQOG_ITEMBOX_NOLEAFS"]
 # Renderer speed, exact (Agent P, pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_LITSPAN_FAST", "-DQOG_LITSPAN_TAILMUL", "-DQOG_ZSPANS_FAST", "-DQOG_LITSPAN_ZFUSE"]
+# Episode 1 client RAM, exact (Agent Y, pc/CMakeLists.txt)
+CFLAGS += ["-DQOG_ENTITY_TIGHT", "-DQOG_CON_DEBUGLOG_DIRECT"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 
 

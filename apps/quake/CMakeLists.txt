@@ -135,6 +135,10 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_LITSPAN_TAILMUL
     QOG_ZSPANS_FAST
     QOG_LITSPAN_ZFUSE)
+# Episode 1 client RAM, exact (Agent Y), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_ENTITY_TIGHT
+    QOG_CON_DEBUGLOG_DIRECT)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -281,7 +285,9 @@ if(QOG_SPLIT)
         QOG_KEYNAMES_CONST              # the key name table in flash
         QOG_CL_PRECACHE_SV              # model and sound precache tables of the server half's sizes (208 and 176)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
-        QOG_CMD_ARGV_ARENA=640)         # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+        QOG_CMD_ARGV_ARENA=640          # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+        QOG_MSG_STRING_INPLACE          # Agent Y: message strings read in place, no 2 KB static copy (exact, common.c)
+        QOG_LINK_RX_ZTEMP)              # Agent Y: the link's 7.5 KB receive buffer in the z-buffer between views, not the hunk (net_link.c)
     # QuakeOG (Agent W): sound. id's mixer runs on the server half for the
     # client half's sound calls (engine/snd_link.c, engine/net_link.c), which
     # plays the 8-bit samples it sends back on the I2S amplifier through PIO

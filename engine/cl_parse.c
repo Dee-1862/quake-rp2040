@@ -455,9 +455,9 @@ if (bits&(1<<i))
 		if (model)
 		{
 			if (model->synctype == ST_RAND)
-				ent->syncbase = (float)(rand()&0x7fff) / 0x7fff;
+				ENT_SETSYNC (ent, rand()&0x7fff);	// QuakeOG: render.h
 			else
-				ent->syncbase = 0.0;
+				ENT_SETSYNC (ent, 0);
 		}
 		else
 			forcelink = true;	// hack to make null model players work
@@ -801,6 +801,21 @@ void CL_ParseStatic (void)
 	ent = &cl_static_entities[i];
 #endif
 	cl.num_statics++;
+#ifdef QOG_ENTITY_TIGHT
+	{	// QuakeOG (Agent Y): a static entity has no network state (render.h)
+		entity_t	scratch;
+
+		memset (&scratch, 0, sizeof(scratch));	// the baseline's effects stay 0, as on the zeroed hunk
+		CL_ParseBaseline (&scratch);
+		ent->model = cl.model_precache[scratch.baseline.modelindex];
+		ent->frame = scratch.baseline.frame;
+		ent->colormap = vid.colormap;
+		ent->skinnum = scratch.baseline.skin;
+		ent->effects = scratch.baseline.effects;
+		ENT_COORDCOPY (scratch.baseline.origin, ent->origin);
+		ENT_ANGLECOPY (scratch.baseline.angles, ent->angles);
+	}
+#else
 	CL_ParseBaseline (ent);
 
 // copy it to the current state
@@ -812,6 +827,7 @@ void CL_ParseStatic (void)
 
 	ENT_COORDCOPY (ent->baseline.origin, ent->origin);	// QuakeOG: packed entity_t
 	ENT_ANGLECOPY (ent->baseline.angles, ent->angles);	
+#endif
 #ifdef QOG_STATICS_ON_HUNK
 	CL_LinkStatic (ent);	// QuakeOG: R_AddEfrags with efrags from the hunk
 #else

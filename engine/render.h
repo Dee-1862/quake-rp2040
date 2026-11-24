@@ -66,6 +66,44 @@ typedef struct
 	byte			modelindex, frame, colormap, skin, effects;
 } entbaseline_t;
 
+#ifdef QOG_ENTITY_TIGHT
+/*
+QuakeOG (Agent Y): 88 bytes, not 104. The frame, effects, skin and
+trivial_accept values fit the types below (the protocol sends frame, skin and
+effects as bytes, trivial_accept is 0 to 3), and the random animation start
+is kept as the 15-bit number id draws, the float is computed from it the way
+id computed it (ENT_SYNCBASE). The network state comes last, so a static
+entity, which never gets an update, is only the first ENT_STATIC_SIZE bytes
+(cl_main.c, CL_ParseStatic reads its baseline into a scratch entity).
+*/
+typedef struct entity_s
+{
+	vec3_t					origin;
+	vec3_t					angles;
+	struct model_s			*model;			// NULL = no model
+	struct efrag_s			*efrag;			// linked list of efrags
+	byte					*colormap;
+	int						visframe;		// last frame this entity was
+											//  found in an active leaf
+	struct mnode_s			*topnode;		// for bmodels, first world node
+											//  that splits bmodel, or NULL if
+											//  not split
+	short					frame;
+	unsigned short			syncrand;		// rand()&0x7fff for ST_RAND models, else 0
+	byte					effects;		// light, particals, etc
+	byte					skinnum;		// for Alias models
+	byte					trivial_accept;
+	byte					forcelink;		// model changed
+	// client entities only from here on, never static entities
+	float					msgtime;		// time of last update
+	entcoord_t				msg_origins[2][3];	// last two updates (0 is newest)
+	entbaseline_t			baseline;		// to fill in defaults in updates
+	entangle_t				msg_angles[2][3];	// last two updates (0 is newest)
+} entity_t;
+#define ENT_STATIC_SIZE		((int)(size_t)&((entity_t *)0)->msgtime)
+#define ENT_SYNCBASE(e)		((float)((float)(e)->syncrand / 0x7fff))
+#define ENT_SETSYNC(e,r)	((e)->syncrand = (r))
+#else
 typedef struct entity_s
 {
 	float					msgtime;		// time of last update
@@ -89,6 +127,7 @@ typedef struct entity_s
 	entangle_t				msg_angles[2][3];	// last two updates (0 is newest)
 	byte					forcelink;		// model changed
 } entity_t;
+#endif
 #else
 #define ENT_COORD(c)		(c)
 #define ENT_ANGLE(a)		(a)
@@ -127,6 +166,10 @@ typedef struct entity_s
 											//  that splits bmodel, or NULL if
 											//  not split
 } entity_t;
+#endif
+#ifndef ENT_SYNCBASE
+#define ENT_SYNCBASE(e)		((e)->syncbase)
+#define ENT_SETSYNC(e,r)	((e)->syncbase = (float)(r) / 0x7fff)
 #endif
 // QuakeOG: copy a network origin or angles into a float vector
 #define ENT_COORDCOPY(a,b)	{b[0]=ENT_COORD(a[0]);b[1]=ENT_COORD(a[1]);b[2]=ENT_COORD(a[2]);}

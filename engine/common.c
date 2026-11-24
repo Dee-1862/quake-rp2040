@@ -694,6 +694,59 @@ float MSG_ReadFloat (void)
 	return dat.f;   
 }
 
+#ifdef QOG_MSG_STRING_INPLACE
+/*
+QuakeOG (Agent Y): the string as it is in the message, not copied into a
+2 KB static buffer. id's loop below stops at a 0 byte, at a 0xFF byte (the
+signed char -1 MSG_ReadChar returns), at the end of the message or after
+2047 characters, and consumes the stop byte in the first two cases. A string
+that ends at a 0 byte within 2047 characters, which is every string a Quake
+server writes (MSG_WriteString), is returned in place, already terminated,
+and msg_readcount moves past the 0 as in id. Every caller copies or prints
+the string before it reads the message on. Any other ending is copied the
+way id copies it, into 2 KB of the z-buffer after the status bar rows, which
+are free while a message is parsed (r_shared.h), so the same characters
+come back.
+*/
+#if defined(QOG_EDGES_IN_ZBUFFER) || defined(QOG_EDGECACHE_ZBUFFER)
+#define MSG_ZTEMP
+extern byte	*r_ztemp_base;	// r_shared.h
+extern int	r_ztemp_bytes;
+#endif
+char *MSG_ReadString (void)
+{
+	char	*s = (char *)net_message.data + msg_readcount;
+	int		n = net_message.cursize - msg_readcount;
+	int		l, c;
+	char	*string;
+
+	for (l = 0 ; l < n && l < 2047 && s[l] && (byte)s[l] != 0xff ; l++)
+		;
+	if (l < n && l < 2047 && !s[l])
+	{
+		msg_readcount += l + 1;
+		return s;
+	}
+#ifdef MSG_ZTEMP
+	if (!r_ztemp_base || r_ztemp_bytes < 320 * 48 + 2048)
+#endif
+		Sys_Error ("MSG_ReadString: no room for a string that is not terminated in place");
+#ifdef MSG_ZTEMP
+	string = (char *)r_ztemp_base + 320 * 48;
+	l = 0;
+	do
+	{
+		c = MSG_ReadChar ();
+		if (c == -1 || c == 0)
+			break;
+		string[l] = c;
+		l++;
+	} while (l < 2048-1);
+	string[l] = 0;
+#endif
+	return string;
+}
+#else
 char *MSG_ReadString (void)
 {
 	static char     string[2048];
@@ -713,6 +766,7 @@ char *MSG_ReadString (void)
 	
 	return string;
 }
+#endif
 
 float MSG_ReadCoord (void)
 {
