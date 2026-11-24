@@ -696,9 +696,8 @@ static QOG_ANOINLINE qboolean R_QogAliasSphereOut (void)
 R_QogAliasCheckBBoxFast
 
 QuakeOG (Agent AI): R_AliasCheckBBox in Fast mode. The frame's box corners
-go through the same integer transform as the vertices. A box with a corner
-behind the near plane is drawn clipped, without id's rejection test. The
-box is rejected only when every corner is more than a pixel off one side,
+go through the same integer transform as the vertices, and as in id's an
+edge across the near plane adds its point on the plane. The box is rejected only when every corner is more than a pixel off one side,
 and accepted unclipped only when every corner is a pixel inside, which
 covers the rounding of the integer projection.
 ================
@@ -706,8 +705,9 @@ covers the rounding of the integer projection.
 static QOG_ANOINLINE qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc)
 {
 	r_qogxf_t	xf;
-	int			i, x, y, z, z8, u, v, flags, anyclip, allclip, minz;
-	int			b[2][3];
+	int			i, k, x, y, z8, u, v, flags, anyclip, allclip, minz, zclipped, numv;
+	int			b[2][3], pt[20][3];
+	float		frac;
 
 	R_QogAliasXform (&xf);
 	for (i=0 ; i<3 ; i++)
@@ -716,21 +716,55 @@ static QOG_ANOINLINE qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframe
 		b[1][i] = pframedesc->bboxmax.v[i];
 	}
 
-	anyclip = 0;
-	allclip = ALIAS_XY_CLIP_MASK;
+// the corners in view space, 16.16, in id's order (aedges)
+	zclipped = 0;
 	minz = 0x7fffffff;
 	for (i=0 ; i<8 ; i++)
 	{
-		int		bx = b[i & 1][0], by = b[(i >> 1) & 1][1], bz = b[i >> 2][2];
+		static const byte	cx[8] = {0, 0, 0, 0, 1, 1, 1, 1};
+		static const byte	cy[8] = {0, 1, 1, 0, 1, 0, 0, 1};
+		static const byte	cz[8] = {0, 0, 1, 1, 0, 0, 1, 1};
+		int		bx = b[cx[i]][0], by = b[cy[i]][1], bz = b[cz[i]][2];
 
-		z = xf.m[2][0] * bx + xf.m[2][1] * by + xf.m[2][2] * bz + xf.m[2][3];
-		if (z < ALIAS_Z_CLIP_PLANE * 0x10000)
-			return true;	// near the eye: drawn clipped, never rejected here
-		if (z < minz)
-			minz = z;
-		x = (xf.m[0][0] * bx + xf.m[0][1] * by + xf.m[0][2] * bz + xf.m[0][3]) >> 8;
-		y = (xf.m[1][0] * bx + xf.m[1][1] * by + xf.m[1][2] * bz + xf.m[1][3]) >> 8;
-		z8 = z >> 8;
+		for (k=0 ; k<3 ; k++)
+			pt[i][k] = xf.m[k][0] * bx + xf.m[k][1] * by + xf.m[k][2] * bz + xf.m[k][3];
+		if (pt[i][2] < ALIAS_Z_CLIP_PLANE * 0x10000)
+			zclipped |= 1 << i;
+		else if (pt[i][2] < minz)
+			minz = pt[i][2];
+	}
+	if (zclipped == 0xff)
+		return false;	// everything was near-z-clipped
+
+// as id's, an edge from a clipped corner to an unclipped one gives a point
+// on the near plane (rare, in float)
+	numv = 8;
+	if (zclipped)
+	{
+		for (i=0 ; i<12 ; i++)
+		{
+			int		*p0 = pt[aedges[i].index0], *p1 = pt[aedges[i].index1];
+
+			if (((zclipped >> aedges[i].index0) ^ (zclipped >> aedges[i].index1)) & 1)
+			{
+				frac = (float)(ALIAS_Z_CLIP_PLANE * 0x10000 - p0[2]) / (float)(p1[2] - p0[2]);
+				pt[numv][0] = p0[0] + (int)((float)(p1[0] - p0[0]) * frac);
+				pt[numv][1] = p0[1] + (int)((float)(p1[1] - p0[1]) * frac);
+				pt[numv][2] = ALIAS_Z_CLIP_PLANE * 0x10000;
+				numv++;
+			}
+		}
+	}
+
+	anyclip = 0;
+	allclip = ALIAS_XY_CLIP_MASK;
+	for (i=0 ; i<numv ; i++)
+	{
+		if (i < 8 && ((zclipped >> i) & 1))
+			continue;
+		x = pt[i][0] >> 8;
+		y = pt[i][1] >> 8;
+		z8 = pt[i][2] >> 8;
 		u = R_QOGPROJECT (x, z8, xf.xs, xf.xc, xf.xlim, aliasxscale, aliasxcenter);
 		v = R_QOGPROJECT (y, z8, xf.ys, xf.yc, xf.ylim, aliasyscale, aliasycenter);
 
@@ -753,7 +787,7 @@ static QOG_ANOINLINE qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframe
 	if (allclip)
 		return false;	// trivial reject off one side
 
-	currententity->trivial_accept = !anyclip;
+	currententity->trivial_accept = !anyclip && !zclipped;
 	if (currententity->trivial_accept &&
 		(float)(minz >> 16) > (r_aliastransition + (pmdl->size * r_resfudge)))
 		currententity->trivial_accept |= 2;
