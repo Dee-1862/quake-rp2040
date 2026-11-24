@@ -338,6 +338,7 @@ if(QOG_SPLIT)
     list(REMOVE_ITEM _sv_defs QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
     list(TRANSFORM _sv_defs REPLACE "^QOG_CMDBUF_SIZE=[0-9]+$" "QOG_CMDBUF_SIZE=256")
     list(APPEND _sv_defs QOG_LOADGAME_STRSIZE=8192)   # a save's biggest block 2,485 B (id 32 KB on the hunk)
+    list(APPEND _sv_defs QOG_RECONNECT_FIRST)         # Agent AD: the client's reconnect before its message, else every changelevel stopped the client (sv_main.c)
     list(TRANSFORM _sv_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=6")   # server zone peak 1.9 KB
     set(_sv_sound "")
     if(QOG_SOUND)

@@ -304,7 +304,8 @@ list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
 # a half with the board's own (apps/quake/CMakeLists.txt)
 set(QOG_SPLIT_SV_EXTRA "" CACHE STRING "extra engine flags for quakeog_sv")
 set(QOG_SPLIT_CL_EXTRA "" CACHE STRING "extra engine flags for quakeog_cl")
-target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER QOG_SPLIT_TOUR ${QOG_SPLIT_SV_EXTRA})
+target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER QOG_SPLIT_TOUR ${QOG_SPLIT_SV_EXTRA}
+    QOG_RECONNECT_FIRST)   # Agent AD: the client's reconnect before its message (sv_main.c), so a changelevel works with QOG_LINK_RX_ZTEMP
 # Agent W: with QOG_SND_HOST in QOG_SPLIT_SV_EXTRA the server half mixes for
 # the client half (QOG_SND_REMOTE in QOG_SPLIT_CL_EXTRA), as on the board
 if(QOG_SPLIT_SV_EXTRA MATCHES "QOG_SND_HOST")
