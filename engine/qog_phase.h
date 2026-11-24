@@ -61,6 +61,7 @@ enum
 	QOG_HP_HUD,			/* R_RenderView's status bar repaint (QOG_HUD_IN_ZBUFFER) */
 	QOG_HP_PRESENT,		/* VID_Update: hand the frame to the LCD (and wait, unless QOG_VID_LOCKWAIT) */
 	QOG_HP_SCANWAIT,	/* QOG_VID_LOCKWAIT: waiting for the last scanout before drawing */
+	QOG_HP_RACEWAIT,	/* QOG_VID_SCANRACE: the view waiting for the scanout to pass rows it writes (Agent AK) */
 	QOG_HP_SOUND,		/* S_Update and CL_DecayLights */
 	QOG_HP_SVWAIT,		/* split server: waiting for the client's frame (Link_ServerWaitTick) */
 	QOG_HP_SVFRAME,		/* split server: Host_ServerFrame */

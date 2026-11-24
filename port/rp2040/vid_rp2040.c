@@ -74,8 +74,15 @@ static void vid_menu_key(int key) { if (key == K_ESCAPE) M_Menu_Options_f(); }
 void (*vid_menudrawfn)(void) = vid_menu_draw;
 void (*vid_menukeyfn)(int key) = vid_menu_key;
 
-void VID_SetPalette(unsigned char *palette) { qog_video_set_palette_rgb(palette); }
-void VID_ShiftPalette(unsigned char *palette) { qog_video_set_palette_rgb(palette); }
+#ifdef QOG_HUD_SKIP
+static bool s_pal_changed;
+unsigned vid_qog_frames, vid_qog_hudsent;   /* Agent AK: for the diag line (link_rp2040.c) */
+#define PAL_CHANGED()   (s_pal_changed = true)
+#else
+#define PAL_CHANGED()
+#endif
+void VID_SetPalette(unsigned char *palette) { qog_video_set_palette_rgb(palette); PAL_CHANGED(); }
+void VID_ShiftPalette(unsigned char *palette) { qog_video_set_palette_rgb(palette); PAL_CHANGED(); }
 
 void VID_Init(unsigned char *palette) {
     const qog_video_config_t vc = { W, H, H };
@@ -118,23 +125,85 @@ void VID_Shutdown(void) {}
    z-buffer temporaries that parsing uses (QOG_PRECACHE_ZTEMP,
    QOG_LOADGAME_ZTEMP) stay clear of the status bar rows. */
 static bool s_scan_pending;
+#ifdef QOG_VID_SCANRACE
+static bool s_racing;           /* Agent AK: the 3D view runs beside the scanout */
+static uint8_t s_scan_rows;     /* rows the scanout in flight sends */
+#endif
 
 void VID_LockBuffer(void) {
     if (!s_scan_pending) return;
+#ifdef QOG_VID_SCANRACE
+    if (s_racing) return;       /* the view waits where it writes (VID_QogScanFree) */
+#endif
     QOG_PH_T(hp_wait);
     qog_video_wait();
     QOG_HP_ADD(QOG_HP_SCANWAIT, hp_wait);
     s_scan_pending = false;
 }
+
+#ifdef QOG_VID_SCANRACE
+/* QuakeOG (Agent AK): the scanout reads the frame's rows from the top down,
+   each once into a line buffer (platform/qog_video.c), and the world's
+   front end at the start of a view writes only its edge cache and vertex
+   cache in the first rows and its edge table at the end of the z-buffer.
+   So the view starts while the last frame is sent and waits only until the
+   scanout has read the rows it is about to write (engine/r_main.c). Same
+   pixels on the panel: no row changes before it was sent. */
+void VID_QogRaceBegin(void) {
+    if (s_scan_pending) s_racing = true;
+}
+
+void VID_QogScanFree(const void *lo, const void *hi) {
+    const byte *b = vid_buffer;
+    int end = s_scan_rows * W;
+    int top;
+    if (!s_scan_pending || (const byte *)lo >= b + end || (const byte *)hi <= b) return;
+    top = (const byte *)hi - b;
+    if (top >= end) {
+        VID_QogScanDone();
+        return;
+    }
+    QOG_PH_T(hp_wait);
+    qog_video_wait_rows((uint32_t)(top + W - 1) / W);
+    QOG_HP_ADD(QOG_HP_RACEWAIT, hp_wait);
+}
+
+void VID_QogScanDone(void) {
+    s_racing = false;
+    VID_LockBuffer();
+}
 #endif
+#endif
+
+
 
 void VID_Update(vrect_t *rects) {
     QOG_PH_T(hp_present);   /* QuakeOG (Agent V) */
     (void)rects;
+#if defined(QOG_HUD_SKIP)
+    /* QuakeOG (Agent AK): only the rows above the status bar when the panel
+       shows the status bar rows this frame has, in the same palette */
+    {
+        int rows = R_HudFrameEndRows(!s_pal_changed);
+        if (rows >= H) s_pal_changed = false;
+        vid_qog_frames++;
+        if (rows >= H) vid_qog_hudsent++;
+        qog_video_present_rows(vid_buffer, (uint32_t)rows);
+#ifdef QOG_VID_SCANRACE
+        s_scan_rows = (uint8_t)rows;
+        s_racing = false;
+#endif
+    }
+#else
 #ifdef QOG_HUD_IN_ZBUFFER
     R_HudFrameEnd();
 #endif
     qog_video_present(vid_buffer);
+#ifdef QOG_VID_SCANRACE
+    s_scan_rows = H;
+    s_racing = false;
+#endif
+#endif
 #ifdef QOG_VID_LOCKWAIT
     s_scan_pending = true;
 #else

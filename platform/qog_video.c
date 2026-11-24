@@ -30,6 +30,10 @@ static uint16_t s_pal_pending[256];
 static volatile bool s_pal_dirty;
 
 static volatile bool     s_busy;
+/* QuakeOG (Agent AK): source rows the scanout in flight has read so far (it
+   reads each row once, into a line buffer), and how many it sends */
+static volatile uint32_t s_scan_row;
+static uint32_t          s_scan_rows;
 static volatile uint32_t s_frames;
 static volatile uint32_t s_last_scan_us;
 static uint32_t          s_last_wait_us;
@@ -79,7 +83,10 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
     }
 
     st7789_dma_wait();   /* the BSP's own fill DMA, if any */
-    st7789_set_window(0u, s_y0, QOG_LCD_W, s_cfg.out_h);
+    /* QuakeOG (Agent AK): only the first s_scan_rows lines when the rows
+       below them are already on the panel (qog_video_present_rows) */
+    const uint32_t out_h = s_scan_rows;
+    st7789_set_window(0u, s_y0, QOG_LCD_W, out_h);
 
     /* RAMWR as an 8-bit command, then switch the PL022 to 16-bit frames for
        the pixel stream so RGB565 goes out MSB-first with no byte swap. */
@@ -98,17 +105,19 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
     channel_config_set_dreq(&c, spi_get_dreq(FWOG_LCD_SPI, true));
     volatile void *dr = &spi_get_hw(FWOG_LCD_SPI)->dr;
 
-    const uint32_t out_h = s_cfg.out_h, src_h = s_cfg.src_h, src_w = s_cfg.src_w;
+    const uint32_t src_h = s_cfg.src_h, src_w = s_cfg.src_w, map_h = s_cfg.out_h;
     int last_sy = -1;
     unsigned cur = 0;
     for (uint32_t oy = 0; oy < out_h; oy++) {
-        const int sy = (int)(((2u * oy + 1u) * src_h) / (2u * out_h));
+        const int sy = (int)(((2u * oy + 1u) * src_h) / (2u * map_h));
         if (sy != last_sy) {
             /* New source line: build it in the free buffer. The other one
                may still be on the wire. */
             cur ^= 1u;
             convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
             last_sy = sy;
+            __dmb();
+            s_scan_row = (uint32_t)sy + 1u;   /* Agent AK: the game may draw over rows above this */
         }
         /* A repeated line (vertical scale-up) resends the same buffer, which
            is safe: DMA only reads it. */
@@ -220,6 +229,13 @@ void qog_video_set_palette_rgb(const uint8_t rgb[768]) {
 
 bool qog_video_busy(void) { return s_busy; }
 
+void qog_video_wait_rows(uint32_t rows) {
+    const uint64_t t0 = time_us_64();
+    while (s_busy && s_scan_row < rows) tight_loop_contents();
+    __dmb();
+    s_last_wait_us = (uint32_t)(time_us_64() - t0);
+}
+
 void qog_video_wait(void) {
     const uint64_t t0 = time_us_64();
     while (s_busy) __wfe();
@@ -227,7 +243,14 @@ void qog_video_wait(void) {
 }
 
 void qog_video_present(const uint8_t *fb) {
+    qog_video_present_rows(fb, s_cfg.out_h);
+}
+
+void qog_video_present_rows(const uint8_t *fb, uint32_t rows) {
     qog_video_wait();
+    /* Agent AK: a part only when lines and rows are one to one */
+    s_scan_rows = (rows && rows < s_cfg.out_h && s_cfg.src_h == s_cfg.out_h) ? rows : s_cfg.out_h;
+    s_scan_row = 0;
     s_busy = true;
     __dmb();
     s_next_fb = fb;

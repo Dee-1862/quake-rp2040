@@ -225,7 +225,7 @@ static void qog_phase_board_xip (void (*print) (char *fmt, ...), const char *who
 void qog_phase_board_report (void (*print) (char *fmt, ...), const char *who, unsigned elapsed_us)
 {
 	static const char	*const hp_names[QOG_HP_N] = { "frame", "input", "link", "read", "screen", "view", "hud",
-											"present", "scanwait", "sound", "wait", "svframe", "phys", "send" };
+											"present", "scanwait", "race", "sound", "wait", "svframe", "phys", "send" };
 	static const char	*const ph_names[QOG_PH_N] = { "setup", "world", "bmodels", "scan", "lmap", "grad",
 											"spans", "zspans", "sky", "turb", "models", "vmodel",
 											"parts", "total" };

@@ -364,6 +364,9 @@ void R_QogVertCacheBegin (void)
 		n &= n - 1;
 	if (n < 64)
 		return;
+#ifdef QOG_VID_SCANRACE
+	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t));	// QuakeOG (Agent AK): the last scanout may still read these rows
+#endif
 	for (i = 0 ; i < n ; i++)
 		((r_qogvert_t *)lo)[i].tag = 0xFFFF;
 	verts = world->numvertexes < 0xFFFF ? world->numvertexes : 0xFFFF;

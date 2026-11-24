@@ -88,15 +88,22 @@ void qog_link_hw_open(int role) {
            s_rate, s_corrupt ? ", corrupting writes" : "", s_drop ? ", dropping writes" : "");
 }
 
+static void send_raw(const void *data, int len);
+
 void qog_link_hw_write(const void *data, int len) {
     double start = now_s(), done;
-    const char *p = data;
-    static char copy[8192];
     if (s_free_at > start) start = s_free_at;
     done = start + len / s_rate;
     s_free_at = done;
     while (now_s() < done)   /* the UART is still shifting the bytes out */
         SwitchToThread();
+    send_raw(data, len);
+}
+
+/* bytes off the simulated wire into the socket, with the injected errors */
+static void send_raw(const void *data, int len) {
+    const char *p = data;
+    static char copy[8192];
     if (s_drop && (int)(err_rand() % (unsigned)s_drop) == 0)
         return;
     if (s_corrupt && len <= (int)sizeof copy && (int)(err_rand() % (unsigned)s_corrupt) == 0) {
@@ -116,8 +123,45 @@ void qog_link_hw_write(const void *data, int len) {
     }
 }
 
+#ifdef QOG_LINK_TXASYNC
+/* QuakeOG (Agent AK): the board's DMA transmit, emulated. A frame is held
+   for its time on the simulated wire and handed to the socket at its end,
+   while the game goes on, so qog_link.c's background frame state (replies
+   held while a frame is out, the resend timer from a frame's end) runs as
+   on the board. */
+static char   s_txheld[4096];
+static int    s_txheld_len;
+
+static void tx_flush_held(void) {
+    if (s_txheld_len && now_s() >= s_free_at) {
+        int len = s_txheld_len;
+        s_txheld_len = 0;
+        send_raw(s_txheld, len);
+    }
+}
+
+int qog_link_hw_tx_busy(void) {
+    tx_flush_held();
+    return s_txheld_len != 0;
+}
+
+void qog_link_hw_tx_frame(const uint8_t *frame, int len) {
+    double start = now_s();
+    while (qog_link_hw_tx_busy()) SwitchToThread();
+    if (len > (int)sizeof s_txheld) Sys_Error("link: frame of %d bytes", len);
+    if (s_free_at > start) start = s_free_at;
+    memcpy(s_txheld, frame, (size_t)len);
+    s_txheld_len = len;
+    s_free_at = start + len / s_rate;
+}
+#endif
+
 int qog_link_hw_read(void *dst, int max) {
-    int n = recv(s_sock, dst, max, 0);
+    int n;
+#ifdef QOG_LINK_TXASYNC
+    tx_flush_held();
+#endif
+    n = recv(s_sock, dst, max, 0);
     if (n > 0) return n;
     if (n == 0 || WSAGetLastError() != WSAEWOULDBLOCK) {
         printf("link: peer gone (recv), exiting\n");
@@ -127,6 +171,11 @@ int qog_link_hw_read(void *dst, int max) {
 }
 
 uint32_t qog_link_hw_ms(void) { return (uint32_t)(now_s() * 1000.0); }
-void qog_link_hw_idle(void) { SwitchToThread(); }
+void qog_link_hw_idle(void) {
+#ifdef QOG_LINK_TXASYNC
+    tx_flush_held();
+#endif
+    SwitchToThread();
+}
 void qog_link_hw_other(const void *payload, int len) { (void)payload; (void)len; }
 uint32_t qog_link_hw_rate(void) { return (uint32_t)s_rate; }

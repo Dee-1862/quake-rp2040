@@ -776,8 +776,18 @@ static keydest_t	pl_keydest;
 
 static qboolean Host_PipelineCan (void)
 {
-	return cls.state == ca_connected && cls.signon == SIGNONS && cl.worldmodel && sv.active
-		&& !cls.demoplayback && !cls.timedemo && key_dest == key_game
+	return cls.state == ca_connected && cls.signon == SIGNONS && cl.worldmodel
+#ifdef QOG_LINK_PIPELINE_DEMO
+		// QuakeOG (Agent AK): a demo's frames too, timedemo included. The
+		// server half has no frame to run, but the screen update's sound
+		// exchanges are then queued instead of each waiting for the server
+		// half, and the frame's one exchange overlaps the drawing. Frame k's
+		// update still runs before frame k+1 reads its messages from the demo.
+		&& (cls.demoplayback || (sv.active && !cls.timedemo))
+#else
+		&& sv.active && !cls.demoplayback && !cls.timedemo
+#endif
+		&& key_dest == key_game
 		&& !cl.intermission && !cl.paused && !host_speeds.value
 		&& !scr_skipupdate && !block_drawing && !scr_disabled_for_loading && !scr_drawloading
 		&& scr_initialized && con_initialized;

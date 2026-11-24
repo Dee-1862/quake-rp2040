@@ -89,3 +89,18 @@ int VID_SetMode (int modenum, unsigned char *palette);
 void VID_HandlePause (qboolean pause);
 // called only on Win32, when pause happens, so the mouse can be released
 
+#if defined(QOG_VID_SCANRACE) && !defined(QOG_VID_LOCKWAIT)
+#error QOG_VID_SCANRACE needs QOG_VID_LOCKWAIT
+#endif
+#ifdef QOG_VID_SCANRACE
+// QuakeOG (Agent AK): with QOG_VID_LOCKWAIT, SCR_UpdateScreen lets the 3D
+// view start while the last frame's scanout still runs. VID_LockBuffer does
+// not wait then, and each write into the frame or the z-buffer (whose start
+// holds the status bar rows) before VID_QogScanDone first waits until the
+// scanout has read every row of [lo, hi) it sends (VID_QogScanFree).
+// VID_QogScanDone waits for its end, as VID_LockBuffer did, and ends that.
+void VID_QogRaceBegin (void);
+void VID_QogScanFree (const void *lo, const void *hi);
+void VID_QogScanDone (void);
+#endif
+

@@ -105,18 +105,55 @@ static int s_pend_hellok;
 
 static void send_small(uint8_t type, uint8_t a);
 static void send_hello(uint8_t type);
+static void poll_rx(void);
+
+#ifdef QOG_LINK_TXASYNC
+/* QuakeOG (Agent AK): every frame is built here and sent in the background
+   (qog_link_hw_tx_frame). The payload starts at s_txf + 3. */
+static uint8_t s_txf[3 + QOG_LINK_CHUNK + 2 + 2];
+
+/* wait for the frame on the wire, reading meanwhile (replies are deferred) */
+static void tx_wait_idle(void) {
+    while (qog_link_hw_tx_busy()) {
+        s_in_write++;
+        poll_rx();
+        s_in_write--;
+        qog_link_hw_idle();
+    }
+}
+
+/* the payload is in place at s_txf + 3: frame it and start it */
+static void tx_start(int len) {
+    uint16_t crc;
+    s_txf[0] = FWOG_LINK_SOF;
+    s_txf[1] = (uint8_t)len;
+    s_txf[2] = (uint8_t)(len >> 8);
+    crc = fwog_crc16_xmodem(s_txf + 1, (size_t)len + 2);   /* the length field and the payload */
+    s_txf[3 + len] = (uint8_t)crc;
+    s_txf[4 + len] = (uint8_t)(crc >> 8);
+    qog_link_hw_tx_frame(s_txf, len + FWOG_LINK_OVERHEAD);
+    qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
+}
 
 /* [SOF][len16][payload][crc16], fwog_link_encode's bytes */
 static void send_payload(const uint8_t *payload, int len) {
-    uint8_t h[3] = { FWOG_LINK_SOF, (uint8_t)len, (uint8_t)(len >> 8) };
-    uint16_t crc = fwog_crc16_xmodem_span(h + 1, 2, payload, (size_t)len);
-    uint8_t c[2] = { (uint8_t)crc, (uint8_t)(crc >> 8) };
-    s_in_write++;
-    qog_link_hw_write(h, 3);
-    qog_link_hw_write(payload, len);
-    qog_link_hw_write(c, 2);
-    s_in_write--;
-    qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
+    tx_wait_idle();
+    if (payload != s_txf + 3) memmove(s_txf + 3, payload, (size_t)len);
+    tx_start(len);
+}
+
+/* replies never wait: with a frame on the wire they go after it (pump_tx) */
+static void reply_ack(uint8_t seq) {
+    if (s_in_write || qog_link_hw_tx_busy()) s_pend_ack = seq;
+    else send_small(QOG_LINK_T_ACK, seq);
+}
+
+static void reply_hellok(void) {
+    if (s_in_write || qog_link_hw_tx_busy()) s_pend_hellok = 1;
+    else send_hello(QOG_LINK_T_HELLOK);
+}
+#else
+static void flush_replies(void) {
     if (!s_in_write) {
         if (s_pend_hellok) {
             s_pend_hellok = 0;
@@ -130,6 +167,20 @@ static void send_payload(const uint8_t *payload, int len) {
     }
 }
 
+/* [SOF][len16][payload][crc16], fwog_link_encode's bytes */
+static void send_payload(const uint8_t *payload, int len) {
+    uint8_t h[3] = { FWOG_LINK_SOF, (uint8_t)len, (uint8_t)(len >> 8) };
+    uint16_t crc = fwog_crc16_xmodem_span(h + 1, 2, payload, (size_t)len);
+    uint8_t c[2] = { (uint8_t)crc, (uint8_t)(crc >> 8) };
+    s_in_write++;
+    qog_link_hw_write(h, 3);
+    qog_link_hw_write(payload, len);
+    qog_link_hw_write(c, 2);
+    s_in_write--;
+    qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
+    flush_replies();
+}
+
 static void reply_ack(uint8_t seq) {
     if (s_in_write) s_pend_ack = seq;
     else send_small(QOG_LINK_T_ACK, seq);
@@ -139,6 +190,7 @@ static void reply_hellok(void) {
     if (s_in_write) s_pend_hellok = 1;
     else send_hello(QOG_LINK_T_HELLOK);
 }
+#endif
 
 /* QuakeOG (Agent T): a side frame, sent at once (see qog_link.h) */
 void qog_link_send_side(const void *payload, int len) {
@@ -248,9 +300,70 @@ static void poll_rx(void) {
     }
 }
 
+#ifdef QOG_LINK_TXRINGSEND
+/* QuakeOG (Agent AK): CRC-16/XMODEM (common/crc.h) carried over pieces */
+static uint16_t crc16_add(uint16_t crc, const uint8_t *p, uint32_t n) {
+    while (n--) {
+        crc ^= (uint16_t)(*p++ << 8);
+        for (int i = 0; i < 8; i++)
+            crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u) : (uint16_t)(crc << 1);
+    }
+    return crc;
+}
+
+/* QuakeOG (Agent AK): a DATA frame written straight from the transmit ring,
+   the same bytes as copying it into a frame buffer first (no 514-byte
+   buffer). The ring's unacknowledged bytes do not change meanwhile. */
+static void send_ring_frame(void) {
+    uint32_t a = s_tx_acked & (QOG_LINK_TXRING - 1);
+    uint32_t n1 = (uint32_t)s_tx_inflight, n2 = 0;
+    int len = s_tx_inflight + 2;
+    uint8_t h[5] = { FWOG_LINK_SOF, (uint8_t)len, (uint8_t)(len >> 8), QOG_LINK_T_DATA, s_tx_seq };
+    uint16_t crc;
+    uint8_t c[2];
+    if (a + n1 > QOG_LINK_TXRING) {
+        n2 = a + n1 - QOG_LINK_TXRING;
+        n1 -= n2;
+    }
+    crc = crc16_add(0, h + 1, 4);
+    crc = crc16_add(crc, s_tx + a, n1);
+    crc = crc16_add(crc, s_tx, n2);
+    c[0] = (uint8_t)crc;
+    c[1] = (uint8_t)(crc >> 8);
+    s_in_write++;
+    qog_link_hw_write(h, 5);
+    qog_link_hw_write(s_tx + a, (int)n1);
+    if (n2) qog_link_hw_write(s_tx, (int)n2);
+    qog_link_hw_write(c, 2);
+    s_in_write--;
+    qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
+    flush_replies();
+}
+#endif
+
 static void pump_tx(void) {
     uint32_t now;
     if (!s_up) return;
+#ifdef QOG_LINK_TXASYNC
+    /* Agent AK: one frame on the wire at a time, replies first. While a
+       frame waits in the flow control the resend timer starts again, so it
+       counts from the frame's end. */
+    if (qog_link_hw_tx_busy()) {
+        if (s_tx_inflight) s_tx_sent_ms = qog_link_hw_ms();
+        return;
+    }
+    if (s_pend_hellok) {
+        s_pend_hellok = 0;
+        send_hello(QOG_LINK_T_HELLOK);
+        return;
+    }
+    if (s_pend_ack >= 0) {
+        uint8_t a = (uint8_t)s_pend_ack;
+        s_pend_ack = -1;
+        send_small(QOG_LINK_T_ACK, a);
+        return;
+    }
+#endif
     now = qog_link_hw_ms();
     if (s_tx_inflight && (uint32_t)(now - s_tx_sent_ms) < s_tx_timeout_ms)
         return;
@@ -264,19 +377,43 @@ static void pump_tx(void) {
         qog_link_stats.data_tx += (uint32_t)s_tx_inflight;
         qog_link_stats.frames_tx++;
     }
+#ifdef QOG_LINK_TXRINGSEND
+    send_ring_frame();
+#else
     {
+#ifdef QOG_LINK_TXASYNC
+        uint8_t *p = s_txf + 3;     /* Agent AK: built in place, sent in the background */
+#else
         static uint8_t p[QOG_LINK_CHUNK + 2];
+#endif
         p[0] = QOG_LINK_T_DATA;
         p[1] = s_tx_seq;
         for (int i = 0; i < s_tx_inflight; i++)
             p[2 + i] = s_tx[(s_tx_acked + (uint32_t)i) & (QOG_LINK_TXRING - 1)];
+#ifdef QOG_LINK_TXASYNC
+        tx_start(s_tx_inflight + 2);
+#else
         send_payload(p, s_tx_inflight + 2);
+#endif
     }
+#endif
     s_tx_sent_ms = qog_link_hw_ms();
     s_tx_timeout_ms = frame_timeout(s_tx_inflight);
 }
 
+#if QOG_LINK_LISTEN_GAP
+static uint32_t s_last_pump_ms;     /* Agent AK */
+#endif
+
 void qog_link_pump(void) {
+#if QOG_LINK_LISTEN_GAP
+    /* Agent AK: after a long time without reading (the display draws), the
+       answer to the frame in flight may only now be on its way */
+    uint32_t now = qog_link_hw_ms();
+    if (s_tx_inflight && (uint32_t)(now - s_last_pump_ms) > QOG_LINK_LISTEN_GAP)
+        s_tx_sent_ms = now;
+    s_last_pump_ms = now;
+#endif
     poll_rx();
     pump_tx();
 }
@@ -355,6 +492,15 @@ void qog_link_drain(void) {
         qog_link_pump();
         qog_link_hw_idle();
     }
+}
+
+void qog_link_flush(void) {
+#ifdef QOG_LINK_TXASYNC
+    while (qog_link_hw_tx_busy() || s_pend_ack >= 0 || s_pend_hellok) {
+        qog_link_pump();
+        qog_link_hw_idle();
+    }
+#endif
 }
 
 #ifdef QOG_LINK_PIPELINE
