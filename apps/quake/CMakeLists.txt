@@ -409,7 +409,7 @@ if(QOG_SPLIT)
     endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
-    set(QOG_SV_HUNK_KB 156 CACHE STRING "server half hunk in KB. 156 covers start and e1m1, the levels the first board image carries (both run in 152). e1m3 with a fight, a save and a load needs 167, so raise it with the levels")
+    set(QOG_SV_HUNK_KB 160 CACHE STRING "server half hunk in KB. Agent Y, without sound (add 4 to 8 KB with it), a fight, a save and a load need start 90, e1m1 112, e1m2 139, e1m3 165, e1m4 155, e1m5 154, e1m6 140, e1m7 88, e1m8 115")
     set(QOG_SV_STACK_KB 35 CACHE STRING "server half stack array in KB. The static deepest chain is 17,496 B but recursion (hull traces, nested QuakeC) is not counted, and 24 KB hung the board after two minutes of play")
     add_executable(quake_main EXCLUDE_FROM_ALL
         ${QOG_ROOT}/port/rp2040/sys_rp2040.c
@@ -425,6 +425,9 @@ if(QOG_SPLIT)
     # saves on main's FAT volume through the BSP's FatFs (Agent T, sys_rp2040.c)
     target_link_libraries(quake_main qog_engine_sv fwog_main_bsp fwog_main_fs)
     target_link_options(quake_main PRIVATE -Wl,--allow-multiple-definition)
+    # Agent Y: the BSP's frame sender without its 4 KB frame buffer, as on the display (port/rp2040/link_rp2040.c)
+    target_compile_definitions(quake_main PRIVATE QOG_LINK_STREAM_SEND)
+    target_link_options(quake_main PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
     # the display image main carries: quake_display, or for measuring main
     # while quake_display does not link, any display app (qog_display)
     set(QOG_SPLIT_MAIN_EMBED quake_display CACHE STRING "display app quake_main embeds")
