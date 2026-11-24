@@ -57,6 +57,13 @@
 #ifndef QOG_LINK_RXRING
 #define QOG_LINK_RXRING     4096  /* received bytes not yet read (power of two) */
 #endif
+/* QuakeOG (Agent AK): when this side has not pumped the link for longer than
+   this many ms (the display draws for about 70 ms), an acknowledgement may
+   be waiting behind the peer's frame in the flow control, so the resend
+   timer starts again instead of sending a duplicate at once. 0: off. */
+#ifndef QOG_LINK_LISTEN_GAP
+#define QOG_LINK_LISTEN_GAP 0
+#endif
 
 typedef struct {
     uint32_t wire_tx, wire_rx;      /* bytes on the wire, frames and acks included */
@@ -84,6 +91,9 @@ int  qog_link_avail(void);
 void qog_link_pump(void);
 /* Pump until every written byte is acknowledged. */
 void qog_link_drain(void);
+/* QuakeOG (Agent AK): pump until the frame on the wire and the replies are
+   out (QOG_LINK_TXASYNC), before this side stops */
+void qog_link_flush(void);
 #ifdef QOG_LINK_PIPELINE
 /* QuakeOG (Agent V): pump until every written byte has gone out in a frame
    (the last frame may still wait for its acknowledgement). */
@@ -116,5 +126,18 @@ void     qog_link_hw_idle(void);
 void     qog_link_hw_other(const void *payload, int len);
 /* Bytes per second the transport carries, for the resend timeout. */
 uint32_t qog_link_hw_rate(void);
+
+#ifdef QOG_LINK_TXASYNC
+/* QuakeOG (Agent AK): frames go out in the background (on main a DMA channel
+   feeds the UART), so this side never stalls in a write while the peer is
+   busy and does not read (the display while it draws a frame). One frame
+   at a time: tx_frame starts it, and its bytes stay untouched while
+   tx_busy is true. Acks and other replies wait for the frame on the wire. */
+int      qog_link_hw_tx_busy(void);
+void     qog_link_hw_tx_frame(const uint8_t *frame, int len);
+#endif
+#if defined(QOG_LINK_TXASYNC) && defined(QOG_LINK_TXRINGSEND)
+#error QOG_LINK_TXASYNC sends from its own frame buffer, QOG_LINK_TXRINGSEND without one
+#endif
 
 #endif

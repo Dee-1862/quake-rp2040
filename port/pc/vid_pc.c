@@ -86,6 +86,7 @@ static int   surfcache_size;
 
 static HWND s_wnd;
 static struct { BITMAPINFOHEADER h; RGBQUAD pal[256]; } s_bmi;
+static qboolean s_pal_changed;   /* QuakeOG (Agent AK): since the last full update */
 
 static qboolean s_board_mode;
 static uint8_t s_board_btns;
@@ -100,9 +101,24 @@ void VID_SetPalette(unsigned char *palette) {
         s_bmi.pal[i].rgbBlue = palette[i * 3 + 2];
         s_bmi.pal[i].rgbReserved = 0;
     }
+    s_pal_changed = true;
 }
 
 void VID_ShiftPalette(unsigned char *palette) { VID_SetPalette(palette); }
+
+#ifdef QOG_HUD_SKIP
+/* QuakeOG (Agent AK): what the board's panel shows. VID_Update copies the
+   rows it sends (the status bar rows only when they changed, r_main.c), and
+   shots and frame hashes are taken from here, so they show what the LCD
+   shows. With QOG_HUD_SKIP_CHECK the status bar rows are still repainted
+   in every frame, and a frame that does not send them checks that they
+   equal the panel's. */
+static byte s_panel[QOG_PC_W * QOG_PC_H];
+static unsigned s_hud_frames, s_hud_skips, s_hud_bad;
+#define SHOT_PIXELS s_panel
+#else
+#define SHOT_PIXELS vid_buffer
+#endif
 
 static void update_title(void) {
     static double last;
@@ -143,7 +159,7 @@ static void cmd_qog_framehash(void) {
 }
 static void framehash_print(void) {
     unsigned h = 2166136261u;
-    for (int i = 0; i < QOG_PC_W * QOG_PC_H; i++) h = (h ^ vid_buffer[i]) * 16777619u;
+    for (int i = 0; i < QOG_PC_W * QOG_PC_H; i++) h = (h ^ SHOT_PIXELS[i]) * 16777619u;
     for (int i = 0; i < 256; i++) {
         h = (h ^ s_bmi.pal[i].rgbRed) * 16777619u;
         h = (h ^ s_bmi.pal[i].rgbGreen) * 16777619u;
@@ -170,16 +186,67 @@ static unsigned lockcheck_hash(void) {
     return h;
 }
 
+#ifdef QOG_VID_SCANRACE
+/* QuakeOG (Agent AK): the board's 3D view starts while the last scanout
+   runs and waits only for the rows it writes (port/rp2040/vid_rp2040.c).
+   The PC checks the rule at every wait: no byte the scanout sends and has
+   not released yet may have changed since VID_Update. */
+static byte s_sr_copy[QOG_PC_W * QOG_PC_H];
+static int s_sr_rel, s_sr_end;
+static unsigned s_sr_checks, s_sr_waits, s_sr_bad;
+static qboolean s_racing;
+
+static void scanrace_check(void) {
+    s_sr_checks++;
+    if (memcmp(vid_buffer + s_sr_rel, s_sr_copy + s_sr_rel, (size_t)(s_sr_end - s_sr_rel)) && !s_sr_bad++)
+        Con_Printf("qog_scanrace: the frame changed before its scanout passed (frame %d)\n", host_framecount);
+}
+
+void VID_QogRaceBegin(void) {
+    if (s_lk_pending) s_racing = true;
+}
+
+void VID_QogScanFree(const void *lo, const void *hi) {
+    int top;
+    if (!s_lk_pending || (const byte *)lo >= vid_buffer + s_sr_end || (const byte *)hi <= vid_buffer) return;
+    top = (int)((const byte *)hi - vid_buffer);
+    if (top >= s_sr_end) {
+        VID_QogScanDone();
+        return;
+    }
+    scanrace_check();
+    s_sr_waits++;
+    top = (top + QOG_PC_W - 1) / QOG_PC_W * QOG_PC_W;
+    if (top > s_sr_rel) s_sr_rel = top;
+}
+
+void VID_QogScanDone(void) {
+    s_racing = false;
+    VID_LockBuffer();
+}
+#endif
+
 void VID_LockBuffer(void) {
     if (!s_lk_pending) return;
+#ifdef QOG_VID_SCANRACE
+    if (s_racing) return;
+    scanrace_check();
+    s_lk_pending = false;
+    s_lk_frames++;
+#else
     s_lk_pending = false;
     s_lk_frames++;
     if (lockcheck_hash() != s_lk_hash && !s_lk_bad++)
         Con_Printf("qog_lockcheck: the frame changed during its scanout (frame %d)\n", host_framecount);
+#endif
 }
 
 static void cmd_qog_lockcheck(void) {
     Con_Printf("qog_lockcheck: %u scanouts checked, %u changed while scanned\n", s_lk_frames, s_lk_bad);
+#ifdef QOG_VID_SCANRACE
+    Con_Printf("qog_scanrace: %u checks, %u waits for rows, %u writes before the scanout passed\n",
+               s_sr_checks, s_sr_waits, s_sr_bad);
+#endif
 }
 #endif
 
@@ -227,13 +294,34 @@ void Sys_QogCore1Join(void) {
 #endif
 
 void VID_Update(vrect_t *rects) {
+    int rows = QOG_PC_H;
     (void)rects;
-#ifdef QOG_HUD_IN_ZBUFFER
+#if defined(QOG_HUD_SKIP)
+    /* QuakeOG (Agent AK): the rows the board sends this frame */
+    rows = R_HudFrameEndRows(!s_pal_changed);
+    s_hud_frames++;
+    if (rows < QOG_PC_H) {
+        s_hud_skips++;
+#ifdef QOG_HUD_SKIP_CHECK
+        if (memcmp(vid_buffer + rows * QOG_PC_W, s_panel + rows * QOG_PC_W, (size_t)((QOG_PC_H - rows) * QOG_PC_W))
+            && !s_hud_bad++)
+            Con_Printf("qog_hudskip: the status bar rows not sent differ from the panel's (frame %d)\n", host_framecount);
+#endif
+    }
+    memcpy(s_panel, vid_buffer, (size_t)(rows * QOG_PC_W));
+#elif defined(QOG_HUD_IN_ZBUFFER)
     R_HudFrameEnd();
 #endif
+    if (rows >= QOG_PC_H) s_pal_changed = false;
 #ifdef QOG_VID_LOCKWAIT
     s_lk_hash = lockcheck_hash();   /* QuakeOG (Agent V): the board's scanout starts here */
     s_lk_pending = true;
+#endif
+#ifdef QOG_VID_SCANRACE
+    memcpy(s_sr_copy, vid_buffer, (size_t)(rows * QOG_PC_W));
+    s_sr_rel = 0;
+    s_sr_end = rows * QOG_PC_W;
+    s_racing = false;
 #endif
     if (s_framehash) framehash_print();
 #ifdef QOG_EDGES_IN_ZBUFFER
@@ -342,7 +430,7 @@ static void write_shot(const char *name) {
     fwrite(&fh, sizeof fh, 1, f);
     fwrite(&ih, sizeof ih, 1, f);
     fwrite(s_bmi.pal, pal_bytes, 1, f);
-    fwrite(vid_buffer, img, 1, f);
+    fwrite(SHOT_PIXELS, img, 1, f);
     fclose(f);
     if (strncmp(name, "fd_", 3))   /* frame hash dumps stay out of the console */
         Con_Printf("qog_shot: wrote %s (frame %d, cl.time %.3f, realtime %.3f)\n", path, host_framecount, cl.time, realtime);
@@ -549,6 +637,19 @@ void VID_Init(unsigned char *palette) {
 void VID_Shutdown(void) {
 #ifdef QOG_VID_LOCKWAIT
     Sys_Printf("qog_lockcheck: %u scanouts checked, %u changed while scanned\n", s_lk_frames, s_lk_bad);
+#endif
+#ifdef QOG_VID_SCANRACE
+    Sys_Printf("qog_scanrace: %u checks, %u waits for rows, %u writes before the scanout passed\n",
+               s_sr_checks, s_sr_waits, s_sr_bad);
+#endif
+#ifdef QOG_HUD_SKIP
+#ifdef QOG_HUD_SKIP_CHECK
+#define HUDCHK " (checked)"
+#else
+#define HUDCHK " (not checked)"
+#endif
+    Sys_Printf("qog_hudskip: %u frames, %u without the status bar rows, %u of them differed from the panel%s\n",
+               s_hud_frames, s_hud_skips, s_hud_bad, HUDCHK);
 #endif
 #ifdef QOG_EDGES_IN_ZBUFFER
     {   /* QuakeOG: the whole run's figures for the edges in the z-buffer */

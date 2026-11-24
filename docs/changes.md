@@ -2,6 +2,145 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Fast spans without float work per span, interpolator pixels, a smaller console, and what the XIP cache really misses (Agent AH, PC and ARM build, registered data)
+
+The user wants a basis of 30 fps and asked to replicate and improve MG24Quake's span strategy. I read their span path (d_edge.c sortSurfs, d_surf.c's 20 KB texture buffer with DMA prefetch, d_scan.c's 32-pixel sub-spans and bilinear light) and measured, on the PC, what of it would help here. The answer was not the texture and colour map buffers: MG24Quake has an FPU and must copy textures because its flash is not memory mapped, while this board's spans spend their time in software float routines. So the Fast drawer now does no float work per span and the pixel loop runs on the RP2040's interpolators. Nothing ran on hardware. Exact mode is byte identical. The board savings are estimates (cycle counts below), the lead measures them.
+
+### What the XIP cache misses in the spans (PC model, `QOG_XIPSIM`)
+
+A PC measurement build (`-DQOG_PC_EXTRA_DEFS=QOG_XIPSIM`, engine/d_xipsim.c, `qog_xipsim`) feeds every flash read of the span drawer (texels, colour map entries) and of R_BuildLightMap (lightmap samples) into a model of the XIP cache (16 KB, two ways, 8-byte lines, LRU), with four caches side by side: as today, colour map in RAM, texture in RAM, both. Code fetches and the rest of the frame are not modelled, so these are lower bounds. 300 views of each demo after 30 (`qogtest_ah_xip.cfg`), misses per view:
+
+| Demo, render | as today (tex, cmap, lmap) | colour map in RAM | texture in RAM | both in RAM |
+| --- | --- | --- | --- | --- |
+| demo1 Exact | 2,162 (1,275, 551, 335) | 1,155 | 217 | 15 |
+| demo2 Exact | 965 (606, 187, 171) | 491 | 45 | 3 |
+| demo3 Exact | 2,110 (1,238, 532, 339) | 1,155 | 223 | 17 |
+| demo3 Fast | 2,105 | 1,155 | 221 | 17 |
+| demo3 Exact, surfaces sorted by texture (`QOG_SURF_SORT`) | 2,023 | 1,169 | 224 | 17 |
+
+At about 0.26 us a miss (an 8-byte line at 125 MHz flash: 8 address and mode clocks, 4 dummy, 16 data, plus the SSI, from the 538 ns measured at 50 MHz on the board), 2,100 misses are about 0.55 ms a view. Texture and colour map in RAM together (MG24Quake's 20 KB plus 16 KB) would save at most that much, and sorting by texture saves 0.02 ms. The texels hit the cache well because neighbouring pixels share 8-byte lines and a surface's texels stay in the cache while it is drawn. So I did not spend RAM on texture or colour map buffers. The lead's XIPSTATS line will show whether code misses (not in the model) are many: if the spans phase shows about 2,000 to 5,000 misses a view, flash is not what the spans wait on.
+
+The 2-point clock fit agrees: spans were 43.2 ms at 200 MHz with 50 MHz flash and 30.7 ms at 250 MHz with 125 MHz flash, which fits about 27 ms of CPU and about 4 ms of flash waiting at 250/125.
+
+### What the spans do spend (Fast, demo3, per view)
+
+PC counts (`QOG_RFAST_STATS`): 1,758 spans, 3,766 sub-spans, 48,477 pixels, about 6,900 light runs. Agent AA's Fast drawer per span: the start values (two int to float, six float multiplies and six adds), a reciprocal, two multiplies and two float to int conversions at the start and at each sub-span end, the sub-span length test (one or two float compares), and for the last sub-span an int to float and three multiplies. With the RP2040's ROM float routines at about 55 cycles each through the SDK wrappers, that is about 2,150 cycles a span, 3.8 M cycles a view, more than the pixels (about 32 cycles each, 1.55 M).
+
+### Changes
+
+| Change | Flag | Exact? | Pixels changed | Estimated saving, cycles a view (both cores) | RAM |
+| --- | --- | --- | --- | --- | --- |
+| Fast spans in integers. Per surface on core 0 (D_LitFixSetup, about 33 float operations, the scaling done on the float bits) the three linear functions of the screen position become 64-bit fixed point at the surface's first span: 1/z times 2^k (k puts the surface's nearest 1/z near 2^60), and s/z, t/z with sadjust and tadjust folded in, scaled so s/1/z is in [0, 2^w) with w from the surface's extent. Per span the start values are exact 64-bit sums (three 32-bit multiplies each, no multiply call), moved to 32 bits by one shift, and per sub-span end three adds, one hardware integer divide (2^32 / 1/z normalised to 17 bits) and two multiplies give s and t in 16.16. Error at most 2^(w - 16) texel plus 2^-15 of the coordinate, at most 1/64 texel. Sub-span lengths, light runs and clamps are Agent AA's. A surface whose values do not fit keeps the float drawer | `QOG_RFAST_FIX` (on with `QOG_RFAST`, `QOG_RFAST_FLOATSETUP` brings back the float drawer) | approximate (Fast only) | 2.88% of view pixels against Exact (Agent AA's Fast 2.75%), 0.25% against Agent AA's Fast, worst frame d_demo3_15 9.26% | about 2,150 to about 560 a span: 2.8 M, less 0.1 M of setup on core 0 | 100 B static, D_DrawSpans8Lit's frame 56 B (+16), the Fix drawer 432 B as the exact one, D_LitFixSetup 96 B never under it |
+| The z of a span from the integer 1/z (`D_QogZSpanI`) | with the above | approximate | in the 2.88% | about 90 cycles a span | 0 |
+| Fast pixel loop on the SIO interpolators. Interpolator 0 holds S and T2 with the texture in BASE2, so its FULL result is the texel's address and reading it steps both, interpolator 1 holds the light accumulator with the colour map in BASE2, so its FULL result is the light row. A pixel is two register reads, two byte loads and a store (8 instructions, about 11 cycles in place of about 32). Each core sets its own pair per surface. The PC emulates the registers with the hardware's rules, and the board checks them once at start-up from D_Init (D_QogLitInterpCheck: 64 steps against the C expressions, a Con_Printf is safe there and not inside the edge drawing), and if they differ every lit surface takes the exact drawer and a console line says why | `QOG_LITSPAN_INTERP` (`QOG_BOARD_INTERP`, on) | exact (the same pixels as Fast without it) | 0 against Fast without it, 121 of 121 frames | about 20 cycles a pixel, 0.97 M | 12 B static |
+| Fused z spans with the one-byte z-buffer: when both ends of a span are 32 units or farther (z below 1024) and the step cannot wrap, every pixel's D_ZQ is z >> 3, so the loop skips D_ZQ's two tests | (on with `QOG_ZBUFFER8_NEAR`, `QOG_ZSPAN8_SLOW` turns it off) | exact | 0, see below | about 4 cycles a pixel on most pixels, 0.18 M | 0 |
+| Console text 4 KB to 1 KB on the board client (26 lines of scrollback, the 4 notify lines, MG24Quake keeps 913 B). The hunk shrinks by the same 3 KB, so `-DQOG_CL_HUNK_KB=75` still means Agent AD's measured hunk and every level keeps its margin, and the 3 KB become static RAM | `QOG_BOARD_CONSMALL` (on) | the console holds fewer lines | 0 | | 3,072 B of static RAM freed |
+| D_DrawSurfaces' loop body in a function of its own, and an optional draw order grouped by texture and mip (the key kept in last_u, which only one scan line's span making uses, so no RAM) | `QOG_SURF_SORT` (off: the model above says it saves 0.02 ms) | exact | 0 | | 0 |
+| The XIP cache model | `QOG_XIPSIM` (PC measurement only) | | | | |
+
+Total about 3.9 M cycles a view of span work, 15.5 ms of one core at 250 MHz. The spans phase is timed on core 0, which draws every second span: if the cores share evenly it falls by about 7.7 ms (23.6 to about 16 ms in timedemo demo3), and by more if core 1 helps less than half today (the clock fit above leaves room for that). An A/B with `-DQOG_BOARD_CORE1=OFF` would show how much core 1 takes today.
+
+Frame estimate: timedemo demo3 took 107.5 ms a frame (1090 frames in 117.2 s). 7.7 ms less is about 10.0 fps, 15 ms less about 10.8 fps, before the other agents' work. The miss model assumes about 0.26 us a line at 125 MHz flash (0.1 to 0.5 us brackets it), the cycle counts about 55 cycles per ROM float call with its wrapper.
+
+### Exact proof (hidden, `-nosound`, own `build-ah/pc` and `build-ah/pc-ref` (untouched 85a3d22), own git-ignored `data\id1`)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc | ce86f894f9de |
+| `qogtest_f_hash`, quakeog_pc, r_fast 0 and r_fast 1 | e92bc9e9650d, e92bc9e9650d |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against 85a3d22 | 121 of 121 byte identical |
+| the same with `QOG_LITSPAN_INTERP` (emulated), r_fast 1, against r_fast 1 without it | 121 of 121 byte identical |
+| one-byte z (`QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800`), the far-z loop against `QOG_ZSPAN8_SLOW`, r_fast 0 and 1 | 121 of 121 byte identical in each mode |
+
+Fast pictures: Exact and Fast pairs of all 121 frames with the changed pixels in red are in the session's scratchpad `fast2` folder (`pairs/*.png`, `percent.txt`).
+
+### Board link
+
+| | before (85a3d22) | after |
+| --- | --- | --- |
+| quake_display `end` | 0x2003f7f0 at 85a3d22, 16 B free | 0x2003ea84 after merging main b59bcd1 (main alone 0x2003f610, 496 B free), 3,452 B free beside the 2 KB heap reserve |
+| quake_main `end` | 0x2003f520 (0x2003f544 on main b59bcd1) | 0x2003f544, unchanged from main |
+| quake_display.bin | 366,456 B | 374,600 B (main b59bcd1 plus about 4 KB: the integer drawer and the interpolator loop) |
+
+The configure line is the lead's (`-DQOG_CL_HUNK_KB=75` and the rest), the display's hunk is then 72 KB.
+
+### For the lead and the user
+
+- RAM: 3,452 B of the display's static RAM is free after this (merged with main), for whoever needs it next. Other cuts I looked at and left: the command buffer (its measured peak is 2,158 B at boot, so 2 KB would drop default.cfg), the zone (peak 7,920 B of 8 KB), particles (already MG24Quake's 512), the client stack (4.2 to 5.6 KB free measured, and the z-edge fallback uses what is free).
+- What the player sees: Fast pictures as before within 0.25% of the pixels (sub-texel steps at texture seams), the console scrolls back 26 lines instead of about 100.
+- No frame-buffer or z-buffer rows are used by any of this, so Agent AK's scanout race (QOG_VID_SCANRACE) is not affected.
+- Next, in my estimate the largest left in the spans: the per-surface work on core 0 while core 1 waits (lmap 1.5 ms, grad 2.4 ms and the new setup about 0.4 ms in the demo3 phase line). Drawing surface N's spans on core 1 while core 0 sets up surface N+1, with a second light grid (1,296 B of the free RAM) and spans taken from a shared counter, would hide about half of it, about 2 ms.
+- Files: engine/d_litspan.h, engine/d_scanlit.c, engine/d_scan.c, engine/d_edge.c (mine), engine/d_xipsim.c (new, PC only), engine/r_surf.c (a PC measurement hook under `QOG_XIPSIM`), engine/d_init.c (that hook's command and the board's interpolator check), apps/quake/CMakeLists.txt (two board options and the hunk subtraction).
+
+## 2026-11-24: Both chips truly in parallel, the 3D view racing the LCD scanout, the status bar sent only when it changes, demos pipelined (Agent AK, PC and ARM build, registered data)
+
+Everything in the board frame outside the 3D view's drawing. Four board options, all on, all exact (same state hashes, same pictures on the panel). Nothing ran on hardware, so every saving below is an estimate from the board numbers of the entries below.
+
+### What the 11 to 12 ms link wait was
+
+Main's server frame did not overlap the display's drawing, although Agent V's pipeline sends the tick before the screen update. The UART has only its 32-byte FIFOs and both sides read it only while they pump the link. Main answers sound operations (each queued `S_ExtraUpdate` and the `S_Update` of the pipelined update) with samples. Main's `qog_link_hw_write` then sat byte by byte in the hardware flow control for the whole 70 ms the display drew, so the client's next tick sat unread in main's ring, and main ran its 10 ms server frame only once the display came back to wait for it. The client's link wait was the server frame plus the transfer (11 to 12 ms on the board, about equal to main's 10 ms frame). On the PC the TCP socket never blocks, so the pipeline looked fine there.
+
+### Changes
+
+| Change | Flag (CMake option) | Why it is exact | Estimated saving, E1M1 play | RAM |
+| --- | --- | --- | --- | --- |
+| Main sends every link frame by DMA from a frame buffer (UART DREQ, held by the flow control while the display draws) and never waits in a write. It reads the tick and runs its frame while the display draws. Replies wait for the frame on the wire, the resend timer runs from a frame's end. Main flushes its last ack before it quits | `QOG_LINK_TXASYNC` on main (`QOG_BOARD_LINKOVERLAP`) | the stream's bytes and their order are unchanged, only when they leave | link wait 11 to 12 ms down to about 1 to 3 ms (the answer's transfer), but see the scanout below | main +36 B |
+| While the display draws inside an exchange its queued sound operations wait in the ring instead of being pumped (a frame could stall the render while main runs its frame and does not read). After 10 ms without pumping the resend timer starts again instead of resending at once | `QOG_LINK_OVERLAP`, `QOG_LINK_LISTEN_GAP=10` (same option) | same operations in the same order, main runs them after the exchange as before | no duplicate tick frames after each draw | 4 B a side |
+| The display writes DATA frames straight from its transmit ring with a carried CRC, no 514-byte frame buffer | `QOG_LINK_TXRINGSEND` (display, always) | the same bytes on the wire | | display -514 B |
+| Demos and timedemo use the pipelined screen update. The update's sound exchanges (each `S_ExtraUpdate` in the renderer and `S_Update`) are queued instead of each waiting for main | `QOG_LINK_PIPELINE_DEMO` (`QOG_BOARD_PIPEDEMO`) | frame k's update still runs before frame k+1 reads its demo messages, with frame k's realtime, frame count, angles and key_dest (Agent V's pipeline) | about 8 sound round trips a demo frame, estimated 2 to 5 ms | 0 |
+| The 3D view starts while the last frame is scanned out. VID_LockBuffer does not wait in SCR_UpdateScreen's 3D part, R_EdgeDrawing waits only until the scanout has read the rows the world's edge cache and vertex cache use (they are the frame buffer's first rows, the scanout reads top down, each row once into a line buffer), and waits for the whole scanout after R_RenderWorld. 2D drawing before and after the view waits for the whole scanout as before | `QOG_VID_SCANRACE` (`QOG_BOARD_SCANRACE`, needs LOCKWAIT) | no row changes before the scanout has read it (checked on the PC at every wait) | see the critical path below | display 2 B, qog_video 8 B |
+| The status bar rows are sent to the LCD only when they change (the panel keeps its pixels, as id's own VID_Update leaves the status bar out when nothing drew it). A frame whose status bar would be the repaint of the same saved state the panel already shows, with nothing else drawn over it (`SCR_QogHudQuiet`: no console, menu, dialog, loading plaque, intermission, or centre print reaching the rows), skips the repaint (hud 1.7 ms) and scans 152 rows instead of 200. A palette change since the last full scan repaints late and sends all rows | `QOG_HUD_SKIP` (`QOG_BOARD_HUDSKIP`) | the skipped rows equal what the panel shows (checked on the PC every such frame) | hud 1.7 ms, the scanout 18.3 to 13.9 ms in those frames | 13 B |
+
+### The critical path after the changes (estimate)
+
+Once the link is fast, the frame is bounded by the scanout, because the world's front end keeps its caches in the frame buffer (Agent Z's vertex cache, the edge cache): the next view's R_RenderWorld can only start when the scanout has read them. On E1M1 the edge cache is 13,497 edges, 84.4 rows, and the vertex cache 512 entries of 32 B after it, 51 rows, so the race waits for row 136, about 12.4 ms after VID_Update at 91.5 us a row (Agent V's 18.3 ms for 200 rows). Link, parsing and input now take about 4 ms of that, the race wait is the rest.
+
+| E1M1 play, ms a frame | Board now | Estimate |
+| --- | ---: | ---: |
+| link | 11 to 12 | 1 to 3 |
+| scanwait (whole scanout waits) | 5 to 6 | about 0 |
+| race (new, row waits) | | 7 to 9 |
+| hud | 1.7 | about 0 (most frames) |
+| view less hud | 65 to 68 | the same |
+| frame | 83 to 86 | about 77 to 80 (12.5 to 13 fps) |
+
+timedemo demo3 (e1m6, edge cache 64.8 rows, race to row 116, 10.6 ms): 107.5 ms a frame with a view of 75.7 ms, so 32 ms outside the view. The pipelined demo removes the synchronous sound exchanges and the race overlaps the scanout with the demo's parsing. Estimate 88 to 95 ms a frame, 10.5 to 11.4 fps (9.3 now).
+
+The biggest remaining item outside the view is the race wait, a cache placement question for Agent AJ: with 256 vertex cache entries the race would stop at row 110 (10 ms) instead of 136 (12.4 ms), and an edge cache that is not in the frame buffer would let the view start at once.
+
+### What to read on the board
+
+- `[time cl]` line: `link` should fall from 11 to 12 to about 1 to 3, `scanwait` to about 0, the new `race` (after `scanwait`) is the time the view waited for rows, `hud` near 0. `frame` is the result.
+- `[quake_main] link wait ... txstall <ms>` once a second on COM7: ms in that second main waited to write to the link. About 0 with the DMA. Built with `-DQOG_BOARD_LINKOVERLAP=OFF` it shows the old stall (expected about 800 ms a second) and confirms the cause above.
+- `[quake_display] status bar rows sent in <n> of <m> frames` once a second on COM8.
+- A/B: `-DQOG_BOARD_SCANRACE=OFF`, `-DQOG_BOARD_HUDSKIP=OFF`, `-DQOG_BOARD_PIPEDEMO=OFF` on the configure line.
+- Look for a torn or stale status bar (ammo changing, pain flashes, the console, centre prints over the status bar). None on the PC.
+
+### PC verification (hidden, `-nosound`, own build folders in `build-ak`, own git-ignored `data\id1`, link ports 27941 to 27951, one run at a time)
+
+References are untouched 85a3d22 builds: `build-ak/pc-ref` (default) and `build-ak/pcb-ref` (Agent AF's board-flag pair flags). `build-ak/pcb` adds `QOG_LINK_OVERLAP QOG_LINK_TXRINGSEND QOG_LINK_LISTEN_GAP=10 QOG_LINK_PIPELINE_DEMO QOG_VID_SCANRACE QOG_HUD_SKIP QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST` to the client and `QOG_LINK_TXASYNC QOG_LINK_LISTEN_GAP=10` to the server (link_pc.c holds each frame for its wire time and sends it at the end, as the DMA would), `build-ak/pcbk` the same plus `QOG_HUD_SKIP_CHECK`. With `QOG_HUD_SKIP` the PC keeps the panel's picture (VID_Update copies the rows it sends) and shots and frame hashes are taken from it, so they show what the LCD shows.
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc and the pcb pair | ce86f894f9de, ce86f894f9de |
+| `qogtest_f_hash` quakeog_pc, `qogtest_r_fhash` pcb and pcbk pairs | e92bc9e9650d each |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the 8 fhash frames), quakeog_pc against pc-ref | 121 of 121 byte identical |
+| the 94 shots the pair takes (86 demo and spawn shots, 8 fhash), pcb and pcbk against pcb-ref | 94 of 94 byte identical each, with demos pipelined (3,077 of the demo run's frames, 77 in the reference) |
+| `qog_scanrace` (no byte changed before the scanout passed it) | 0 of 6,986 checks (r_fhash), 0 of 886 (hash), 0 of 1,858 (benchmark) |
+| `qog_hudskip` with the check (the rows not sent, repainted anyway, against the panel's) | 2,433 of 5,313 r_fhash frames sent no status bar rows, 0 differed |
+| Agent AF's `qogtest_af_menu.cfg` on pcb (e1m1, menu, Benchmark, yes, result page, gray) | runs, `[bench] timedemo demo3 1090 frames`, 1,108 frames pipelined, result page and back to the menu. The shots differ from the reference only by real time (this script runs without host_framerate), as two reference runs do |
+
+Board link (`cmake -B build-ak --preset target` with the full configure line):
+
+| | `end` | Free beside the 2 KB heap reserve |
+| --- | --- | ---: |
+| quake_display | 0x2003f610 (main 0x2003f7f0) | 496 B (16 before) |
+| quake_main | 0x2003f544 (main 0x2003f520) | 700 B (736 before) |
+
+quake_display is 368,504 B of its 913,408 B slot, quake_main 1,309,684 B of 2 MB.
+
+Files: port/common/qog_link.c and .h, port/rp2040/link_rp2040.c, port/pc/link_pc.c, engine/net_link.c, engine/host.c, engine/screen.c, port/rp2040/vid_rp2040.c, port/pc/vid_pc.c, platform/qog_video.c and .h, engine/qog_phase.h, port/common/qog_phase.c, apps/quake/CMakeLists.txt. Shared files, each in its own `#ifdef` block: engine/r_main.c (R_HudRepaint taken out of R_RenderView unchanged, the skip, the race waits in R_EdgeDrawing), engine/r_draw.c (one wait in R_QogVertCacheBegin, Agent AJ's file), engine/vid.h, engine/d_local.h. d_edge.c is not touched.
+
 ## 2026-11-24: timedemo demo3 on the board (lead, on hardware)
 
 The board menu's Benchmark (Agent AF) ran id's `timedemo demo3` on the episode 1 image with the demos (13.69 MB display data):

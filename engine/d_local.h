@@ -136,6 +136,9 @@ extern d_zval_t *d_zbase;
 #ifdef QOG_HUD_IN_ZBUFFER
 extern int	r_zalias_row;	// QuakeOG: screen rows from here down live in the z-buffer (r_main.c)
 void R_HudFrameEnd (void);	// QuakeOG: VID_Update calls it at the end of every frame
+#ifdef QOG_HUD_SKIP
+int R_HudFrameEndRows (qboolean palette_same);	// QuakeOG (Agent AK): R_HudFrameEnd, returns the rows to send (r_main.c)
+#endif
 #endif
 extern unsigned int d_zrowbytes, d_zwidth;
 
