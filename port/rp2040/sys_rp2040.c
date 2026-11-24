@@ -45,6 +45,7 @@ See the GNU General Public License for more details.
 #include "fwog_main.h"
 #else
 #include "fwog_display.h"
+#include "qog_power.h"
 #include "qog_aim.h"
 #endif
 #include "qog_flashmap.h"
@@ -182,7 +183,13 @@ void qog_hang_watch_start(void) {
 #else
 /* BSP contract rule 2: red held 6 s powers the board off. The main loop
    calls fwog_power_poll every iteration (and Sys_Error keeps doing so). */
+#ifdef QOG_POWER_RED_ALONE
+/* the app owns the power poll (port/rp2040/power_qog.c): red powers off
+   after the same 6 s, counted only while red is the only button held */
+FWOG_POWER_CUSTOM();
+#else
 FWOG_POWER_DEFAULT();
+#endif
 #endif
 
 /* newlib's remove() wants this; there is no filesystem to delete from. */
@@ -418,7 +425,7 @@ void Sys_Error(char *error, ...) {
     for (;;) {
         DIAG("Sys_Error: %s\n", text);
         for (int i = 0; i < 500; i++) {
-            fwog_power_poll(to_ms_since_boot(get_absolute_time()));
+            QOG_POWER_POLL(to_ms_since_boot(get_absolute_time()));
             sleep_ms(2);
         }
     }
@@ -591,7 +598,7 @@ int main(void) {
     int frame = 0;
     double oldtime = Sys_FloatTime();
     for (;;) {
-        fwog_power_t pw = fwog_power_poll(to_ms_since_boot(get_absolute_time()));
+        fwog_power_t pw = QOG_POWER_POLL(to_ms_since_boot(get_absolute_time()));
         qog_rp2040_buttons = pw.buttons.down;
         qog_rp2040_buttons_seen |= pw.buttons.down;
         double newtime = Sys_FloatTime();
