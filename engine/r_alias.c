@@ -266,6 +266,71 @@ R_AliasPreparePoints
 General clipped case
 ================
 */
+#ifdef QOG_ALIAS_CORE1
+/*
+QuakeOG (Agent Z): the two cores share an alias model's vertices, core 0
+the even ones and core 1 the odd ones (QOG_ALIAS_CORE1, with
+QOG_SPANS_CORE1). Each vertex is computed by id's statements from the
+model's data and the model's transform and lighting, which nothing changes
+while the vertices are made, and is written only to its own finalvert, so
+the result is the same as id's loop. Triangles are drawn afterwards by
+core 0 alone, in id's order.
+*/
+#ifndef QOG_SPANS_CORE1
+#error "QOG_ALIAS_CORE1 needs the core 1 job of QOG_SPANS_CORE1"
+#endif
+#define QOG_ALIAS_CORE1_MIN	24	// fewer vertices are not worth waking core 1
+
+typedef struct
+{
+	finalvert_t	*fv;
+	trivertx_t	*pverts;
+	stvert_t	*pstverts;
+	int			first, count;
+} r_qogaliasjob_t;
+
+static void R_QogAliasPrepareRange (r_qogaliasjob_t *job)
+{
+	int			i;
+	finalvert_t	*fv;
+	auxvert_t	*av;
+#ifdef QOG_ALIAS_NO_AUXVERTS
+	auxvert_t	avone;
+
+	av = &avone;
+#endif
+
+	for (i = job->first ; i < job->count ; i += 2)
+	{
+		fv = job->fv + i;
+#ifndef QOG_ALIAS_NO_AUXVERTS
+		av = pauxverts + i;
+#endif
+		R_AliasTransformFinalVert (fv, av, job->pverts + i, job->pstverts + i);
+		if (av->fv[2] < ALIAS_Z_CLIP_PLANE)
+			fv->flags |= ALIAS_Z_CLIP;
+		else
+		{
+			 R_AliasProjectFinalVert (fv, av);
+
+			if (fv->v[0] < r_refdef.aliasvrect.x)
+				fv->flags |= ALIAS_LEFT_CLIP;
+			if (fv->v[1] < r_refdef.aliasvrect.y)
+				fv->flags |= ALIAS_TOP_CLIP;
+			if (fv->v[0] > r_refdef.aliasvrectright)
+				fv->flags |= ALIAS_RIGHT_CLIP;
+			if (fv->v[1] > r_refdef.aliasvrectbottom)
+				fv->flags |= ALIAS_BOTTOM_CLIP;	
+		}
+	}
+}
+
+static void R_QogAliasPrepareCore1 (void *job)
+{
+	R_QogAliasPrepareRange ((r_qogaliasjob_t *)job);
+}
+#endif
+
 void R_AliasPreparePoints (void)
 {
 	int			i;
@@ -281,12 +346,39 @@ void R_AliasPreparePoints (void)
 	pstverts = (stvert_t *)((byte *)paliashdr + paliashdr->stverts);
 	r_anumverts = pmdl->numverts;
  	fv = pfinalverts;
+#ifdef QOG_ALIAS_CORE1
 #ifdef QOG_ALIAS_NO_AUXVERTS
-	av = &avone;
 	r_qog_apverts = r_apverts;
+#endif
+	if (r_anumverts >= QOG_ALIAS_CORE1_MIN)
+	{
+		// QuakeOG (Agent Z): odd vertices on core 1, even ones here
+		r_qogaliasjob_t	job0, job1;
+
+		job0.fv = job1.fv = pfinalverts;
+		job0.pverts = job1.pverts = r_apverts;
+		job0.pstverts = job1.pstverts = pstverts;
+		job0.count = job1.count = r_anumverts;
+		job0.first = 0;
+		job1.first = 1;
+		Sys_QogCore1Start (R_QogAliasPrepareCore1, &job1);
+		R_QogAliasPrepareRange (&job0);
+		Sys_QogCore1Join ();
+		r_apverts += r_anumverts;	// where id's loop leaves it
+		(void)av;
+	}
+	else
+#endif
+#ifdef QOG_ALIAS_NO_AUXVERTS
+	{
+	av = &avone;
+#ifndef QOG_ALIAS_CORE1
+	r_qog_apverts = r_apverts;
+#endif
 
 	for (i=0 ; i<r_anumverts ; i++, fv++, r_apverts++, pstverts++)
 #else
+	{
 	av = pauxverts;
 
 	for (i=0 ; i<r_anumverts ; i++, fv++, av++, r_apverts++, pstverts++)
@@ -308,6 +400,7 @@ void R_AliasPreparePoints (void)
 			if (fv->v[1] > r_refdef.aliasvrectbottom)
 				fv->flags |= ALIAS_BOTTOM_CLIP;	
 		}
+	}
 	}
 
 //
@@ -488,12 +581,93 @@ void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 R_AliasTransformAndProjectFinalVerts
 ================
 */
+#ifdef QOG_ALIAS_CORE1
+// QuakeOG (Agent Z): id's loop below for every second vertex (see
+// R_QogAliasPrepareRange), the same statements
+static void R_QogAliasProjectRange (r_qogaliasjob_t *job)
+{
+	finalvert_t	*fv;
+	stvert_t	*pstverts;
+	int			i, temp;
+	float		lightcos, zi;
+	QOG_RTABLE_CONST float	*plightnormal;
+	trivertx_t	*pverts;
+
+	for (i = job->first ; i < job->count ; i += 2)
+	{
+		fv = job->fv + i;
+		pverts = job->pverts + i;
+		pstverts = job->pstverts + i;
+
+	// transform and project
+		zi = 1.0 / (DotProduct(pverts->v, aliastransform[2]) +
+				aliastransform[2][3]);
+
+	// x, y, and z are scaled down by 1/2**31 in the transform, so 1/z is
+	// scaled up by 1/2**31, and the scaling cancels out for x and y in the
+	// projection
+		fv->v[5] = zi;
+
+		fv->v[0] = ((DotProduct(pverts->v, aliastransform[0]) +
+				aliastransform[0][3]) * zi) + aliasxcenter;
+		fv->v[1] = ((DotProduct(pverts->v, aliastransform[1]) +
+				aliastransform[1][3]) * zi) + aliasycenter;
+
+		fv->v[2] = pstverts->s;
+		fv->v[3] = pstverts->t;
+		fv->flags = pstverts->onseam;
+
+	// lighting
+		plightnormal = r_avertexnormals[pverts->lightnormalindex];
+		lightcos = DotProduct (plightnormal, r_plightvec);
+		temp = r_ambientlight;
+
+		if (lightcos < 0)
+		{
+			temp += (int)(r_shadelight * lightcos);
+
+		// clamp; because we limited the minimum ambient and shading light, we
+		// don't have to clamp low light, just bright
+			if (temp < 0)
+				temp = 0;
+		}
+
+		fv->v[4] = temp;
+	}
+}
+
+
+static void R_QogAliasProjectCore1 (void *job)
+{
+	R_QogAliasProjectRange ((r_qogaliasjob_t *)job);
+}
+#endif
+
 void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 {
 	int			i, temp;
 	float		lightcos, zi;
 	QOG_RTABLE_CONST float	*plightnormal;
 	trivertx_t	*pverts;
+
+#ifdef QOG_ALIAS_CORE1
+	if (r_anumverts >= QOG_ALIAS_CORE1_MIN)
+	{
+		// QuakeOG (Agent Z): odd vertices on core 1, even ones here
+		r_qogaliasjob_t	job0, job1;
+
+		job0.fv = job1.fv = fv;
+		job0.pverts = job1.pverts = r_apverts;
+		job0.pstverts = job1.pstverts = pstverts;
+		job0.count = job1.count = r_anumverts;
+		job0.first = 0;
+		job1.first = 1;
+		Sys_QogCore1Start (R_QogAliasProjectCore1, &job1);
+		R_QogAliasProjectRange (&job0);
+		Sys_QogCore1Join ();
+		return;
+	}
+#endif
 
 	pverts = r_apverts;
 

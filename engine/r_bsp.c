@@ -464,6 +464,61 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 }
 
 
+#ifdef QOG_WORLDNODE_FAST
+/*
+================
+R_QogCullNode
+
+QuakeOG (Agent Z): R_RecursiveWorldNode's frustum tests without double
+arithmetic. id's d holds the float dot product, and (double)dot -
+(double)dist is exact in sign and zero only when the two are equal, so
+d <= 0 and d >= 0 are the float comparisons dot <= dist and dot >= dist.
+The box corners are converted to float once per node, not once per plane.
+Returns the new clip flags, or -1 when the node is outside a plane. Not
+inlined, so its locals are not in every level of the recursion.
+================
+*/
+#if defined(__GNUC__)
+#define QOG_NOINLINE	__attribute__((noinline))
+#elif defined(_MSC_VER)
+#define QOG_NOINLINE	__declspec(noinline)
+#else
+#define QOG_NOINLINE
+#endif
+static QOG_NOINLINE int R_QogCullNode (mnode_t *node, int clipflags)
+{
+	int		i, *pindex;
+	float	mm[6];
+	vec3_t	acceptpt, rejectpt;
+
+	for (i=0 ; i<6 ; i++)
+		mm[i] = (float)node->minmaxs[i];
+
+	for (i=0 ; i<4 ; i++)
+	{
+		if (! (clipflags & (1<<i)) )
+			continue;	// don't need to clip against it
+
+		pindex = pfrustum_indexes[i];
+
+		rejectpt[0] = mm[pindex[0]];
+		rejectpt[1] = mm[pindex[1]];
+		rejectpt[2] = mm[pindex[2]];
+
+		if (DotProduct (rejectpt, view_clipplanes[i].normal) <= view_clipplanes[i].dist)
+			return -1;
+
+		acceptpt[0] = mm[pindex[3+0]];
+		acceptpt[1] = mm[pindex[3+1]];
+		acceptpt[2] = mm[pindex[3+2]];
+
+		if (DotProduct (acceptpt, view_clipplanes[i].normal) >= view_clipplanes[i].dist)
+			clipflags &= ~(1<<i);	// node is entirely on screen
+	}
+	return clipflags;
+}
+#endif
+
 /*
 ================
 R_RecursiveWorldNode
@@ -478,6 +533,9 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	marksurf_t	*mark;	// QuakeOG: a pointer or a 16-bit surface number
 	mleaf_t		*pleaf;
 	double		d, dot;
+#ifdef QOG_WORLDNODE_FAST
+	int			facing;	// QuakeOG (Agent Z): -1 back, 1 front, 0 neither
+#endif
 
 	QOG_WC (QOG_WC_NODES);	// QuakeOG (Agent Z)
 	if (node->contents == CONTENTS_SOLID)
@@ -489,6 +547,14 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 // cull the clipping planes if not trivial accept
 // FIXME: the compiler is doing a lousy job of optimizing here; it could be
 //  twice as fast in ASM
+#ifdef QOG_WORLDNODE_FAST
+	if (clipflags)
+	{
+		clipflags = R_QogCullNode (node, clipflags);	// QuakeOG (Agent Z)
+		if (clipflags < 0)
+			return;
+	}
+#else
 	if (clipflags)
 	{
 		for (i=0 ; i<4 ; i++)
@@ -523,6 +589,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 				clipflags &= ~(1<<i);	// node is entirely on screen
 		}
 	}
+#endif
 	
 // if a leaf node, draw stuff
 	if (node->contents < 0)
@@ -562,6 +629,34 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	// find which side of the node we are on
 		plane = node->plane;
 
+#ifdef QOG_WORLDNODE_FAST
+	// QuakeOG (Agent Z): id's dot is a double holding a float difference,
+	// compared with 0 and with the double 0.01. For a float x, x < -0.01 and
+	// x > 0.01 are x < -0.01f and x > 0.01f (0.01f is the float just below
+	// 0.01), so the side and the face tests need no double arithmetic.
+		{
+		float	fdot;
+
+		switch (plane->type)
+		{
+		case PLANE_X:
+			fdot = modelorg[0] - plane->dist;
+			break;
+		case PLANE_Y:
+			fdot = modelorg[1] - plane->dist;
+			break;
+		case PLANE_Z:
+			fdot = modelorg[2] - plane->dist;
+			break;
+		default:
+			fdot = DotProduct (modelorg, plane->normal) - plane->dist;
+			break;
+		}
+
+		side = fdot >= 0 ? 0 : 1;
+		facing = fdot < -0.01f ? -1 : (fdot > 0.01f ? 1 : 0);	// id's dot < -BACKFACE_EPSILON and dot > BACKFACE_EPSILON
+		}
+#else
 		switch (plane->type)
 		{
 		case PLANE_X:
@@ -582,6 +677,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 			side = 0;
 		else
 			side = 1;
+#endif
 
 	// recurse down the children, front side first
 		R_RecursiveWorldNode (node->children[side], clipflags);
@@ -593,7 +689,11 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		{
 			surf = cl.worldmodel->surfaces + node->firstsurface;
 
+#ifdef QOG_WORLDNODE_FAST
+			if (facing < 0)
+#else
 			if (dot < -BACKFACE_EPSILON)
+#endif
 			{
 				do
 				{
@@ -626,7 +726,11 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 					surf++;
 				} while (--c);
 			}
+#ifdef QOG_WORLDNODE_FAST
+			else if (facing > 0)
+#else
 			else if (dot > BACKFACE_EPSILON)
+#endif
 			{
 				do
 				{

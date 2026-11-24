@@ -183,6 +183,242 @@ int				r_ceilv1;
 qboolean	r_lastvertvalid;
 
 
+#ifdef QOG_VERTCACHE
+/*
+QuakeOG (Agent Z): world vertices projected once a frame. A world vertex
+is shared by several edges, and every edge that is not in the edge cache
+projects its end points again (on E1M1 1,060 projections a view of 474
+vertices). While R_RenderWorld runs, a direct-mapped cache keeps each
+projected world vertex's screen u and v, 1/z and ceil(v), computed by the
+same statements as id's R_EmitEdge, so a hit gives the same bits. Brush
+entity faces (insubmodel) and clipped points never use it, since they are
+projected with another origin or are not world vertices. The cache lives in
+memory nothing else uses while the world's edges are made (the frame
+buffer's 3D view rows past the edge cache, or the z-buffer between the edge
+cache and the edge table) and is emptied every frame.
+*/
+#ifdef QOG_VERTCACHE_CLIPDIST
+/*
+QuakeOG (Agent Z): with QOG_VERTCACHE_CLIPDIST each entry also keeps the
+vertex's distance to each of the four view planes, as R_ClipEdge computes
+it (DotProduct (position, normal) - dist), so an edge end point shared by
+several faces is measured against a plane once a frame. A distance not yet
+known holds the bits QOG_VC_NODIST, a projection not yet made the ceilv
+QOG_VC_NOPROJ (screen rows never reach it). A distance whose bits happen to
+be QOG_VC_NODIST (a NaN) is computed again, with the same result.
+*/
+#define QOG_VC_NODIST	0x7FC0DEADu
+#define QOG_VC_NOPROJ	0x7FFF
+typedef union
+{
+	float			f;
+	unsigned int	bits;
+} r_qogdist_t;
+#endif
+
+typedef struct
+{
+	unsigned short	tag;	// world vertex number, 0xFFFF empty
+	short			ceilv;
+	float			u, v, lzi;
+#ifdef QOG_VERTCACHE_CLIPDIST
+	r_qogdist_t		d[4];	// to view_clipplanes[0..3]
+#endif
+} r_qogvert_t;
+
+#ifndef QOG_VERTCACHE_MAX
+#define QOG_VERTCACHE_MAX	4096	// entries, a power of two (smaller only to test)
+#endif
+
+static r_qogvert_t	*r_qog_vertcache;	// NULL when off
+static unsigned		r_qog_vertmask;
+static byte			*r_qog_vertbase;	// the world's vertices
+static unsigned		r_qog_vertbytes;	//   and their size, at most 0xFFFF vertices
+
+/* called by R_EdgeDrawing before R_RenderWorld, after the edge cache is set */
+void R_QogVertCacheBegin (void)
+{
+	model_t		*world = cl_entities[0].model;
+	byte		*lo, *hi;
+	unsigned	n, i, verts;
+
+	r_qog_vertcache = NULL;
+	if (!world || !r_qog_edgecache)
+		return;
+#ifdef QOG_EDGECACHE_FRAME
+	if ((byte *)r_qog_edgecache == vid.buffer)
+	{
+		// R_EdgeDrawing has checked that the 3D view covers these rows
+		lo = vid.buffer + r_qog_edgecachebytes;
+		hi = vid.buffer + r_refdef.vrect.height * vid.rowbytes;
+	}
+	else
+#endif
+	{
+		lo = r_ztemp_base;
+		if ((byte *)r_qog_edgecache == r_ztemp_base)
+			lo += r_qog_edgecachebytes;
+		hi = (byte *)r_edgesentinels;
+	}
+	lo = (byte *)(((size_t)lo + 3) & ~(size_t)3);
+	if (hi <= lo)
+		return;
+	n = (unsigned)(hi - lo) / sizeof(r_qogvert_t);
+	if (n > QOG_VERTCACHE_MAX)
+		n = QOG_VERTCACHE_MAX;
+	while (n & (n - 1))
+		n &= n - 1;
+	if (n < 64)
+		return;
+	for (i = 0 ; i < n ; i++)
+		((r_qogvert_t *)lo)[i].tag = 0xFFFF;
+	verts = world->numvertexes < 0xFFFF ? world->numvertexes : 0xFFFF;
+	r_qog_vertbase = (byte *)world->vertexes;
+	r_qog_vertbytes = verts * sizeof(mvertex_t);
+	r_qog_vertmask = n - 1;
+	r_qog_vertcache = (r_qogvert_t *)lo;
+}
+
+void R_QogVertCacheEnd (void)
+{
+	r_qog_vertcache = NULL;
+}
+
+#ifdef QOG_VERTCACHE_CLIPDIST
+/* the entry of a world vertex, emptied if it held another one, or NULL */
+static r_qogvert_t *R_QogVertEntry (mvertex_t *pv)
+{
+	r_qogvert_t	*e;
+	unsigned	ofs, n;
+
+	if (!r_qog_vertcache || insubmodel)
+		return NULL;
+	ofs = (unsigned)((byte *)pv - r_qog_vertbase);
+	if (ofs >= r_qog_vertbytes)
+		return NULL;
+	n = ofs / sizeof(mvertex_t);
+	e = &r_qog_vertcache[n & r_qog_vertmask];
+	if (e->tag != n)
+	{
+		e->tag = (unsigned short)n;
+		e->ceilv = QOG_VC_NOPROJ;
+		e->d[0].bits = e->d[1].bits = e->d[2].bits = e->d[3].bits = QOG_VC_NODIST;
+	}
+	return e;
+}
+
+/* R_ClipEdge's distance of a point to a clip plane, through the cache for
+   world vertices and the view planes */
+static float R_QogClipDist (mvertex_t *pv, clipplane_t *clip)
+{
+	r_qogvert_t	*e;
+	unsigned	k = (unsigned)((byte *)clip - (byte *)view_clipplanes);
+	float		d;
+
+	if (k < sizeof(clipplane_t) * 4 && (e = R_QogVertEntry (pv)) != NULL)
+	{
+		k /= sizeof(clipplane_t);
+		if (e->d[k].bits != QOG_VC_NODIST)
+			return e->d[k].f;
+		QOG_WC (QOG_WC_CLIPDOT);
+		d = DotProduct (pv->position, clip->normal) - clip->dist;
+		e->d[k].f = d;
+		return d;
+	}
+	QOG_WC (QOG_WC_CLIPDOT);
+	return DotProduct (pv->position, clip->normal) - clip->dist;
+}
+#endif
+
+/* id's projection of one point in R_EmitEdge, through the cache for world
+   vertices */
+static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int *pceilv)
+{
+	vec3_t		local, transformed;
+	float		*world;
+	float		scale, lzi, u, v;
+	int			ceilv;
+	r_qogvert_t	*e = NULL;
+	unsigned	ofs, n = 0;
+
+#ifdef QOG_VERTCACHE_CLIPDIST
+	e = R_QogVertEntry (pv);
+	if (e && e->ceilv != QOG_VC_NOPROJ)
+	{
+		*pu = e->u;
+		*pvv = e->v;
+		*plzi = e->lzi;
+		*pceilv = e->ceilv;
+		return;
+	}
+	(void)ofs;
+#else
+	if (r_qog_vertcache && !insubmodel)
+	{
+		ofs = (unsigned)((byte *)pv - r_qog_vertbase);
+		if (ofs < r_qog_vertbytes)
+		{
+			n = ofs / sizeof(mvertex_t);
+			e = &r_qog_vertcache[n & r_qog_vertmask];
+			if (e->tag == n)
+			{
+				*pu = e->u;
+				*pvv = e->v;
+				*plzi = e->lzi;
+				*pceilv = e->ceilv;
+				return;
+			}
+		}
+	}
+#endif
+
+	QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
+	world = &pv->position[0];
+
+// transform and project
+	VectorSubtract (world, modelorg, local);
+	TransformVector (local, transformed);
+
+	if (transformed[2] < NEAR_CLIP)
+		transformed[2] = NEAR_CLIP;
+
+	lzi = 1.0 / transformed[2];
+
+// FIXME: build x/yscale into transform?
+	scale = xscale * lzi;
+	u = (xcenter + scale*transformed[0]);
+	if (u < r_refdef.fvrectx_adj)
+		u = r_refdef.fvrectx_adj;
+	if (u > r_refdef.fvrectright_adj)
+		u = r_refdef.fvrectright_adj;
+
+	scale = yscale * lzi;
+	v = (ycenter - scale*transformed[1]);
+	if (v < r_refdef.fvrecty_adj)
+		v = r_refdef.fvrecty_adj;
+	if (v > r_refdef.fvrectbottom_adj)
+		v = r_refdef.fvrectbottom_adj;
+
+	ceilv = (int) ceil(v);
+
+	if (e)
+	{
+#ifndef QOG_VERTCACHE_CLIPDIST	// else R_QogVertEntry set the tag
+		e->tag = (unsigned short)n;
+#endif
+		e->ceilv = (short)ceilv;
+		e->u = u;
+		e->v = v;
+		e->lzi = lzi;
+	}
+	*pu = u;
+	*pvv = v;
+	*plzi = lzi;
+	*pceilv = ceilv;
+}
+#endif
+
+
 #if	!id386
 
 /*
@@ -200,6 +436,9 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	int		v, v2, ceilv0;
 	float	scale, lzi0, u0, v0;
 	int		side;
+#ifdef QOG_VERTCACHE
+	int		ceilv1;
+#endif
 
 	QOG_WC (QOG_WC_EMITEDGE);	// QuakeOG (Agent Z)
 	if (r_lastvertvalid)
@@ -209,8 +448,15 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		lzi0 = r_lzi1;
 		ceilv0 = r_ceilv1;
 	}
+#ifdef QOG_VERTCACHE
+	else
+		R_QogProject (pv0, &u0, &v0, &lzi0, &ceilv0);	// QuakeOG (Agent Z)
+
+	R_QogProject (pv1, &r_u1, &r_v1, &r_lzi1, &ceilv1);
+#else
 	else
 	{
+		QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
 		world = &pv0->position[0];
 	
 	// transform and project
@@ -240,6 +486,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		ceilv0 = (int) ceil(v0);
 	}
 
+	QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
 	world = &pv1->position[0];
 
 // transform and project
@@ -264,6 +511,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		r_v1 = r_refdef.fvrecty_adj;
 	if (r_v1 > r_refdef.fvrectbottom_adj)
 		r_v1 = r_refdef.fvrectbottom_adj;
+#endif
 
 	if (r_lzi1 > lzi0)
 		lzi0 = r_lzi1;
@@ -277,7 +525,11 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 
 	r_emitted = 1;
 
+#ifdef QOG_VERTCACHE
+	r_ceilv1 = ceilv1;	// QuakeOG (Agent Z): ceil(r_v1), from R_QogProject
+#else
 	r_ceilv1 = (int) ceil(r_v1);
+#endif
 
 
 // create the edge
@@ -381,8 +633,15 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 	{
 		do
 		{
+#ifdef QOG_VERTCACHE_CLIPDIST
+			d0 = R_QogClipDist (pv0, clip);	// QuakeOG (Agent Z)
+			d1 = R_QogClipDist (pv1, clip);
+#else
+			QOG_WC (QOG_WC_CLIPDOT);	// QuakeOG (Agent Z)
+			QOG_WC (QOG_WC_CLIPDOT);
 			d0 = DotProduct (pv0->position, clip->normal) - clip->dist;
 			d1 = DotProduct (pv1->position, clip->normal) - clip->dist;
+#endif
 
 			if (d0 >= 0)
 			{

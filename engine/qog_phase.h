@@ -83,6 +83,8 @@ enum
 	QOG_WC_CLIPEDGE,	/* R_ClipEdge calls (with its recursion) */
 	QOG_WC_EMITEDGE,	/* R_EmitEdge calls */
 	QOG_WC_CACHED,		/* edges reused from the edge cache */
+	QOG_WC_PROJECT,		/* points projected (R_EmitEdge, not from QOG_VERTCACHE) */
+	QOG_WC_CLIPDOT,		/* plane distances computed in R_ClipEdge (not from QOG_VERTCACHE_CLIPDIST) */
 	QOG_WC_N
 };
 

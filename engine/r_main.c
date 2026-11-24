@@ -1196,7 +1196,13 @@ void R_EdgeDrawing (void)
 
 	{
 	QOG_PH_T (ph);	// QuakeOG
+#ifdef QOG_VERTCACHE
+	R_QogVertCacheBegin ();	// QuakeOG (Agent Z): world vertices projected once (r_draw.c)
+#endif
 	R_RenderWorld ();
+#ifdef QOG_VERTCACHE
+	R_QogVertCacheEnd ();
+#endif
 	QOG_PH_ADD (QOG_PH_WORLD, ph);
 	}
 
