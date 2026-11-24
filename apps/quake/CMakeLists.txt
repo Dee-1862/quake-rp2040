@@ -481,8 +481,8 @@ if(QOG_SPLIT)
     endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
-    set(QOG_SV_HUNK_KB 160 CACHE STRING "server half hunk in KB. Agent Y, without sound (add 4 to 8 KB with it), a fight, a save and a load need start 90, e1m1 112, e1m2 139, e1m3 165, e1m4 155, e1m5 154, e1m6 140, e1m7 88, e1m8 115")
-    set(QOG_SV_STACK_KB 35 CACHE STRING "server half stack array in KB. The static deepest chain is 17,496 B but recursion (hull traces, nested QuakeC) is not counted, and 24 KB hung the board after two minutes of play")
+    set(QOG_SV_HUNK_KB 174 CACHE STRING "server half hunk in KB. Agent AC, with sound, a fight, a save and a load need start 96, e1m1 117, e1m2 144, e1m3 171, e1m4 161, e1m5 160, e1m6 146, e1m7 93, e1m8 121")
+    set(QOG_SV_STACK_KB 21 CACHE STRING "server half stack array in KB. Agent AC, measured in board bytes on the PC (QOG_SV_STACKPROBE) the deepest episode 1 chain is 10,984 B, a constructed worst case (a pushed grenade on e1m3's deepest hull 0 leaf) about 16.4 KB. The mixer needs 1,816 B above its 6 KB at the bottom")
     add_executable(quake_main EXCLUDE_FROM_ALL
         ${QOG_ROOT}/port/rp2040/sys_rp2040.c
         ${QOG_ROOT}/port/rp2040/link_rp2040.c)
