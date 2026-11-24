@@ -340,6 +340,101 @@ void Host_Map_f (void)
 #endif	// QOG_SPLIT_CLIENT
 }
 
+#if defined(QOG_BOOT_ENTRY) && !defined(QOG_SPLIT_SERVER)
+/*
+==================
+Host_QogBoot_f
+
+QuakeOG (Agent AG): "qog_boot" starts the level the data image names
+(COM_BootMap: qogboot.txt, else e1m1), so one board app starts any
+episode's image. The board's command line runs it where it ran "map e1m1".
+==================
+*/
+void Host_QogBoot_f (void)
+{
+	char	name[MAX_QPATH];
+
+	COM_BootMap (name);
+	if (!name[0])
+	{
+		Con_Printf ("qog_boot: the data image holds no level\n");
+		return;
+	}
+	Cbuf_InsertText (va ("map %s\n", name));
+}
+#endif
+
+#if defined(QOG_MISSING_MAPS) && defined(QOG_SPLIT_CLIENT)
+/*
+==================
+Host_QogLoadFailed_f
+
+QuakeOG (Agent AG): the server half did not load a save, its level is not
+in the data image. The menu put up the loading plaque before "load", so
+take it down now (id would wait 60 s) and say why. The level goes on.
+==================
+*/
+void Host_QogLoadFailed_f (void)
+{
+	SCR_EndLoadingPlaque ();
+	SCR_CenterPrint ("That save's level is not\nin this data image\n");
+}
+#endif
+
+#if defined(QOG_MISSING_MAPS) && !defined(QOG_SPLIT_CLIENT)
+/*
+==================
+Host_QogNewSpawnparms
+
+QuakeOG (Agent AG): SV_SaveSpawnparms with the parms of a new player
+(SetNewParms), what id's start gives a player who finished an episode.
+==================
+*/
+static void Host_QogNewSpawnparms (void)
+{
+	int		i, j;
+
+	svs.serverflags = pr_global_struct->serverflags;
+	for (i=0, host_client = svs.clients ; i<svs.maxclients ; i++, host_client++)
+	{
+		if (!host_client->active)
+			continue;
+		pr_global_struct->self = EDICT_TO_PROG(host_client->edict);
+		PR_ExecuteProgram (pr_global_struct->SetNewParms);
+		for (j=0 ; j<NUM_SPAWN_PARMS ; j++)
+			host_client->spawn_parms[j] = (&pr_global_struct->parm1)[j];
+	}
+}
+
+/*
+==================
+Host_QogMissingLevel
+
+QuakeOG (Agent AG): a board data image holds one episode. A level exit to
+a level it does not hold (start after the episode's last level, a gate of
+start to another episode, a secret level left out) would leave the server
+without a level and the client waiting. It goes to the image's own start
+level instead (COM_BootMap), with a new player's items, as id's start
+does after an episode. Returns false when name is in the packs: then
+nothing changes.
+==================
+*/
+static qboolean Host_QogMissingLevel (char *name)
+{
+	char	level[MAX_QPATH];
+
+	if (Q_strlen (name) < MAX_QPATH - 10 && COM_HasFile (va ("maps/%s.bsp", name)))
+		return false;
+	COM_BootMap (level);
+	Con_Printf ("changelevel: %s is not in the data image, going to %s\n", name, level[0] ? level : "no level");
+	if (!level[0])
+		return true;
+	Host_QogNewSpawnparms ();
+	SV_SpawnServer (level);
+	return true;
+}
+#endif
+
 /*
 ==================
 Host_Changelevel_f
@@ -390,6 +485,10 @@ void Host_Changelevel_f (void)
 		Con_Printf ("Only the server may changelevel\n");
 		return;
 	}
+#ifdef QOG_MISSING_MAPS
+	if (Host_QogMissingLevel (Cmd_Argv(1)))
+		return;
+#endif
 	SV_SaveSpawnparms ();
 	strcpy (level, Cmd_Argv(1));
 	SV_SpawnServer (level);
@@ -725,8 +824,10 @@ void Host_Loadgame_f (void)
 		fscanf (f, "%f\n", &spawn_parms[i]);
 // this silliness is so we can load 1.06 save files, which have float skill values
 	fscanf (f, "%f\n", &tfloat);
+#ifndef QOG_MISSING_MAPS	// QuakeOG (Agent AG): set once the level is known to be here
 	current_skill = (int)(tfloat + 0.1);
 	Cvar_SetValue ("skill", (float)current_skill);
+#endif
 
 #ifdef QUAKE2
 	Cvar_SetValue ("deathmatch", 0);
@@ -736,6 +837,28 @@ void Host_Loadgame_f (void)
 
 	fscanf (f, "%s\n",mapname);
 	fscanf (f, "%f\n",&time);
+
+#ifdef QOG_MISSING_MAPS
+	// QuakeOG (Agent AG): the saves on main's volume outlive the episode
+	// image they were made with. A save of a level this image does not
+	// hold is not loaded and the game goes on as it was, before anything
+	// is stopped (SV_SpawnServer would leave no level and the client
+	// waiting under the loading plaque).
+	if (Q_strlen (mapname) >= MAX_QPATH - 10 || !COM_HasFile (va ("maps/%s.bsp", mapname)))
+	{
+		fclose (f);
+		Con_Printf ("%s is not in the data image, the save is not loaded\n", mapname);
+#ifdef QOG_SPLIT_SERVER
+		Link_ServerClientExec ("qog_loadfailed");
+#else
+		SCR_EndLoadingPlaque ();
+		SCR_CenterPrint ("That save's level is not\nin this data image\n");
+#endif
+		return;
+	}
+	current_skill = (int)(tfloat + 0.1);
+	Cvar_SetValue ("skill", (float)current_skill);
+#endif
 
 #ifdef QOG_SPLIT_SERVER
 	// QuakeOG: CL_Disconnect_f, the client's part on the client, the
@@ -2101,6 +2224,12 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("demos", Host_Demos_f);
 	Cmd_AddCommand ("stopdemo", Host_Stopdemo_f);
 	Cmd_AddCommand ("mcache", Mod_Print);
+#ifdef QOG_BOOT_ENTRY
+	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG (Agent AG)
+#endif
+#ifdef QOG_MISSING_MAPS
+	Cmd_AddCommand ("qog_loadfailed", Host_QogLoadFailed_f);	// QuakeOG (Agent AG), sent by the server half
+#endif
 #elif defined(QOG_SPLIT_SERVER)
 	// QuakeOG: the server half's commands, the client's are on the client
 	Cmd_AddCommand ("status", Host_Status_f);
@@ -2173,5 +2302,8 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("viewprev", Host_Viewprev_f);
 
 	Cmd_AddCommand ("mcache", Mod_Print);
+#ifdef QOG_BOOT_ENTRY
+	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG (Agent AG)
+#endif
 #endif
 }

@@ -249,6 +249,11 @@ target_compile_definitions(quakeog_pc PRIVATE
 # Server stack, exact (Agent AC)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_PUSHMOVE_ALLOCA)            # SV_PushMove's lists on the stack for sv.max_edicts entries, not MAX_EDICTS (9,600 B)
+# One app for every episode's data image (Agent AG): qog_boot starts the level
+# qogboot.txt names, a level exit or save of a level not in the packs is handled
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_BOOT_ENTRY                  # qog_boot, COM_BootMap (common.c, host_cmd.c)
+    QOG_MISSING_MAPS)               # changelevel to a missing level goes to the boot level, such a save is not loaded
 # Render phase times for profiling (Agent P), off by default: `qog_phase` in
 # the console and the end of `-qogfly` print where render time goes.
 #   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON

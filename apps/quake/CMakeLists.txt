@@ -144,6 +144,12 @@ list(APPEND QOG_ENGINE_DEFS
 # lists for sv.max_edicts entries, not 600 (sv_phys.c)
 list(APPEND QOG_ENGINE_DEFS
     QOG_PUSHMOVE_ALLOCA)
+# Agent AG: one app for every episode's data image. The start level comes
+# from the image (qogboot.txt), a level exit or a save of a level the image
+# does not hold goes to that level or is not loaded (engine/host_cmd.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_BOOT_ENTRY
+    QOG_MISSING_MAPS)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -468,7 +474,11 @@ if(QOG_SPLIT)
     target_compile_definitions(quake_display PRIVATE QOG_LINK_STREAM_SEND QOG_VID_SURFCACHE_MIN)   # and a 64-byte surface cache header (vid_rp2040.c)
     # the level the board client starts in, since the board has no keyboard
     # for the console (empty: id's start, quake.rc and the demo loop)
-    set(QOG_BOARD_MAP "e1m1" CACHE STRING "level the board client starts in, empty for none")
+    # Agent AG: with QOG_BOARD_BOOT (the default) the data image names it
+    # (qogboot.txt from tools/mkboard.py --boot-map, e1m1 when it has none)
+    # and QOG_BOARD_MAP is not used
+    option(QOG_BOARD_BOOT "the board client starts in the level its data image names (qog_boot)" ON)
+    set(QOG_BOARD_MAP "e1m1" CACHE STRING "level the board client starts in with QOG_BOARD_BOOT off, empty for none")
     # bring-up: both halves print link wait counters once a second over USB (port/rp2040/link_rp2040.c)
     option(QOG_LINK_DIAG "print link wait counters while the link waits" ON)
     if(QOG_LINK_DIAG)
@@ -476,7 +486,9 @@ if(QOG_SPLIT)
     endif()
     # the game on the process stack, interrupts on the SDK's main stack (sys_rp2040.c)
     target_compile_definitions(quake_display PRIVATE QOG_GAME_PSP)
-    if(QOG_BOARD_MAP)
+    if(QOG_BOARD_BOOT)
+        target_compile_definitions(quake_display PRIVATE QOG_BOARD_BOOT)
+    elseif(QOG_BOARD_MAP)
         target_compile_definitions(quake_display PRIVATE QOG_BOARD_MAP="${QOG_BOARD_MAP}")
     endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)

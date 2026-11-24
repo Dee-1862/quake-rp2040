@@ -66,6 +66,13 @@ the same way (QuakeC runs on main). Both need --stub-maps. The files left
 out go after every kept file and before the maps in the pak the bake reads,
 so the kept files have the same address in it and in the display's pak.
 
+--boot-map NAME (Agent AG) names the level the board starts in: mkboard
+writes it as qogboot.txt into the display's pak and main's (the board
+client runs qog_boot, the server half goes there when a level exit names
+a level the image does not hold, engine/host_cmd.c). The default is start
+when --maps has it, else the first of --maps, so one app starts any
+episode's image. A board app finds e1m1 when the image has no such file.
+
 Never commit or share the output: it is converted id Software data.
 Standard library only.
 """
@@ -94,7 +101,30 @@ MAIN_DATA_MAX = mkdata.MAIN_DATA_MAX                          # up to QOG_MAIN_F
 # what the server opens besides its models: QuakeC, and gfx/pop.lmp, by
 # which COM_CheckRegistered sets the "registered" cvar that QuakeC reads
 SERVER_FILES = ["progs.dat", "gfx/pop.lmp"]
+# the level the data image starts in (Agent AG, engine/common.c COM_BootMap)
+BOOT_FILE = "qogboot.txt"
 QOGB_SERVER_LAYOUT = 0x53525652                  # engine/model.h
+
+
+def boot_map_name(maps, boot):
+    """The boot level: --boot-map, else start when the image keeps it, else
+    the first level of --maps, or start when every manifest is kept."""
+    if boot:
+        return boot
+    if not maps:
+        return "start"
+    return "start" if "start" in maps else maps[0]
+
+
+def with_boot_file(pak, name):
+    """The same pak with qogboot.txt naming the boot level, put before the
+    first map so the files before it keep their addresses and the maps stay
+    last (--stub-maps)."""
+    ents = [(n, d) for n, _, d in pak_entries(pak) if n != BOOT_FILE]
+    if "maps/%s.bsp" % name not in [n for n, _ in ents]:
+        sys.exit("mkboard: the boot level %s is not in the pak (--maps, --boot-map)" % name)
+    at = next((i for i, (n, _) in enumerate(ents) if mkpak.is_map(n)), len(ents))
+    return mkpak.build_pak(ents[:at] + [(BOOT_FILE, (name + "\n").encode("ascii"))] + ents[at:])
 
 
 def is_model(name):
@@ -243,7 +273,7 @@ def build_main(full, out, exe, timeout, no_bake, layout, sounds=True):
     if missing:
         sys.exit("mkboard: the pak has no %s for the server" % " ".join(missing))
     # the server's files, the sounds (Agent W), then a stub for each model
-    keep = [(n, d) for n, _, d in ents if n in SERVER_FILES]
+    keep = [(n, d) for n, _, d in ents if n in SERVER_FILES or n == BOOT_FILE]
     snd = [(n, d) for n, _, d in ents if sounds and is_sound(n)]
     for n, d in snd:
         w = mkpak.wav_info(d)
@@ -298,6 +328,8 @@ def build_main(full, out, exe, timeout, no_bake, layout, sounds=True):
           % (MAIN_DATA_ADDR, len(pak), len(pak) / 2**20, " ".join(n for n in SERVER_FILES if n in names), models))
     print("            (the full models took %d bytes)" % sum(len(d) for n, d in keep if is_model(n)))
     print("            %d sounds, %d bytes, for the mixer on main" % (len(snd), sum(len(d) for _, d in snd)))
+    if BOOT_FILE in names:
+        print("            %s: %s" % (BOOT_FILE, dict((n, d) for n, _, d in ents)[BOOT_FILE].decode("ascii").strip()))
     print("  0x%08X  qogbake    %9d bytes  %6.2f MB, %d models, the server's image"
           % (base, len(img), len(img) / 2**20, h[5]))
     print("  0x%08X  end        %9d bytes  %6.2f MB, %.1f%% of the region"
@@ -331,6 +363,8 @@ def main(argv=None):
                     help="leave the sounds out of the display's image (the split game, main keeps them)")
     ap.add_argument("--display-no-progs", action="store_true",
                     help="leave progs.dat out of the display's image (the split game, main keeps it)")
+    ap.add_argument("--boot-map", help="level the board starts in, written as qogboot.txt "
+                    "(default: start when --maps has it, else the first of --maps)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension, also the PC basedir")
     a = ap.parse_args(argv)
     if (a.display_no_sounds or a.display_no_progs) and not a.stub_maps:
@@ -353,6 +387,10 @@ def main(argv=None):
         mk += ["--maps-last"]
     mkpak.main(mk)
     pak = open(pakpath + ".pak", "rb").read()
+    boot = boot_map_name(a.maps, a.boot_map)
+    pak = with_boot_file(pak, boot)    # Agent AG: the level the board starts in
+    with open(pakpath + ".pak", "wb") as f:
+        f.write(pak)
     if pc_layout(pak) != len(pak):
         sys.exit("mkboard: the pak is not laid out the way the PC maps it")
     drop = display_drop([n for n, _, _ in pak_entries(pak)], a.display_no_sounds, a.display_no_progs)
@@ -415,7 +453,7 @@ def main(argv=None):
         f.write(mkdata.to_uf2(data, DATA_ADDR))
 
     print("data region at 0x%08X, %.2f MB:" % (DATA_ADDR, room / 2**20))
-    print("  0x%08X  pak        %9d bytes  %6.2f MB" % (DATA_ADDR, len(pak), len(pak) / 2**20))
+    print("  0x%08X  pak        %9d bytes  %6.2f MB, starts in %s (%s)" % (DATA_ADDR, len(pak), len(pak) / 2**20, boot, BOOT_FILE))
     if a.stub_maps:
         print("            maps are stubs (the full pak's maps took %d bytes, %.2f MB, kept in %s)"
               % (maps_bytes, maps_bytes / 2**20, srcpath))
