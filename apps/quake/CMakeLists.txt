@@ -144,6 +144,9 @@ list(APPEND QOG_ENGINE_DEFS
 # lists for sv.max_edicts entries, not 600 (sv_phys.c)
 list(APPEND QOG_ENGINE_DEFS
     QOG_PUSHMOVE_ALLOCA)
+# World and brush model front end, exact (Agent AJ), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_BMODEL_ZEROANGLE)           # r_bsp.c R_RotateBmodel: zero angles without double trig or matrix products
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

@@ -137,10 +137,11 @@ void qog_phase_report (void (*print) (char *fmt, ...))
 		   qog_ph_count[QOG_PC_LITANYPX] / n, qog_ph_count[QOG_PC_RUNS] / n,
 		   qog_ph_count[QOG_PC_ZPX] / n, qog_ph_count[QOG_PC_SKYPX] / n, qog_ph_count[QOG_PC_TURBPX] / n);
 #ifdef QOG_PHASE_XIP
-	print ("[phase] world per frame: nodes %u leafs %u faces %u clipedge %u emitedge %u cached %u project %u clipdot %u\n",
+	print ("[phase] world per frame: nodes %u leafs %u faces %u clipedge %u emitedge %u cached %u project %u clipdot %u rotate %u rottrig %u\n",
 		   qog_wc_count[QOG_WC_NODES] / n, qog_wc_count[QOG_WC_LEAFS] / n, qog_wc_count[QOG_WC_FACES] / n,
 		   qog_wc_count[QOG_WC_CLIPEDGE] / n, qog_wc_count[QOG_WC_EMITEDGE] / n, qog_wc_count[QOG_WC_CACHED] / n,
-		   qog_wc_count[QOG_WC_PROJECT] / n, qog_wc_count[QOG_WC_CLIPDOT] / n);
+		   qog_wc_count[QOG_WC_PROJECT] / n, qog_wc_count[QOG_WC_CLIPDOT] / n,
+		   qog_wc_count[QOG_WC_ROTATE] / n, qog_wc_count[QOG_WC_ROTTRIG] / n);
 	qog_phase_clear_xip ();
 #endif
 	memset (qog_ph_time, 0, sizeof qog_ph_time);
@@ -203,10 +204,11 @@ static void qog_phase_board_xip (void (*print) (char *fmt, ...), const char *who
 			k += ph_put2 (line + k, (int)sizeof line - k, names[i], qog_ph_xacc[i], miss[i], r);
 	k += ph_put2 (line + k, (int)sizeof line - k, "edgescan", ph_edgescan (qog_ph_xacc), ph_edgescan (miss), r);
 	print ("%s\n", line);
-	print ("[time %s] work per view nodes %u leafs %u faces %u clipedge %u emitedge %u cached %u project %u clipdot %u\n",
+	print ("[time %s] work per view nodes %u leafs %u faces %u clipedge %u emitedge %u cached %u project %u clipdot %u rotate %u rottrig %u\n",
 		   who, qog_wc_count[QOG_WC_NODES] / r, qog_wc_count[QOG_WC_LEAFS] / r, qog_wc_count[QOG_WC_FACES] / r,
 		   qog_wc_count[QOG_WC_CLIPEDGE] / r, qog_wc_count[QOG_WC_EMITEDGE] / r, qog_wc_count[QOG_WC_CACHED] / r,
-		   qog_wc_count[QOG_WC_PROJECT] / r, qog_wc_count[QOG_WC_CLIPDOT] / r);
+		   qog_wc_count[QOG_WC_PROJECT] / r, qog_wc_count[QOG_WC_CLIPDOT] / r,
+		   qog_wc_count[QOG_WC_ROTATE] / r, qog_wc_count[QOG_WC_ROTTRIG] / r);
 #ifdef QOG_PHASE_FPCOUNT
 	// core 0's float/double helper calls per view in each phase
 	k = snprintf (line, sizeof line, "[time %s] fp f/d", who);

@@ -249,6 +249,9 @@ target_compile_definitions(quakeog_pc PRIVATE
 # Server stack, exact (Agent AC)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_PUSHMOVE_ALLOCA)            # SV_PushMove's lists on the stack for sv.max_edicts entries, not MAX_EDICTS (9,600 B)
+# World and brush model front end, exact (Agent AJ)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_BMODEL_ZEROANGLE)           # a brush entity with zero angles skips the double sine, cosine and matrix products (r_bsp.c)
 # Render phase times for profiling (Agent P), off by default: `qog_phase` in
 # the console and the end of `-qogfly` print where render time goes.
 #   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON
