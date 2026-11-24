@@ -174,3 +174,15 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L79. A script run with `-basedir <board image>` must be in that image's `id1`.** Otherwise `exec` finds nothing, the game plays its demo loop (none in the image) and waits for the timeout. mkboard does not copy the test scripts (as L71 says, copy them into both id1 folders).
 
 **L80. `git fetch` in a worktree can wait for credentials with no prompt.** To take main's latest, merge the local `main` branch, which every worktree shares, with `GIT_TERMINAL_PROMPT=0`.
+
+**L90. A sed that reads and writes the same file empties it.** A loop that made each episode's `qogtest_y_mem_<map>.cfg` from the e2m6 one (`sed ... e2m6.cfg > e<n>m<m>.cfg`) emptied e2m6 when it reached it, and every script made after it. An empty script runs nothing, the client plays the attract demos and the server half spins at full speed waiting, which looked like a hang of the game. Check `wc -c` of generated scripts before a long run, and make them from a copy outside the folder.
+
+**L91. Stopping a background runner leaves its test processes running.** TaskStop ended the bash loop, but its pctest, quakeog_cl and quakeog_sv went on, and the next run of the loop had already started. List the worktree's own processes by command line (`Get-CimInstance Win32_Process` with the worktree path in `CommandLine`) and stop each, never by name alone.
+
+**L92. A level's server peak can be its load, not its play.** Host_Loadgame_f took its 8 KB line buffer from the high hunk after the level had loaded, so a load needed the level plus 8 KB: e2m7 with sound 179 KB of 174. On the board the buffer now lives on the stack once the map has spawned (`QOG_LOADGAME_STACKBUF`), 7 to 8 KB less on every level. Size the server with fight, save and load (`qogtest_y_mem_<map>.cfg`), never with a level load alone.
+
+**L93. Every episode ends in start, and start leads to every episode.** e1m7, e2m6 and e3m6 exit to start (not the secret levels e2m7 and e3m7, which lead back into their episode), and start's gates lead to e1m1, e2m1, e3m1, e4m1 and end (`python tools/level_exits.py <paks> <maps>`). In an image of one episode a changelevel can name a level that is not there, and SV_SpawnServer sends the reconnect before it finds that out, which left the client waiting forever. Check the level before anything is stopped (engine/host_cmd.c, `QOG_MISSING_MAPS`).
+
+**L94. `git commit -F` needs an empty line after the title.** Without it the title and every bullet line become one long subject line.
+
+**L95. A file added to a data pak can move the baked image by 64 KB.** The image starts at the first 64 KB boundary after the pak, and main's episode 2 image has 28 KB to spare. Look at both `end` lines of mkboard after adding any file (qogboot.txt is 5 to 6 bytes and moved nothing).
