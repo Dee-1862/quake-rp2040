@@ -49,3 +49,31 @@ extern qboolean	link_cl_intermission;	// cl.intermission, sent with save
 extern char		link_save_comment[];		// Host_SavegameComment, sent with save
 void		Sys_QogRegister (void);		// the port's console commands (port)
 #endif
+
+// QuakeOG (Agent W): the split game's sound. The client half's S_ calls
+// (snd_link.c, QOG_SND_REMOTE) run as these operations on the server half,
+// which mixes with id's code (QOG_SND_HOST) and sends the 8-bit samples back.
+enum {
+	LKS_PRECACHE = 1,	// name: S_PrecacheSound, answers the sound's number or -1
+	LKS_TOUCH,			// name: S_TouchSound
+	LKS_START,			// S_StartSound (its random number is drawn on the server half)
+	LKS_LOCAL,			// name: S_LocalSound
+	LKS_STOP,			// S_StopSound
+	LKS_STOPALL,		// S_StopAllSounds
+	LKS_CLEAR,			// S_ClearBuffer
+	LKS_STATIC,			// S_StaticSound
+	LKS_UPDATE,			// S_Update with the listener, answers 1 if it mixed
+	LKS_EXTRA,			// S_ExtraUpdate, answers 1 if it mixed
+	LKS_AMBOFF,			// S_AmbientOff
+	LKS_AMBON			// S_AmbientOn
+};
+#define LKS_REPLY	0x80	// with the operation: the client waits for the answer
+
+#ifdef QOG_SND_REMOTE
+int			Link_Sound (const byte *op, int len);	// returns the answer, -1 when none came
+#define LINK_SNDQUEUED	-2		// sent from inside an exchange, runs after it
+extern unsigned	link_sndasync, link_sndasync_start;
+#endif
+#ifdef QOG_SND_HOST
+void		Link_ServerSoundPcm (unsigned t, const byte *a, int an, const byte *b, int bn);	// samples from time t
+#endif

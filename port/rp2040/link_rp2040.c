@@ -27,6 +27,9 @@
 #include "io_expander/ioexp_link.h"
 extern uint8_t qog_rp2040_buttons;   /* sys_rp2040.c */
 extern uint8_t qog_rp2040_buttons_seen;
+#ifdef QOG_SND_REMOTE
+#include "qog_snd.h"
+#endif
 #endif
 
 void qog_link_hw_open(int role) {
@@ -139,6 +142,9 @@ void qog_link_hw_idle(void) {
         qog_rp2040_buttons = pw.buttons.down;   /* level, as the main loop reads it */
         qog_rp2040_buttons_seen |= pw.buttons.down;
         last = now;
+#ifdef QOG_SND_REMOTE
+        qog_snd_out_idle();      /* Agent W: silence what played while the server half is busy */
+#endif
     }
 #endif
 }

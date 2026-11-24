@@ -1882,6 +1882,45 @@ byte *COM_FlashFile (char *path, int *length)
 	return NULL;
 }
 
+#ifdef QOG_SFX_NAMEPTR
+/*
+============
+COM_FlashName
+
+QuakeOG (Agent W): the file COM_FlashFile would find, as the name in its
+pack's directory in the read-only image, which lasts as long as the game.
+The mixer keeps sound names there (snd_dma.c). NULL as for COM_FlashFile.
+============
+*/
+char *COM_FlashName (char *path)
+{
+	searchpath_t    *search;
+	pack_t          *pak;
+	int             i;
+	char            netpath[MAX_OSPATH];
+
+	for (search = com_searchpaths ; search ; search = search->next)
+	{
+		if (search->pack)
+		{
+			pak = search->pack;
+			for (i=0 ; i<pak->numfiles ; i++)
+				if (!strcmp (Pak_Name (pak, i), path))
+					return pak->flash && pak->fdir ? pak->fdir[i].name : NULL;
+		}
+		else
+		{
+			if (!static_registered && (strchr (path, '/') || strchr (path, '\\')))
+				continue;	// same rule as COM_FindFile
+			sprintf (netpath, "%s/%s", search->filename, path);
+			if (Sys_FileTime (netpath) != -1)
+				return NULL;	// a loose file overrides the pack
+		}
+	}
+	return NULL;
+}
+#endif
+
 /*
 ============
 COM_InFlash

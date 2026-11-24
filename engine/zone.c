@@ -492,10 +492,14 @@ void *Hunk_AllocPacked (int size, int align)
 			grow = (ofs + size - room + 15) & ~15;
 			if (hunk_size - hunk_low_used - hunk_high_used < grow)
 				Sys_Error ("Hunk_Alloc: failed on %i bytes", grow);
-			memset (hunk_base + hunk_low_used, 0, grow);
+			// QuakeOG (Agent W): move the cache out of the way before
+			// clearing, as Hunk_AllocName does. Clearing first wiped the
+			// header of a cache block lying there (a sound's, with sound
+			// on), and moving it then freed a NULL user.
 			hunk_low_used += grow;
-			h->size += grow;
 			Cache_FreeLow (hunk_low_used);
+			memset (hunk_base + hunk_low_used - grow, 0, grow);
+			h->size += grow;
 			hunk_packed_used = ofs + size;
 			return (byte *)(h + 1) + ofs;
 		}

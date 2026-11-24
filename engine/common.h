@@ -178,6 +178,9 @@ byte *COM_LoadHunkFile (char *path);
 // QuakeOG: pointer to the file inside a flash-mapped pack, read only, or NULL
 // if it is not in one (then load it the normal way).
 byte *COM_FlashFile (char *path, int *length);
+#ifdef QOG_SFX_NAMEPTR
+char *COM_FlashName (char *path);	// QuakeOG (Agent W): the name in a mapped pack's directory
+#endif
 // QuakeOG: true if p is inside a mapped pack image (map baker)
 qboolean COM_InFlash (void *p);
 // QuakeOG: calls fn with every file name in every pack (map baker)

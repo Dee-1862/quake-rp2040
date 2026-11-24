@@ -21,6 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#ifndef QOG_SND_REMOTE	// QuakeOG (Agent W): a split client's sound runs on the server half (snd_link.c)
+
 int			cache_full_cycle;
 
 byte *S_Alloc (int size);
@@ -366,3 +368,5 @@ wavinfo_t GetWavinfo (char *name, byte *wav, int wavlength)
 	return info;
 }
 
+
+#endif	// QOG_SND_REMOTE

@@ -27,6 +27,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define DWORD	unsigned long
 #endif
 
+#ifndef QOG_SND_REMOTE	// QuakeOG (Agent W): a split client's sound runs on the server half (snd_link.c)
+
 #define	PAINTBUFFER_SIZE	512
 #ifdef QOG_SND_ONINIT
 portable_samplepair_t *paintbuffer;	// QuakeOG: PAINTBUFFER_SIZE entries on the hunk, from S_Init
@@ -140,6 +142,36 @@ void S_TransferStereo16 (int endtime)
 #endif
 }
 
+#ifdef QOG_SND_HASH
+// QuakeOG (Agent W): FNV-1a over what the mixer made, in time order
+unsigned	qog_snd_painthash = 0x811C9DC5, qog_snd_paintcount, qog_snd_outhash = 0x811C9DC5, qog_snd_outcount;
+
+static unsigned S_QogHash (unsigned h, unsigned v)
+{
+	int	i;
+
+	for (i=0 ; i<4 ; i++, v >>= 8)
+		h = (h ^ (v & 0xff)) * 16777619u;
+	return h;
+}
+
+// the DMA buffer's samples from paintedtime to endtime, read back after a transfer
+static void S_QogHashOut (int endtime)
+{
+	int		t, c, i;
+	unsigned	v;
+
+	for (t = paintedtime ; t < endtime ; t++)
+		for (c = 0 ; c < shm->channels ; c++)
+		{
+			i = (t * shm->channels + c) & (shm->samples - 1);
+			v = shm->samplebits == 16 ? (unsigned short)((short *)shm->buffer)[i] : shm->buffer[i];
+			qog_snd_outhash = S_QogHash (qog_snd_outhash, v);
+			qog_snd_outcount++;
+		}
+}
+#endif
+
 void S_TransferPaintBuffer(int endtime)
 {
 	int 	out_idx;
@@ -160,9 +192,12 @@ void S_TransferPaintBuffer(int endtime)
 	if (shm->samplebits == 16 && shm->channels == 2)
 	{
 		S_TransferStereo16 (endtime);
+#ifdef QOG_SND_HASH
+		S_QogHashOut (endtime);
+#endif
 		return;
 	}
-	
+
 	p = (int *) paintbuffer;
 	count = (endtime - paintedtime) * shm->channels;
 	out_mask = shm->samples - 1; 
@@ -231,6 +266,9 @@ void S_TransferPaintBuffer(int endtime)
 			out_idx = (out_idx + 1) & out_mask;
 		}
 	}
+#ifdef QOG_SND_HASH
+	S_QogHashOut (endtime);
+#endif
 
 #ifdef ID_WIN32
 	if (pDSBuf) {
@@ -329,6 +367,14 @@ void S_PaintChannels(int endtime)
 															  
 		}
 
+#ifdef QOG_SND_HASH
+		for (i=0 ; i<end - paintedtime ; i++)
+		{
+			qog_snd_painthash = S_QogHash (qog_snd_painthash, paintbuffer[i].left);
+			qog_snd_painthash = S_QogHash (qog_snd_painthash, paintbuffer[i].right);
+		}
+		qog_snd_paintcount += end - paintedtime;
+#endif
 	// transfer out according to DMA format
 		S_TransferPaintBuffer(end);
 		paintedtime = end;
@@ -414,3 +460,4 @@ void SND_PaintChannelFrom16 (channel_t *ch, sfxcache_t *sc, int count)
 	ch->pos += count;
 }
 
+#endif	// QOG_SND_REMOTE

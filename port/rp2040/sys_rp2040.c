@@ -49,6 +49,13 @@ See the GNU General Public License for more details.
 #include "qog_aim.h"
 #endif
 #include "qog_flashmap.h"
+#if defined(QOG_SND_REMOTE) || defined(QOG_SND_HOST)
+#include "qog_snd.h"
+/* Agent W: the split game's sound, mixed on main and played by the display */
+#define QOG_SYS_SOUNDARG
+#else
+#define QOG_SYS_SOUNDARG "-nosound",
+#endif
 #include "qog_phase.h"
 
 #ifdef QOG_PHASE_TIME
@@ -420,6 +427,9 @@ void Sys_Error(char *error, ...) {
     for (;;)
         tight_loop_contents();
 #else
+#ifdef QOG_SND_REMOTE
+    qog_snd_out_shutdown();   /* Agent W: stop the speaker, or the ring loops forever */
+#endif
     /* Keep the red-button power-off alive while reporting (BSP rule): the
        display CPU has no watchdog and must stay switch-off-able. */
     for (;;) {
@@ -443,6 +453,15 @@ double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
    frame on the link, kicking the watchdog while it waits. */
 #ifdef QOG_STACK_KB
 static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
+#ifdef QOG_SND_BOARDMEM
+/* Agent W: the mixer's paint buffer and ring are the stack's lowest
+   QOG_SND_SCRATCH bytes, used only between server frames when the stack is
+   shallow (port/common/qog_snd_host.c). The watermark starts above them. */
+unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
+#define SV_STACK_LOW (QOG_SND_SCRATCH / 4)
+#else
+#define SV_STACK_LOW 0
+#endif
 #ifdef QOG_GAME_PSP
 /* QuakeOG: the server on the process stack, interrupts on the SDK's main
    stack, as on the display chip (see the client's run_on_stack below) */
@@ -460,17 +479,17 @@ static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, v
 static void stack_fill(void) {
     uint32_t *sp;
     __asm volatile ("mov %0, sp" : "=r" (sp));
-    for (uint32_t *p = s_stack; p < sp - 16; p++) *p = STACK_MARK;
+    for (uint32_t *p = s_stack + SV_STACK_LOW; p < sp - 16; p++) *p = STACK_MARK;
 }
 uint32_t qog_stack_free(void) {
-    const uint32_t *p = s_stack;
+    const uint32_t *p = s_stack + SV_STACK_LOW;
     while (p < s_stack + sizeof s_stack / sizeof s_stack[0] && *p == STACK_MARK) p++;
-    return (uint32_t)((const uint8_t *)p - (const uint8_t *)s_stack);
+    return (uint32_t)((const uint8_t *)p - (const uint8_t *)(s_stack + SV_STACK_LOW));
 }
 #endif
 #endif
 static void __attribute__((noreturn)) server_main(void) {
-    static char *argv[] = { "quake", "-nosound" };
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG };
     quakeparms_t parms;
 
 #if defined(QOG_STACK_KB) && defined(QOG_STACK_WATERMARK)
@@ -478,7 +497,7 @@ static void __attribute__((noreturn)) server_main(void) {
 #endif
 
     memset(&parms, 0, sizeof parms);
-    COM_InitArgv(2, argv);
+    COM_InitArgv((int)(sizeof argv / sizeof argv[0]), argv);
     parms.argc = com_argc;
     parms.argv = com_argv;
     parms.basedir = ".";
@@ -574,9 +593,9 @@ int main(void) {
 #ifdef QOG_BOARD_MAP
     /* QuakeOG: the board has no keyboard to type "map" at the console, so a
        board build can name the level to start in (apps/quake QOG_BOARD_MAP). */
-    static char *argv[] = { "quake", "-nosound", "+map", QOG_BOARD_MAP };
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG "+map", QOG_BOARD_MAP };
 #else
-    static char *argv[] = { "quake", "-nosound" };
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG };
 #endif
     quakeparms_t parms;
 
@@ -591,6 +610,10 @@ int main(void) {
        it only once the driver is up, as the BSP's own poll does) */
     if (!ws2812_init(pio0, 0u))
         DIAG("[quake_display] LED bar not started, no power-off countdown\n");
+    else if (!pio_sm_is_claimed(pio0, 0u))
+        /* ws2812_init does not claim its state machine, and the speaker
+           (snd_rp2040.c) asks pio0 for an unused one after this */
+        pio_sm_claim(pio0, 0u);
 #endif
     memset(&parms, 0, sizeof parms);
     COM_InitArgv((int)(sizeof argv / sizeof argv[0]), argv);

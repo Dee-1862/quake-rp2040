@@ -282,6 +282,15 @@ if(QOG_SPLIT)
         QOG_CL_PRECACHE_SV              # model and sound precache tables of the server half's sizes (208 and 176)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
         QOG_CMD_ARGV_ARENA=640)         # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+    # QuakeOG (Agent W): sound. id's mixer runs on the server half for the
+    # client half's sound calls (engine/snd_link.c, engine/net_link.c), which
+    # plays the 8-bit samples it sends back on the I2S amplifier through PIO
+    # and DMA (port/rp2040/snd_rp2040.c). -DQOG_SOUND=OFF builds both halves
+    # with -nosound as before.
+    option(QOG_SOUND "split game sound: mixed on main, played by the display" ON)
+    if(QOG_SOUND)
+        list(APPEND _cl_defs QOG_SND_REMOTE)
+    endif()
     # QuakeOG (Agent V): speed, board client only (docs/changes.md)
     option(QOG_BOARD_LOCKWAIT "the next frame's input, link and parsing run during the LCD scanout (exact)" ON)
     option(QOG_BOARD_CORE1 "the display chip's second core draws half of the lit spans (exact)" ON)
@@ -311,8 +320,22 @@ if(QOG_SPLIT)
     list(TRANSFORM _sv_defs REPLACE "^QOG_CMDBUF_SIZE=[0-9]+$" "QOG_CMDBUF_SIZE=256")
     list(APPEND _sv_defs QOG_LOADGAME_STRSIZE=8192)   # a save's biggest block 2,485 B (id 32 KB on the hunk)
     list(TRANSFORM _sv_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=6")   # server zone peak 1.9 KB
+    set(_sv_sound "")
+    if(QOG_SOUND)
+        # Agent W: id's mixer for the client half, exact for the same calls
+        set(_sv_sound ${QOG_ROOT}/engine/snd_dma.c ${QOG_ROOT}/engine/snd_mix.c ${QOG_ROOT}/engine/snd_mem.c
+            ${QOG_ROOT}/port/common/qog_snd_host.c)
+        list(APPEND _sv_defs
+            QOG_SND_HOST                # the client half's view entity and ambient levels come with its calls
+            QOG_SND_GETSAMPLES          # id's GetSoundtime path for an output that counts its samples
+            QOG_SFX_NAMEPTR             # sound names point into the pack directory in flash (8 bytes a sound, id 68)
+            QOG_MAX_SFX=256             # the registered game has 225 sound files (id 512)
+            QOG_MAX_CHANNELS=104        # 12 plus static sounds, the whole game uses at most 99 (e2m6), id 128
+            QOG_SND_HOSTMEM             # paint buffer and known_sfx from qog_snd_host.c, not the hunk
+            QOG_SND_BOARDMEM)           # paint buffer and ring at the bottom of the server's stack between frames, known_sfx in SCRATCH_Y
+    endif()
     add_library(qog_engine_sv STATIC EXCLUDE_FROM_ALL ${QOG_SPLIT_SV_ENGINE} ${QOG_PROGS_AOT}
-        ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common})
+        ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common} ${_sv_sound})
     target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER
         QOG_LINK_SCRATCH)   # the link's 4 KB of rings in SCRATCH_X, unused on main (Agent T)
     if(QOG_BOARD_TIMING)
@@ -346,7 +369,14 @@ if(QOG_SPLIT)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
     set(QOG_CL_HUNK_KB 68 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl with the board client flags for E1M1 with a fight, a save and a load (e3m5 79, Agent S)")
-    set(QOG_CL_STACK_KB 34 CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
+    # Agent W: with sound the client gives 2 KB of its stack to the speaker's ring
+    # (the board's watermark had 5.4 KB spare, the sound exchange adds about 1.1 KB)
+    if(QOG_SOUND)
+        set(_cl_stack_default 32)
+    else()
+        set(_cl_stack_default 34)
+    endif()
+    set(QOG_CL_STACK_KB ${_cl_stack_default} CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
     get_target_property(_disp_defs quake_display COMPILE_DEFINITIONS)
     list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")
     list(TRANSFORM _disp_defs REPLACE "^QOG_STACK_KB=[0-9]+$" "QOG_STACK_KB=${QOG_CL_STACK_KB}")

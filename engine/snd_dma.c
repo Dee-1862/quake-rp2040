@@ -25,6 +25,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "winquake.h"
 #endif
 
+#ifndef QOG_SND_REMOTE	// QuakeOG (Agent W): a split client's sound runs on the server half (snd_link.c)
+
+#ifdef QOG_SND_HOST
+// QuakeOG (Agent W): set from the client half's sound calls (net_link.c)
+int		snd_viewentity;
+int		snd_ambientstate;
+byte	snd_ambientlevels[4];
+#define	SND_VIEWENTITY	snd_viewentity
+#else
+#define	SND_VIEWENTITY	cl.viewentity
+#endif
+
 void S_Play(void);
 void S_PlayVol(void);
 void S_SoundList(void);
@@ -62,11 +74,35 @@ int			soundtime;		// sample PAIRS
 int   		paintedtime; 	// sample PAIRS
 
 
+#ifdef QOG_MAX_SFX
+#define	MAX_SFX		QOG_MAX_SFX	// QuakeOG: the registered game has 225 sound files
+#else
 #define	MAX_SFX		512
+#endif
 sfx_t		*known_sfx;		// hunk allocated [MAX_SFX]
 int			num_sfx;
 
 sfx_t		*ambient_sfx[NUM_AMBIENTS];
+
+#ifdef QOG_SFX_NAMEPTR
+#define	SND_NAMEPOOL	128		// QuakeOG: names of sounds no mapped pack has (S_KeepName), about 6
+static char	*snd_namepool;
+static int	snd_namepoolused;
+#endif
+
+#ifdef QOG_SND_HASH
+// QuakeOG (Agent W): `qog_sndhash`, what the mixer made so far (snd_mix.c)
+static void S_QogHash_f (void)
+{
+	Con_Printf ("qog_sndhash: paint %u pairs %08x, out %u samples %08x, paintedtime %i\n",
+		qog_snd_paintcount, qog_snd_painthash, qog_snd_outcount, qog_snd_outhash, paintedtime);
+}
+// -sndtrace: every call into the mixer on the log, to find where two mixers part
+static int		snd_trace, snd_tracefrom = 0x7fffffff;
+#define	SND_TRACE(x)	do { if (snd_trace) Sys_Printf x; } while (0)
+#else
+#define	SND_TRACE(x)
+#endif
 
 int 		desired_speed = 11025;
 int 		desired_bits = 16;
@@ -184,7 +220,11 @@ void S_Init (void)
 #endif
 	{
 	channels = Hunk_AllocName (MAX_CHANNELS * sizeof(channel_t), "channels");
+#ifdef QOG_SND_HOSTMEM
+	paintbuffer = qog_snd_host_paintbuffer ();	// QuakeOG (Agent W)
+#else
 	paintbuffer = Hunk_AllocName (512 * sizeof(portable_samplepair_t), "paintbuf");
+#endif
 	}
 #endif
 
@@ -226,8 +266,22 @@ void S_Init (void)
 
 	SND_InitScaletable ();
 
+#ifdef QOG_SND_HOSTMEM
+	known_sfx = qog_snd_host_sfxtable ();	// QuakeOG (Agent W): MAX_SFX entries
+#else
 	known_sfx = Hunk_AllocName (MAX_SFX*sizeof(sfx_t), "sfx_t");
+#endif
 	num_sfx = 0;
+#ifdef QOG_SFX_NAMEPTR
+	snd_namepool = Hunk_AllocName (SND_NAMEPOOL, "sfxnames");
+	snd_namepoolused = 0;
+#endif
+#ifdef QOG_SND_HASH
+	Cmd_AddCommand ("qog_sndhash", S_QogHash_f);
+	snd_trace = COM_CheckParm ("-sndtrace");
+	if (snd_trace && snd_trace + 1 < com_argc)
+		snd_tracefrom = Q_atoi (com_argv[snd_trace + 1]);	// channels from this paint time on
+#endif
 
 // create a piece of DMA memory
 
@@ -293,6 +347,32 @@ S_FindName
 
 ==================
 */
+#ifdef QOG_SFX_NAMEPTR
+// QuakeOG (Agent W): a sound's name stays where it already is, in the
+// directory of the mapped pack that holds sound/<name>, so a known_sfx entry
+// is 8 bytes, not 68. A name that no mapped pack has (it cannot load) is
+// copied to a small pool, and running out of it stops the game the way
+// running out of known_sfx does.
+static char *S_KeepName (char *name)
+{
+	char	path[MAX_QPATH + 8];
+	char	*n;
+	int		len = Q_strlen (name) + 1;
+
+	Q_strcpy (path, "sound/");
+	Q_strcat (path, name);
+	n = COM_FlashName (path);
+	if (n)
+		return n + 6;
+	if (snd_namepoolused + len > SND_NAMEPOOL)
+		Sys_Error ("S_FindName: out of name space for %s", name);
+	n = snd_namepool + snd_namepoolused;
+	Q_memcpy (n, name, len);
+	snd_namepoolused += len;
+	return n;
+}
+#endif
+
 sfx_t *S_FindName (char *name)
 {
 	int		i;
@@ -315,7 +395,11 @@ sfx_t *S_FindName (char *name)
 		Sys_Error ("S_FindName: out of sfx_t");
 	
 	sfx = &known_sfx[i];
+#ifdef QOG_SFX_NAMEPTR
+	sfx->name = S_KeepName (name);
+#else
 	strcpy (sfx->name, name);
+#endif
 
 	num_sfx++;
 	
@@ -390,7 +474,7 @@ channel_t *SND_PickChannel(int entnum, int entchannel)
 		}
 
 		// don't let monster sounds override player sounds
-		if (channels[ch_idx].entnum == cl.viewentity && entnum != cl.viewentity && channels[ch_idx].sfx)
+		if (channels[ch_idx].entnum == SND_VIEWENTITY && entnum != SND_VIEWENTITY && channels[ch_idx].sfx)
 			continue;
 
 		if (channels[ch_idx].end - paintedtime < life_left)
@@ -423,7 +507,7 @@ void SND_Spatialize(channel_t *ch)
 	sfx_t *snd;
 
 // anything coming from the view entity will allways be full volume
-	if (ch->entnum == cl.viewentity)
+	if (ch->entnum == SND_VIEWENTITY)	// QuakeOG: cl.viewentity
 	{
 		ch->leftvol = ch->master_vol;
 		ch->rightvol = ch->master_vol;
@@ -484,6 +568,8 @@ void S_StartSound(int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float f
 	if (nosound.value)
 		return;
 
+	SND_TRACE (("snd start %i %i %s %g %g %g %g %g pt %i\n", entnum, entchannel, sfx->name,
+		origin[0], origin[1], origin[2], fvol, attenuation, paintedtime));
 	vol = fvol*255;
 
 // pick a channel to play on
@@ -543,6 +629,7 @@ void S_StopSound(int entnum, int entchannel)
 	if (!channels)
 		return;		// QuakeOG: -nosound, no channels (S_Init)
 #endif
+	SND_TRACE (("snd stop %i %i\n", entnum, entchannel));
 	for (i=0 ; i<MAX_DYNAMIC_CHANNELS ; i++)
 	{
 		if (channels[i].entnum == entnum
@@ -562,6 +649,7 @@ void S_StopAllSounds(qboolean clear)
 	if (!sound_started)
 		return;
 
+	SND_TRACE (("snd stopall %i pt %i\n", clear, paintedtime));
 	total_channels = MAX_DYNAMIC_CHANNELS + NUM_AMBIENTS;	// no statics
 
 	for (i=0 ; i<MAX_CHANNELS ; i++)
@@ -648,6 +736,8 @@ void S_StaticSound (sfx_t *sfx, vec3_t origin, float vol, float attenuation)
 	if (!sfx)
 		return;
 
+	SND_TRACE (("snd static %s %g %g %g %g %g ch %i pt %i\n", sfx->name, origin[0], origin[1], origin[2],
+		vol, attenuation, total_channels, paintedtime));
 	if (total_channels == MAX_CHANNELS)
 	{
 		Con_Printf ("total_channels == MAX_CHANNELS\n");
@@ -695,11 +785,18 @@ void S_UpdateAmbientSounds (void)
 		return;
 
 // calc ambient sound levels
+#ifdef QOG_SND_HOST
+	// QuakeOG (Agent W): the client half looked up the leaf (net_link.c)
+	if (!snd_ambientstate)
+		return;
+	if (snd_ambientstate == 1 || !ambient_level.value)
+#else
 	if (!cl.worldmodel)
 		return;
 
 	l = Mod_PointInLeaf (listener_origin, cl.worldmodel);
 	if (!l || !ambient_level.value)
+#endif
 	{
 		for (ambient_channel = 0 ; ambient_channel< NUM_AMBIENTS ; ambient_channel++)
 			channels[ambient_channel].sfx = NULL;
@@ -711,7 +808,11 @@ void S_UpdateAmbientSounds (void)
 		chan = &channels[ambient_channel];	
 		chan->sfx = ambient_sfx[ambient_channel];
 	
+#ifdef QOG_SND_HOST
+		vol = ambient_level.value * snd_ambientlevels[ambient_channel];
+#else
 		vol = ambient_level.value * l->ambient_sound_level[ambient_channel];
+#endif
 		if (vol < 8)
 			vol = 0;
 
@@ -730,6 +831,7 @@ void S_UpdateAmbientSounds (void)
 		}
 		
 		chan->leftvol = chan->rightvol = chan->master_vol;
+		SND_TRACE (("snd amb %i %i %g %g\n", ambient_channel, chan->master_vol, vol, host_frametime));
 	}
 }
 
@@ -751,6 +853,7 @@ void S_Update(vec3_t origin, vec3_t forward, vec3_t right, vec3_t up)
 	if (!sound_started || (snd_blocked > 0))
 		return;
 
+	SND_TRACE (("snd update %g %g %g %g %g %g ve %i\n", origin[0], origin[1], origin[2], right[0], right[1], right[2], SND_VIEWENTITY));
 	VectorCopy(origin, listener_origin);
 	VectorCopy(forward, listener_forward);
 	VectorCopy(right, listener_right);
@@ -841,7 +944,7 @@ void GetSoundtime(void)
 
 // it is possible to miscount buffers if it has wrapped twice between
 // calls to S_Update.  Oh well.
-#ifdef __sun__
+#if defined(__sun__) || defined(QOG_SND_GETSAMPLES)	// QuakeOG: id's path for an output that counts samples
 	soundtime = SNDDMA_GetSamples();
 #else
 	samplepos = SNDDMA_GetDMAPos();
@@ -919,7 +1022,21 @@ void S_Update_(void)
 	}
 #endif
 
+	SND_TRACE (("snd paint st %i pt %i end %i tc %i\n", soundtime, paintedtime, endtime, total_channels));
+#ifdef QOG_SND_HASH
+	if (snd_trace > 0 && paintedtime > snd_tracefrom)
+	{
+		int	i;
+		for (i=0 ; i<total_channels ; i++)
+			if (channels[i].sfx && (channels[i].leftvol || channels[i].rightvol))
+				Sys_Printf ("snd ch %i %s v %i %i pos %i end %i\n", i, channels[i].sfx->name,
+					channels[i].leftvol, channels[i].rightvol, channels[i].pos, channels[i].end);
+	}
+#endif
 	S_PaintChannels (endtime);
+#ifdef QOG_SND_HASH
+	SND_TRACE (("snd painted %08x\n", qog_snd_painthash));
+#endif
 
 	SNDDMA_Submit ();
 }
@@ -1020,7 +1137,7 @@ void S_LocalSound (char *sound)
 		Con_Printf ("S_LocalSound: can't cache %s\n", sound);
 		return;
 	}
-	S_StartSound (cl.viewentity, -1, sfx, vec3_origin, 1, 1);
+	S_StartSound (SND_VIEWENTITY, -1, sfx, vec3_origin, 1, 1);	// QuakeOG: cl.viewentity
 }
 
 
@@ -1038,3 +1155,5 @@ void S_EndPrecaching (void)
 {
 }
 
+
+#endif	// QOG_SND_REMOTE

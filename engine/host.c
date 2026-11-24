@@ -1137,6 +1137,9 @@ void Host_Init (quakeparms_t *parms)
 	Mod_Init ();
 	NET_Init ();
 	SV_Init ();
+#ifdef QOG_SND_HOST
+	S_Init ();		// QuakeOG (Agent W): the mixer for the client half (snd_link.c)
+#endif
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
 	Con_Printf ("%4.1f megabyte heap\n",parms->memsize/ (1024*1024.0));
 #else

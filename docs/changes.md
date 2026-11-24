@@ -2,6 +2,76 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Sound for the split game, mixed on main and played by the display (Agent W, PC and ARM build, registered data)
+
+The split game has sound. id's mixer (snd_dma.c, snd_mix.c, snd_mem.c) runs on the main chip for the display chip's sound calls, and the display plays the 8-bit samples it gets back on the I2S amplifier through PIO and DMA. On the PC the mixer of the split pair paints exactly what the single-process game paints for the same scripts, and the state hashes stay the same. Both board apps link with sound on. Nothing ran on hardware and nothing was played on this PC: every PC run mixed silently.
+
+Why mix on main (numbers before this work, from the briefing and the builds): id's sound needs channels 6,656 B, a paint buffer 4,096 B, known_sfx 34,816 B (512 x 68), cache headers about 80 B per sound and an output ring. The display had 560 B free (344 B after Agent V's options) and every chip-side choice on it would cost the game hunk or the frame buffer. The client's sound calls are few and small, the server half knows nothing of the listener, and the samples are 11 KB/s on a 1.25 MB/s link. So the mixer moves to main, the calls cross the link, and the display keeps only an output ring.
+
+| Piece | Where | Flag |
+| --- | --- | --- |
+| The client's S_ calls become link items (`LK_SND`, operations `LKS_*` in engine/net_link.h). S_PrecacheSound, S_StartSound, S_LocalSound, S_Update and S_ExtraUpdate are exchanges like a console line: main runs them at once and its random sequence comes back with its state, so the random number S_StartSound draws (two identical sounds started in a frame) stays in the shared sequence. The rest are sent in order without waiting. Inside another exchange (and during Agent V's pipelined screen update) an exchange is only queued: main runs it after that exchange in the same order, so it mixes the same samples | engine/snd_link.c (replaces snd_dma.c, snd_mix.c and snd_mem.c on the client), engine/net_link.c | `QOG_SND_REMOTE` (client) |
+| What id's mixer read from client state comes with the calls: the view entity, and with S_Update the listener's leaf's ambient levels. The play position is the client's output's | engine/snd_dma.c | `QOG_SND_HOST` (server) |
+| GetSoundtime takes id's own path for an output that counts its samples (`__sun__`'s SNDDMA_GetSamples) | engine/snd_dma.c | `QOG_SND_GETSAMPLES` |
+| Main's "DMA buffer" is a ring of 2,048 8-bit mono samples, id's 8-bit output. Submit sends what the mixer wrote as `LK_SNDPCM` items between the update and its answer | port/common/qog_snd_host.c | |
+| Sound names point into the pack directory in flash, so known_sfx is 8 bytes a sound (id 68). Names no pack has go in a 128-byte pool | engine/snd_dma.c, engine/common.c (`COM_FlashName`) | `QOG_SFX_NAMEPTR`, `QOG_MAX_SFX=256` (the registered game has 225 sound files) |
+| Channels 104, not 128: 12 plus static sounds, and the whole game uses at most 99 (e2m6; e1m4 84, start 67, e1m1 26, measured with `-sndtrace` over every map) | engine/sound.h | `QOG_MAX_CHANNELS=104` |
+| The paint buffer (id's 512 pairs, 4 KB) and the ring hold samples only while one update runs, so on main they are the lowest 6 KB of the server's stack array, used only between server frames from the link's items, where the stack is a few KB deep (interrupts have their own stack). The stack watermark starts above them. known_sfx (2 KB) takes the free half of main's SCRATCH_Y bank | port/common/qog_snd_host.c, port/rp2040/sys_rp2040.c | `QOG_SND_HOSTMEM`, `QOG_SND_BOARDMEM` |
+| The display plays the samples: PIO runs the BSP's audio_i2s program at 200 MHz / (64 x 283) = 11,042 Hz (the BSP's integer divider), a DMA channel reads a 2 KB ring of signed bytes into the TX FIFO (an 8-bit FIFO write is replicated, so byte b goes out as b x 257 on both channels), and a second DMA channel chained from it rewrites the first's read address, so the ring loops with no interrupt and no CPU work. The play position is the read address, the pass of the ring comes from the timer (same crystal). While the link waits, played samples nothing replaced are silenced, so a busy server leaves silence, not a 186 ms loop. Sys_Error stops the bit clock | port/rp2040/snd_rp2040.c, port/rp2040/link_rp2040.c | `QOG_SND_REMOTE` |
+| main's data image carries every sound of the display's pak, already 11025 Hz 8-bit mono (mkpak's conversion of the eight 22 kHz sounds was checked against id's ResampleSfx with loadas8bit, byte for byte, and end to end below) | tools/mkboard.py `--main` (`--main-no-sounds` leaves them out) | |
+| The board option, on by default. Off builds both halves with -nosound as before | apps/quake/CMakeLists.txt | `QOG_SOUND` |
+
+A bug found on the way and fixed: `Hunk_AllocPacked` (`QOG_HUNK_PACKED`) cleared the bytes it grew into before moving the cache out of them, so a cache block lying there lost its header and the move freed a NULL user. With sound on, the PC game crashed at the first map load (the sound headers sit right above the low hunk), on the base commit too. It now grows, moves the cache, then clears, as Hunk_AllocName does. Sound-off runs are unchanged.
+
+A lesson about id's mixer: the paint buffer size is part of its output. `SND_PaintChannelFrom8` paints each segment from the start of the paint buffer, so when a looped sound restarts inside a chunk its second segment lands at a spot that depends on the chunk boundaries. A 128-pair paint buffer changed the start map's output. The board keeps id's 512.
+
+PC verification (silent mixing only, `-hidden`, no audio device opened; `qog_sndhash` hashes every painted pair and every output sample in time order, `qog_sndrx` hashes what the client received; reference: the single-process `quakeog_pc` with `-sndmono8`, the board's 8-bit mono format, and `-heapsize 7000` so loadas8bit is on as on the board):
+
+| Test | Reference | Split pair, server mixing |
+| --- | --- | --- |
+| `qogtest_w_snd1.cfg` (e1m1, a fight with rockets, lightning and nails, save, load, map start; 1,744,704 samples) | 4 state hashes, 4 paint and output hashes | identical state hashes (rand calls 539, 20824, 21668, 22669), identical paint and output hashes, the client received exactly the output |
+| the same from the two board images (client `-basedir build-w\qb`, server `-basedir build-w\qb_main -flashbase 0x10300000`: names in flash, the converted lightning sounds in place) | | identical |
+| the same with Agent V's pipelined client (`QOG_LINK_PIPELINE`, 2,832 updates queued, 0 sound starts queued) | | identical |
+| `qogtest_w_demo.cfg` (map start, demo1, demo2, demo3; 2,509,289 samples) | 4 hashes, the same on two runs | identical |
+
+The default builds of this branch, sound off, against an untouched build of main (abd47a2): hidden, `-nosound`, `+_cl_color 0`: `qogtest_hash` 2 state hashes, `qogtest_f_hash` 32 hashes, `qogtest_d_shots` after `qogtest_k_quiet` 113 frames plus the 8 fhash frames, all identical, and the split pair (`-ServerExe`) gives the same 2 hashes and 32 `qogtest_r_fhash` hashes as the single process.
+
+Server hunk with sound, from the board images, the board's server flags and compiled QuakeC (`qogtest_t_mem_*.cfg`, fight, save, load): e1m1 needs 120 KB (116 fails, 116 runs without sound), start runs in 100 KB. Sound adds 5.5 KB of hunk (channels 5,408 B, the name pool, headers) plus up to 8.4 KB of sound headers in the cache, which the hunk gives back under pressure. `QOG_SV_HUNK_KB` stays 156.
+
+Board links (`cmake --preset target -B build-final -DQOG_AOT=ON`, everything else default, `-DQOG_CL_STACK_KB=32` is the new default with sound):
+
+| | Before (main abd47a2) | With sound |
+| --- | ---: | ---: |
+| quake_display RAM free (less the 2 KB heap reserve) | 344 B | 628 B |
+| quake_display stack array | 34 KB | 32 KB |
+| quake_main RAM free | 1,616 B | 880 B |
+| main SCRATCH_Y | 2 KB interrupt stack | + known_sfx 2 KB |
+| main data image (start, e1m1) | | pak 2.06 MB with 124 sounds (1.64 MB), image 0.69 MB, 2.69 MB of 5 MB |
+| quake_main app | | 1,309,940 B, 41.6% of the slot |
+
+Display stack: `tools/stack_chain.py --root game_main` gives 44,144 B as an upper bound with every impossible path, 1.4 KB below Agent V's 45,520 B for main (the client's sound code is gone). A sound exchange inside S_ExtraUpdate in the renderer adds about 1.1 KB (Link_ClientWait, two poll_rx frames of 344 B). The board watermark showed 5.4 KB spare at 34 KB before, so about 2.3 KB should remain at 32 KB. The display prints its free stack over USB with `QOG_LINK_DIAG`.
+
+Not done, or to watch on the board:
+
+- Latency: an update is mixed `_snd_mixahead` (0.1 s) ahead of the display's play position. With the pipelined client, updates from the screen update are queued and mixed after the server frame, and their samples reach the display at its next link wait. If the sound breaks up, `_snd_mixahead 0.15` (archived, at most 0.18 with the 2 KB ring) gives more room.
+- The 22 kHz sounds play as 11 kHz 8-bit, exactly as id's loader made them with less than 8 MB of memory. The amplifier's level is the `volume` cvar (0.7).
+- The display's flash image still holds the sounds, which the client no longer opens. Leaving them out would free about 1.6 MB of the display's flash for more maps (a later mkboard option).
+- Display core 1 is not used by sound. Link frames are unchanged: sound travels as stream items (`LK_SND` 23, `LK_SNDPCM` 24, `LK_SNDDONE` 25), no new frame types.
+- New test scripts are in the branch's git-ignored `build-w\data\id1` (`qogtest_w_snd1.cfg`, `qogtest_w_demo.cfg`, `qogtest_w_statics.cfg`), not in the shared data folder.
+
+Build and flash (one CPU in BOOTSEL at a time, from the repo root):
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
+    --maps start e1m1 --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps --main -o build-board\qb
+python third_party\wiliOGbsp\tools\fw.py flash quake --uf2 build-board\qb_main.uf2
+cmake --preset target -DQOG_AOT=ON -DQOG_AOT_PAK=data/id1/pak0.pak -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32
+cmake --build build --target quake_main
+python third_party\wiliOGbsp\tools\fw.py flash quake --uf2 build\apps\quake\quake_main.uf2
+```
+
+The display's data image is unchanged by this work: reflash `build-board\qb.uf2` through the display's BOOTSEL drive only if the maps changed. Main's data image must be rewritten, it now holds the sounds.
+
 ## 2026-11-23: Board speed, timing, both chips and both cores at work (Agent V, PC and ARM build, registered data)
 
 Four board-only changes to the split game, all options in apps/quake/CMakeLists.txt and all on by default. Three are exact by construction and one keeps id's order of everything the halves exchange. Nothing ran on hardware: the gains below are reasoning until the coordinating session flashes the board and reads the new timing lines.
