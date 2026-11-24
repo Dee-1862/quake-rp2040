@@ -51,6 +51,17 @@ static unsigned	lit_tmask2;			// power of two: t mask shifted up by lit_tshift
 static int		lit_tw16, lit_th16;	// any size: texture size in 16.16
 static const unsigned	*lit_lgrid;		// blocklights
 static const unsigned	*lit_lbase;		// blocklights moved back by the origin's light cells
+#ifdef QOG_LITSPAN_INTERP
+// QuakeOG (Agent AH): interpolator 0's lane controls for this surface's
+// texture (d_litspan.h), set by D_SetupLitSurface, written by each core
+static unsigned	lit_ictrl0, lit_ictrl1;
+#if defined(_WIN32)
+__declspec(thread) unsigned	liti_regs[2][16];	// the PC's stand-in for each core's SIO interpolators
+#endif
+#define LITI_PROLOGUE	if (lit_kind <= 3) LITI_SURFACE (lit_ictrl0, lit_ictrl1)
+#else
+#define LITI_PROLOGUE
+#endif
 #define LITSPAN_NEXT(p)	((p)->pnext != SPAN_NONE && ((p) = SPAN_PTR ((p)->pnext)))
 #ifdef QOG_LITSPAN_ZFUSE
 // QuakeOG: each span's z is written here from the 1/z the drawer computes
@@ -58,8 +69,84 @@ static const unsigned	*lit_lbase;		// blocklights moved back by the origin's lig
 void D_QogZSpan (espan_t *pspan, float zi, int izistep);
 #define LITSPAN_ZDECL			int izistep_ = (int)(d_zistepu * 0x8000 * 0x10000);
 #define LITSPAN_ZSPAN(p, zi)	D_QogZSpan (p, zi, izistep_);
+#if defined(QOG_RFAST) && !defined(QOG_RFAST_FLOATSETUP)
+// QuakeOG (Agent AH): the fixed point Fast drawer's z, from its 1/z * 2^k
+void D_QogZSpanI (espan_t *pspan, int izi, int izistep);
+#define LITFIX_ZSPAN(p, D64)	D_QogZSpanI (p, ((D64) >> litfix_zsh) > 0x7FFFFFFF ? 0x7FFFFFFF \
+									: (int)((D64) >> litfix_zsh), izistep_);
+#endif
+#endif
+#if defined(QOG_RFAST) && !defined(QOG_RFAST_FLOATSETUP)
+// QuakeOG (Agent AH): one surface's values for the fixed point Fast drawer
+// (QOG_RFAST_FIX, d_litspan.h), set on core 0 by D_LitFixSetup and read by
+// both cores
+static int			litfix_ok;				// the surface can be drawn by D_DrawSpans8LitFix
+static int			litfix_uref, litfix_vref;	// the reference point, the first span's start
+static long long	litfix_d0, litfix_du, litfix_dv;	// 1/z * 2^k at it and its steps
+static long long	litfix_s0, litfix_su, litfix_sv;	// (s / 65536) * (1/z) * 2^(k - ws)
+static long long	litfix_t0, litfix_tu, litfix_tv;	// (t / 65536) * (1/z) * 2^(k - wt)
+static int			litfix_sw, litfix_tw;	// 16 - ws and 16 - wt
+static int			litfix_stepbits;		// bits of the largest u step, less 25
+static int			litfix_zsh;				// k - 31: 1/z * 2^31 is D >> litfix_zsh
+float				d_qognearzi;			// the surface's nearest 1/z (d_edge.c)
 #endif
 #include "d_litspan.h"
+#endif
+
+#if defined(QOG_LITSPAN_INTERP) && defined(QOG_RFAST) && !defined(_WIN32)
+/*
+================
+D_LitInterpCheck
+
+QuakeOG (Agent AH): the board checks once that its interpolators give what
+the pixel loop's C expressions give (d_litspan.h, QOG_LITSPAN_INTERP), for
+a 64x64 texture and a light run, at start-up from D_Init, where printing
+is safe (inside the edge drawing a Con_Printf frame of 4 KB would not be).
+If they differ, every lit surface takes id's exact drawer (r_qogfast 0),
+which does not use them, and a console line says why.
+================
+*/
+static int	liti_state;		// 0 not checked, 1 good, 2 bad
+
+void D_QogLitInterpCheck (void)
+{
+	unsigned	S = 0x00C3A5F1u, T2 = 0x2F0BC055u, ss = 0x0001B3C7u, ts = 0xFFF2A1D9u;
+	unsigned	lacc = 0x12345678u, lstep = 0x0006F00Du;
+	unsigned	tex = 0x20010000u, cm = 0x10123400u;
+	int			i, bad = 0;
+
+	LITI_SET (0, LITI_CTRL0, LITI_CTRL (16, 0, 5));
+	LITI_SET (0, LITI_CTRL1, LITI_CTRL (16, 6, 11));
+	LITI_SET (0, LITI_BASE2, tex);
+	LITI_SET (1, LITI_CTRL0, LITI_CTRL (16, 8, 13));
+	LITI_SET (1, LITI_CTRL1, 0);
+	LITI_SET (1, LITI_ACC1, 0);
+	LITI_SET (1, LITI_BASE1, 0);
+	LITI_SET (1, LITI_BASE2, cm);
+	LITI_SET (0, LITI_ACC0, S);
+	LITI_SET (0, LITI_BASE0, ss);
+	LITI_SET (0, LITI_ACC1, T2);
+	LITI_SET (0, LITI_BASE1, ts);
+	LITI_SET (1, LITI_ACC0, lacc);
+	LITI_SET (1, LITI_BASE0, lstep);
+	for (i = 0 ; i < 64 ; i++)
+	{
+		unsigned	a = LITI_POPFULL (0), b = LITI_POPFULL (1);
+
+		if (a != tex + ((T2 >> 16) & (63u << 6)) + ((S >> 16) & 63u) ||
+			b != cm + (lacc >> 24 << 8))
+			bad++;
+		S += ss;
+		T2 += ts;
+		lacc += lstep;
+	}
+	liti_state = bad ? 2 : 1;
+	if (bad)
+		Con_Printf ("Fast render off: the interpolator check failed %d of 64\n", bad);
+}
+#define LITI_CHECK	if (liti_state == 2) r_qogfast = 0;
+#else
+#define LITI_CHECK
 #endif
 
 #ifdef QOG_RFAST_STATS
@@ -88,12 +175,149 @@ void D_QogRfastStats_f (void)
 #else
 #define QOG_NOINLINE	__attribute__((noinline))
 #endif
+#ifndef QOG_RFAST_FIX
 #define QOG_LITFAST_FN													\
 static QOG_NOINLINE void D_DrawSpans8LitFast (espan_t *pspan, int step)	\
 {																		\
 	(void)step;															\
+	LITI_PROLOGUE														\
+	{																	\
 	D_LITSPANS_FAST_BODY												\
+	}																	\
 }
+#define D_LITFAST(p, step)	D_DrawSpans8LitFast (p, step)
+#else
+// QuakeOG (Agent AH): QOG_RFAST_FIX, the Fast drawer with integer spans
+// (d_litspan.h). A surface whose values do not fit (D_LitFixSetup) keeps
+// Agent AA's float drawer.
+#define QOG_LITFAST_FN													\
+static QOG_NOINLINE void D_DrawSpans8LitFast (espan_t *pspan, int step)	\
+{																		\
+	(void)step;															\
+	LITI_PROLOGUE														\
+	{																	\
+	D_LITSPANS_FAST_BODY												\
+	}																	\
+}																		\
+static QOG_NOINLINE void D_DrawSpans8LitFix (espan_t *pspan, int step)	\
+{																		\
+	(void)step;															\
+	LITI_PROLOGUE														\
+	{																	\
+	D_LITSPANS_FIX_BODY													\
+	}																	\
+}
+#define D_LITFAST(p, step)	(litfix_ok ? D_DrawSpans8LitFix (p, step) : D_DrawSpans8LitFast (p, step))
+
+/*
+================
+D_LitFixSetup
+
+QuakeOG (Agent AH): the surface's fixed point values for D_DrawSpans8LitFix,
+on core 0 before the spans are shared with core 1, from id's float
+gradients (D_CalcGradients) at the first span's start. litfix_ok is 0 when
+they do not fit, and the float drawer draws the surface.
+================
+*/
+// QuakeOG (Agent AH): x * 2^k truncated to a 64-bit integer, as
+// (long long)(x * 2^k) gives it (the product is exact), from the float's
+// bits, so no float multiply or conversion routine runs. 0 when |x * 2^k|
+// may reach 2^62, a NaN or an infinity.
+static int litfix_scale (float x, int k, long long *out)
+{
+	union { float f; unsigned u; } c;
+	unsigned	m;
+	int			e, sh;
+	long long	v;
+
+	c.f = x;
+	e = (int)((c.u >> 23) & 0xFF);
+	if (e == 0)
+	{
+		*out = 0;			// zero or a denormal, far below one unit
+		return 1;
+	}
+	if (e == 255)
+		return 0;
+	m = (c.u & 0x7FFFFF) | 0x800000;	// x = m * 2^(e - 150), m below 2^24
+	sh = e - 150 + k;
+	if (sh > 38)
+		return 0;
+	if (sh >= 0)
+		v = (long long)m << sh;
+	else if (sh > -24)
+		v = (long long)(m >> -sh);
+	else
+		v = 0;
+	*out = (c.u & 0x80000000u) ? -v : v;
+	return 1;
+}
+
+static int litfix_bits64 (long long x)	// bits in |x|
+{
+	unsigned long long	a = x < 0 ? (unsigned long long)-x : (unsigned long long)x;
+	unsigned			hi = (unsigned)(a >> 32);
+
+	return hi ? 32 + litfix_bitlen (hi) : litfix_bitlen ((unsigned)a);
+}
+
+static QOG_NOINLINE void D_LitFixSetup (espan_t *pspan)	// its frame never under the drawer's
+{
+	float		nz, du, dv, zr, sr, tr, a, su, sv, tu, tv;
+	int			e, kexp, ws, wt, b;
+	union { float f; unsigned u; } c;
+
+	litfix_ok = 0;
+	du = (float)pspan->u;
+	dv = (float)pspan->v;
+	zr = d_ziorigin + dv*d_zistepv + du*d_zistepu;
+	if (!(zr > 0))
+		return;
+	nz = d_qognearzi;
+	if (!(nz >= zr))
+		nz = zr;			// also a NaN
+	c.f = nz;
+	e = (int)((c.u >> 23) & 0xFF) - 127;	// nz below 2^(e + 1)
+	kexp = 60 - e;							// so 1/z * 2^k stays below 2^61
+	if (e < -100 || kexp < 31 || kexp > 127)
+		return;
+	if (!litfix_scale (zr, kexp, &litfix_d0) || !litfix_scale (d_zistepu, kexp, &litfix_du) ||
+		!litfix_scale (d_zistepv, kexp, &litfix_dv))
+		return;
+
+	// s and t with sadjust and tadjust folded in: Ns / D is s / 65536 in
+	// [0, 2^ws) over the surface
+	a = (float)sadjust * (1.0f / 65536.0f);
+	sr = (d_sdivzorigin + dv*d_sdivzstepv + du*d_sdivzstepu) + a * zr;
+	su = d_sdivzstepu + a * d_zistepu;
+	sv = d_sdivzstepv + a * d_zistepv;
+	a = (float)tadjust * (1.0f / 65536.0f);
+	tr = (d_tdivzorigin + dv*d_tdivzstepv + du*d_tdivzstepu) + a * zr;
+	tu = d_tdivzstepu + a * d_zistepu;
+	tv = d_tdivzstepv + a * d_zistepv;
+	ws = litfix_bitlen ((unsigned)(bbextents >> 16) + 1) + 1;
+	wt = litfix_bitlen ((unsigned)(bbextentt >> 16) + 1) + 1;
+	if (ws > 15 || wt > 15)
+		return;
+	if (!litfix_scale (sr, kexp - ws, &litfix_s0) || !litfix_scale (su, kexp - ws, &litfix_su) ||
+		!litfix_scale (sv, kexp - ws, &litfix_sv) || !litfix_scale (tr, kexp - wt, &litfix_t0) ||
+		!litfix_scale (tu, kexp - wt, &litfix_tu) || !litfix_scale (tv, kexp - wt, &litfix_tv))
+		return;
+
+	litfix_uref = pspan->u;
+	litfix_vref = pspan->v;
+	litfix_sw = 16 - ws;
+	litfix_tw = 16 - wt;
+	b = litfix_bits64 (litfix_du);
+	if (b < litfix_bits64 (litfix_su))
+		b = litfix_bits64 (litfix_su);
+	if (b < litfix_bits64 (litfix_tu))
+		b = litfix_bits64 (litfix_tu);
+	litfix_stepbits = b - 25;
+	litfix_zsh = kexp - 31;
+	litfix_ok = 1;
+}
+#endif
 #endif
 
 /*
@@ -150,6 +374,18 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 #ifdef QOG_LITSPAN_FAST
 	// QuakeOG: the restructured drawer's per-surface values (d_litspan.h)
 	LITSPAN_SETUP (blocklights)
+#ifdef QOG_LITSPAN_INTERP
+	// QuakeOG (Agent AH): (S >> 16) & smask and (T2 >> 16) & tmask2 as lanes
+	if (lit_kind <= 3)
+	{
+		int		hbits = 0;
+
+		while ((1 << hbits) < lit_th)
+			hbits++;
+		lit_ictrl0 = LITI_CTRL (16, 0, lit_tshift - 1);
+		lit_ictrl1 = LITI_CTRL (16, lit_tshift, lit_tshift + hbits - 1);
+	}
+#endif
 #endif
 }
 
@@ -217,7 +453,7 @@ static int D_QogSpanStep (espan_t **pp, int step)
 // pick the drawer before they call it, so the two frames never stack.
 QOG_LITFAST_FN
 #define D_LITSTEP(p, step)												\
-	(r_qogfast ? D_DrawSpans8LitFast (p, step) : D_DrawSpans8LitStep (p, step))
+	(r_qogfast ? D_LITFAST (p, step) : D_DrawSpans8LitStep (p, step))
 #else
 #define D_LITSTEP(p, step)	D_DrawSpans8LitStep (p, step)
 #endif
@@ -246,6 +482,11 @@ void D_DrawSpans8Lit (espan_t *pspan)
 #ifdef QOG_PHASE_TIME
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
+	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
+#if defined(QOG_RFAST) && defined(QOG_RFAST_FIX)
+	if (r_qogfast)
+		D_LitFixSetup (pspan);	// QuakeOG (Agent AH): before core 1 reads it
+#endif
 	if (pspan->pnext == SPAN_NONE)
 	{
 		D_LITSTEP (pspan, 1);	// QuakeOG (Agent AA): or the Fast drawer
@@ -269,8 +510,14 @@ void D_DrawSpans8Lit (espan_t *pspan)
 #ifdef QOG_PHASE_TIME
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
+	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
 	if (r_qogfast)
-		D_DrawSpans8LitFast (pspan, 1);
+	{
+#ifdef QOG_RFAST_FIX
+		D_LitFixSetup (pspan);	// QuakeOG (Agent AH)
+#endif
+		D_LITFAST (pspan, 1);
+	}
 	else
 		D_DrawSpans8LitExact (pspan);
 }

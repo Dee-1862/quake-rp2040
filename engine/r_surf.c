@@ -196,6 +196,14 @@ void R_BuildLightMap (void)
 			lightmap += size;	// skip to next lightmap
 		}
 
+#ifdef QOG_XIPSIM
+	{	// QuakeOG (Agent AH): PC measurement, the samples read from flash (d_xipsim.c)
+		void XipSim_Range (int kind, const unsigned char *p, int bytes);
+		if (surf->samples)
+			XipSim_Range (2, surf->samples, (int)(lightmap - surf->samples));
+	}
+#endif
+
 // add all the dynamic lights
 	if (SURF_DLIGHTFRAME_IS (r_drawsurf.model, surf, r_framecount))	// QuakeOG
 		R_AddDynamicLights ();

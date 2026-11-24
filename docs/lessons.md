@@ -191,3 +191,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L133. In the agents' bash tool, write any Python that contains a backslash escape with the Write tool and run the file.** A heredoc turned `\\n` inside a Python string into a real newline three times in one session (L60, L66 again), so the replacement text never matched.
 
+
+**L100. Model the XIP cache on the PC before buying RAM for it.** MG24Quake copies each texture into a 20 KB buffer and keeps the 16 KB colour map in RAM because its external flash is not memory mapped. Here a PC model of the 16 KB two-way cache fed with every texel, colour map and lightmap read of the spans (`QOG_XIPSIM`, engine/d_xipsim.c) gave about 2,100 misses a view in the demos, about 0.55 ms at 125 MHz flash, and the texture and colour map in RAM would save at most that. Neighbouring pixels share 8-byte lines and a surface's texels stay cached while it is drawn.
+
+**L101. On the M0+ the lit spans pay for float work per span, not per pixel.** Count the `bl __wrap___aeabi_f*` calls of a drawer in `objdump -d` and multiply by the spans a view (1,758 in demo3): Agent AA's Fast drawer made about 40 float calls a span (about 2,150 cycles through the ROM routines), more than its 48,000 pixels cost. Integers per span (64-bit sums, one hardware divide per sub-span end) took it to about 560 cycles.
+
+**L102. The SIO interpolators make a texel address and its step one register read.** With ADD_RAW on both lanes, shift 16 and masks for s and the row of t, INTERP0's POP_FULL returns BASE2 (the texture) plus both masked lanes and adds BASE0 and BASE1 to the accumulators, as the pixel loop's own C does. Each core has its own pair, so each core sets them per surface. The PC emulates the registers with the same rules (d_litspan.h), so the PC's frames test the loop, and the board checks the hardware once against the C expressions before it trusts them.
+
+**L103. A smaller hunk allocation is only static RAM when the hunk shrinks with it.** The console's text comes from the client hunk, so cutting it 3 KB freed nothing until the display's `QOG_HUNK_KB` dropped by 3 too. Doing the subtraction in apps/quake/CMakeLists.txt keeps the lead's `-DQOG_CL_HUNK_KB=75` meaning Agent AD's measured hunk.
