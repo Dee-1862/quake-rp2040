@@ -2,6 +2,75 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Both chips truly in parallel, the 3D view racing the LCD scanout, the status bar sent only when it changes, demos pipelined (Agent AK, PC and ARM build, registered data)
+
+Everything in the board frame outside the 3D view's drawing. Four board options, all on, all exact (same state hashes, same pictures on the panel). Nothing ran on hardware, so every saving below is an estimate from the board numbers of the entries below.
+
+### What the 11 to 12 ms link wait was
+
+Main's server frame did not overlap the display's drawing, although Agent V's pipeline sends the tick before the screen update. The UART has only its 32-byte FIFOs and both sides read it only while they pump the link. Main answers sound operations (each queued `S_ExtraUpdate` and the `S_Update` of the pipelined update) with samples. Main's `qog_link_hw_write` then sat byte by byte in the hardware flow control for the whole 70 ms the display drew, so the client's next tick sat unread in main's ring, and main ran its 10 ms server frame only once the display came back to wait for it. The client's link wait was the server frame plus the transfer (11 to 12 ms on the board, about equal to main's 10 ms frame). On the PC the TCP socket never blocks, so the pipeline looked fine there.
+
+### Changes
+
+| Change | Flag (CMake option) | Why it is exact | Estimated saving, E1M1 play | RAM |
+| --- | --- | --- | --- | --- |
+| Main sends every link frame by DMA from a frame buffer (UART DREQ, held by the flow control while the display draws) and never waits in a write. It reads the tick and runs its frame while the display draws. Replies wait for the frame on the wire, the resend timer runs from a frame's end. Main flushes its last ack before it quits | `QOG_LINK_TXASYNC` on main (`QOG_BOARD_LINKOVERLAP`) | the stream's bytes and their order are unchanged, only when they leave | link wait 11 to 12 ms down to about 1 to 3 ms (the answer's transfer), but see the scanout below | main +36 B |
+| While the display draws inside an exchange its queued sound operations wait in the ring instead of being pumped (a frame could stall the render while main runs its frame and does not read). After 10 ms without pumping the resend timer starts again instead of resending at once | `QOG_LINK_OVERLAP`, `QOG_LINK_LISTEN_GAP=10` (same option) | same operations in the same order, main runs them after the exchange as before | no duplicate tick frames after each draw | 4 B a side |
+| The display writes DATA frames straight from its transmit ring with a carried CRC, no 514-byte frame buffer | `QOG_LINK_TXRINGSEND` (display, always) | the same bytes on the wire | | display -514 B |
+| Demos and timedemo use the pipelined screen update. The update's sound exchanges (each `S_ExtraUpdate` in the renderer and `S_Update`) are queued instead of each waiting for main | `QOG_LINK_PIPELINE_DEMO` (`QOG_BOARD_PIPEDEMO`) | frame k's update still runs before frame k+1 reads its demo messages, with frame k's realtime, frame count, angles and key_dest (Agent V's pipeline) | about 8 sound round trips a demo frame, estimated 2 to 5 ms | 0 |
+| The 3D view starts while the last frame is scanned out. VID_LockBuffer does not wait in SCR_UpdateScreen's 3D part, R_EdgeDrawing waits only until the scanout has read the rows the world's edge cache and vertex cache use (they are the frame buffer's first rows, the scanout reads top down, each row once into a line buffer), and waits for the whole scanout after R_RenderWorld. 2D drawing before and after the view waits for the whole scanout as before | `QOG_VID_SCANRACE` (`QOG_BOARD_SCANRACE`, needs LOCKWAIT) | no row changes before the scanout has read it (checked on the PC at every wait) | see the critical path below | display 2 B, qog_video 8 B |
+| The status bar rows are sent to the LCD only when they change (the panel keeps its pixels, as id's own VID_Update leaves the status bar out when nothing drew it). A frame whose status bar would be the repaint of the same saved state the panel already shows, with nothing else drawn over it (`SCR_QogHudQuiet`: no console, menu, dialog, loading plaque, intermission, or centre print reaching the rows), skips the repaint (hud 1.7 ms) and scans 152 rows instead of 200. A palette change since the last full scan repaints late and sends all rows | `QOG_HUD_SKIP` (`QOG_BOARD_HUDSKIP`) | the skipped rows equal what the panel shows (checked on the PC every such frame) | hud 1.7 ms, the scanout 18.3 to 13.9 ms in those frames | 13 B |
+
+### The critical path after the changes (estimate)
+
+Once the link is fast, the frame is bounded by the scanout, because the world's front end keeps its caches in the frame buffer (Agent Z's vertex cache, the edge cache): the next view's R_RenderWorld can only start when the scanout has read them. On E1M1 the edge cache is 13,497 edges, 84.4 rows, and the vertex cache 512 entries of 32 B after it, 51 rows, so the race waits for row 136, about 12.4 ms after VID_Update at 91.5 us a row (Agent V's 18.3 ms for 200 rows). Link, parsing and input now take about 4 ms of that, the race wait is the rest.
+
+| E1M1 play, ms a frame | Board now | Estimate |
+| --- | ---: | ---: |
+| link | 11 to 12 | 1 to 3 |
+| scanwait (whole scanout waits) | 5 to 6 | about 0 |
+| race (new, row waits) | | 7 to 9 |
+| hud | 1.7 | about 0 (most frames) |
+| view less hud | 65 to 68 | the same |
+| frame | 83 to 86 | about 77 to 80 (12.5 to 13 fps) |
+
+timedemo demo3 (e1m6, edge cache 64.8 rows, race to row 116, 10.6 ms): 107.5 ms a frame with a view of 75.7 ms, so 32 ms outside the view. The pipelined demo removes the synchronous sound exchanges and the race overlaps the scanout with the demo's parsing. Estimate 88 to 95 ms a frame, 10.5 to 11.4 fps (9.3 now).
+
+The biggest remaining item outside the view is the race wait, a cache placement question for Agent AJ: with 256 vertex cache entries the race would stop at row 110 (10 ms) instead of 136 (12.4 ms), and an edge cache that is not in the frame buffer would let the view start at once.
+
+### What to read on the board
+
+- `[time cl]` line: `link` should fall from 11 to 12 to about 1 to 3, `scanwait` to about 0, the new `race` (after `scanwait`) is the time the view waited for rows, `hud` near 0. `frame` is the result.
+- `[quake_main] link wait ... txstall <ms>` once a second on COM7: ms in that second main waited to write to the link. About 0 with the DMA. Built with `-DQOG_BOARD_LINKOVERLAP=OFF` it shows the old stall (expected about 800 ms a second) and confirms the cause above.
+- `[quake_display] status bar rows sent in <n> of <m> frames` once a second on COM8.
+- A/B: `-DQOG_BOARD_SCANRACE=OFF`, `-DQOG_BOARD_HUDSKIP=OFF`, `-DQOG_BOARD_PIPEDEMO=OFF` on the configure line.
+- Look for a torn or stale status bar (ammo changing, pain flashes, the console, centre prints over the status bar). None on the PC.
+
+### PC verification (hidden, `-nosound`, own build folders in `build-ak`, own git-ignored `data\id1`, link ports 27941 to 27951, one run at a time)
+
+References are untouched 85a3d22 builds: `build-ak/pc-ref` (default) and `build-ak/pcb-ref` (Agent AF's board-flag pair flags). `build-ak/pcb` adds `QOG_LINK_OVERLAP QOG_LINK_TXRINGSEND QOG_LINK_LISTEN_GAP=10 QOG_LINK_PIPELINE_DEMO QOG_VID_SCANRACE QOG_HUD_SKIP QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST` to the client and `QOG_LINK_TXASYNC QOG_LINK_LISTEN_GAP=10` to the server (link_pc.c holds each frame for its wire time and sends it at the end, as the DMA would), `build-ak/pcbk` the same plus `QOG_HUD_SKIP_CHECK`. With `QOG_HUD_SKIP` the PC keeps the panel's picture (VID_Update copies the rows it sends) and shots and frame hashes are taken from it, so they show what the LCD shows.
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc and the pcb pair | ce86f894f9de, ce86f894f9de |
+| `qogtest_f_hash` quakeog_pc, `qogtest_r_fhash` pcb and pcbk pairs | e92bc9e9650d each |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the 8 fhash frames), quakeog_pc against pc-ref | 121 of 121 byte identical |
+| the 94 shots the pair takes (86 demo and spawn shots, 8 fhash), pcb and pcbk against pcb-ref | 94 of 94 byte identical each, with demos pipelined (3,077 of the demo run's frames, 77 in the reference) |
+| `qog_scanrace` (no byte changed before the scanout passed it) | 0 of 6,986 checks (r_fhash), 0 of 886 (hash), 0 of 1,858 (benchmark) |
+| `qog_hudskip` with the check (the rows not sent, repainted anyway, against the panel's) | 2,433 of 5,313 r_fhash frames sent no status bar rows, 0 differed |
+| Agent AF's `qogtest_af_menu.cfg` on pcb (e1m1, menu, Benchmark, yes, result page, gray) | runs, `[bench] timedemo demo3 1090 frames`, 1,108 frames pipelined, result page and back to the menu. The shots differ from the reference only by real time (this script runs without host_framerate), as two reference runs do |
+
+Board link (`cmake -B build-ak --preset target` with the full configure line):
+
+| | `end` | Free beside the 2 KB heap reserve |
+| --- | --- | ---: |
+| quake_display | 0x2003f610 (main 0x2003f7f0) | 496 B (16 before) |
+| quake_main | 0x2003f544 (main 0x2003f520) | 700 B (736 before) |
+
+quake_display is 368,504 B of its 913,408 B slot, quake_main 1,309,684 B of 2 MB.
+
+Files: port/common/qog_link.c and .h, port/rp2040/link_rp2040.c, port/pc/link_pc.c, engine/net_link.c, engine/host.c, engine/screen.c, port/rp2040/vid_rp2040.c, port/pc/vid_pc.c, platform/qog_video.c and .h, engine/qog_phase.h, port/common/qog_phase.c, apps/quake/CMakeLists.txt. Shared files, each in its own `#ifdef` block: engine/r_main.c (R_HudRepaint taken out of R_RenderView unchanged, the skip, the race waits in R_EdgeDrawing), engine/r_draw.c (one wait in R_QogVertCacheBegin, Agent AJ's file), engine/vid.h, engine/d_local.h. d_edge.c is not touched.
+
 ## 2026-11-24: timedemo demo3 on the board (lead, on hardware)
 
 The board menu's Benchmark (Agent AF) ran id's `timedemo demo3` on the episode 1 image with the demos (13.69 MB display data):
