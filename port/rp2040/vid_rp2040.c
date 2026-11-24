@@ -10,6 +10,7 @@
 #include "qog_video.h"
 #include "qog_mem.h"
 #include "qog_aim.h"
+#include "qog_phase.h"
 
 #define W 320
 #define H 200
@@ -108,14 +109,47 @@ void VID_Init(unsigned char *palette) {
 
 void VID_Shutdown(void) {}
 
+#ifdef QOG_VID_LOCKWAIT
+/* QuakeOG (Agent V): VID_Update leaves the scanout running and the first
+   VID_LockBuffer after it (engine/quakedef.h) waits for its end, so the next
+   frame's input, link exchange and parsing overlap the 22 ms scanout. Only
+   drawing into the frame or the status bar rows needs the wait, and id's
+   code locks the buffer before any of it (screen.c, draw.c, menu.c). The
+   z-buffer temporaries that parsing uses (QOG_PRECACHE_ZTEMP,
+   QOG_LOADGAME_ZTEMP) stay clear of the status bar rows. */
+static bool s_scan_pending;
+
+void VID_LockBuffer(void) {
+    if (!s_scan_pending) return;
+    QOG_PH_T(hp_wait);
+    qog_video_wait();
+    QOG_HP_ADD(QOG_HP_SCANWAIT, hp_wait);
+    s_scan_pending = false;
+}
+#endif
+
 void VID_Update(vrect_t *rects) {
+    QOG_PH_T(hp_present);   /* QuakeOG (Agent V) */
     (void)rects;
 #ifdef QOG_HUD_IN_ZBUFFER
     R_HudFrameEnd();
 #endif
     qog_video_present(vid_buffer);
+#ifdef QOG_VID_LOCKWAIT
+    s_scan_pending = true;
+#else
     qog_video_wait();   /* single buffer: the next frame may not draw until scanout ends */
+#endif
+    QOG_HP_ADD(QOG_HP_PRESENT, hp_present);
 }
+
+#ifdef QOG_SPANS_CORE1
+/* QuakeOG (Agent V): half of each lit surface's spans on core 1
+   (engine/d_scanlit.c). Spans are drawn only after the scanout ended (the
+   frame is locked), so core 1 is free and starts at once. */
+void Sys_QogCore1Start(void (*fn)(void *), void *arg) { qog_video_core1_start(fn, arg); }
+void Sys_QogCore1Join(void) { qog_video_core1_join(); }
+#endif
 
 void D_BeginDirectRect(int x, int y, byte *pbitmap, int width, int height) {
     (void)x; (void)y; (void)pbitmap; (void)width; (void)height;

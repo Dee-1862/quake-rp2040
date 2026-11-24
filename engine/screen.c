@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_phase.h"	// QuakeOG (Agent V): frame phase times (QOG_PHASE_TIME)
 
 // only the refresh window will be updated unless these variables are flagged 
 int			scr_copytop;
@@ -899,7 +900,11 @@ void SCR_UpdateScreen (void)
 
 	VID_LockBuffer ();
 
+	{
+	QOG_PH_T (hp_view);	// QuakeOG (Agent V)
 	V_RenderView ();
+	QOG_HP_ADD (QOG_HP_VIEW, hp_view);
+	}
 
 	VID_UnlockBuffer ();
 

@@ -1423,6 +1423,7 @@ void R_RenderView (void)
 	if (r_zalias_row < vid.height)
 	{
 		extern int	sb_updates;
+		QOG_PH_T (hp_hud);	// QuakeOG (Agent V)
 
 		Draw_TileClear (0, r_zalias_row, vid.width, vid.height - r_zalias_row);
 		r_hud_sbbefore = sb_updates;
@@ -1443,6 +1444,7 @@ void R_RenderView (void)
 			else
 				Sbar_Changed ();	// nothing drawn yet, draw it now
 		}
+		QOG_HP_ADD (QOG_HP_HUD, hp_hud);	// QuakeOG
 	}
 #endif
 }
