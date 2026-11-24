@@ -250,16 +250,36 @@ static int fat_ready(void) {
     return s_fat_state > 0;
 }
 
+/* Print the save volume's state once, some seconds after boot when USB is
+   up (the first save's own line usually comes before anyone is listening).
+   Mounting only reads flash. */
+static void fat_report_once(void) {
+    static int done;
+    if (done || to_ms_since_boot(get_absolute_time()) < 8000u) return;
+    done = 1;
+    uint64_t freeb = 0, total = 0;
+    if (fat_ready() && fwog_fs_volume_info(&freeb, &total))
+        DIAG("[quake_main] save volume %lu KB free of %lu KB, folder %s %s\n",
+             (unsigned long)(freeb / 1024u), (unsigned long)(total / 1024u),
+             FAT_DIR, fwog_fs_exists(FAT_DIR) ? "present" : "missing");
+    else
+        DIAG("[quake_main] save volume %s\n", s_fat_state > 0 ? "mounted, no volume info" : "not mounted (unformatted?)");
+}
+
 int _open(const char *path, int flags, ...) {
     char name[64];
     const char *base = strrchr(path, '/');
     base = base ? base + 1 : path;
     if (!*base || strlen(base) + sizeof FAT_DIR + 1 > sizeof name || s_fat_open || !fat_ready()) {
+        DIAG("[quake_main] open %s refused (%s)\n", path,
+             s_fat_open ? "a file is already open" : s_fat_state < 0 ? "no FAT volume" : "bad name");
         errno = ENOENT;
         return -1;
     }
     snprintf(name, sizeof name, FAT_DIR "/%s", base);
     if (!fwog_fs_open(name, (flags & O_ACCMODE) != O_RDONLY, (flags & O_APPEND) != 0)) {
+        if ((flags & O_ACCMODE) != O_RDONLY)
+            DIAG("[quake_main] open %s for writing failed on the FAT volume\n", name);
         errno = ENOENT;
         return -1;
     }
@@ -533,6 +553,7 @@ static void __attribute__((noreturn)) server_main(void) {
         board_timing("sv");
 #endif
         QOG_CLOCK_REPORT_ONCE();
+        fat_report_once();
     }
 }
 
