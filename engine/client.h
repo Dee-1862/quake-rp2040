@@ -35,7 +35,11 @@ typedef struct
 typedef struct
 {
 	int		length;
+#ifdef QOG_LIGHTSTYLE_ZONE
+	char	*map;		// QuakeOG (Agent S): length + 1 bytes in the zone (cl_parse.c), NULL before the first
+#else
 	char	map[MAX_STYLESTRING];
+#endif
 } lightstyle_t;
 
 typedef struct
@@ -221,8 +225,19 @@ typedef struct
 //
 // information that is static for the entire time connected to a server
 //
+#if defined(QOG_CL_PRECACHE_SV) && defined(QOG_SV_MAX_MODELS)
+	// QuakeOG (Agent S): the server half sends at most its own table sizes
+	// (server.h), CL_ParseServerInfo stops with an error past them
+	struct model_s		*model_precache[QOG_SV_MAX_MODELS];
+	struct sfx_s		*sound_precache[QOG_SV_MAX_SOUNDS];
+#define CL_MAX_MODELS	QOG_SV_MAX_MODELS
+#define CL_MAX_SOUNDS	QOG_SV_MAX_SOUNDS
+#else
 	struct model_s		*model_precache[MAX_MODELS];
 	struct sfx_s		*sound_precache[MAX_SOUNDS];
+#define CL_MAX_MODELS	MAX_MODELS
+#define CL_MAX_SOUNDS	MAX_SOUNDS
+#endif
 
 	char		levelname[40];	// for display on solo scoreboard
 	int			viewentity;		// cl_entitites[cl.viewentity] = player
@@ -306,10 +321,21 @@ extern	int				cl_max_edicts;
 // QuakeOG: client entities in slots (cl_main.c). cl_entities holds
 // QOG_CL_ENTSLOTS entities, given to entity numbers as they are first used,
 // slot 0 to entity 0 (the world) so cl_entities[0] stays the world.
-extern	byte			*cl_entslot;	// [cl_max_edicts] slot + 1 of each number, 0 none yet
+#ifdef QOG_CL_ENTBLOCK
+// QuakeOG (Agent S): the slots come from the hunk in blocks of
+// QOG_CL_ENTBLOCK entities as numbers are first used, so a level holds only
+// the entities it uses. Slot numbers are 16-bit, QOG_CL_ENTSLOTS is the cap.
+typedef unsigned short	cl_slot_t;
+extern	entity_t		*cl_entblocks[];
+#define CL_SLOTENT(s)			(&cl_entblocks[(s) / QOG_CL_ENTBLOCK][(s) % QOG_CL_ENTBLOCK])
+#else
+typedef byte			cl_slot_t;
+#define CL_SLOTENT(s)			(&cl_entities[s])
+#endif
+extern	cl_slot_t		*cl_entslot;	// [cl_max_edicts] slot + 1 of each number, 0 none yet
 entity_t *CL_EntitySlot (int num);		// the entity of a number, a new slot if it has none
 #define CL_ENTITY(n)			CL_EntitySlot (n)
-#define CL_ENTITY_IFANY(n)		(cl_entslot[n] ? &cl_entities[cl_entslot[n] - 1] : NULL)
+#define CL_ENTITY_IFANY(n)		(cl_entslot[n] ? CL_SLOTENT (cl_entslot[n] - 1) : NULL)
 #else
 #define CL_ENTITY(n)			(&cl_entities[n])
 #define CL_ENTITY_IFANY(n)		(&cl_entities[n])
@@ -319,7 +345,11 @@ extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 #endif
 extern	lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 extern	dlight_t		cl_dlights[MAX_DLIGHTS];
+#ifdef QOG_TEMPENT_BLOCK
+extern	entity_t		*cl_tempblocks[(MAX_TEMP_ENTITIES + QOG_TEMPENT_BLOCK - 1) / QOG_TEMPENT_BLOCK];	// QuakeOG: cl_tent.c
+#else
 extern	entity_t		cl_temp_entities[MAX_TEMP_ENTITIES];
+#endif
 extern	beam_t			cl_beams[MAX_BEAMS];
 
 //=============================================================================

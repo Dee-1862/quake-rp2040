@@ -25,9 +25,18 @@ static int      s_up;
 static uint32_t s_session;          /* ours */
 static uint32_t s_peer_session;
 
+/* QuakeOG (Agent T): QOG_LINK_SCRATCH puts the two rings in the RP2040's
+   SCRATCH_X bank (4 KB), which the main chip's server half does not use
+   otherwise: core1 never starts there, so no core1 stack is linked. */
+#ifdef QOG_LINK_SCRATCH
+#define LINK_RING_PLACE __attribute__((section(".scratch_x.qog_link")))
+#else
+#define LINK_RING_PLACE
+#endif
+
 /* transmit: bytes [tx_acked, tx_head) are unacknowledged, of which the
    first tx_inflight were sent in the frame with sequence tx_seq */
-static uint8_t  s_tx[QOG_LINK_TXRING];
+static uint8_t  s_tx[QOG_LINK_TXRING] LINK_RING_PLACE;
 static uint32_t s_tx_head, s_tx_acked;
 static int      s_tx_inflight;
 static uint8_t  s_tx_seq;
@@ -35,7 +44,7 @@ static uint32_t s_tx_sent_ms, s_tx_timeout_ms;
 static int      s_tx_tries;
 
 /* receive: [rx_tail, rx_head) are delivered and not yet read */
-static uint8_t  s_rx[QOG_LINK_RXRING];
+static uint8_t  s_rx[QOG_LINK_RXRING] LINK_RING_PLACE;
 static uint32_t s_rx_head, s_rx_tail;
 static uint8_t  s_rx_expect;
 

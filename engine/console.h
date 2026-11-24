@@ -36,6 +36,12 @@ void Con_DrawConsole (int lines, qboolean drawinput);
 void Con_Print (char *txt);
 void Con_Printf (char *fmt, ...);
 void Con_DPrintf (char *fmt, ...);
+#ifdef QOG_CON_PRINTTEXT
+void Con_PrintText (char *text);	// QuakeOG: Con_Printf of a text without format, no stack buffer
+#define CON_PRINTTEXT(t)	Con_PrintText (t)
+#else
+#define CON_PRINTTEXT(t)	Con_Printf (t)
+#endif
 void Con_SafePrintf (char *fmt, ...);
 void Con_Clear_f (void);
 void Con_DrawNotify (void);

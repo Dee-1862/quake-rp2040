@@ -113,7 +113,7 @@ void R_DrawCulledPolys (void)
 
 			if (!(s->flags & SURF_DRAWBACKGROUND))
 			{
-				pface = (msurface_t *)s->data;
+				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG: SURF_DATA
 				R_RenderPoly (pface, 15);
 			}
 		}
@@ -127,7 +127,7 @@ void R_DrawCulledPolys (void)
 
 			if (!(s->flags & SURF_DRAWBACKGROUND))
 			{
-				pface = (msurface_t *)s->data;
+				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG: SURF_DATA
 				R_RenderPoly (pface, 15);
 			}
 		}
@@ -162,7 +162,7 @@ void R_BeginEdgeFrame (void)
 	else
 	{
 		pdrawfunc = R_GenerateSpans;
-		surfaces[1].key = 0x7FFFFFFF;
+		surfaces[1].key = SURF_KEY_BACK;	// QuakeOG: 0x7FFFFFFF, or 0xFFFF for 16-bit keys
 		r_currentkey = 0;
 	}
 

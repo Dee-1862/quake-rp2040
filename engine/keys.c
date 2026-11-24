@@ -31,6 +31,11 @@ key up events are sent even if in console mode
 #ifndef QOG_KEY_HISTORY
 #define QOG_KEY_HISTORY 32
 #endif
+#ifdef QOG_KEYLINES_SCRATCH
+// QuakeOG (Agent S): in the RP2040's scratch Y bank, below the 2 KB boot
+// stack that only board_init uses (2 KB free there)
+__attribute__((section(".scratch_y.qog_key_lines")))
+#endif
 char	key_lines[QOG_KEY_HISTORY][MAXCMDLINE];
 int		key_linepos;
 int		shift_down=false;
@@ -73,6 +78,9 @@ typedef struct
 	int		keynum;
 } keyname_t;
 
+#ifdef QOG_KEYNAMES_CONST
+const	// QuakeOG (Agent S): never written, so in flash on the board
+#endif
 keyname_t keynames[] =
 {
 	{"TAB", K_TAB},
@@ -361,6 +369,9 @@ the K_* names are matched up.
 */
 int Key_StringToKeynum (char *str)
 {
+#ifdef QOG_KEYNAMES_CONST
+	const
+#endif
 	keyname_t	*kn;
 	
 	if (!str || !str[0])
@@ -387,6 +398,9 @@ FIXME: handle quote special (general escape sequence?)
 */
 char *Key_KeynumToString (int keynum)
 {
+#ifdef QOG_KEYNAMES_CONST
+	const
+#endif
 	keyname_t	*kn;	
 	static	char	tinystr[2];
 	

@@ -22,8 +22,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 int			num_temp_entities;
+#ifdef QOG_TEMPENT_BLOCK
+// QuakeOG (Agent S): the beam segments come from the level's hunk in blocks
+// of QOG_TEMPENT_BLOCK as a frame first needs them (CL_NewTempEntity), so a
+// level without beams holds none. CL_ClearState forgets the blocks.
+entity_t	*cl_tempblocks[(MAX_TEMP_ENTITIES + QOG_TEMPENT_BLOCK - 1) / QOG_TEMPENT_BLOCK];
+static entity_t	cl_tempscratch;	// before signon, see CL_NewTempEntity
+#else
 entity_t	cl_temp_entities[MAX_TEMP_ENTITIES];
+#endif
 beam_t		cl_beams[MAX_BEAMS];
+#ifdef QOG_CL_PEAKS
+// QuakeOG (Agent S): measurement only, printed by qog_mem in the client
+int			cl_qog_peaktemp, cl_qog_tempdrops, cl_qog_peakbeams;
+#endif
 
 sfx_t			*cl_sfx_wizhit;
 sfx_t			*cl_sfx_knighthit;
@@ -305,10 +317,36 @@ entity_t *CL_NewTempEntity (void)
 	if (cl_numvisedicts == MAX_VISEDICTS)
 		return NULL;
 	if (num_temp_entities == MAX_TEMP_ENTITIES)
+	{
+#ifdef QOG_CL_PEAKS
+		cl_qog_tempdrops++;
+#endif
 		return NULL;
+	}
+#ifdef QOG_TEMPENT_BLOCK
+	if (cls.signon != SIGNONS)
+	{	// QuakeOG (Agent S): no 3D view is drawn before signon (con_forcedup),
+		// but the beams of the last level still take their segments and
+		// rand() calls as in id, here in one scratch entity, while the hunk
+		// may already be the next level's
+		ent = &cl_tempscratch;
+	}
+	else
+	{
+		if (!cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK])
+			cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK] =
+				Hunk_AllocName (QOG_TEMPENT_BLOCK * sizeof(entity_t), "tempents");
+		ent = &cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK][num_temp_entities % QOG_TEMPENT_BLOCK];
+	}
+#else
 	ent = &cl_temp_entities[num_temp_entities];
+#endif
 	memset (ent, 0, sizeof(*ent));
 	num_temp_entities++;
+#ifdef QOG_CL_PEAKS
+	if (num_temp_entities > cl_qog_peaktemp)
+		cl_qog_peaktemp = num_temp_entities;
+#endif
 	cl_visedicts[cl_numvisedicts] = ent;
 	cl_numvisedicts++;
 
@@ -333,6 +371,17 @@ void CL_UpdateTEnts (void)
 	float		forward;
 
 	num_temp_entities = 0;
+
+#ifdef QOG_CL_PEAKS
+	{	// QuakeOG (Agent S): beams alive in this frame
+		int		n = 0;
+		for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
+			if (b->model && b->endtime >= cl.time)
+				n++;
+		if (n > cl_qog_peakbeams)
+			cl_qog_peakbeams = n;
+	}
+#endif
 
 // update lightning
 	for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)

@@ -144,6 +144,35 @@ typedef unsigned short	surfref_t;
 #define SURF_PTR(r)		(surfaces + (r))
 #define SURF_REF(p)		((surfref_t)((p) - surfaces))
 
+#ifdef QOG_SURF_T_TINY
+// QuakeOG (Agent S): 32 bytes. The key is 16-bit (R_RenderFace and
+// R_RenderBmodelFace stop with an error past 0xFFFE, 0xFFFF is the
+// background's), spanstate a signed byte (it counts the open leading edges
+// of one surface on a scan line). A world surface (insubmodel 0) belongs to
+// cl_entities[0], a brush entity's to cl_visedicts[entref]. The face is a
+// 16-bit index into the entity model's surfaces (0xFFFF for none).
+typedef struct surf_s
+{
+	surfref_t	next;				// active surface stack in r_edge.c
+	surfref_t	prev;				// used in r_edge.c for active surf stack
+	espanref_t	spans;				// linked list of spans to draw
+	short		last_u;				// set during tracing
+	unsigned short	key;			// sorting key (BSP order)
+	unsigned short	dataref;		// the face, see SURF_DATA
+	signed char	spanstate;			// 0 = not in span, 1 = in span, -1 = inverted
+	byte		insubmodel;
+	byte		flags;				// currentface flags
+	byte		entref;				// the brush entity, see SURF_ENTITY
+	float		nearzi;				// nearest 1/z on surface, for mipmapping
+	float		d_ziorigin, d_zistepu, d_zistepv;
+} surf_t;
+#define SURF_KEY_BACK		0xFFFF
+#define SURF_KEY_MAX		0xFFFE
+#define SURF_ENTITY(s)		((s)->insubmodel ? cl_visedicts[(s)->entref] : &cl_entities[0])
+#define SURF_DATA(s)		((s)->dataref == 0xFFFF ? NULL : \
+							 (void *)(SURF_ENTITY (s)->model->surfaces + (s)->dataref))
+extern int	r_qog_visedict;		// r_main.c, the brush entity R_DrawBEntitiesOnList draws
+#else
 typedef struct surf_s
 {
 	surfref_t	next;				// active surface stack in r_edge.c
@@ -159,6 +188,7 @@ typedef struct surf_s
 	float		nearzi;				// nearest 1/z on surface, for mipmapping
 	float		d_ziorigin, d_zistepu, d_zistepv;
 } surf_t;
+#endif
 #else
 #define SURF_PTR(r)		(r)
 #define SURF_REF(p)		(p)
@@ -199,6 +229,11 @@ typedef struct surf_s
 #endif
 
 extern	surf_t	*surfaces, *surface_p, *surf_max;
+#ifndef SURF_ENTITY
+#define SURF_KEY_BACK		0x7FFFFFFF
+#define SURF_ENTITY(s)		((s)->entity)
+#define SURF_DATA(s)		((s)->data)
+#endif
 
 // surfaces are generated in back to front order by the bsp, so if a surf
 // pointer is greater than another one, it should be drawn in front

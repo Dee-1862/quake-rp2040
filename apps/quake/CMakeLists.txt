@@ -234,7 +234,32 @@ if(QOG_SPLIT)
     set(_cl_src ${_split_src})
     list(FILTER _cl_src EXCLUDE REGEX "/(sv_[a-z]+|pr_[a-z]+|net_loop|progs_aot|qog_mem|qog_rand)\.c$")
     add_library(qog_engine_cl STATIC EXCLUDE_FROM_ALL ${_cl_src} ${_split_common})
-    target_compile_definitions(qog_engine_cl PUBLIC ${_split_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
+    # QuakeOG (Agent S): the client half's own settings, board only, never in
+    # the PC game list (a PC client gets them with -DQOG_SPLIT_CL_EXTRA)
+    set(_cl_defs ${_split_defs})
+    list(TRANSFORM _cl_defs REPLACE "^QOG_NUMSTACKEDGES=[0-9]+$" "QOG_NUMSTACKEDGES=1800")   # the edge table fits the one-byte z-buffer (full game peak 1,730)
+    list(TRANSFORM _cl_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=8")       # client zone (was 16), see docs/changes.md
+    list(APPEND _cl_defs
+        QOG_ZBUFFER8                    # one-byte z-buffer, approved by the user (changes about 0.07% of view pixels)
+        QOG_ZBUFFER8_NEAR=7             #   with its own steps nearer than 32 units, as the demo player
+        QOG_EDGECACHE_FRAME=152         # the world's edge cache in the frame buffer's 3D view rows (the z-buffer is full)
+        QOG_CL_ENTSLOTS=600             # client entities only for the numbers in use (exact), at most id's MAX_EDICTS
+        QOG_CL_ENTBLOCK=16              #   from the hunk in blocks of 16 as the level uses them
+        QOG_CON_PRINTTEXT               # the renderer's bmodel warning prints without a 4 KB stack buffer (exact)
+        QOG_DLIGHT_SURFS=512            # lit surface hash of 512 (game 1024), overflow falls back to id's tree walk (exact)
+        QOG_CVAR_LITERAL                # cvar values stay at their initial strings in flash until changed, not in the zone
+        QOG_LINK_SCRATCH                # the link's two 1 KB rings in scratch X below core 1's stack
+        QOG_KEYLINES_SCRATCH            # the console's 2 KB command history in scratch Y below the boot stack
+        QOG_NEXTDEMO_STR                # CL_NextDemo's command line in 32 bytes, not 1 KB under the loading plaque's render
+        QOG_SURF_T_TINY                 # 32-byte edge-drawing surfaces, 16-bit keys and face indices (exact, the stack's biggest table)
+        QOG_TRANSLATE_INLINE            # player colours through a 256-byte texel map, not a 16 KB colour map on the stack (exact)
+        QOG_LIGHTSTYLE_ZONE             # light style texts in the zone at their length, not 64 x 64 bytes
+        QOG_PVS_ROW_SMALL               # the PVS row buffer for QOG_PVS_LEAFS leafs (512 bytes, id 1 KB)
+        QOG_KEYNAMES_CONST              # the key name table in flash
+        QOG_CL_PRECACHE_SV              # model and sound precache tables of the server half's sizes (208 and 176)
+        QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
+        QOG_CMD_ARGV_ARENA=640)         # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+    target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer
     # is never used (the client's is the game's), so it gets a small one.
@@ -252,8 +277,8 @@ if(QOG_SPLIT)
     target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER)
 
     foreach(_lib qog_engine_cl qog_engine_sv)
-        # both ends of the link use the same frame size: 512-byte frames, 2 KB rings
-        target_compile_definitions(${_lib} PUBLIC QOG_LINK_CHUNK=512 QOG_LINK_TXRING=2048 QOG_LINK_RXRING=2048)
+        # both ends of the link use the same frame size: 512-byte frames
+        target_compile_definitions(${_lib} PUBLIC QOG_LINK_CHUNK=512)
         target_include_directories(${_lib} PUBLIC
             ${QOG_ROOT}/engine ${QOG_ROOT}/port/common ${QOG_ROOT}/platform)
         target_compile_options(${_lib} PRIVATE -w -Wno-implicit-function-declaration -fstack-usage)
@@ -261,6 +286,11 @@ if(QOG_SPLIT)
         target_link_options(${_lib} INTERFACE -Wl,--no-enum-size-warning)
         target_link_libraries(${_lib} PUBLIC pico_stdlib)
     endforeach()
+    # the server's rings are 2 KB. Agent S: the client's are 1 KB, a frame that
+    # does not fit is not acknowledged and comes again (exact, slower only in
+    # the bursts of a level change)
+    target_compile_definitions(qog_engine_sv PUBLIC QOG_LINK_TXRING=2048 QOG_LINK_RXRING=2048)
+    target_compile_definitions(qog_engine_cl PUBLIC QOG_LINK_TXRING=1024 QOG_LINK_RXRING=1024)
     target_link_libraries(qog_engine_cl PUBLIC fwog_display_bsp)
     target_link_libraries(qog_engine_sv PUBLIC fwog_main_bsp)
 
@@ -270,9 +300,14 @@ if(QOG_SPLIT)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
     set(QOG_CL_HUNK_KB 115 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl for e3m5 with a fight, a save and a load (E1M1 97)")
+    set(QOG_CL_STACK_KB 34 CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
     get_target_property(_disp_defs quake_display COMPILE_DEFINITIONS)
     list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")
+    list(TRANSFORM _disp_defs REPLACE "^QOG_STACK_KB=[0-9]+$" "QOG_STACK_KB=${QOG_CL_STACK_KB}")
     set_property(TARGET quake_display PROPERTY COMPILE_DEFINITIONS ${_disp_defs})
+    # Agent S: the BSP's frame sender without its 4 KB frame buffer (port/rp2040/link_rp2040.c)
+    target_compile_definitions(quake_display PRIVATE QOG_LINK_STREAM_SEND QOG_VID_SURFCACHE_MIN)   # and a 64-byte surface cache header (vid_rp2040.c)
+    target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
     set(QOG_SV_HUNK_KB 172 CACHE STRING "server half hunk in KB, smallest -heapsize of quakeog_sv for e3m5 with a fight, a save and a load (E1M1 130)")
     set(QOG_SV_STACK_KB 24 CACHE STRING "server half stack array in KB, deepest chain from server_main 17,496 B (tools/stack_chain.py)")

@@ -86,7 +86,7 @@ entity_t	*CL_EntityNum (int num)
 		{
 #ifdef QOG_CL_ENTSLOTS
 			if (cl_entslot[cl.num_entities])	// QuakeOG: a slot given before (CL_EntitySlot)
-				cl_entities[cl_entslot[cl.num_entities] - 1].colormap = vid.colormap;
+				CL_SLOTENT (cl_entslot[cl.num_entities] - 1)->colormap = vid.colormap;
 #else
 			cl_entities[cl.num_entities].colormap = vid.colormap;
 #endif
@@ -322,7 +322,7 @@ void CL_ParseServerInfo (void)
 		str = MSG_ReadString ();
 		if (!str[0])
 			break;
-		if (nummodels==MAX_MODELS)
+		if (nummodels==CL_MAX_MODELS)	// QuakeOG: MAX_MODELS or the server's size
 		{
 			Con_Printf ("Server sent too many model precaches\n");
 			Hunk_FreeToHighMark (himark);	// QuakeOG
@@ -339,7 +339,7 @@ void CL_ParseServerInfo (void)
 		str = MSG_ReadString ();
 		if (!str[0])
 			break;
-		if (numsounds==MAX_SOUNDS)
+		if (numsounds==CL_MAX_SOUNDS)	// QuakeOG: MAX_SOUNDS or the server's size
 		{
 			Con_Printf ("Server sent too many sound precaches\n");
 			Hunk_FreeToHighMark (himark);	// QuakeOG
@@ -440,7 +440,7 @@ if (bits&(1<<i))
 	if (bits & U_MODEL)
 	{
 		modnum = MSG_ReadByte ();
-		if (modnum >= MAX_MODELS)
+		if (modnum >= CL_MAX_MODELS)	// QuakeOG: MAX_MODELS or the server's size
 			Host_Error ("CL_ParseModel: bad modnum");
 	}
 	else
@@ -953,8 +953,20 @@ void CL_ParseServerMessage (void)
 			i = MSG_ReadByte ();
 			if (i >= MAX_LIGHTSTYLES)
 				Sys_Error ("svc_lightstyle > MAX_LIGHTSTYLES");
+#ifdef QOG_LIGHTSTYLE_ZONE
+			{	// QuakeOG (Agent S): the style's text in the zone, as long as it is
+				char	*text = MSG_ReadString ();
+
+				if (cl_lightstyle[i].map)
+					Z_Free (cl_lightstyle[i].map);
+				cl_lightstyle[i].length = Q_strlen (text);
+				cl_lightstyle[i].map = Z_Malloc (cl_lightstyle[i].length + 1);
+				Q_strcpy (cl_lightstyle[i].map, text);
+			}
+#else
 			Q_strcpy (cl_lightstyle[i].map,  MSG_ReadString());
 			cl_lightstyle[i].length = Q_strlen(cl_lightstyle[i].map);
+#endif
 			break;
 			
 		case svc_sound:
