@@ -2,6 +2,18 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: timedemo demo3 on the board (lead, on hardware)
+
+The board menu's Benchmark (Agent AF) ran id's `timedemo demo3` on the episode 1 image with the demos (13.69 MB display data):
+
+`[bench] timedemo demo3 1090 frames 117.2 seconds 9.3 fps, render Fast, clock 250 MHz, flash 125 MHz, view 100, 320x200`
+
+- For comparison, MG24Quake publishes about 29.2 fps for the same timedemo on a Cortex-M33 with FPU at 136 MHz.
+- During demos the pipelined screen update is off, so each frame is the client's full frame plus one link exchange. Play in E1M1 runs at about 12 fps.
+- Last phase line of the run (ms per view) is setup 0.2, world 13.7, bmodels 4.3, lmap 1.5, grad 2.4, spans 23.6, turb 0.4, models 14.3, vmodel 5.2, parts 3.4, total 75.7, edgescan 4.1. Monsters (models 14.3) are the second biggest item after the spans in the demo, where E1M1's start view had none.
+- The z-edge fallback ran once in the run (`zedge 1`) and the game went on, as Agent AC designed it.
+- Stack free on the display was 5,576 B at its lowest.
+
 ## 2026-11-24: Benchmark in the board menu, id's timedemo demo3 with its result on the screen (Agent AF, PC and ARM build, registered data)
 
 The user wants a number to set beside MG24Quake's published `timedemo demo3` (about 29 fps on a Cortex-M33). The board's Single Player menu has a fifth line, Benchmark, which runs id's `timedemo demo3` (e1m6) through the command buffer as id's console would, and shows the result on the screen when the demo ends. Nothing ran on hardware.
