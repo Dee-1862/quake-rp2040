@@ -53,6 +53,12 @@ void D_Init (void)
 	Cvar_RegisterVariable (&d_subdiv16);
 	Cvar_RegisterVariable (&d_mipcap);
 	Cvar_RegisterVariable (&d_mipscale);
+#if defined(QOG_LITSPAN_INTERP) && defined(QOG_RFAST) && !defined(_WIN32)
+	{
+		void D_QogLitInterpCheck (void);
+		D_QogLitInterpCheck ();	// QuakeOG (Agent AH): the board's interpolators, once (d_scanlit.c)
+	}
+#endif
 #ifdef QOG_XIPSIM
 	{
 		void XipSim_f (void);

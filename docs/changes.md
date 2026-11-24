@@ -2,6 +2,76 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Fast spans without float work per span, interpolator pixels, a smaller console, and what the XIP cache really misses (Agent AH, PC and ARM build, registered data)
+
+The user wants a basis of 30 fps and asked to replicate and improve MG24Quake's span strategy. I read their span path (d_edge.c sortSurfs, d_surf.c's 20 KB texture buffer with DMA prefetch, d_scan.c's 32-pixel sub-spans and bilinear light) and measured, on the PC, what of it would help here. The answer was not the texture and colour map buffers: MG24Quake has an FPU and must copy textures because its flash is not memory mapped, while this board's spans spend their time in software float routines. So the Fast drawer now does no float work per span and the pixel loop runs on the RP2040's interpolators. Nothing ran on hardware. Exact mode is byte identical. The board savings are estimates (cycle counts below), the lead measures them.
+
+### What the XIP cache misses in the spans (PC model, `QOG_XIPSIM`)
+
+A PC measurement build (`-DQOG_PC_EXTRA_DEFS=QOG_XIPSIM`, engine/d_xipsim.c, `qog_xipsim`) feeds every flash read of the span drawer (texels, colour map entries) and of R_BuildLightMap (lightmap samples) into a model of the XIP cache (16 KB, two ways, 8-byte lines, LRU), with four caches side by side: as today, colour map in RAM, texture in RAM, both. Code fetches and the rest of the frame are not modelled, so these are lower bounds. 300 views of each demo after 30 (`qogtest_ah_xip.cfg`), misses per view:
+
+| Demo, render | as today (tex, cmap, lmap) | colour map in RAM | texture in RAM | both in RAM |
+| --- | --- | --- | --- | --- |
+| demo1 Exact | 2,162 (1,275, 551, 335) | 1,155 | 217 | 15 |
+| demo2 Exact | 965 (606, 187, 171) | 491 | 45 | 3 |
+| demo3 Exact | 2,110 (1,238, 532, 339) | 1,155 | 223 | 17 |
+| demo3 Fast | 2,105 | 1,155 | 221 | 17 |
+| demo3 Exact, surfaces sorted by texture (`QOG_SURF_SORT`) | 2,023 | 1,169 | 224 | 17 |
+
+At about 0.26 us a miss (an 8-byte line at 125 MHz flash: 8 address and mode clocks, 4 dummy, 16 data, plus the SSI, from the 538 ns measured at 50 MHz on the board), 2,100 misses are about 0.55 ms a view. Texture and colour map in RAM together (MG24Quake's 20 KB plus 16 KB) would save at most that much, and sorting by texture saves 0.02 ms. The texels hit the cache well because neighbouring pixels share 8-byte lines and a surface's texels stay in the cache while it is drawn. So I did not spend RAM on texture or colour map buffers. The lead's XIPSTATS line will show whether code misses (not in the model) are many: if the spans phase shows about 2,000 to 5,000 misses a view, flash is not what the spans wait on.
+
+The 2-point clock fit agrees: spans were 43.2 ms at 200 MHz with 50 MHz flash and 30.7 ms at 250 MHz with 125 MHz flash, which fits about 27 ms of CPU and about 4 ms of flash waiting at 250/125.
+
+### What the spans do spend (Fast, demo3, per view)
+
+PC counts (`QOG_RFAST_STATS`): 1,758 spans, 3,766 sub-spans, 48,477 pixels, about 6,900 light runs. Agent AA's Fast drawer per span: the start values (two int to float, six float multiplies and six adds), a reciprocal, two multiplies and two float to int conversions at the start and at each sub-span end, the sub-span length test (one or two float compares), and for the last sub-span an int to float and three multiplies. With the RP2040's ROM float routines at about 55 cycles each through the SDK wrappers, that is about 2,150 cycles a span, 3.8 M cycles a view, more than the pixels (about 32 cycles each, 1.55 M).
+
+### Changes
+
+| Change | Flag | Exact? | Pixels changed | Estimated saving, cycles a view (both cores) | RAM |
+| --- | --- | --- | --- | --- | --- |
+| Fast spans in integers. Per surface on core 0 (D_LitFixSetup, about 33 float operations, the scaling done on the float bits) the three linear functions of the screen position become 64-bit fixed point at the surface's first span: 1/z times 2^k (k puts the surface's nearest 1/z near 2^60), and s/z, t/z with sadjust and tadjust folded in, scaled so s/1/z is in [0, 2^w) with w from the surface's extent. Per span the start values are exact 64-bit sums (three 32-bit multiplies each, no multiply call), moved to 32 bits by one shift, and per sub-span end three adds, one hardware integer divide (2^32 / 1/z normalised to 17 bits) and two multiplies give s and t in 16.16. Error at most 2^(w - 16) texel plus 2^-15 of the coordinate, at most 1/64 texel. Sub-span lengths, light runs and clamps are Agent AA's. A surface whose values do not fit keeps the float drawer | `QOG_RFAST_FIX` (on with `QOG_RFAST`, `QOG_RFAST_FLOATSETUP` brings back the float drawer) | approximate (Fast only) | 2.88% of view pixels against Exact (Agent AA's Fast 2.75%), 0.25% against Agent AA's Fast, worst frame d_demo3_15 9.26% | about 2,150 to about 560 a span: 2.8 M, less 0.1 M of setup on core 0 | 100 B static, D_DrawSpans8Lit's frame 56 B (+16), the Fix drawer 432 B as the exact one, D_LitFixSetup 96 B never under it |
+| The z of a span from the integer 1/z (`D_QogZSpanI`) | with the above | approximate | in the 2.88% | about 90 cycles a span | 0 |
+| Fast pixel loop on the SIO interpolators. Interpolator 0 holds S and T2 with the texture in BASE2, so its FULL result is the texel's address and reading it steps both, interpolator 1 holds the light accumulator with the colour map in BASE2, so its FULL result is the light row. A pixel is two register reads, two byte loads and a store (8 instructions, about 11 cycles in place of about 32). Each core sets its own pair per surface. The PC emulates the registers with the hardware's rules, and the board checks them once at start-up from D_Init (D_QogLitInterpCheck: 64 steps against the C expressions, a Con_Printf is safe there and not inside the edge drawing), and if they differ every lit surface takes the exact drawer and a console line says why | `QOG_LITSPAN_INTERP` (`QOG_BOARD_INTERP`, on) | exact (the same pixels as Fast without it) | 0 against Fast without it, 121 of 121 frames | about 20 cycles a pixel, 0.97 M | 12 B static |
+| Fused z spans with the one-byte z-buffer: when both ends of a span are 32 units or farther (z below 1024) and the step cannot wrap, every pixel's D_ZQ is z >> 3, so the loop skips D_ZQ's two tests | (on with `QOG_ZBUFFER8_NEAR`, `QOG_ZSPAN8_SLOW` turns it off) | exact | 0, see below | about 4 cycles a pixel on most pixels, 0.18 M | 0 |
+| Console text 4 KB to 1 KB on the board client (26 lines of scrollback, the 4 notify lines, MG24Quake keeps 913 B). The hunk shrinks by the same 3 KB, so `-DQOG_CL_HUNK_KB=75` still means Agent AD's measured hunk and every level keeps its margin, and the 3 KB become static RAM | `QOG_BOARD_CONSMALL` (on) | the console holds fewer lines | 0 | | 3,072 B of static RAM freed |
+| D_DrawSurfaces' loop body in a function of its own, and an optional draw order grouped by texture and mip (the key kept in last_u, which only one scan line's span making uses, so no RAM) | `QOG_SURF_SORT` (off: the model above says it saves 0.02 ms) | exact | 0 | | 0 |
+| The XIP cache model | `QOG_XIPSIM` (PC measurement only) | | | | |
+
+Total about 3.9 M cycles a view of span work, 15.5 ms of one core at 250 MHz. The spans phase is timed on core 0, which draws every second span: if the cores share evenly it falls by about 7.7 ms (23.6 to about 16 ms in timedemo demo3), and by more if core 1 helps less than half today (the clock fit above leaves room for that). An A/B with `-DQOG_BOARD_CORE1=OFF` would show how much core 1 takes today.
+
+Frame estimate: timedemo demo3 took 107.5 ms a frame (1090 frames in 117.2 s). 7.7 ms less is about 10.0 fps, 15 ms less about 10.8 fps, before the other agents' work. The miss model assumes about 0.26 us a line at 125 MHz flash (0.1 to 0.5 us brackets it), the cycle counts about 55 cycles per ROM float call with its wrapper.
+
+### Exact proof (hidden, `-nosound`, own `build-ah/pc` and `build-ah/pc-ref` (untouched 85a3d22), own git-ignored `data\id1`)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc | ce86f894f9de |
+| `qogtest_f_hash`, quakeog_pc, r_fast 0 and r_fast 1 | e92bc9e9650d, e92bc9e9650d |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against 85a3d22 | 121 of 121 byte identical |
+| the same with `QOG_LITSPAN_INTERP` (emulated), r_fast 1, against r_fast 1 without it | 121 of 121 byte identical |
+| one-byte z (`QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800`), the far-z loop against `QOG_ZSPAN8_SLOW`, r_fast 0 and 1 | 121 of 121 byte identical in each mode |
+
+Fast pictures: Exact and Fast pairs of all 121 frames with the changed pixels in red are in the session's scratchpad `fast2` folder (`pairs/*.png`, `percent.txt`).
+
+### Board link
+
+| | before (85a3d22) | after |
+| --- | --- | --- |
+| quake_display `end` | 0x2003f7f0 at 85a3d22, 16 B free | 0x2003ea84 after merging main b59bcd1 (main alone 0x2003f610, 496 B free), 3,452 B free beside the 2 KB heap reserve |
+| quake_main `end` | 0x2003f520 (0x2003f544 on main b59bcd1) | 0x2003f544, unchanged from main |
+| quake_display.bin | 366,456 B | 374,600 B (main b59bcd1 plus about 4 KB: the integer drawer and the interpolator loop) |
+
+The configure line is the lead's (`-DQOG_CL_HUNK_KB=75` and the rest), the display's hunk is then 72 KB.
+
+### For the lead and the user
+
+- RAM: 3,452 B of the display's static RAM is free after this (merged with main), for whoever needs it next. Other cuts I looked at and left: the command buffer (its measured peak is 2,158 B at boot, so 2 KB would drop default.cfg), the zone (peak 7,920 B of 8 KB), particles (already MG24Quake's 512), the client stack (4.2 to 5.6 KB free measured, and the z-edge fallback uses what is free).
+- What the player sees: Fast pictures as before within 0.25% of the pixels (sub-texel steps at texture seams), the console scrolls back 26 lines instead of about 100.
+- No frame-buffer or z-buffer rows are used by any of this, so Agent AK's scanout race (QOG_VID_SCANRACE) is not affected.
+- Next, in my estimate the largest left in the spans: the per-surface work on core 0 while core 1 waits (lmap 1.5 ms, grad 2.4 ms and the new setup about 0.4 ms in the demo3 phase line). Drawing surface N's spans on core 1 while core 0 sets up surface N+1, with a second light grid (1,296 B of the free RAM) and spans taken from a shared counter, would hide about half of it, about 2 ms.
+- Files: engine/d_litspan.h, engine/d_scanlit.c, engine/d_scan.c, engine/d_edge.c (mine), engine/d_xipsim.c (new, PC only), engine/r_surf.c (a PC measurement hook under `QOG_XIPSIM`), engine/d_init.c (that hook's command and the board's interpolator check), apps/quake/CMakeLists.txt (two board options and the hunk subtraction).
+
 ## 2026-11-24: Both chips truly in parallel, the 3D view racing the LCD scanout, the status bar sent only when it changes, demos pipelined (Agent AK, PC and ARM build, registered data)
 
 Everything in the board frame outside the 3D view's drawing. Four board options, all on, all exact (same state hashes, same pictures on the panel). Nothing ran on hardware, so every saving below is an estimate from the board numbers of the entries below.

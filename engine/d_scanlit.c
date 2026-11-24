@@ -100,13 +100,15 @@ D_LitInterpCheck
 
 QuakeOG (Agent AH): the board checks once that its interpolators give what
 the pixel loop's C expressions give (d_litspan.h, QOG_LITSPAN_INTERP), for
-a 64x64 texture and a light run. If not, Fast mode is turned off (r_fast 0,
-id's exact drawer, which does not use them) and a line says why.
+a 64x64 texture and a light run, at start-up from D_Init, where printing
+is safe (inside the edge drawing a Con_Printf frame of 4 KB would not be).
+If they differ, every lit surface takes id's exact drawer (r_qogfast 0),
+which does not use them, and a console line says why.
 ================
 */
 static int	liti_state;		// 0 not checked, 1 good, 2 bad
 
-static int D_LitInterpCheck (void)
+void D_QogLitInterpCheck (void)
 {
 	unsigned	S = 0x00C3A5F1u, T2 = 0x2F0BC055u, ss = 0x0001B3C7u, ts = 0xFFF2A1D9u;
 	unsigned	lacc = 0x12345678u, lstep = 0x0006F00Du;
@@ -138,21 +140,11 @@ static int D_LitInterpCheck (void)
 		T2 += ts;
 		lacc += lstep;
 	}
+	liti_state = bad ? 2 : 1;
 	if (bad)
 		Con_Printf ("Fast render off: the interpolator check failed %d of 64\n", bad);
-	return bad ? 2 : 1;
 }
-#define LITI_CHECK														\
-	if (r_qogfast && liti_state != 1)									\
-	{																	\
-		if (!liti_state)												\
-			liti_state = D_LitInterpCheck ();							\
-		if (liti_state == 2)											\
-		{																\
-			Cvar_SetValue ("r_fast", 0);								\
-			r_qogfast = 0;												\
-		}																\
-	}
+#define LITI_CHECK	if (liti_state == 2) r_qogfast = 0;
 #else
 #define LITI_CHECK
 #endif
