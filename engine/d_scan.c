@@ -479,13 +479,53 @@ void D_DrawSpans8 (espan_t *pspan)
 D_DrawZSpans
 =============
 */
+#ifdef QOG_ZSPANS_FAST
+/*
+=============
+D_QogZiFixed
+
+QuakeOG: (int)(zi * 0x8000 * 0x10000) as id's D_DrawZSpans computes it,
+with zi a double holding a float, but without double arithmetic (a float
+to double conversion, two double multiplies and a double to int
+conversion are about 250 cycles per span through the M0+'s ROM routines).
+Both multiplies are by powers of two, so the product is exact and the
+result is the float's mantissa shifted by its exponent, truncated toward
+zero. |zi| >= 1 (a product of 2^31 or more), infinities and NaNs take
+id's expression.
+=============
+*/
+static int D_QogZiFixed (float zi)
+{
+	union { float f; unsigned u; } v;
+	unsigned	m;
+	int			e, r;
+
+	v.f = zi;
+	e = (int)((v.u >> 23) & 0xFF);
+	if (e >= 127)
+		return (int)((double)zi * 0x8000 * 0x10000);
+	if (e < 96)		// below 2^-31 (zeros and denormals too): truncates to 0
+		return 0;
+	m = (v.u & 0x7FFFFF) | 0x800000;	// zi = m * 2^(e - 150), so zi * 2^31 = m * 2^(e - 119)
+	if (e >= 119)
+		r = (int)(m << (e - 119));		// at most 2^31 - 2^7
+	else
+		r = (int)(m >> (119 - e));
+	return (v.u & 0x80000000) ? -r : r;
+}
+#endif
+
 void D_DrawZSpans (espan_t *pspan)
 {
 	int				count, doublecount, izistep;
 	int				izi;
 	d_zval_t		*pdest;
 	unsigned		ltemp;
+#ifdef QOG_ZSPANS_FAST
+	float			zi;		// QuakeOG: see D_QogZiFixed
+#else
 	double			zi;
+#endif
 	float			du, dv;
 
 // FIXME: check for clamping/range problems
@@ -500,7 +540,11 @@ void D_DrawZSpans (espan_t *pspan)
 		du = (float)pspan->u;
 		dv = (float)pspan->v;
 		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
+#ifdef QOG_ZSPANS_FAST
+		izi = D_QogZiFixed (zi);	// QuakeOG
+#else
 		izi = (int)(zi * 0x8000 * 0x10000);
+#endif
 		do
 		{
 			int	z = izi >> 16;
@@ -523,7 +567,11 @@ void D_DrawZSpans (espan_t *pspan)
 
 		zi = d_ziorigin + dv*d_zistepv + du*d_zistepu;
 	// we count on FP exceptions being turned off to avoid range problems
+#ifdef QOG_ZSPANS_FAST
+		izi = D_QogZiFixed (zi);	// QuakeOG
+#else
 		izi = (int)(zi * 0x8000 * 0x10000);
+#endif
 
 		if ((long)pdest & 0x02)
 		{
@@ -550,6 +598,65 @@ void D_DrawZSpans (espan_t *pspan)
 
 	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR(pspan->pnext)));	// QuakeOG
 }
+
+#ifdef QOG_LITSPAN_ZFUSE
+/*
+=============
+D_QogZSpan
+
+QuakeOG: the z of one span exactly as D_DrawZSpans writes it, for
+D_DrawSpans8Lit, which computes the same 1/z at the start of each span
+for its own use (d_litspan.h). izistep as D_DrawZSpans computes it.
+=============
+*/
+void D_QogZSpan (espan_t *pspan, float zi, int izistep)
+{
+	int				count, doublecount;
+	int				izi;
+	d_zval_t		*pdest;
+	unsigned		ltemp;
+
+	pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+	count = pspan->count;
+#ifdef QOG_ZSPANS_FAST
+	izi = D_QogZiFixed (zi);
+#else
+	izi = (int)((double)zi * 0x8000 * 0x10000);
+#endif
+#ifdef QOG_ZBUFFER8
+	(void)ltemp; (void)doublecount;
+	do
+	{
+		int	z = izi >> 16;
+		*pdest++ = D_ZQ(z);
+		izi += izistep;
+	} while (--count > 0);
+#else
+	if ((long)pdest & 0x02)
+	{
+		*pdest++ = (short)(izi >> 16);
+		izi += izistep;
+		count--;
+	}
+
+	if ((doublecount = count >> 1) > 0)
+	{
+		do
+		{
+			ltemp = izi >> 16;
+			izi += izistep;
+			ltemp |= izi & 0xFFFF0000;
+			izi += izistep;
+			*(int *)pdest = ltemp;
+			pdest += 2;
+		} while (--doublecount > 0);
+	}
+
+	if (count & 1)
+		*pdest = (short)(izi >> 16);
+#endif
+}
+#endif
 
 #endif
 

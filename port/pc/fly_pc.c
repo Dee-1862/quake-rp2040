@@ -29,6 +29,7 @@
 #include "quakedef.h"
 #include "qog_fly.h"
 #include "qog_mem.h"
+#include "qog_phase.h"
 
 extern mleaf_t	*r_viewleaf;
 
@@ -95,6 +96,9 @@ void qog_fly_pc_main (quakeparms_t *parms)
 		qog_fly_overlay (va ("frame %d", i), va ("hunk %d KB", (hunk_low_used + hunk_high_used) / 1024));
 		VID_Update (NULL);
 	}
+#ifdef QOG_PHASE_TIME
+	qog_phase_report (Sys_Printf);
+#endif
 	{
 		const qog_mem_t	*m = qog_mem_sample ();
 		Sys_Printf ("fly: done, hunk peak low %d high %d, zone %d of %d\n", m->peak_low, m->peak_high,
@@ -112,6 +116,14 @@ static void fly_noentities (void)
 	Cvar_Set ("crosshair", "0");
 }
 
+#ifdef QOG_PHASE_TIME
+/* `qog_phase` prints where render time went since the last call, per frame */
+static void cmd_qog_phase (void)
+{
+	qog_phase_report (Con_Printf);
+}
+
+#endif
 static void cmd_qog_fly (void)
 {
 	int		frames = Cmd_Argc () > 1 ? Q_atoi (Cmd_Argv (1)) : 200;
@@ -221,6 +233,9 @@ void qog_fly_frame (void)
 
 void qog_fly_register (void)
 {
+#ifdef QOG_PHASE_TIME
+	Cmd_AddCommand ("qog_phase", cmd_qog_phase);
+#endif
 	Cmd_AddCommand ("qog_fly", cmd_qog_fly);
 	Cmd_AddCommand ("qog_fly_ref", cmd_qog_fly_ref);
 }
