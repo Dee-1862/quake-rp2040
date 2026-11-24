@@ -160,6 +160,7 @@ void VID_HandlePause(qboolean pause) { (void)pause; }
 /* ---- buttons ---------------------------------------------------------- */
 
 extern uint8_t qog_rp2040_buttons;   /* sys_rp2040.c, from fwog_power_poll */
+extern uint8_t qog_rp2040_buttons_seen;
 static qog_input_state_t s_input;
 static qboolean s_input_ready;
 
@@ -186,6 +187,8 @@ static int action_key(int action) {
 void Sys_SendKeyEvents(void) {
     static int held_key[QOG_ACT_COUNT];
     if (!s_input_ready) { qog_input_reset(&s_input); s_input_ready = true; }
+    s_input.seen |= qog_rp2040_buttons_seen;   /* taps between game frames */
+    qog_rp2040_buttons_seen = 0;
     qog_input_t in = qog_input_step(&s_input, qog_rp2040_buttons, (uint32_t)(Sys_FloatTime() * 1000.0));
     for (int a = 0; a < QOG_ACT_COUNT; a++) {
         if (in.pressed & QOG_ACT_BIT(a)) {

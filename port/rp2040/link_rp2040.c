@@ -25,6 +25,7 @@
 #include "fwog_display.h"
 #include "io_expander/ioexp_link.h"
 extern uint8_t qog_rp2040_buttons;   /* sys_rp2040.c */
+extern uint8_t qog_rp2040_buttons_seen;
 #endif
 
 void qog_link_hw_open(int role) {
@@ -135,6 +136,7 @@ void qog_link_hw_idle(void) {
     if (now - last >= 5u) {      /* the hold machine counts milliseconds */
         fwog_power_t pw = fwog_power_poll(now);
         qog_rp2040_buttons = pw.buttons.down;   /* level, as the main loop reads it */
+        qog_rp2040_buttons_seen |= pw.buttons.down;
         last = now;
     }
 #endif

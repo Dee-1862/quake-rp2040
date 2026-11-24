@@ -4,13 +4,16 @@
  * Never call fwog_buttons_poll() yourself: the BSP's 6 s red-hold power-off
  * depends on that single poll seeing every edge.
  *
- * Mapping (v2, after the board showed red-hold starts the power-off):
- *   alone:          gray=forward yellow=turn L blue=turn R red=next weapon (tap) green=fire
- *   green held +:   gray=back yellow=jump blue=crouch/swim down red=prev weapon (tap)
- *   yellow + blue:  menu
+ * Mapping (v3, the user's layout on the board):
+ *   alone:          yellow=forward green=turn L blue=turn R red=next weapon (tap) gray=fire
+ *   gray held +:    yellow=back green=jump blue=crouch/swim down red=prev weapon (tap)
+ *   green + blue:   menu
  * Nothing that is held for long is on red: the BSP powers off on 6 s of red.
- * Green is both FIRE and the modifier: fire asserts only once green has been
- * down QOG_FIRE_GRACE_MS with no other button, and a combo cancels it.
+ * Gray is both FIRE and the modifier: held fire asserts only once gray has
+ * been down QOG_FIRE_GRACE_MS with no other button, and a combo cancels it.
+ * A short tap (released before that, or pressed and released between two
+ * steps, which the board's ~140 ms game frames made the usual case) gives one
+ * press and release of FIRE in the same step, which Quake turns into one shot.
  */
 #ifndef QOG_INPUT_H
 #define QOG_INPUT_H
@@ -44,9 +47,13 @@ typedef struct {
 
 typedef struct {
     uint32_t prev_actions;
-    uint32_t green_since_ms;
-    bool     green_combo;     /* another button joined green this hold */
-    bool     menu_latched;    /* yellow+blue seen; suppress turns until both up */
+    uint32_t green_since_ms;  /* when the fire button went down (it was green in v2) */
+    bool     green_combo;     /* another button joined the fire button this hold */
+    bool     menu_latched;    /* turn L + turn R seen; suppress turns until both up */
+    bool     fire_prev;       /* the fire button was down at the last step */
+    bool     fire_emitted;    /* FIRE was reported held during this press */
+    uint8_t  seen;            /* buttons that went down since the last step; the
+                                 caller ORs in every poll between steps */
 } qog_input_state_t;
 
 /* Pure, host-testable. `btn_down` is a bit per fwog_btn_id_t

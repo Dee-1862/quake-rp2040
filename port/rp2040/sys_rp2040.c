@@ -508,6 +508,9 @@ int main(void) {
 /* Buttons for Sys_SendKeyEvents (vid_rp2040.c): the main loop polls them
    through fwog_power_poll, the only poll allowed (docs/lessons.md L5). */
 uint8_t qog_rp2040_buttons;
+/* QuakeOG: every button that was down at any poll since the last game frame,
+   so a tap shorter than a frame still reaches the input step (vid_rp2040.c) */
+uint8_t qog_rp2040_buttons_seen;
 
 #if !defined(QOG_SYS_NO_MAIN) && !defined(QOG_SYS_MAIN)
 #ifdef QOG_STACK_KB
@@ -590,6 +593,7 @@ int main(void) {
     for (;;) {
         fwog_power_t pw = fwog_power_poll(to_ms_since_boot(get_absolute_time()));
         qog_rp2040_buttons = pw.buttons.down;
+        qog_rp2040_buttons_seen |= pw.buttons.down;
         double newtime = Sys_FloatTime();
         double dt = newtime - oldtime;
         if (dt < 1.0 / 72.0) continue;   /* see port/pc/sys_pc.c: id calls rand() per call */
