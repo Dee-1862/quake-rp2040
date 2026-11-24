@@ -489,6 +489,11 @@ if(QOG_SPLIT)
     target_compile_definitions(quake_main PRIVATE
         QOG_SYS_MAIN QOG_LINK_MAIN QOG_HUNK_KB=${QOG_SV_HUNK_KB} QOG_STACK_KB=${QOG_SV_STACK_KB})
     target_compile_options(quake_main PRIVATE -fstack-usage)
+    # Format main's FAT volume for saves when it does not mount (user approved).
+    option(QOG_FAT_FORMAT_IF_MISSING "Format main's save volume when it does not mount" ON)
+    if(QOG_FAT_FORMAT_IF_MISSING)
+        target_compile_definitions(quake_main PRIVATE QOG_FAT_FORMAT_IF_MISSING)
+    endif()
     if(QOG_LINK_DIAG)
         target_compile_definitions(quake_main PRIVATE QOG_LINK_DIAG QOG_STACK_WATERMARK QOG_FAULT_RECORD)
     endif()

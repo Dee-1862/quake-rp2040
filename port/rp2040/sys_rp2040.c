@@ -238,6 +238,9 @@ int _unlink(const char *path) { (void)path; return -1; }
 /* Agent AC: the server data region ends where the BSP's FAT volume starts */
 _Static_assert(QOG_MAIN_FAT_OFFSET == FWOG_FS_FLASH_OFFSET, "qog_flashmap.h: QOG_MAIN_FAT_OFFSET is not the BSP's FAT volume");
 _Static_assert(QOG_MAIN_DATA_OFFSET + QOG_MAIN_DATA_MAX_SIZE <= FWOG_FS_FLASH_OFFSET, "qog_flashmap.h: main's data reaches the FAT volume");
+#ifdef QOG_FAT_FORMAT_IF_MISSING
+#include "fs/ff/ff.h"
+#endif
 
 #define FAT_FD  3
 #define FAT_DIR "quake"
@@ -247,6 +250,25 @@ static int s_fat_open;
 static int fat_ready(void) {
     if (!s_fat_state) {
         s_fat_state = fwog_fs_mount() ? 1 : -1;
+#ifdef QOG_FAT_FORMAT_IF_MISSING
+        /* The user agreed to format the save volume when it does not mount
+           (a board that never had one). A volume that mounts is never
+           formatted. The BSP's disk driver kicks the watchdog as it writes. */
+        if (s_fat_state < 0) {
+            /* f_mkfs as fwog_fs_format() does it, but its 4 KB work buffer
+               is on the game stack (19 KB free there) instead of a static
+               main has no RAM for. It writes the boot sector, FAT and root. */
+            BYTE work[FF_MAX_SS];
+            MKFS_PARM parm = {0};
+            parm.fmt = FM_ANY;
+            parm.n_fat = 1;
+            parm.align = 1;
+            DIAG("[quake_main] no FAT volume, formatting it for saves\n");
+            const FRESULT r = f_mkfs("", &parm, work, sizeof work);
+            DIAG("[quake_main] format %s (%d)\n", r == FR_OK ? "done" : "FAILED", (int)r);
+            s_fat_state = (r == FR_OK && fwog_fs_mount()) ? 1 : -1;
+        }
+#endif
         if (s_fat_state > 0 && !fwog_fs_exists(FAT_DIR) && !fwog_fs_mkdir(FAT_DIR))
             DIAG("[quake_main] cannot make the folder %s on the FAT volume\n", FAT_DIR);
         QOG_FLASH_REAPPLY();    /* a flash write runs boot2 again, which resets the divider */
@@ -255,16 +277,36 @@ static int fat_ready(void) {
     return s_fat_state > 0;
 }
 
+/* Print the save volume's state once, some seconds after boot when USB is
+   up (the first save's own line usually comes before anyone is listening).
+   Mounting only reads flash. */
+static void fat_report_once(void) {
+    static int done;
+    if (done || to_ms_since_boot(get_absolute_time()) < 8000u) return;
+    done = 1;
+    uint64_t freeb = 0, total = 0;
+    if (fat_ready() && fwog_fs_volume_info(&freeb, &total))
+        DIAG("[quake_main] save volume %lu KB free of %lu KB, folder %s %s\n",
+             (unsigned long)(freeb / 1024u), (unsigned long)(total / 1024u),
+             FAT_DIR, fwog_fs_exists(FAT_DIR) ? "present" : "missing");
+    else
+        DIAG("[quake_main] save volume %s\n", s_fat_state > 0 ? "mounted, no volume info" : "not mounted (unformatted?)");
+}
+
 int _open(const char *path, int flags, ...) {
     char name[64];
     const char *base = strrchr(path, '/');
     base = base ? base + 1 : path;
     if (!*base || strlen(base) + sizeof FAT_DIR + 1 > sizeof name || s_fat_open || !fat_ready()) {
+        DIAG("[quake_main] open %s refused (%s)\n", path,
+             s_fat_open ? "a file is already open" : s_fat_state < 0 ? "no FAT volume" : "bad name");
         errno = ENOENT;
         return -1;
     }
     snprintf(name, sizeof name, FAT_DIR "/%s", base);
     if (!fwog_fs_open(name, (flags & O_ACCMODE) != O_RDONLY, (flags & O_APPEND) != 0)) {
+        if ((flags & O_ACCMODE) != O_RDONLY)
+            DIAG("[quake_main] open %s for writing failed on the FAT volume\n", name);
         errno = ENOENT;
         return -1;
     }
@@ -538,6 +580,7 @@ static void __attribute__((noreturn)) server_main(void) {
         board_timing("sv");
 #endif
         QOG_CLOCK_REPORT_ONCE();
+        fat_report_once();
     }
 }
 

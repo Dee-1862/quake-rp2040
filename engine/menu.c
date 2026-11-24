@@ -1331,7 +1331,9 @@ static const struct
 {
 	{0, "              Controls"},
 	{2, "     Reset to defaults"},
+#ifndef QOG_EDGECACHE_FRAME	// the edge cache in the frame buffer needs the full view (r_main.c)
 	{3, "           Screen size"},
+#endif
 	{4, "            Brightness"},
 	{7, "          Sound Volume"},
 	{8, "            Always Run"}
