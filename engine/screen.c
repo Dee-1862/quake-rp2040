@@ -241,6 +241,12 @@ static void SCR_CalcRefdef (void)
 	if (scr_viewsize.value > QOG_MAX_VIEWSIZE)
 		Cvar_SetValue ("viewsize", QOG_MAX_VIEWSIZE);
 #endif
+#ifdef QOG_EDGECACHE_FRAME	// QuakeOG: the edge cache lives in the frame buffer rows the
+						// view draws over, so the view stays full width from the top
+						// (R_EdgeDrawing stops the game otherwise)
+	if (scr_viewsize.value < 100)
+		Cvar_SetValue ("viewsize", 100);
+#endif
 
 // bound field of view
 	if (scr_fov.value < 10)
