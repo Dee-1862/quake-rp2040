@@ -80,6 +80,34 @@ void D_DrawSpans8Lit (espan_t *pspans);
 void Sys_QogCore1Start (void (*fn) (void *), void *arg);
 void Sys_QogCore1Join (void);
 #endif
+#ifdef QOG_DRAW_CORE1
+// QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+// (d_edge.c, d_core1.c, r_edge.c). A lit world surface, the kind core 1
+// draws: not a brush entity's, not sky, background or turbulent.
+#define D_QOG_C1OK(s)	(!(s)->insubmodel && \
+						 !((s)->flags & (SURF_DRAWSKY | SURF_DRAWBACKGROUND | SURF_DRAWTURB)))
+extern volatile int	d_qogpipe_on;
+extern volatile int	d_qogc1_drawing;
+void D_QogPipeBegin (int on);
+void D_QogPipePush (surf_t *s);
+int D_QogPipePop (int core1, surf_t **ps, espan_t **pspans);
+void D_QogPipeDone (void);
+int D_QogPipeEnded (void);
+void D_QogPipeSync (void);
+void D_QogPipeEnd (void);
+void D_QogDrawLit (surf_t *s, espan_t *spans);	// d_edge.c, either copy
+void D_QogLitCheck (void);						// d_scanlit.c
+void D_QogC1Worker (void *unused);				// d_core1.c: core 1's job
+void D_QogC1Draw (surf_t *s, espan_t *spans);	// d_core1.c: core 1's copy of D_QogDrawLit
+// the port (vid_rp2040.c, vid_pc.c): 0 core 1 runs the job, the PC's tests
+// 1 core 1's work first or 2 last on the game's thread; a lock both cores
+// take for a few instructions; wake core 1 and wait for a wake on core 1
+int Sys_QogCore1Mode (void);
+void Sys_QogLock (void);
+void Sys_QogUnlock (void);
+void Sys_QogCore1Wake (void);
+void Sys_QogCore1Idle (void);
+#endif
 void D_DrawSpans16 (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);

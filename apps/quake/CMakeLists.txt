@@ -388,6 +388,12 @@ if(QOG_SPLIT)
     if(QOG_BOARD_CORE1 AND QOG_BOARD_ALIASCORE1)
         list(APPEND _cl_defs QOG_ALIAS_CORE1)      # r_alias.c R_QogAliasPrepareRange
     endif()
+    # QuakeOG (Agent AM): core 1 draws whole lit world surfaces while core 0
+    # scans the edges, and both share each flush's surfaces (exact)
+    option(QOG_BOARD_DRAWCORE1 "with CORE1, the world's lit surfaces drawn by both cores during the edge scan (exact)" ON)
+    if(QOG_BOARD_CORE1 AND QOG_BOARD_DRAWCORE1)
+        list(APPEND _cl_defs QOG_DRAW_CORE1)       # d_edge.c, d_core1.c, r_edge.c
+    endif()
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
     endif()
