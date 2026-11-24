@@ -246,7 +246,8 @@ if(QOG_SPLIT)
         QOG_CL_ENTSLOTS=600             # client entities only for the numbers in use (exact), at most id's MAX_EDICTS
         QOG_CL_ENTBLOCK=16              #   from the hunk in blocks of 16 as the level uses them
         QOG_CON_PRINTTEXT               # the renderer's bmodel warning prints without a 4 KB stack buffer (exact)
-        QOG_DLIGHT_SURFS=512            # lit surface hash of 512 (game 1024), overflow falls back to id's tree walk (exact)
+        QOG_DLIGHT_SURFS=256            # lit surface hash of 256 as the demo player (game 1024), overflow falls back to id's tree walk (exact, slower)
+        QOG_VID_NO_8TO16                # the unused 16-bit palette table in flash (vid.h)
         QOG_CVAR_LITERAL                # cvar values stay at their initial strings in flash until changed, not in the zone
         QOG_LINK_SCRATCH                # the link's two 1 KB rings in scratch X below core 1's stack
         QOG_KEYLINES_SCRATCH            # the console's 2 KB command history in scratch Y below the boot stack
@@ -299,7 +300,7 @@ if(QOG_SPLIT)
     get_target_property(_disp_libs quake_display LINK_LIBRARIES)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
-    set(QOG_CL_HUNK_KB 115 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl for e3m5 with a fight, a save and a load (E1M1 97)")
+    set(QOG_CL_HUNK_KB 68 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl with the board client flags for E1M1 with a fight, a save and a load (e3m5 79, Agent S)")
     set(QOG_CL_STACK_KB 34 CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
     get_target_property(_disp_defs quake_display COMPILE_DEFINITIONS)
     list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")

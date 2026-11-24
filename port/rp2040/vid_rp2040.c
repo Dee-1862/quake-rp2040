@@ -32,7 +32,11 @@
 #define ZBUFFER_BYTES   (ZW * ZH * (int)sizeof(d_zval_t))
 
 viddef_t vid;
+#ifdef QOG_VID_NO_8TO16
+const unsigned short d_8to16table[256];   /* QuakeOG (Agent S): see vid.h */
+#else
 unsigned short d_8to16table[256];
+#endif
 unsigned d_8to24table[256];
 
 #ifdef QOG_HUD_IN_ZBUFFER
