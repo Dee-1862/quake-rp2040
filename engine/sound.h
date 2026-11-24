@@ -147,8 +147,20 @@ void SNDDMA_Shutdown(void);
 // User-setable variables
 // ====================================================================
 
+#ifdef QOG_MAX_CHANNELS
+#define	MAX_CHANNELS			QOG_MAX_CHANNELS	// QuakeOG: 12 plus the static sounds a map may have
+#else
 #define	MAX_CHANNELS			128
+#endif
 #define	MAX_DYNAMIC_CHANNELS	8
+
+#ifdef QOG_SND_HOSTMEM
+// QuakeOG (Agent W): the paint buffer (512 pairs, only used while
+// S_PaintChannels runs) and known_sfx (QOG_MAX_SFX entries) come from the
+// port's memory, not the hunk (port/common/qog_snd_host.c)
+void	*qog_snd_host_paintbuffer (void);
+sfx_t	*qog_snd_host_sfxtable (void);
+#endif
 
 #ifdef QOG_SND_HASH
 // QuakeOG (Agent W): a hash of every painted sample pair and every byte or

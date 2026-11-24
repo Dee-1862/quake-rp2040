@@ -7,9 +7,15 @@
  * GetSoundtime takes id's own path for such outputs (QOG_SND_GETSAMPLES).
  * Submit sends what the mixer wrote since the last one to the client.
  *
- * On the main chip the ring lives in the SCRATCH_Y bank (QOG_SND_RING_SCRATCH):
- * the server runs on its own stack array, so the bank holds only the boot
- * stack, which main() leaves for good before the game starts.
+ * Memory (QOG_SND_HOSTMEM): the paint buffer and the ring hold samples only
+ * while one S_Update_ runs (S_PaintChannels clears the paint buffer before
+ * it paints, and Submit sends everything the ring got), so nothing in them
+ * has to last. On the main chip (QOG_SND_BOARDMEM) they are the lowest
+ * QOG_SND_SCRATCH bytes of the server's stack array: the mixer runs only
+ * from the link's items, between server frames, where the stack is a few KB
+ * deep, and interrupts have their own stack. known_sfx, which lasts, takes
+ * the free half of the SCRATCH_Y bank (the other half is the interrupt
+ * stack).
  */
 #include "quakedef.h"
 #include "net_link.h"
@@ -17,15 +23,27 @@
 
 #ifdef QOG_SND_HOST
 
-#ifdef QOG_SND_RING_SCRATCH
-#define SND_RING_PLACE __attribute__((section(".scratch_y.qog_snd")))
-#else
-#define SND_RING_PLACE
-#endif
-
 extern int	soundtime;		/* snd_dma.c */
 
-static unsigned char	s_ring[QOG_SND_RING] SND_RING_PLACE;
+#ifdef QOG_SND_BOARDMEM
+extern unsigned char	*qog_stack_bottom;		/* port/rp2040/sys_rp2040.c */
+#define s_paint	((void *)qog_stack_bottom)
+#define s_ring	(qog_stack_bottom + QOG_SND_PAINT)
+static sfx_t			s_sfx[QOG_MAX_SFX] __attribute__((section(".scratch_y.qog_snd")));
+#else
+static int				s_paintmem[QOG_SND_PAINT / sizeof(int)];
+#define s_paint	((void *)s_paintmem)
+static unsigned char	s_ring[QOG_SND_RING];
+#ifdef QOG_SND_HOSTMEM
+static sfx_t			s_sfx[QOG_MAX_SFX];
+#endif
+#endif
+
+#ifdef QOG_SND_HOSTMEM
+void *qog_snd_host_paintbuffer(void) { return s_paint; }
+sfx_t *qog_snd_host_sfxtable(void) { return s_sfx; }
+#endif
+
 static unsigned		s_pos;		/* the client's play position */
 static int			s_sent;		/* the mixer's time up to which samples were sent */
 int					qog_snd_host_submitted;

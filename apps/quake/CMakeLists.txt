@@ -330,7 +330,9 @@ if(QOG_SPLIT)
             QOG_SND_GETSAMPLES          # id's GetSoundtime path for an output that counts its samples
             QOG_SFX_NAMEPTR             # sound names point into the pack directory in flash (8 bytes a sound, id 68)
             QOG_MAX_SFX=256             # the registered game has 225 sound files (id 512)
-            QOG_SND_RING_SCRATCH)       # the 2 KB output ring in SCRATCH_Y, free once the server runs on its own stack
+            QOG_MAX_CHANNELS=104        # 12 plus static sounds, the whole game uses at most 99 (e2m6), id 128
+            QOG_SND_HOSTMEM             # paint buffer and known_sfx from qog_snd_host.c, not the hunk
+            QOG_SND_BOARDMEM)           # paint buffer and ring at the bottom of the server's stack between frames, known_sfx in SCRATCH_Y
     endif()
     add_library(qog_engine_sv STATIC EXCLUDE_FROM_ALL ${QOG_SPLIT_SV_ENGINE} ${QOG_PROGS_AOT}
         ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common} ${_sv_sound})
@@ -364,7 +366,14 @@ if(QOG_SPLIT)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
     set(QOG_CL_HUNK_KB 68 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl with the board client flags for E1M1 with a fight, a save and a load (e3m5 79, Agent S)")
-    set(QOG_CL_STACK_KB 34 CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
+    # Agent W: with sound the client gives 2 KB of its stack to the speaker's ring
+    # (the board's watermark had 5.4 KB spare, the sound exchange adds about 1.1 KB)
+    if(QOG_SOUND)
+        set(_cl_stack_default 32)
+    else()
+        set(_cl_stack_default 34)
+    endif()
+    set(QOG_CL_STACK_KB ${_cl_stack_default} CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
     get_target_property(_disp_defs quake_display COMPILE_DEFINITIONS)
     list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")
     list(TRANSFORM _disp_defs REPLACE "^QOG_STACK_KB=[0-9]+$" "QOG_STACK_KB=${QOG_CL_STACK_KB}")

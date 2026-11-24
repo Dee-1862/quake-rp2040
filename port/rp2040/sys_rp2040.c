@@ -446,6 +446,15 @@ double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
    frame on the link, kicking the watchdog while it waits. */
 #ifdef QOG_STACK_KB
 static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
+#ifdef QOG_SND_BOARDMEM
+/* Agent W: the mixer's paint buffer and ring are the stack's lowest
+   QOG_SND_SCRATCH bytes, used only between server frames when the stack is
+   shallow (port/common/qog_snd_host.c). The watermark starts above them. */
+unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
+#define SV_STACK_LOW (QOG_SND_SCRATCH / 4)
+#else
+#define SV_STACK_LOW 0
+#endif
 #ifdef QOG_GAME_PSP
 /* QuakeOG: the server on the process stack, interrupts on the SDK's main
    stack, as on the display chip (see the client's run_on_stack below) */
@@ -463,12 +472,12 @@ static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, v
 static void stack_fill(void) {
     uint32_t *sp;
     __asm volatile ("mov %0, sp" : "=r" (sp));
-    for (uint32_t *p = s_stack; p < sp - 16; p++) *p = STACK_MARK;
+    for (uint32_t *p = s_stack + SV_STACK_LOW; p < sp - 16; p++) *p = STACK_MARK;
 }
 uint32_t qog_stack_free(void) {
-    const uint32_t *p = s_stack;
+    const uint32_t *p = s_stack + SV_STACK_LOW;
     while (p < s_stack + sizeof s_stack / sizeof s_stack[0] && *p == STACK_MARK) p++;
-    return (uint32_t)((const uint8_t *)p - (const uint8_t *)s_stack);
+    return (uint32_t)((const uint8_t *)p - (const uint8_t *)(s_stack + SV_STACK_LOW));
 }
 #endif
 #endif

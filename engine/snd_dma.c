@@ -85,7 +85,7 @@ int			num_sfx;
 sfx_t		*ambient_sfx[NUM_AMBIENTS];
 
 #ifdef QOG_SFX_NAMEPTR
-#define	SND_NAMEPOOL	512		// QuakeOG: names of sounds no mapped pack has (S_KeepName)
+#define	SND_NAMEPOOL	128		// QuakeOG: names of sounds no mapped pack has (S_KeepName), about 6
 static char	*snd_namepool;
 static int	snd_namepoolused;
 #endif
@@ -220,7 +220,11 @@ void S_Init (void)
 #endif
 	{
 	channels = Hunk_AllocName (MAX_CHANNELS * sizeof(channel_t), "channels");
+#ifdef QOG_SND_HOSTMEM
+	paintbuffer = qog_snd_host_paintbuffer ();	// QuakeOG (Agent W)
+#else
 	paintbuffer = Hunk_AllocName (512 * sizeof(portable_samplepair_t), "paintbuf");
+#endif
 	}
 #endif
 
@@ -262,7 +266,11 @@ void S_Init (void)
 
 	SND_InitScaletable ();
 
+#ifdef QOG_SND_HOSTMEM
+	known_sfx = qog_snd_host_sfxtable ();	// QuakeOG (Agent W): MAX_SFX entries
+#else
 	known_sfx = Hunk_AllocName (MAX_SFX*sizeof(sfx_t), "sfx_t");
+#endif
 	num_sfx = 0;
 #ifdef QOG_SFX_NAMEPTR
 	snd_namepool = Hunk_AllocName (SND_NAMEPOOL, "sfxnames");

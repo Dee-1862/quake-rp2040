@@ -21,6 +21,10 @@
 #if QOG_SND_RING & (QOG_SND_RING - 1)
 #error QOG_SND_RING must be a power of two
 #endif
+/* the server half's paint buffer (id's 512 pairs) and ring, which hold
+   samples only while one update runs (port/common/qog_snd_host.c) */
+#define QOG_SND_PAINT   (512 * 8)
+#define QOG_SND_SCRATCH (QOG_SND_PAINT + QOG_SND_RING)
 
 /* ---- the client half's output, supplied by the port ---- */
 int      qog_snd_out_init(void);            /* 0: no output, sound stays off */
