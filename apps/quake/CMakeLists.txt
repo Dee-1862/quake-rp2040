@@ -229,6 +229,14 @@ if(QOG_SPLIT)
         ${QOG_ROOT}/port/common/qog_link.c
         ${QOG_ROOT}/port/common/qog_mem.c
         ${QOG_ROOT}/port/common/qog_rand.c)
+    # QuakeOG (Agent V): both halves print where the frame time goes over USB
+    # every 2 s (engine/qog_phase.h, port/rp2040/sys_rp2040.c). The client
+    # prints "[time cl]" lines, the server "[time sv]". About 2,000 timer
+    # reads and three span list walks a frame, 160 bytes of RAM per half.
+    option(QOG_BOARD_TIMING "both halves print frame phase times over USB every 2 s" ON)
+    if(QOG_BOARD_TIMING)
+        list(APPEND _split_common ${QOG_ROOT}/port/common/qog_phase.c)
+    endif()
 
     # client half: no server, QuakeC or edicts
     set(_cl_src ${_split_src})
@@ -268,6 +276,22 @@ if(QOG_SPLIT)
         QOG_CL_PRECACHE_SV              # model and sound precache tables of the server half's sizes (208 and 176)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
         QOG_CMD_ARGV_ARENA=640)         # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+    # QuakeOG (Agent V): speed, board client only (docs/changes.md)
+    option(QOG_BOARD_LOCKWAIT "the next frame's input, link and parsing run during the LCD scanout (exact)" ON)
+    option(QOG_BOARD_CORE1 "the display chip's second core draws half of the lit spans (exact)" ON)
+    option(QOG_BOARD_PIPELINE "the client draws a frame while the server half runs the next one" ON)
+    if(QOG_BOARD_LOCKWAIT)
+        list(APPEND _cl_defs QOG_VID_LOCKWAIT)     # VID_Update does not wait, VID_LockBuffer does (vid_rp2040.c)
+    endif()
+    if(QOG_BOARD_CORE1)
+        list(APPEND _cl_defs QOG_SPANS_CORE1)      # every second span of a lit surface on core 1 (d_scanlit.c)
+    endif()
+    if(QOG_BOARD_PIPELINE)
+        list(APPEND _cl_defs QOG_LINK_PIPELINE)    # a frame's screen update runs while the server half runs the next frame (host.c)
+    endif()
+    if(QOG_BOARD_TIMING)
+        list(APPEND _cl_defs QOG_PHASE_TIME)
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer
@@ -285,6 +309,9 @@ if(QOG_SPLIT)
         ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common})
     target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER
         QOG_LINK_SCRATCH)   # the link's 4 KB of rings in SCRATCH_X, unused on main (Agent T)
+    if(QOG_BOARD_TIMING)
+        target_compile_definitions(qog_engine_sv PUBLIC QOG_PHASE_TIME)   # Agent V
+    endif()
 
     foreach(_lib qog_engine_cl qog_engine_sv)
         # both ends of the link use the same frame size: 512-byte frames

@@ -168,6 +168,32 @@ void Cbuf_InsertText (char *text)
 	}
 }
 
+#ifdef QOG_LINK_PIPELINE
+/*
+============
+Cbuf_QogIdle
+
+QuakeOG (Agent V): true when Cbuf_Execute would run nothing but a "wait"
+(the buffer is empty or its next line is the wait command), for host.c's
+pipelined frame
+============
+*/
+qboolean Cbuf_QogIdle (void)
+{
+	const char	*t = (const char *)cmd_text.data;
+	int			n = cmd_text.cursize, i = 0;
+
+	if (!n)
+		return true;
+	while (i < n && (t[i] == ' ' || t[i] == '\t'))
+		i++;
+	if (n - i < 4 || Q_strncasecmp ((char *)t + i, "wait", 4))
+		return false;
+	i += 4;
+	return i == n || t[i] == ';' || t[i] == '\n' || t[i] == '\r' || t[i] == ' ' || t[i] == '\t';
+}
+#endif
+
 /*
 ============
 Cbuf_Execute

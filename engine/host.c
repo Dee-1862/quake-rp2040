@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifdef QOG_NET_LINK
 #include "net_link.h"	// QuakeOG: the split game (net_link.c)
 #endif
+#include "qog_phase.h"	// QuakeOG (Agent V): frame phase times (QOG_PHASE_TIME)
 
 /*
 
@@ -658,25 +659,32 @@ void Host_ServerFrame (void)
 
 void Host_ServerFrame (void)
 {
-// run the world state	
+	QOG_PH_T (hp_phys);	// QuakeOG (Agent V)
+
+// run the world state
 	pr_global_struct->frametime = host_frametime;
 
 // set the time and clear the general datagram
 	SV_ClearDatagram ();
-	
+
 // check for new clients
 	SV_CheckForNewClients ();
 
 // read client messages
 	SV_RunClients ();
-	
+
 // move things around and think
 // always pause in single player if in console or menus
 	if (!sv.paused && (svs.maxclients > 1 || key_dest == key_game) )
 		SV_Physics ();
+	QOG_HP_ADD (QOG_HP_SVPHYS, hp_phys);	// QuakeOG
 
 // send all messages to the clients
+	{
+	QOG_PH_T (hp_send);	// QuakeOG
 	SV_SendClientMessages ();
+	QOG_HP_ADD (QOG_HP_SVSEND, hp_send);
+	}
 }
 
 #endif
@@ -706,19 +714,132 @@ void _Host_Frame (float time)
 		return;
 	}
 
+	{
+	QOG_PH_T (hp_wait);	// QuakeOG (Agent V)
 	Link_ServerWaitTick ();
+	QOG_HP_ADD (QOG_HP_SVWAIT, hp_wait);
+	}
 
 	Cbuf_Execute ();	// empty: the command buffer is the client's
 	NET_Poll();
 	Host_GetConsoleCommands ();
 	if (sv.active)
+	{
+		QOG_PH_T (hp_sv);	// QuakeOG
 		Host_ServerFrame ();
+		QOG_HP_ADD (QOG_HP_SVFRAME, hp_sv);
+	}
 	host_time += host_frametime;
 
 	Link_ServerFrameDone ();
 	host_framecount++;
+#ifdef QOG_PHASE_TIME
+	qog_hp_frames++;	// QuakeOG
+#endif
 }
 #else
+#ifdef QOG_LINK_PIPELINE
+/*
+==================
+QuakeOG (Agent V): the split client draws while the server half runs
+
+In id's frame the server's frame sits between the client's input and its
+screen update, so in the split game the display chip waits for the main
+chip and then the main chip waits for the display chip. With
+QOG_LINK_PIPELINE (board client only) a frame of play leaves its screen
+update (SCR_UpdateScreen, S_Update, CL_DecayLights) pending, and the next
+frame runs it right after it has sent its input to the server half
+(Link_ClientTick), so the server's frame runs on the main chip while the
+display chip draws. The order of everything the two halves exchange is
+id's: the input and the frame time of frame k+1 never depend on frame k's
+screen update, except for V_DriftPitch's change to the view angles, which
+runs at the end of frame k as in id's order, and except for console lines,
+which may read the frame (qog_shot) or change what it shows, so any line
+other than "wait" runs the pending update first. While the update runs,
+realtime, host_frametime, host_framecount, cl.viewangles and key_dest
+have the values they had at the end of frame k, so it draws the same
+picture. Only frames of play are deferred (signed on, not a demo, the game
+keys, no intermission or pause, no loading plaque).
+==================
+*/
+extern qboolean	scr_drawloading, scr_initialized;	// screen.c
+void V_DriftPitch (void);
+qboolean Cbuf_QogIdle (void);	// cmd.c
+extern qboolean	v_qog_drifted;	// view.c: V_CalcRefdef skips V_DriftPitch
+unsigned	host_qog_pipelined;	// frames whose screen update ran while the server half ran
+
+static qboolean	pl_pending;
+static double	pl_realtime, pl_frametime;
+static vec3_t	pl_viewangles;
+static int		pl_framecount;
+static keydest_t	pl_keydest;
+
+static qboolean Host_PipelineCan (void)
+{
+	return cls.state == ca_connected && cls.signon == SIGNONS && cl.worldmodel && sv.active
+		&& !cls.demoplayback && !cls.timedemo && key_dest == key_game
+		&& !cl.intermission && !cl.paused && !host_speeds.value
+		&& !scr_skipupdate && !block_drawing && !scr_disabled_for_loading && !scr_drawloading
+		&& scr_initialized && con_initialized;
+}
+
+// the end of frame k when its screen update waits: what id's update would
+// have changed that frame k+1's input reads (V_CalcRefdef's pitch drift)
+static void Host_PipelineDefer (void)
+{
+	V_DriftPitch ();
+	pl_realtime = realtime;
+	pl_frametime = host_frametime;
+	VectorCopy (cl.viewangles, pl_viewangles);
+	pl_framecount = host_framecount;
+	pl_keydest = key_dest;
+	pl_pending = true;
+}
+
+// frame k's screen update, sound and light decay, as at the end of frame k
+static void Host_PipelineFlush (void)
+{
+	double		rt, ft;
+	vec3_t		va;
+	int			fc;
+	keydest_t	kd;
+
+	if (!pl_pending)
+		return;
+	pl_pending = false;
+	rt = realtime;
+	ft = host_frametime;
+	VectorCopy (cl.viewangles, va);
+	fc = host_framecount;
+	kd = key_dest;
+	realtime = pl_realtime;
+	host_frametime = pl_frametime;
+	VectorCopy (pl_viewangles, cl.viewangles);
+	host_framecount = pl_framecount;
+	key_dest = pl_keydest;
+	v_qog_drifted = true;
+	{
+	QOG_PH_T (hp_scr);
+	SCR_UpdateScreen ();
+	QOG_HP_ADD (QOG_HP_SCREEN, hp_scr);
+	}
+	{
+	QOG_PH_T (hp_snd);
+	S_Update (r_origin, vpn, vright, vup);	// signed on: Host_PipelineCan
+	CL_DecayLights ();
+	CDAudio_Update();
+	QOG_HP_ADD (QOG_HP_SOUND, hp_snd);
+	}
+	v_qog_drifted = false;
+	realtime = rt;
+	host_frametime = ft;
+	VectorCopy (va, cl.viewangles);
+	host_framecount = fc;
+	key_dest = kd;
+	host_qog_pipelined++;
+}
+#endif	// QOG_LINK_PIPELINE
+
 void _Host_Frame (float time)
 {
 	static double		time1 = 0;
@@ -727,20 +848,34 @@ void _Host_Frame (float time)
 	int			pass1, pass2, pass3;
 
 	if (setjmp (host_abortserver) )
+	{
+#ifdef QOG_LINK_PIPELINE
+		pl_pending = false;	// QuakeOG: the frame it was for is gone
+#endif
 		return;			// something bad happened, or the server disconnected
+	}
 
 // keep the random time dependent
 	rand ();
-	
+
 // decide the simulation time
 	if (!Host_FilterTime (time))
 		return;			// don't run too fast, or packets will flood out
-		
+
+	{
+	QOG_PH_T (hp_frame);	// QuakeOG (Agent V): frame phase times
+	QOG_PH_T (hp_in);
+
 // get new key events
 	Sys_SendKeyEvents ();
 
 // allow mice or other external controllers to add commands
 	IN_Commands ();
+
+#ifdef QOG_LINK_PIPELINE
+	if (!Cbuf_QogIdle ())
+		Host_PipelineFlush ();	// QuakeOG: a console line runs after the last frame's update, as in id's order
+#endif
 
 // process console commands
 	Cbuf_Execute ();
@@ -750,7 +885,7 @@ void _Host_Frame (float time)
 // if running the server locally, make intentions now
 	if (sv.active)
 		CL_SendCmd ();
-	
+
 //-------------------
 //
 // server operations
@@ -759,9 +894,24 @@ void _Host_Frame (float time)
 
 // check for commands typed to the host
 	Host_GetConsoleCommands ();
+	QOG_HP_ADD (QOG_HP_INPUT, hp_in);	// QuakeOG
 
 #ifdef QOG_SPLIT_CLIENT
+#ifdef QOG_LINK_PIPELINE
+	Link_ClientTick ();		// QuakeOG: the server half starts its frame
+	Host_PipelineFlush ();	// and the last frame's screen update runs meanwhile
+	{
+	QOG_PH_T (hp_link);
+	Link_ClientDone ();
+	QOG_HP_ADD (QOG_HP_LINK, hp_link);
+	}
+#else
+	{
+	QOG_PH_T (hp_link);	// QuakeOG
 	Link_ClientFrame ();	// QuakeOG: the server half runs its frame here (net_link.c)
+	QOG_HP_ADD (QOG_HP_LINK, hp_link);
+	}
+#endif
 #else
 	if (sv.active)
 		Host_ServerFrame ();
@@ -783,18 +933,32 @@ void _Host_Frame (float time)
 // fetch results from server
 	if (cls.state == ca_connected)
 	{
+		QOG_PH_T (hp_read);	// QuakeOG
 		CL_ReadFromServer ();
+		QOG_HP_ADD (QOG_HP_READ, hp_read);
 	}
 
+#ifdef QOG_LINK_PIPELINE
+	if (Host_PipelineCan ())
+		Host_PipelineDefer ();	// QuakeOG: drawn while the server half runs the next frame
+	else
+#endif
+	{
 // update video
 	if (host_speeds.value)
 		time1 = Sys_FloatTime ();
-		
+
+	{
+	QOG_PH_T (hp_scr);	// QuakeOG
 	SCR_UpdateScreen ();
+	QOG_HP_ADD (QOG_HP_SCREEN, hp_scr);
+	}
 
 	if (host_speeds.value)
 		time2 = Sys_FloatTime ();
-		
+
+	{
+	QOG_PH_T (hp_snd);	// QuakeOG
 // update audio
 	if (cls.signon == SIGNONS)
 	{
@@ -803,8 +967,10 @@ void _Host_Frame (float time)
 	}
 	else
 		S_Update (vec3_origin, vec3_origin, vec3_origin, vec3_origin);
-	
+
 	CDAudio_Update();
+	QOG_HP_ADD (QOG_HP_SOUND, hp_snd);
+	}
 
 	if (host_speeds.value)
 	{
@@ -815,8 +981,14 @@ void _Host_Frame (float time)
 		Con_Printf ("%3i tot %3i server %3i gfx %3i snd\n",
 					pass1+pass2+pass3, pass1, pass2, pass3);
 	}
-	
+	}
+
 	host_framecount++;
+	QOG_HP_ADD (QOG_HP_FRAME, hp_frame);	// QuakeOG
+#ifdef QOG_PHASE_TIME
+	qog_hp_frames++;
+#endif
+	}
 }
 #endif	// QOG_SPLIT_SERVER
 

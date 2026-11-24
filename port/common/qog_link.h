@@ -84,6 +84,11 @@ int  qog_link_avail(void);
 void qog_link_pump(void);
 /* Pump until every written byte is acknowledged. */
 void qog_link_drain(void);
+#ifdef QOG_LINK_PIPELINE
+/* QuakeOG (Agent V): pump until every written byte has gone out in a frame
+   (the last frame may still wait for its acknowledgement). */
+void qog_link_push(void);
+#endif
 /* Set when the peer started a new session (it restarted). The caller clears it. */
 extern int qog_link_peer_restarted;
 /* QuakeOG (Agent T): send one frame of a side type (0x44-0x4F) now, and the

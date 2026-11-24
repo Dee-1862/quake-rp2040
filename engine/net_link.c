@@ -324,6 +324,12 @@ static void Link_Stats_f (void)
 	Con_Printf ("link: wire tx %u rx %u, stream tx %u rx %u, frames tx %u rx %u, resends %u dups %u crc drops %u full drops %u sessions %u, waited %.2f s\n",
 		s->wire_tx, s->wire_rx, s->data_tx, s->data_rx, s->frames_tx, s->frames_rx,
 		s->resends, s->dups, s->crc_drops, s->full_drops, s->sessions, ls_wait);
+#if defined(QOG_LINK_PIPELINE) && defined(QOG_SPLIT_CLIENT)
+	{
+		extern unsigned	host_qog_pipelined;	// host.c
+		Con_Printf ("link: %u frames drawn while the server half ran its next frame\n", host_qog_pipelined);
+	}
+#endif
 }
 
 //=============================================================================
@@ -482,12 +488,9 @@ static void Link_ClientWait (int endkind)
 	}
 }
 
-void Link_ClientFrame (void)
+static void Link_ClientStats (void)
 {
 	unsigned	c2s, s2c;
-
-	Link_Item (LK_TICK, NULL, 0);
-	Link_ClientWait (LK_DONE);
 
 	c2s = qog_link_stats.wire_tx - ls_last_tx;
 	s2c = qog_link_stats.wire_rx - ls_last_rx;
@@ -513,6 +516,32 @@ void Link_ClientFrame (void)
 	}
 	ls_signed = cls.signon == SIGNONS;
 }
+
+void Link_ClientFrame (void)
+{
+	Link_Item (LK_TICK, NULL, 0);
+	Link_ClientWait (LK_DONE);
+	Link_ClientStats ();
+}
+
+#ifdef QOG_LINK_PIPELINE
+// QuakeOG (Agent V): Link_ClientFrame in two halves for host.c's pipelined
+// frame. The tick goes onto the wire at once, so the server half starts its
+// frame while this half draws the last one, then the client waits for the
+// answer as Link_ClientFrame does. No other exchange may start in between.
+void Link_ClientTick (void)
+{
+	Link_Item (LK_TICK, NULL, 0);
+	qog_link_push ();
+	link_waiting = true;
+}
+
+void Link_ClientDone (void)
+{
+	Link_ClientWait (LK_DONE);
+	Link_ClientStats ();
+}
+#endif
 
 void Link_ForwardCommand (char *text)
 {
