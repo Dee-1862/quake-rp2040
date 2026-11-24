@@ -74,6 +74,12 @@ void D_DrawSpans8 (espan_t *pspans);
 // QuakeOG: surface-cache-free world drawing (d_scanlit.c)
 void D_SetupLitSurface (msurface_t *pface, int mip);
 void D_DrawSpans8Lit (espan_t *pspans);
+#ifdef QOG_SPANS_CORE1
+// QuakeOG (Agent V): the port runs fn (arg) on the display chip's second
+// core and Join waits for it (d_scanlit.c, vid_rp2040.c, vid_pc.c)
+void Sys_QogCore1Start (void (*fn) (void *), void *arg);
+void Sys_QogCore1Join (void);
+#endif
 void D_DrawSpans16 (espan_t *pspans);
 void D_DrawZSpans (espan_t *pspans);
 void Turbulent8 (espan_t *pspan);

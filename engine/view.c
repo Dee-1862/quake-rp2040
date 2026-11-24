@@ -861,6 +861,10 @@ V_CalcRefdef
 
 ==================
 */
+#ifdef QOG_LINK_PIPELINE
+qboolean	v_qog_drifted;	// QuakeOG (Agent V): host.c ran V_DriftPitch at the frame's end
+#endif
+
 void V_CalcRefdef (void)
 {
 	entity_t	*ent, *view;
@@ -870,6 +874,9 @@ void V_CalcRefdef (void)
 	float		bob;
 	static float oldz = 0;
 
+#ifdef QOG_LINK_PIPELINE
+	if (!v_qog_drifted)
+#endif
 	V_DriftPitch ();
 
 // ent is the player model (visible when out of body)

@@ -48,6 +48,27 @@ See the GNU General Public License for more details.
 #include "qog_aim.h"
 #endif
 #include "qog_flashmap.h"
+#include "qog_phase.h"
+
+#ifdef QOG_PHASE_TIME
+/* QuakeOG (Agent V): where the frame time goes, over USB every 2 s
+   (engine/qog_phase.h, apps/quake QOG_BOARD_TIMING). Called from the main
+   loop, between frames, where the stack is nearly empty. */
+static void board_print(char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);      /* DIAG is printf to USB CDC */
+    va_end(ap);
+}
+
+static void board_timing(const char *who) {
+    static uint32_t last;
+    uint32_t now = time_us_32();
+    if (now - last < 2000000u) return;
+    qog_phase_board_report(board_print, who, now - last);
+    last = now;
+}
+#endif
 
 #ifdef QOG_SYS_MAIN
 #define QOG_SYS_DATA_ADDR	QOG_MAIN_DATA_XIP_ADDR
@@ -460,6 +481,9 @@ static void __attribute__((noreturn)) server_main(void) {
         qog_progress++;
 #endif
         Host_Frame(0.0f);       /* the client half sets the frame time */
+#ifdef QOG_PHASE_TIME
+        board_timing("sv");
+#endif
     }
 }
 
@@ -565,6 +589,9 @@ int main(void) {
         if (dt < 1.0 / 72.0) continue;   /* see port/pc/sys_pc.c: id calls rand() per call */
         qog_aim_update(newtime);
         Host_Frame((float)dt);
+#ifdef QOG_PHASE_TIME
+        board_timing("cl");
+#endif
         if (!frame && host_framecount >= 1) { frame = 1; qog_aim_apply_defaults(); }
         oldtime = newtime;
     }

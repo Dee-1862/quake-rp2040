@@ -56,6 +56,13 @@ bool qog_video_busy(void);
  * Phase 5). Must return quickly: one line is ~100 us on the wire. */
 void qog_video_set_core1_hook(void (*fn)(void));
 
+/* QuakeOG (Agent V): run fn(arg) on core 1, which takes it between
+ * scanouts (at once when none is in flight), and wait for it to finish.
+ * One job at a time: join before the next start. Core 1 runs on the SDK's
+ * 2 KB core 1 stack, so the job must be shallow. */
+void qog_video_core1_start(void (*fn)(void *), void *arg);
+void qog_video_core1_join(void);
+
 qog_video_stats_t qog_video_stats(void);
 
 /* Pure, host-testable: fill map[0..out_n) with the source index for each

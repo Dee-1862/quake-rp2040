@@ -130,6 +130,74 @@ static void D_QogCountLit (espan_t *pspan, int any)
 }
 #endif
 
+#ifdef QOG_SPANS_CORE1
+/*
+=============
+QuakeOG (Agent V): the display chip's second core draws half of each lit
+surface's spans (QOG_SPANS_CORE1, board client only, exact). Core 0 sets
+the surface up (D_SetupLitSurface, D_CalcGradients) as before, then core 1
+draws the 2nd, 4th, 6th ... span of the list while core 0 draws the 1st,
+3rd, 5th ..., and core 0 waits for core 1 before the next surface. A span
+writes only its own pixels and z, and the drawer only reads the surface's
+state (the lit_* values, the gradients, the light grid), which nothing
+changes until both cores are done, so the picture is the same in any
+order. The port runs the other half: core 1 on the board (vid_rp2040.c),
+a second thread or the same thread before or after on the PC (vid_pc.c).
+=============
+*/
+static int D_QogSpanStep (espan_t **pp, int step)
+{
+	espan_t	*p = *pp;
+
+	do
+	{
+		if (p->pnext == SPAN_NONE)
+			return 0;
+		p = SPAN_PTR (p->pnext);
+	} while (--step > 0);
+	*pp = p;
+	return 1;
+}
+
+#undef LITSPAN_NEXT
+#define LITSPAN_NEXT(p)	D_QogSpanStep (&(p), step)
+
+// the drawer below, on every step-th span from pspan
+static void D_DrawSpans8LitStep (espan_t *pspan, int step)
+{
+#if defined(QOG_LITSPAN16) && defined(QOG_LITSPAN_LINLIGHT)
+	D_LITSPANS16LIN_BODY
+#elif defined(QOG_LITSPAN16)
+	D_LITSPANS16_BODY
+#elif defined(QOG_LITSPAN_LINLIGHT)
+	D_LITSPANS8LIN_BODY
+#else
+	D_LITSPANS8_BODY
+#endif
+}
+
+static void D_QogSpansCore1 (void *pspan)
+{
+	D_DrawSpans8LitStep ((espan_t *)pspan, 2);
+}
+
+void D_DrawSpans8Lit (espan_t *pspan)
+{
+#ifdef QOG_PHASE_TIME
+	D_QogCountLit (pspan, lit_kind == 4);
+#endif
+	if (pspan->pnext == SPAN_NONE)
+	{
+		D_DrawSpans8LitStep (pspan, 1);
+		return;
+	}
+	Sys_QogCore1Start (D_QogSpansCore1, SPAN_PTR (pspan->pnext));
+	D_DrawSpans8LitStep (pspan, 2);
+	Sys_QogCore1Join ();
+}
+
+#else	// !QOG_SPANS_CORE1
+
 void D_DrawSpans8Lit (espan_t *pspan)
 {
 #ifdef QOG_PHASE_TIME
@@ -147,6 +215,7 @@ void D_DrawSpans8Lit (espan_t *pspan)
 #endif
 	}
 }
+#endif	// QOG_SPANS_CORE1
 
 #else	// !QOG_LITSPAN_FAST
 

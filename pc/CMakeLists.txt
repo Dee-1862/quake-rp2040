@@ -278,6 +278,7 @@ add_executable(quakeog_sv
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_rand.c
     ${ROOT}/port/pc/tour_pc.c          # the level tour runs on the server half (Agent S, QOG_SPLIT_TOUR)
+    ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_SV_EXTRA (Agent V)
     ${QOG_BSP_LINK})
 set(QOG_SPLIT_SV_DEFS ${QOG_SPLIT_DEFS})
 list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
@@ -299,6 +300,7 @@ add_executable(quakeog_cl
     ${ROOT}/port/common/qog_aim.c
     ${ROOT}/port/common/qog_rand.c
     ${ROOT}/platform/qog_input.c
+    ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_CL_EXTRA (Agent V)
     ${QOG_BSP_LINK})
 target_compile_definitions(quakeog_cl PRIVATE ${QOG_SPLIT_DEFS} QOG_NET_LINK QOG_SPLIT_CLIENT ${QOG_SPLIT_CL_EXTRA})
 
