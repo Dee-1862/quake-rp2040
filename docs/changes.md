@@ -2,6 +2,55 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Fast render mode and single precision front end math (Agent AA, PC and ARM build, registered data)
+
+The user asked for a picture that loses a little, like MG24Quake's, but where the loss is hard to see. The board client now has a render mode switch, the `r_fast` cvar (archived), shown in the board Options menu as `Render  Exact / Fast` (engine/menu.c, item 20, left, right or gray toggles it). It is 1 by default on the board client (`QOG_BOARD_FAST`, on, adds `QOG_RFAST QOG_RFAST_ON` to the client's flags) and 0 in every other build. `r_fast 0` draws exactly what main draws. Nothing ran on hardware. The board savings below are estimates from the generated Thumb code and the PC's work counts, the lead measures them.
+
+| Item | Where | Kind | Pixels changed (121 shots, view rows) | Estimated board saving per view at 250 MHz |
+| --- | --- | --- | ---: | --- |
+| a. Perspective divide every 8, 16 or 32 pixels: before each sub-span the drawer takes the longest one over which 1/z changes by at most 8% (`LITSPAN_FAST_ZREL`). Floors and ceilings (1/z constant along a row) and walls seen straight on take 32, walls at a steep angle close by keep 8 | engine/d_litspan.h `D_LITSPANS_FAST_BODY` | approximate | 1.49% alone (fixed 32 as MG24Quake: 14.3%, worst frame 38%. Fixed 16: 6.1%) | E1M1 fly-through: 3,866 sub-spans a view instead of 6,815 runs of 8, about 560 cycles each, less 140 cycles a span for the last sub-span's multiply. About 1.4 M cycles |
+| b. Light blended exactly at both ends of each run of 8 and stepped linearly between (`QOG_LITSPAN_LINLIGHT`'s one-pass run). Textures of other sizes keep the exact light | same | approximate | 1.28% alone (runs of 16: 4.2% together with a and d) | pixel loop 21 instructions (objdump) against the exact two passes of 37 + 14, about 25 cycles a pixel with the blends, about 1.2 M cycles |
+| c. `QOG_FLOAT_EXACT`: single precision where id wrote double but the float result is provably the same. R_EmitEdge's near clip compare (`x < 0.01` is `x <= (float)0.01`) and ceil (ceilf), R_RecursiveWorldNode's plane distances (only signs and compares with 0 or `(float)BACKFACE_EPSILON`), D_PolysetCalcGradients' ceil, FloorDivMod on the ints themselves in D_PolysetSetUpForLineScan, `1.0 / x` stored in a float in r_draw.c, r_alias.c and d_part.c (GCC already emitted a float divide there, MSVC did not) | engine/mathlib.h (QOG_FRECIP, QOG_CEILF), r_draw.c, r_bsp.c, r_alias.c, d_polyse.c, d_part.c | exact, both modes | 0, hashes identical | objdump: R_EmitEdge and R_RecursiveWorldNode now call no double routine (they called 4 f2d, 2 d2iz, 2 dcmp, 2 ceil, and 7 f2d, 2 dsub, 5 dcmp). Per fly-through view 588 ceils, 722 near clip compares, 1,112 frustum plane tests, 180 node sides: about 0.17 M cycles, 0.7 ms world. Alias: about 25 FloorDivMod calls a view at about 800 cycles, 0.1 ms vmodel |
+| d. 0x10000 / zi from the integer divider: the mantissa's top 16 bits into 2^32 - 1, the exponent set directly, about 16 good bits (`litspan_frecip`). Zero, negative, tiny and huge values take the float divide | engine/d_litspan.h | approximate | 0.06% alone | a float divide (about 100 cycles) becomes about 50, at every sub-span and span start, about 0.3 M cycles |
+| All of a, b, d (the shipped Fast mode) | | | **2.76%**, worst frame d_demo3_15 9.2% | about 2.9 M cycles a view of span work on the two cores: 11.6 ms of CPU, so spans 30.7 ms falls by about 6 ms (compute only) to about 9.5 ms (if the memory stalls shrink with the work), to roughly 21 to 25 ms |
+
+Frame estimate with Fast on: 95.9 ms becomes about 85 to 89 ms, 11.2 to 11.8 fps. The picture loss: the changed pixels are texels moved by one at sub-span joins and light steps of one colormap row, the largest colour step 248 is one texel shifted on a high contrast edge. Side by side the frames look the same (`fast` folder below).
+
+Variants measured on the PC (each its own build, `-DQOG_PC_EXTRA_DEFS`, 113 qogtest_d_shots frames and the 8 qogtest_f_hash shots against main):
+
+| Build | Pixels changed | Worst frame |
+| --- | ---: | --- |
+| linear light runs of 8 only | 1.28% | d_spawn_e3m3 5.2% |
+| integer reciprocal only | 0.06% | f_e4m3 0.38% |
+| adaptive 8/16/32, ZREL 0.08, only | 1.49% | d_demo1_12 9.0% |
+| fixed 16 | 6.14% | d_demo3_06 21% |
+| fixed 32 (MG24Quake) | 14.27% | d_demo3_06 38% |
+| shipped: adaptive 0.08, light runs of 8, reciprocal | 2.76% | d_demo3_15 9.2% |
+| ZREL 0.04 (4,505 sub-spans a view, not 3,866) | 1.84% | d_demo3_19 7.3% |
+| ZREL 0.15 (3,166 sub-spans a view) | 6.51% | d_demo3_15 24% |
+| light runs of 16 | 4.17% | d_demo3_15 12.6% |
+| light runs of 32 | 6.59% | d_demo3_19 19.6% |
+
+`LITSPAN_FAST_ZREL`, `LITSPAN_FAST_LRUN` (0 keeps the exact light), `LITSPAN_FAST_SUB` and `LITSPAN_FAST_RECIP` are compile-time knobs in d_litspan.h.
+
+Exact mode proof (hidden, `-nosound`, `+_cl_color 0`, own folders `build-aa-pc` and `build-aa-ref`, own git-ignored `data\id1`): against an untouched build of 876d2fe, `qogtest_hash` gives `ce86f894f9de` (MD5 of its two lines), `qogtest_f_hash` 32 hashes with MD5 `e92bc9e9650d`, and the 113 `qogtest_d_shots` frames and the 8 fhash frames are byte identical. The Fast runs keep the same `qogtest_f_hash` (rendering does not touch game state). A PC build with `QOG_SPANS_CORE1` draws the same Fast frames as one without, so the second core's half is right.
+
+Code and RAM:
+- d_scanlit.c: `D_DrawSpans8LitFast` is a function of its own. Both cores pick the drawer before the call (`D_LITSTEP`), so the Fast frame (376 B) never stacks on the exact one (432 B, unchanged). Core 1's chain grows by nothing.
+- r_main.c: `r_fast` and `r_qogfast`, an int set once per view in R_RenderView_, so both cores and every surface of a view use one mode. r_local.h: two externs.
+- quake_display after merging main (c5fa930): `end` 0x2003ee74, 20 B above main's 0x2003ee60 (the cvar 24 B and the int, less padding). text 362,836 B, the Fast drawer 3.3 KB. quake_main `end` 0x2003f564, unchanged (the server half gets neither flag's code).
+- qogbench (apps/qogbench) prints a third line every 2 s for the lead: `[bench] rfast p2 exact=<us> rfast=<us> | short exact=<us> rfast=<us> | floor exact=<us> rfast=<us> | fdiv=<ns> frecip=<ns>`: the shipped exact drawer and the Fast drawer on the slanted plane, on game-like spans, on a floor seen level (where Fast takes 32), and one float divide against `litspan_frecip`.
+- `QOG_RFAST_STATS` (PC measurement only) and `qog_rfaststats` print the Fast drawer's sub-spans by length, pixels, spans and the exact drawer's runs of 8 for the same spans. `data\id1\qogtest_aa_stats.cfg` in the branch's own data folder runs it over 400 fly-through views of E1M1.
+
+Files both Agent AA and Agent Z may touch: engine/r_bsp.c (one declaration block, two compares), engine/r_draw.c (a macro after the includes and one-line edits at each reciprocal, ceil and near clip), engine/r_main.c (the cvar and one line in R_RenderView_), engine/r_local.h (two externs), engine/d_scanlit.c (the drawer choice). Each edit is a few lines.
+
+Looked at and left, or for the user to decide (ideas to get nearer 27 fps, none done):
+- A coarser mip level (id's `d_mipscale` above 1, for example 1.5 in Fast) reads fewer texture bytes from flash, which is likely where the spans' memory stalls are. Blurrier distant walls, more visible than the items above.
+- Fast mode's last sub-span of a span multiplies the gradients by its length (an int to float and three multiplies, about 140 cycles a span more than the exact drawer's cached products). A 32-entry cache costs 384 B of stack.
+- The front end (world 26.3 ms) has no cheap approximation that stays hard to see: it is the BSP walk and edge setup, whose cost is mostly memory and exact float work. That is Agent Z's field.
+- The view model (4.9 ms): an affine alias drawer is already affine. Skipping its per-vertex light or drawing it in fewer rows would show.
+- 27 fps is a frame of 37 ms. The view alone is 75.7 ms today and Fast takes about 6 to 10 ms of it. Getting there needs the front end halved as well, or a smaller picture, which the user has not approved.
+
 ## 2026-11-24: 250 MHz and 125 MHz flash for the Quake apps (Agent AB, ARM build, not run on hardware)
 
 The user approved both clock options of Agent V's table below: clk_sys 200 to 250 MHz and the QSPI flash divider 4 to 2, on both chips. They are set at run time by the two Quake apps only (port/rp2040/clock_rp2040.c, called from sys_rp2040.c right after `board_init()`). The BSP is not changed: its 200 MHz, 1.15 V and flash CLKDIV 4 stay the defaults of every other app and of the display bootloader, which must keep working at its settings because the display CPU has no BOOTSEL button. A per-target `FWOG_SYS_CLK_KHZ` would not reach `board_init()` (it is compiled once into the fwog_display_bsp and fwog_main_bsp libraries), so the apps change the clock after it.
