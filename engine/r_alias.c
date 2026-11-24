@@ -23,6 +23,41 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 #include "d_local.h"	// FIXME: shouldn't be needed (is needed for patch
 						// right now, but that should move)
+#include "r_qogalias.h"	// QuakeOG (Agent AI)
+
+#ifdef QOG_ALIAS_STATS
+// QuakeOG (Agent AI): PC measurement of the alias and particle drawers' work
+unsigned	qog_astats[2][QAS_N];
+int			qog_astat_vm;
+
+void R_QogAliasStatsView (void)
+{
+	static int		lastmodel;
+	static int		frame0;
+	int				s;
+
+	if (cl.worldmodel != (model_t *)lastmodel || r_framecount < frame0)
+	{
+		lastmodel = (int)cl.worldmodel;
+		memset (qog_astats, 0, sizeof(qog_astats));
+		frame0 = r_framecount;
+	}
+	if ((r_framecount - frame0) % 100 || r_framecount == frame0)
+		return;
+	for (s=0 ; s<2 ; s++)
+	{
+		unsigned	*a = qog_astats[s];
+
+		Con_Printf ("qog_aliasstats %s views %d check %u drawn %u trivial %u subdivm %u verts %u tris %u back %u"
+				" smooth %u zero %u tiny %u spans %u pix %u pixw %u subtri %u subcall %u subpix %u cliptri %u"
+				" parts %u partvis %u partpix %u\n",
+				s ? "vm" : "ents", r_framecount - frame0, a[QAS_CHECK], a[QAS_DRAWN], a[QAS_TRIVIAL],
+				a[QAS_SUBDIVM], a[QAS_VERTS], a[QAS_TRIS], a[QAS_BACK], a[QAS_SMOOTH], a[QAS_ZERO],
+				a[QAS_TINY], a[QAS_SPANS], a[QAS_PIX], a[QAS_PIXW], a[QAS_SUBTRI], a[QAS_SUBCALL],
+				a[QAS_SUBPIX], a[QAS_CLIPTRI], a[QAS_PARTS], a[QAS_PARTVIS], a[QAS_PARTPIX]);
+	}
+}
+#endif
 
 #define LIGHT_MIN	5		// lowest light value we'll allow, to avoid the
 							//  need for inner-loop light clamping
@@ -80,6 +115,10 @@ void R_AliasTransformVector (vec3_t in, vec3_t out);
 void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	trivertx_t *pverts, stvert_t *pstverts);
 void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av);
+#ifdef QOG_ALIAS_FAST
+static qboolean R_QogAliasSphereOut (void);
+static qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc);
+#endif
 
 
 /*
@@ -102,10 +141,18 @@ qboolean R_AliasCheckBBox (void)
 // expand, rotate, and translate points into worldspace
 
 	currententity->trivial_accept = 0;
+#ifdef QOG_ALIAS_STATS
+	qog_astat_vm = 0;	// QuakeOG (Agent AI)
+	QOG_AST(QAS_CHECK, 1);
+#endif
 	pmodel = currententity->model;
 	pahdr = Mod_Extradata (pmodel);
 	pmdl = (mdl_t *)((byte *)pahdr + pahdr->model);
 
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast && R_QogAliasSphereOut ())
+		return false;	// QuakeOG (Agent AI): Fast mode, wholly outside the view
+#endif
 	R_AliasSetUpTransform (0);
 
 // construct the base bounding box for this frame
@@ -119,6 +166,11 @@ qboolean R_AliasCheckBBox (void)
 	}
 
 	pframedesc = &pahdr->frames[frame];
+
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast)
+		return R_QogAliasCheckBBoxFast (pframedesc);	// QuakeOG (Agent AI)
+#endif
 
 // x worldspace coordinates
 	basepts[0][0] = basepts[1][0] = basepts[2][0] = basepts[3][0] =
@@ -331,6 +383,284 @@ static void R_QogAliasPrepareCore1 (void *job)
 }
 #endif
 
+#ifdef QOG_ALIAS_FAST
+/*
+================
+Fast mode alias vertices
+
+QuakeOG (Agent AI): with r_fast 1 (QOG_ALIAS_FAST) the vertices of an alias
+model are made in integers. The model's transform (aliastransform without
+the screen scaling of the unclipped case) in 16.16 fixed point makes a
+vertex nine integer multiplies, 1/z is one unsigned divide (the RP2040's
+hardware divider) and the screen position two divides in 28.4, the light
+three multiplies with id's normals in 2.14 (anorms14.h). The screen
+position is within a sixteenth of a pixel of id's float projection, 1/z
+keeps 23 bits. A point too far off the screen for 32 bits takes a float
+divide. The triangle clipper's z clip still recomputes view space in float
+from the same transform (r_aclip.c).
+================
+*/
+static const short	r_qoganorms[NUMVERTEXNORMALS][3] = {
+#include "anorms14.h"
+};
+
+typedef struct
+{
+	int		m[3][4];		// aliastransform, 16.16
+	int		lv[3];			// r_plightvec, 2.14
+	int		shade;			// r_shadelight
+	int		xc, yc;			// aliasxcenter and aliasycenter, 28.4
+	int		xs, ys;			// aliasxscale and aliasyscale, 28.4
+	int		xlim, ylim;		// x and y in 24.8 below these keep 32 bits
+	int		zimul;			// ziscale / 2^31, 3 for the view model
+} r_qogxf_t;
+
+static void R_QogAliasFastSetup (r_qogxf_t *xf)
+{
+	int		i, j;
+
+	for (i=0 ; i<3 ; i++)
+	{
+		for (j=0 ; j<4 ; j++)
+			xf->m[i][j] = (int)(aliastransform[i][j] * 65536.0f);
+		xf->lv[i] = (int)(r_plightvec[i] * 16384.0f);
+	}
+	xf->shade = (int)r_shadelight;
+	xf->xc = (int)(aliasxcenter * 16.0f);
+	xf->yc = (int)(aliasycenter * 16.0f);
+	xf->xs = (int)(aliasxscale * 16.0f);
+	xf->ys = (int)(aliasyscale * 16.0f);
+	xf->xlim = 0x7fffffff / (xf->xs > 0 ? xf->xs : 1);
+	xf->ylim = 0x7fffffff / (xf->ys > 0 ? xf->ys : 1);
+	xf->zimul = ziscale > (float)0x8000 * (float)0x10000 * 2.0f ? 3 : 1;
+}
+
+// x in 24.8 view space and z8 the depth in 24.8 (at least
+// ALIAS_Z_CLIP_PLANE): the screen column as id's
+// (int)(x * aliasxscale / z + aliasxcenter), s and c in 28.4
+#define R_QOGPROJECT(x, z8, s, c, lim, fs, fc)	\
+	((x) > -(lim) && (x) < (lim) ? ((x) * (s) / (z8) + (c)) >> 4 \
+	: (int)((float)(x) * (fs) / (float)(z8) + (fc)))
+
+static void R_QogAliasFastVert (const r_qogxf_t *xf, finalvert_t *fv,
+	trivertx_t *pverts, stvert_t *pstverts, int clip)
+{
+	int			x, y, z, z8, lc, temp, v0, v1, v2;
+	unsigned	q;
+	const short	*n;
+
+	v0 = pverts->v[0];
+	v1 = pverts->v[1];
+	v2 = pverts->v[2];
+
+	fv->v[2] = pstverts->s;
+	fv->v[3] = pstverts->t;
+	fv->flags = pstverts->onseam;
+
+// lighting, id's with the cosine in 4.28
+	n = r_qoganorms[pverts->lightnormalindex];
+	lc = n[0] * xf->lv[0] + n[1] * xf->lv[1] + n[2] * xf->lv[2];
+	temp = r_ambientlight;
+	if (lc < 0)
+	{
+		temp += (xf->shade * (lc >> 14)) / 16384;
+		if (temp < 0)
+			temp = 0;
+	}
+	fv->v[4] = temp;
+
+	z = xf->m[2][0] * v0 + xf->m[2][1] * v1 + xf->m[2][2] * v2 + xf->m[2][3];
+	if (clip && z < ALIAS_Z_CLIP_PLANE * 0x10000)
+	{
+		fv->flags |= ALIAS_Z_CLIP;
+		return;
+	}
+	x = (xf->m[0][0] * v0 + xf->m[0][1] * v1 + xf->m[0][2] * v2 + xf->m[0][3]) >> 8;
+	y = (xf->m[1][0] * v0 + xf->m[1][1] * v1 + xf->m[1][2] * v2 + xf->m[1][3]) >> 8;
+	z8 = z >> 8;
+	if (z8 < ALIAS_Z_CLIP_PLANE * 0x100)
+		z8 = ALIAS_Z_CLIP_PLANE * 0x100;
+
+// 1/z scaled up by 2^31 (3 * 2^31 for the view model) as id's v[5]
+	q = 0x80000000u / (unsigned)z8;
+	fv->v[5] = (int)((q * xf->zimul) << 8);
+
+	fv->v[0] = R_QOGPROJECT (x, z8, xf->xs, xf->xc, xf->xlim, aliasxscale, aliasxcenter);
+	fv->v[1] = R_QOGPROJECT (y, z8, xf->ys, xf->yc, xf->ylim, aliasyscale, aliasycenter);
+
+	if (clip)
+	{
+		if (fv->v[0] < r_refdef.aliasvrect.x)
+			fv->flags |= ALIAS_LEFT_CLIP;
+		if (fv->v[1] < r_refdef.aliasvrect.y)
+			fv->flags |= ALIAS_TOP_CLIP;
+		if (fv->v[0] > r_refdef.aliasvrectright)
+			fv->flags |= ALIAS_RIGHT_CLIP;
+		if (fv->v[1] > r_refdef.aliasvrectbottom)
+			fv->flags |= ALIAS_BOTTOM_CLIP;
+	}
+}
+
+typedef struct
+{
+	const r_qogxf_t	*xf;
+	finalvert_t		*fv;
+	trivertx_t		*pverts;
+	stvert_t		*pstverts;
+	int				first, count, step, clip;
+} r_qogfastjob_t;
+
+static void R_QogAliasFastRange (r_qogfastjob_t *job)
+{
+	int		i;
+
+	for (i = job->first ; i < job->count ; i += job->step)
+		R_QogAliasFastVert (job->xf, job->fv + i, job->pverts + i,
+				job->pstverts + i, job->clip);
+}
+
+#ifdef QOG_ALIAS_CORE1
+static void R_QogAliasFastCore1 (void *job)
+{
+	R_QogAliasFastRange ((r_qogfastjob_t *)job);
+}
+#endif
+
+// all r_anumverts vertices of r_apverts, shared by both cores as Agent Z's
+// exact vertices are (QOG_ALIAS_CORE1)
+static void R_QogAliasFastVerts (finalvert_t *fv, stvert_t *pstverts, int clip)
+{
+	r_qogxf_t		xf;
+	r_qogfastjob_t	job0;
+
+	R_QogAliasFastSetup (&xf);
+	job0.xf = &xf;
+	job0.fv = fv;
+	job0.pverts = r_apverts;
+	job0.pstverts = pstverts;
+	job0.first = 0;
+	job0.count = r_anumverts;
+	job0.step = 1;
+	job0.clip = clip;
+#ifdef QOG_ALIAS_CORE1
+	if (r_anumverts >= QOG_ALIAS_CORE1_MIN)
+	{
+		r_qogfastjob_t	job1;
+
+		job1 = job0;
+		job1.first = 1;
+		job0.step = job1.step = 2;
+		Sys_QogCore1Start (R_QogAliasFastCore1, &job1);
+		R_QogAliasFastRange (&job0);
+		Sys_QogCore1Join ();
+		return;
+	}
+#endif
+	R_QogAliasFastRange (&job0);
+}
+
+/*
+================
+R_QogAliasSphereOut
+
+QuakeOG (Agent AI): Fast mode. True when the model's bounding sphere
+(boundingradius about the entity's origin, which holds every frame, with a
+quarter more and 8 units of margin) is wholly behind the eye or wholly
+outside a side of the view, so its transform is never built. The side
+planes' lengths are taken a little long, which only keeps more models.
+================
+*/
+static qboolean R_QogAliasSphereOut (void)
+{
+	float	x, y, z, r, hw, hh;
+
+	r = pmdl->boundingradius * 1.25f + 8.0f;
+	z = -DotProduct (modelorg, vpn);
+	if (z < -r)
+		return true;
+	x = -DotProduct (modelorg, vright);
+	y = -DotProduct (modelorg, vup);
+	hw = r_refdef.vrect.width * 0.5f + 2.0f;
+	hh = r_refdef.vrect.height * 0.5f + 2.0f;
+	r *= 1.0f + (hw > hh ? hw : hh) / (xscale < yscale ? xscale : yscale);
+	if (x * xscale - z * hw > r * xscale || -x * xscale - z * hw > r * xscale)
+		return true;
+	if (y * yscale - z * hh > r * yscale || -y * yscale - z * hh > r * yscale)
+		return true;
+	return false;
+}
+
+/*
+================
+R_QogAliasCheckBBoxFast
+
+QuakeOG (Agent AI): R_AliasCheckBBox in Fast mode. The frame's box corners
+go through the same integer transform as the vertices. A box with a corner
+behind the near plane is drawn clipped, without id's rejection test. The
+box is rejected only when every corner is more than a pixel off one side,
+and accepted unclipped only when every corner is a pixel inside, which
+covers the rounding of the integer projection.
+================
+*/
+static qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc)
+{
+	r_qogxf_t	xf;
+	int			i, x, y, z, z8, u, v, flags, anyclip, allclip, minz;
+	int			b[2][3];
+
+	R_QogAliasFastSetup (&xf);
+	for (i=0 ; i<3 ; i++)
+	{
+		b[0][i] = pframedesc->bboxmin.v[i];
+		b[1][i] = pframedesc->bboxmax.v[i];
+	}
+
+	anyclip = 0;
+	allclip = ALIAS_XY_CLIP_MASK;
+	minz = 0x7fffffff;
+	for (i=0 ; i<8 ; i++)
+	{
+		int		bx = b[i & 1][0], by = b[(i >> 1) & 1][1], bz = b[i >> 2][2];
+
+		z = xf.m[2][0] * bx + xf.m[2][1] * by + xf.m[2][2] * bz + xf.m[2][3];
+		if (z < ALIAS_Z_CLIP_PLANE * 0x10000)
+			return true;	// near the eye: drawn clipped, never rejected here
+		if (z < minz)
+			minz = z;
+		x = (xf.m[0][0] * bx + xf.m[0][1] * by + xf.m[0][2] * bz + xf.m[0][3]) >> 8;
+		y = (xf.m[1][0] * bx + xf.m[1][1] * by + xf.m[1][2] * bz + xf.m[1][3]) >> 8;
+		z8 = z >> 8;
+		u = R_QOGPROJECT (x, z8, xf.xs, xf.xc, xf.xlim, aliasxscale, aliasxcenter);
+		v = R_QOGPROJECT (y, z8, xf.ys, xf.yc, xf.ylim, aliasyscale, aliasycenter);
+
+		flags = 0;
+		if (u < r_refdef.aliasvrect.x - 1)
+			flags |= ALIAS_LEFT_CLIP;
+		if (v < r_refdef.aliasvrect.y - 1)
+			flags |= ALIAS_TOP_CLIP;
+		if (u > r_refdef.aliasvrectright + 1)
+			flags |= ALIAS_RIGHT_CLIP;
+		if (v > r_refdef.aliasvrectbottom + 1)
+			flags |= ALIAS_BOTTOM_CLIP;
+		allclip &= flags;
+
+		if (u < r_refdef.aliasvrect.x + 1 || v < r_refdef.aliasvrect.y + 1 ||
+			u > r_refdef.aliasvrectright - 1 || v > r_refdef.aliasvrectbottom - 1)
+			anyclip = 1;
+	}
+
+	if (allclip)
+		return false;	// trivial reject off one side
+
+	currententity->trivial_accept = !anyclip;
+	if (currententity->trivial_accept &&
+		(float)(minz >> 16) > (r_aliastransition + (pmdl->size * r_resfudge)))
+		currententity->trivial_accept |= 2;
+
+	return true;
+}
+#endif
+
 void R_AliasPreparePoints (void)
 {
 	int			i;
@@ -346,6 +676,19 @@ void R_AliasPreparePoints (void)
 	pstverts = (stvert_t *)((byte *)paliashdr + paliashdr->stverts);
 	r_anumverts = pmdl->numverts;
  	fv = pfinalverts;
+	QOG_AST(QAS_VERTS, r_anumverts);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast)
+	{
+		// QuakeOG (Agent AI): Fast mode vertices, then id's triangles
+#ifdef QOG_ALIAS_NO_AUXVERTS
+		r_qog_apverts = r_apverts;
+#endif
+		R_QogAliasFastVerts (pfinalverts, pstverts, 1);
+		r_apverts += r_anumverts;
+		goto qog_drawtris;
+	}
+#endif
 #ifdef QOG_ALIAS_CORE1
 #ifdef QOG_ALIAS_NO_AUXVERTS
 	r_qog_apverts = r_apverts;
@@ -403,6 +746,9 @@ void R_AliasPreparePoints (void)
 	}
 	}
 
+#ifdef QOG_ALIAS_FAST
+qog_drawtris:
+#endif
 //
 // clip and draw all triangles
 //
@@ -427,6 +773,7 @@ void R_AliasPreparePoints (void)
 		}
 		else		
 		{	// partially clipped
+			QOG_AST(QAS_CLIPTRI, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
 			R_AliasClipTriangle (ptri);
 		}
 	}
@@ -650,6 +997,13 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 	QOG_RTABLE_CONST float	*plightnormal;
 	trivertx_t	*pverts;
 
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast)
+	{
+		R_QogAliasFastVerts (fv, pstverts, 0);	// QuakeOG (Agent AI): Fast mode
+		return;
+	}
+#endif
 #ifdef QOG_ALIAS_CORE1
 	if (r_anumverts >= QOG_ALIAS_CORE1_MIN)
 	{
@@ -746,6 +1100,7 @@ void R_AliasPrepareUnclippedPoints (void)
 	r_anumverts = pmdl->numverts;
 // FIXME: just use pfinalverts directly?
 	fv = pfinalverts;
+	QOG_AST(QAS_VERTS, r_anumverts);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
 
 	R_AliasTransformAndProjectFinalVerts (fv, pstverts);
 
@@ -992,6 +1347,12 @@ void R_AliasDrawModel (alight_t *plighting)
 #endif
 
 	r_amodels_drawn++;
+#ifdef QOG_ALIAS_STATS
+	qog_astat_vm = currententity == &cl.viewent;
+	QOG_AST(QAS_DRAWN, 1);
+	QOG_AST(QAS_TRIVIAL, currententity->trivial_accept != 0);
+	QOG_AST(QAS_SUBDIVM, (currententity->trivial_accept == 3) && r_recursiveaffinetriangles);
+#endif
 
 // cache align
 	pfinalverts = (finalvert_t *)
@@ -1006,7 +1367,12 @@ void R_AliasDrawModel (alight_t *plighting)
 	pmdl = (mdl_t *)((byte *)paliashdr + paliashdr->model);
 
 	R_AliasSetupSkin ();
+#ifdef QOG_ALIAS_FAST
+	// QuakeOG (Agent AI): Fast mode vertices use the unscaled transform
+	R_AliasSetUpTransform (r_qogfast ? 0 : currententity->trivial_accept);
+#else
 	R_AliasSetUpTransform (currententity->trivial_accept);
+#endif
 	R_AliasSetupLighting (plighting);
 	R_AliasSetupFrame ();
 

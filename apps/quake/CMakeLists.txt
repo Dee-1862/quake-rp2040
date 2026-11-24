@@ -389,6 +389,12 @@ if(QOG_SPLIT)
     if(QOG_BOARD_FAST)
         list(APPEND _cl_defs QOG_RFAST QOG_RFAST_ON)
     endif()
+    # QuakeOG (Agent AI): in Fast mode alias models (monsters, items, the view
+    # weapon) and particles are made in integers, r_fast 0 draws as before
+    option(QOG_BOARD_ALIASFAST "with FAST, alias vertices, triangle gradients and particles in integers in Fast mode" ON)
+    if(QOG_BOARD_FAST AND QOG_BOARD_ALIASFAST)
+        list(APPEND _cl_defs QOG_ALIAS_FAST)      # r_alias.c, d_polyse.c, d_part.c
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer

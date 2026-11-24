@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "d_local.h"
+#include "r_qogalias.h"	// QuakeOG (Agent AI)
 
 // TODO: put in span spilling to shrink list size
 // !!! if this is changed, it must be changed in d_polysa.s too !!!
@@ -216,13 +217,16 @@ void D_DrawSubdiv (void)
 		index1 = pfv + ptri[i].vertindex[1];
 		index2 = pfv + ptri[i].vertindex[2];
 
+		QOG_AST(QAS_TRIS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
 		if (((index0->v[1]-index1->v[1]) *
 			 (index0->v[0]-index2->v[0]) -
 			 (index0->v[0]-index1->v[0]) * 
 			 (index0->v[1]-index2->v[1])) >= 0)
 		{
+			QOG_AST(QAS_BACK, 1);
 			continue;
 		}
+		QOG_AST(QAS_SUBTRI, 1);
 
 		d_pcolormap = &((byte *)acolormap)[index0->v[4] & 0xFF00];
 
@@ -281,8 +285,10 @@ void D_DrawNonSubdiv (void)
 				(index0->v[0]-index2->v[0]) -
 				(index0->v[0]-index1->v[0])*(index0->v[1]-index2->v[1]);
 
+		QOG_AST(QAS_TRIS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
 		if (d_xdenom >= 0)
 		{
+			QOG_AST(QAS_BACK, 1);
 			continue;
 		}
 
@@ -336,6 +342,7 @@ void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 	int		z;
 	d_zval_t	*zbuf;
 
+	QOG_AST(QAS_SUBCALL, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
 	d = lp2[0] - lp1[0];
 	if (d < -1 || d > 1)
 		goto split;
@@ -396,6 +403,7 @@ split:
 		int		pix;
 		
 		*zbuf = z;
+		QOG_AST(QAS_SUBPIX, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
 		pix = d_pcolormap[D_ATEX (D_SKINROW(new[3]>>16)[new[2]>>16])];	// QuakeOG: D_ATEX
 		d_viewbuffer[D_SCANTABLE(new[1]) + new[0]] = pix;
 	}
@@ -563,6 +571,78 @@ void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 
 #if	!id386
 
+#ifdef QOG_ALIAS_FAST
+/*
+================
+D_QogGradStep, D_QogCeilDiv, D_QogCalcGradients
+
+QuakeOG (Agent AI): the triangle gradients of Fast mode (r_fast 1,
+QOG_ALIAS_FAST) in integers. Each step is the quotient of id's numerator by
+the same denominator d_xdenom, with no float. The values are shifted right
+by sh before the products so that they fit 32 bits (screen coordinates are
+below 2^9, s and t below 2^25, 1/z below 2^31, light below 2^15), and
+D_QogGradStep puts the shift back exactly: n * 2^sh / d truncated, from the
+quotient and the remainder of n / d. Light keeps id's ceil. Unclipped
+vertices have whole texels, so s and t lose nothing, 1/z keeps 21 bits.
+================
+*/
+static int D_QogGradStep (int n, int d, int sh)
+{
+	int		q, r;
+
+	q = n / d;
+	r = n - q * d;
+	return q * (1 << sh) + (r * (1 << sh)) / d;
+}
+
+static int D_QogCeilDiv (int n, int d)
+{
+	int		q;
+
+	q = n / d;
+	if (n != q * d && ((n < 0) == (d < 0)))
+		q++;
+	return q;
+}
+
+static void D_QogCalcGradients (int skinwidth)
+{
+	int		t0, t1, d;
+	int		p01_minus_p21, p11_minus_p21, p00_minus_p20, p10_minus_p20;
+
+	p00_minus_p20 = r_p0[0] - r_p2[0];
+	p01_minus_p21 = r_p0[1] - r_p2[1];
+	p10_minus_p20 = r_p1[0] - r_p2[0];
+	p11_minus_p21 = r_p1[1] - r_p2[1];
+	d = d_xdenom;	// below 0, the triangle faces the viewer
+
+	t0 = r_p0[4] - r_p2[4];
+	t1 = r_p1[4] - r_p2[4];
+	r_lstepx = D_QogCeilDiv (t1 * p01_minus_p21 - t0 * p11_minus_p21, d);
+	r_lstepy = D_QogCeilDiv (t1 * p00_minus_p20 - t0 * p10_minus_p20, -d);
+
+	t0 = (r_p0[2] - r_p2[2]) >> 6;
+	t1 = (r_p1[2] - r_p2[2]) >> 6;
+	r_sstepx = D_QogGradStep (t1 * p01_minus_p21 - t0 * p11_minus_p21, d, 6);
+	r_sstepy = D_QogGradStep (t1 * p00_minus_p20 - t0 * p10_minus_p20, -d, 6);
+
+	t0 = (r_p0[3] - r_p2[3]) >> 6;
+	t1 = (r_p1[3] - r_p2[3]) >> 6;
+	r_tstepx = D_QogGradStep (t1 * p01_minus_p21 - t0 * p11_minus_p21, d, 6);
+	r_tstepy = D_QogGradStep (t1 * p00_minus_p20 - t0 * p10_minus_p20, -d, 6);
+
+	t0 = (r_p0[5] - r_p2[5]) >> 10;
+	t1 = (r_p1[5] - r_p2[5]) >> 10;
+	r_zistepx = D_QogGradStep (t1 * p01_minus_p21 - t0 * p11_minus_p21, d, 10);
+	r_zistepy = D_QogGradStep (t1 * p00_minus_p20 - t0 * p10_minus_p20, -d, 10);
+
+	a_sstepxfrac = r_sstepx & 0xFFFF;
+	a_tstepxfrac = r_tstepx & 0xFFFF;
+
+	a_ststepxwhole = skinwidth * (r_tstepx >> 16) + (r_sstepx >> 16);
+}
+#endif
+
 /*
 ================
 D_PolysetCalcGradients
@@ -573,6 +653,13 @@ void D_PolysetCalcGradients (int skinwidth)
 	float	xstepdenominv, ystepdenominv, t0, t1;
 	float	p01_minus_p21, p11_minus_p21, p00_minus_p20, p10_minus_p20;
 
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast)
+	{
+		D_QogCalcGradients (skinwidth);	// QuakeOG (Agent AI): Fast mode
+		return;
+	}
+#endif
 	p00_minus_p20 = r_p0[0] - r_p2[0];
 	p01_minus_p21 = r_p0[1] - r_p2[1];
 	p10_minus_p20 = r_p1[0] - r_p2[0];
@@ -688,6 +775,8 @@ static void D_PolysetDrawSpans8Translated (spanpackage_t *pspanpackage)
 
 		if (lcount)
 		{
+			QOG_AST(QAS_SPANS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_PIX, lcount);
 			lpdest = pspanpackage->pdest;
 			lptex = pspanpackage->ptex;
 			lpz = pspanpackage->pz;
@@ -706,12 +795,14 @@ static void D_PolysetDrawSpans8Translated (spanpackage_t *pspanpackage)
 				{
 					*lpdest = ((byte *)acolormap)[tr[*lptex] + (llight & 0xFF00)];
 					*lpz = lz;
+					QOG_AST(QAS_PIXW, 1);
 				}
 #else
 				if ((lzi >> 16) >= *lpz)
 				{
 					*lpdest = ((byte *)acolormap)[tr[*lptex] + (llight & 0xFF00)];
 					*lpz = lzi >> 16;
+					QOG_AST(QAS_PIXW, 1);
 				}
 #endif
 				lpdest++;
@@ -770,6 +861,8 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 		if (lcount)
 		{
+			QOG_AST(QAS_SPANS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_PIX, lcount);
 			lpdest = pspanpackage->pdest;
 			lptex = pspanpackage->ptex;
 			lpz = pspanpackage->pz;
@@ -788,6 +881,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 				{
 					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
 					*lpz = lz;
+					QOG_AST(QAS_PIXW, 1);
 				}
 #else
 				if ((lzi >> 16) >= *lpz)
@@ -795,6 +889,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 					*lpdest = ((byte *)acolormap)[*lptex + (llight & 0xFF00)];
 // gel mapping					*lpdest = gelmap[*lpdest];
 					*lpz = lzi >> 16;
+					QOG_AST(QAS_PIXW, 1);
 				}
 #endif
 				lpdest++;
@@ -867,6 +962,11 @@ void D_RasterizeAliasPolySmooth (void)
 	int				initialleftheight, initialrightheight;
 	int				*plefttop, *prighttop, *pleftbottom, *prightbottom;
 	int				working_lstepx, originalcount;
+#ifdef QOG_ALIAS_STATS
+	unsigned		pix0 = qog_astats[qog_astat_vm][QAS_PIX];	// QuakeOG (Agent AI)
+
+	QOG_AST(QAS_SMOOTH, 1);
+#endif
 
 	plefttop = pedgetable->pleftedgevert0;
 	prighttop = pedgetable->prightedgevert0;
@@ -1113,6 +1213,11 @@ void D_RasterizeAliasPolySmooth (void)
 											// mark end of the spanpackages
 		D_PolysetDrawSpans8 (pstart);
 	}
+#ifdef QOG_ALIAS_STATS
+	pix0 = qog_astats[qog_astat_vm][QAS_PIX] - pix0;	// QuakeOG (Agent AI)
+	QOG_AST(QAS_ZERO, pix0 == 0);
+	QOG_AST(QAS_TINY, pix0 >= 1 && pix0 <= 4);
+#endif
 }
 
 

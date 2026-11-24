@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "r_qogalias.h"	// QuakeOG (Agent AI)
 
 #ifdef QOG_MAX_PARTICLES	// QuakeOG: smaller default (MG24Quake and RP2350-Quake use 512, id's own floor)
 #define MAX_PARTICLES			QOG_MAX_PARTICLES
@@ -695,6 +696,9 @@ void R_DrawParticles (void)
 	float			time1;
 	float			dvel;
 	float			frametime;
+#ifdef QOG_ALIAS_FAST
+	d_qogpview_t	qogpv;	// QuakeOG (Agent AI): Fast mode particles
+#endif
 	
 #ifdef GLQUAKE
 	vec3_t			up, right;
@@ -709,10 +713,17 @@ void R_DrawParticles (void)
 	VectorScale (vright, 1.5, right);
 #else
 	D_StartParticles ();
+#ifdef QOG_ALIAS_STATS
+	R_QogAliasStatsView ();	// QuakeOG (Agent AI): PC measurement
+#endif
 
 	VectorScale (vright, xscaleshrink, r_pright);
 	VectorScale (vup, yscaleshrink, r_pup);
 	VectorCopy (vpn, r_ppn);
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast)
+		D_QogParticleView (&qogpv);
+#endif
 #endif
 	frametime = cl.time - cl.oldtime;
 	time3 = frametime * 15;
@@ -765,6 +776,11 @@ void R_DrawParticles (void)
 		glTexCoord2f (0,1);
 		glVertex3f (p->org[0] + right[0]*scale, p->org[1] + right[1]*scale, p->org[2] + right[2]*scale);
 #else
+#ifdef QOG_ALIAS_FAST
+		if (r_qogfast)
+			D_QogDrawParticleFast (p, &qogpv);	// QuakeOG (Agent AI)
+		else
+#endif
 		D_DrawParticle (p);
 #endif
 		p->org[0] += p->vel[0]*frametime;
