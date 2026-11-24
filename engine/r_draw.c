@@ -309,7 +309,7 @@ typedef struct
 #define QOG_FX_LMAX		(1 << 17)	// |position - origin| per axis: 128 units in 1/1024, 4096 in 1/32
 #define QOG_FX_RESERVE	sizeof(r_qogfx_t)
 #ifndef QOG_VERTCACHE_FASTMAX
-#define QOG_VERTCACHE_FASTMAX	256	// entries in Fast mode (R_QogVertCacheBegin)
+#define QOG_VERTCACHE_FASTMAX	128	// entries in Fast mode (R_QogVertCacheBegin)
 #endif
 // an int that may alias a float (the Fast state kept in id's float globals)
 #if defined(__GNUC__)
@@ -365,7 +365,7 @@ void R_QogVertCacheBegin (void)
 	if (n < 64)
 		return;
 #ifdef QOG_VID_SCANRACE
-	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t));	// QuakeOG (Agent AK): the last scanout may still read these rows
+	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t) + QOG_FX_RESERVE);	// QuakeOG (Agent AK): the last scanout may still read these rows (Agent AJ: and the Fast header after them)
 #endif
 	for (i = 0 ; i < n ; i++)
 		((r_qogvert_t *)lo)[i].tag = 0xFFFF;
@@ -820,6 +820,7 @@ static void R_QogProjectFast (mvertex_t *pv, int *o)
 		o[3] = e->ceilv;
 		return;
 	}
+	QOG_WC (QOG_WC_PROJECT);
 	if (!R_QogProjectFx (pv, o))
 		R_QogProjectFloatFx (pv, o);
 #ifdef QOG_FRONT_FAST_CHECK
