@@ -140,6 +140,10 @@ list(APPEND QOG_ENGINE_DEFS
 list(APPEND QOG_ENGINE_DEFS
     QOG_ENTITY_TIGHT
     QOG_CON_DEBUGLOG_DIRECT)
+# Server stack, exact (Agent AC), same as pc/CMakeLists.txt. SV_PushMove's
+# lists for sv.max_edicts entries, not 600 (sv_phys.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_PUSHMOVE_ALLOCA)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)

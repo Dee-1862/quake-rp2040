@@ -246,6 +246,9 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)
     QOG_CON_DEBUGLOG_DIRECT)        # -condebug writes the console text as it is, no 1 KB static copy
+# Server stack, exact (Agent AC)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_PUSHMOVE_ALLOCA)            # SV_PushMove's lists on the stack for sv.max_edicts entries, not MAX_EDICTS (9,600 B)
 # Render phase times for profiling (Agent P), off by default: `qog_phase` in
 # the console and the end of `-qogfly` print where render time goes.
 #   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON
@@ -329,6 +332,23 @@ add_executable(quakeog_cl
     ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_CL_EXTRA (Agent V)
     ${QOG_BSP_LINK})
 target_compile_definitions(quakeog_cl PRIVATE ${QOG_SPLIT_DEFS} QOG_NET_LINK QOG_SPLIT_CLIENT ${QOG_SPLIT_CL_EXTRA})
+
+# Server stack in the board's bytes (Agent AC), a measurement build only:
+#   cmake -S pc -B build-pc-stack -A Win32 -DQOG_SV_STACKPROBE=ON (and the board's QOG_SPLIT_SV_EXTRA)
+#   python tools/stack_chain.py --su-table <table> --su-dir <board build>/apps/quake/CMakeFiles/qog_engine_sv.dir
+#       --su-dir <board build>/apps/quake/CMakeFiles/quake_main.dir
+#   quakeog_sv -stackprobe <table> ... prints the deepest chain (port/pc/stackprobe_pc.c)
+# Every function of quakeog_sv calls _penter and _pexit (/Gh /GH), nothing is inlined (/Ob0),
+# and the probe itself is a library built without /Gh.
+option(QOG_SV_STACKPROBE "quakeog_sv measures its deepest call chain in the board's frame sizes" OFF)
+if(QOG_SV_STACKPROBE)
+    add_library(qog_stackprobe STATIC ${ROOT}/port/pc/stackprobe_pc.c)
+    target_compile_definitions(qog_stackprobe PRIVATE QOG_SV_STACKPROBE)
+    target_compile_options(quakeog_sv PRIVATE /Gh /GH /Ob0 /Zi)
+    target_compile_definitions(quakeog_sv PRIVATE QOG_SV_STACKPROBE)
+    target_link_options(quakeog_sv PRIVATE /DEBUG)
+    target_link_libraries(quakeog_sv PRIVATE qog_stackprobe dbghelp)
+endif()
 
 foreach(_t quakeog_sv quakeog_cl)
     target_include_directories(${_t} PRIVATE

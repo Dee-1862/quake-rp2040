@@ -270,9 +270,17 @@ int main(int argc, char **argv) {
 #ifdef QOG_SPLIT_SERVER
     /* The split game's server half (engine/net_link.c): each Host_Frame waits
        for the client half's frame, so it runs as fast as the client asks. */
+#ifdef QOG_SV_STACKPROBE
+    /* Agent AC: the deepest chain in the board's bytes (port/pc/stackprobe_pc.c) */
+    extern void qog_stackprobe_init(int argc, char **argv), qog_stackprobe_frame(void);
+    qog_stackprobe_init(argc, argv);
+#endif
     Host_Init(&parms);
     for (;;) {
         Host_Frame(0.0f);
+#ifdef QOG_SV_STACKPROBE
+        qog_stackprobe_frame();
+#endif
 #ifdef QOG_SPLIT_TOUR
         extern void qog_tour_frame(void);
         qog_tour_frame();   /* PC test tool (Agent S), idle unless qog_tour runs */
