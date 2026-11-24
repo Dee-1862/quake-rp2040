@@ -2019,6 +2019,48 @@ void COM_ForEachPackFile (void (*fn) (char *name))
 				fn (Pak_Name (search->pack, i));
 }
 
+#ifdef QOG_BOARD_MENU
+/*
+============
+COM_ForEachMap
+
+QuakeOG: the board's Levels menu (menu.c). Calls fn with the name of every
+maps/<name>.bsp in the packs, without "maps/" and ".bsp", base pack first,
+so the list is the board's data image and nothing else. The item box
+models (maps/b_*.bsp) are not levels. The name points into the pack's
+directory and lasts as long as the game. Returns how many there were.
+============
+*/
+static int COM_ForEachMapIn (searchpath_t *search, void (*fn) (const char *name, int len, int n, void *ctx), void *ctx)
+{
+	int		i, n, len;
+	char	*name;
+
+	if (!search)
+		return 0;
+	n = COM_ForEachMapIn (search->next, fn, ctx);	// the base pack first
+	if (!search->pack)
+		return n;
+	for (i=0 ; i<search->pack->numfiles ; i++)
+	{
+		name = Pak_Name (search->pack, i);
+		if (strncmp (name, "maps/", 5) || !strncmp (name + 5, "b_", 2))
+			continue;
+		len = strlen (name);
+		if (len <= 9 || strcmp (name + len - 4, ".bsp"))
+			continue;
+		fn (name + 5, len - 9, n, ctx);
+		n++;
+	}
+	return n;
+}
+
+int COM_ForEachMap (void (*fn) (const char *name, int len, int n, void *ctx), void *ctx)
+{
+	return COM_ForEachMapIn (com_searchpaths, fn, ctx);
+}
+#endif
+
 /*
 ============
 COM_HasFile

@@ -185,6 +185,11 @@ char *COM_FlashName (char *path);	// QuakeOG (Agent W): the name in a mapped pac
 qboolean COM_InFlash (void *p);
 // QuakeOG: calls fn with every file name in every pack (map baker)
 void COM_ForEachPackFile (void (*fn) (char *name));
+#ifdef QOG_BOARD_MENU
+// QuakeOG: calls fn with each level in the packs, base pack first (board's
+// Levels menu). name is not terminated, n counts from 0. Returns the count.
+int COM_ForEachMap (void (*fn) (const char *name, int len, int n, void *ctx), void *ctx);
+#endif
 // QuakeOG: true if the search path holds path, nothing opened or printed
 qboolean COM_HasFile (char *path);
 // QuakeOG: called with every file found in a pack when set (asset manifests)
