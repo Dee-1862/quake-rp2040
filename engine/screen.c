@@ -120,6 +120,9 @@ void SCR_EraseCenterString (void)
 		y = 48;
 
 	scr_copytop = 1;
+#ifdef QOG_VID_SCANRACE
+	VID_QogScanDone ();	// QuakeOG (Agent AK): the last scanout must be over
+#endif
 	Draw_TileClear (0, y,vid.width, 8*scr_erase_lines);
 }
 
@@ -169,6 +172,39 @@ void SCR_DrawCenterString (void)
 		start++;		// skip the \n
 	} while (1);
 }
+
+#ifdef QOG_HUD_SKIP
+/*
+==============
+SCR_QogHudQuiet
+
+QuakeOG (Agent AK): R_RenderView asks, after the view, whether anything but
+Sbar_Draw draws into the status bar rows (from r_zalias_row down) in the
+rest of this frame's SCR_UpdateScreen: the dialog, the loading plaque, the
+intermission screens, the console, menus and the message line do, and a
+centre print whose lines reach the rows does. The notify lines, the ram,
+net, turtle and pause icons and the crosshair stay in the 3D view's rows.
+==============
+*/
+qboolean SCR_QogHudQuiet (void)
+{
+	extern int	r_zalias_row;	// d_local.h
+	extern qboolean	scr_drawdialog;	// below
+	int			y;
+
+	if (scr_drawdialog || scr_drawloading || cl.intermission || key_dest != key_game)
+		return false;
+	if (scr_con_current > 0)
+		return false;
+	if (scr_centertime_off > 0)		// SCR_CheckDrawCenterString may draw it
+	{
+		y = scr_center_lines <= 4 ? vid.height*0.35 : 48;	// SCR_DrawCenterString's
+		if (y + 8 * scr_center_lines > r_zalias_row)
+			return false;
+	}
+	return true;
+}
+#endif
 
 void SCR_CheckDrawCenterString (void)
 {
@@ -496,12 +532,18 @@ void SCR_SetUpToDrawConsole (void)
 	if (clearconsole++ < vid.numpages)
 	{
 		scr_copytop = 1;
+#ifdef QOG_VID_SCANRACE
+		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
+#endif
 		Draw_TileClear (0,(int)scr_con_current,vid.width, vid.height - (int)scr_con_current);
 		Sbar_Changed ();
 	}
 	else if (clearnotify++ < vid.numpages)
 	{
 		scr_copytop = 1;
+#ifdef QOG_VID_SCANRACE
+		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
+#endif
 		Draw_TileClear (0,0,vid.width, con_notifylines);
 	}
 	else
@@ -886,11 +928,20 @@ void SCR_UpdateScreen (void)
 //
 // do 3D refresh drawing, and then update the screen
 //
+#ifdef QOG_VID_SCANRACE
+	// QuakeOG (Agent AK): the 3D view may start while the last frame is
+	// still sent to the panel, it waits where it writes (vid.h). The 2D
+	// drawing before and after it waits for the scanout's end.
+	VID_QogRaceBegin ();
+#endif
 	D_EnableBackBufferAccess ();	// of all overlay stuff if drawing directly
 
 	if (scr_fullupdate++ < vid.numpages)
 	{	// clear the entire screen
 		scr_copyeverything = 1;
+#ifdef QOG_VID_SCANRACE
+		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
+#endif
 		Draw_TileClear (0,0,vid.width,vid.height);
 		Sbar_Changed ();
 	}
@@ -913,6 +964,9 @@ void SCR_UpdateScreen (void)
 	}
 
 	VID_UnlockBuffer ();
+#ifdef QOG_VID_SCANRACE
+	VID_QogScanDone ();	// QuakeOG (Agent AK): the last scanout must be over
+#endif
 
 	D_EnableBackBufferAccess ();	// of all overlay stuff if drawing directly
 
