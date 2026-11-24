@@ -973,6 +973,21 @@ static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
 
 	r_qog_zstack++;
 	n = R_QogMarkEdges (iv, bottom);
+#ifdef QOG_ZEDGE_STACK_GUARD
+	// QuakeOG (Agent S): a board stack is not sized for this table (the
+	// port's qog_stack_bottom is its lowest byte), so stop with an error
+	// rather than write past the stack
+	if (!auxedges)
+	{
+		extern byte	*qog_stack_bottom;
+		byte		here;
+		int			left = &here - qog_stack_bottom;
+
+		if (n * (int)sizeof(edge_t) + QOG_ZEDGE_STACK_GUARD > left)
+			Sys_Error ("R_QogEdgesToStack: %d edges need %d bytes, the stack has %d",
+				n, n * (int)sizeof(edge_t), left);
+	}
+#endif
 	if (auxedges)
 		dst = auxedges;
 	else

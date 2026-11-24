@@ -248,6 +248,7 @@ if(QOG_SPLIT)
         QOG_CON_PRINTTEXT               # the renderer's bmodel warning prints without a 4 KB stack buffer (exact)
         QOG_DLIGHT_SURFS=256            # lit surface hash of 256 as the demo player (game 1024), overflow falls back to id's tree walk (exact, slower)
         QOG_VID_NO_8TO16                # the unused 16-bit palette table in flash (vid.h)
+        QOG_ZEDGE_STACK_GUARD=1024      # Agent K's edge fallback stops with an error when the stack cannot hold it
         QOG_CVAR_LITERAL                # cvar values stay at their initial strings in flash until changed, not in the zone
         QOG_LINK_SCRATCH                # the link's two 1 KB rings in scratch X below core 1's stack
         QOG_KEYLINES_SCRATCH            # the console's 2 KB command history in scratch Y below the boot stack
