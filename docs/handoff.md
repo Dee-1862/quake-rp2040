@@ -9,7 +9,7 @@
 - Server on the main chip (quake_main), client on the display chip (quake_display), joined by the link driver. Exact on the PC (state hashes, saves and frames identical to the single-process game).
 - quake_main links (about 1.7 KB RAM spare). quake_display links for E1M1 only (68 KB hunk, 34 KB stack, about 1 KB spare), using the 1-byte depth buffer the user approved for the board client only.
 - Client hunk needed per map: start 65 to 73 KB, e1m1 66, e1m2 72, e1m3 85, e1m4 85, worst map (e2m6) 97 KB. Agent U was closing the gap.
-- No sound yet (needs about 25 KB on the display chip). Agent K's 48 KB exact edge fallback is not reserved: on the board it stops with an error (QOG_ZEDGE_STACK_GUARD).
+- Sound (agent-w, not yet heard on the board): id's mixer runs on main for the display's sound calls, the display plays the samples on the I2S amplifier by PIO and DMA. Main's data image must carry the sounds (`mkboard.py --main`), the client stack is 32 KB with sound. Exact on the PC. Agent K's 48 KB exact edge fallback is not reserved: on the board it stops with an error (QOG_ZEDGE_STACK_GUARD).
 - The display chip's flash fits start plus e1m1 to e1m4 (12.47 MB). All of episode 1 does not fit (16.07 MB). The options are in docs/changes.md (agent-j): move QOG_DATA_OFFSET to 0x200000, 4-bit ADPCM sounds, or load levels from the PC companion.
 
 ## First flash of the split game (one CPU in BOOTSEL at a time)
@@ -31,4 +31,4 @@ Expect a debugging round: the full-speed link and saving to the main chip's FAT 
 - Client hunk gap: about 17 KB more for start to e1m4, about 29 KB for the whole game. Agent U was meant to start on it but was blocked and did no engineering work (branch agent-u holds only a note, do not merge it).
 - Next steps, from the measurements: build a base, a depth and a split pair build, measure `qog_mem hunk` per map on the split client, then cut the biggest blocks exactly. Candidates are the 7.5 KB net_message in the z-buffer temp region during signon, the per-level map arrays (about 35 KB on E1M1) and the model_t RAM table. The 4 KB console and command buffer cuts change behaviour, so they need the user's decision.
 - Find out why the 1-byte depth buffer reaches the edge fallback in some views, since on the board that stops the game with an error.
-- Sound needs about 25 KB on the display chip.
+- Sound: listen on the board, and raise `_snd_mixahead` (0.1, at most 0.18) if it breaks up. The display's flash image still holds sounds the client no longer opens (about 1.6 MB to win for maps).
