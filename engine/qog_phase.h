@@ -69,6 +69,23 @@ enum
 	QOG_HP_N
 };
 
+/* QuakeOG (Agent Z): measurement builds only (QOG_PHASE_XIP, needs
+ * QOG_PHASE_TIME). The world front end's work per view, and on the board
+ * the XIP cache's accesses and hits in each render phase (XIP_CTRL CTR_ACC
+ * and CTR_HIT, both cores together). With QOG_PHASE_FPCOUNT the board also
+ * counts the float and double helper calls the engine library makes, per
+ * core (port/rp2040/qog_fpcount.c). */
+enum
+{
+	QOG_WC_NODES,		/* R_RecursiveWorldNode calls */
+	QOG_WC_LEAFS,		/*   of which visible leafs */
+	QOG_WC_FACES,		/* R_RenderFace calls */
+	QOG_WC_CLIPEDGE,	/* R_ClipEdge calls (with its recursion) */
+	QOG_WC_EMITEDGE,	/* R_EmitEdge calls */
+	QOG_WC_CACHED,		/* edges reused from the edge cache */
+	QOG_WC_N
+};
+
 #ifdef QOG_PHASE_TIME
 extern unsigned	qog_ph_time[QOG_PH_N];
 extern unsigned	qog_ph_count[QOG_PC_N];
@@ -82,15 +99,35 @@ void qog_phase_report (void (*print) (char *fmt, ...));
    sum. who is "cl" (the client's frame and render lines) or "sv" (the
    server's line). elapsed_us is the time since the last call. */
 void qog_phase_board_report (void (*print) (char *fmt, ...), const char *who, unsigned elapsed_us);
+#define QOG_PH_COUNT(c, n)	(qog_ph_count[c] += (unsigned)(n))
+#ifdef QOG_PHASE_XIP
+/* Agent Z: a phase mark also holds the XIP counters and core 0's helper
+   call counts, and each phase adds their change while it ran. */
+typedef struct
+{
+	unsigned	t, acc, hit, fcalls, dcalls;
+} qog_phmark_t;
+extern unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];
+extern unsigned	qog_ph_fcalls[QOG_PH_N], qog_ph_dcalls[QOG_PH_N];
+extern unsigned	qog_wc_count[QOG_WC_N];
+void qog_phase_mark (qog_phmark_t *m);
+void qog_phase_add (int ph, const qog_phmark_t *m);
+#define QOG_PH_T(v)			qog_phmark_t v; qog_phase_mark (&v)
+#define QOG_PH_ADD(ph, v)	qog_phase_add (ph, &(v))
+#define QOG_HP_ADD(ph, v)	(qog_hp_time[ph] += qog_phase_clock () - (v).t)
+#define QOG_WC(c)			(qog_wc_count[c]++)
+#else
 #define QOG_PH_T(v)			unsigned v = qog_phase_clock ()
 #define QOG_PH_ADD(ph, v)	(qog_ph_time[ph] += qog_phase_clock () - (v))
-#define QOG_PH_COUNT(c, n)	(qog_ph_count[c] += (unsigned)(n))
 #define QOG_HP_ADD(ph, v)	(qog_hp_time[ph] += qog_phase_clock () - (v))
+#define QOG_WC(c)
+#endif
 #else
 #define QOG_PH_T(v)
 #define QOG_PH_ADD(ph, v)
 #define QOG_PH_COUNT(c, n)
 #define QOG_HP_ADD(ph, v)
+#define QOG_WC(c)
 #endif
 
 #endif

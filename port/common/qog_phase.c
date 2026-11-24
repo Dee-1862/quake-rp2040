@@ -8,6 +8,11 @@ unsigned	qog_ph_time[QOG_PH_N];
 unsigned	qog_ph_count[QOG_PC_N];
 unsigned	qog_hp_time[QOG_HP_N];	/* QuakeOG (Agent V) */
 unsigned	qog_hp_frames;
+#ifdef QOG_PHASE_XIP
+unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];	/* QuakeOG (Agent Z) */
+unsigned	qog_ph_fcalls[QOG_PH_N], qog_ph_dcalls[QOG_PH_N];
+unsigned	qog_wc_count[QOG_WC_N];
+#endif
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -46,6 +51,65 @@ float qog_phase_us (unsigned ticks)
 }
 #endif
 
+#ifdef QOG_PHASE_XIP
+/* QuakeOG (Agent Z): phase marks with the XIP cache counters and core 0's
+   helper call counts (engine/qog_phase.h). On the board they run from RAM,
+   so taking a mark adds no XIP accesses of its own. */
+#if defined(_WIN32)
+#define QOG_PH_RAMFUNC(f)	f
+#else
+#include "hardware/structs/xip_ctrl.h"
+#define QOG_PH_RAMFUNC(f)	__attribute__((section (".time_critical." #f), noinline)) f
+#endif
+#ifdef QOG_PHASE_FPCOUNT
+#include "qog_fpcount.h"
+#endif
+
+void QOG_PH_RAMFUNC (qog_phase_mark) (qog_phmark_t *m)
+{
+	m->t = qog_phase_clock ();
+#if defined(_WIN32)
+	m->acc = m->hit = 0;
+#else
+	m->acc = xip_ctrl_hw->ctr_acc;
+	m->hit = xip_ctrl_hw->ctr_hit;
+#endif
+#ifdef QOG_PHASE_FPCOUNT
+	m->fcalls = qog_fpc[0][QOG_FPC_FTOTAL];
+	m->dcalls = qog_fpc[0][QOG_FPC_DTOTAL];
+#else
+	m->fcalls = m->dcalls = 0;
+#endif
+}
+
+void QOG_PH_RAMFUNC (qog_phase_add) (int ph, const qog_phmark_t *m)
+{
+	qog_phmark_t	now;
+
+	qog_phase_mark (&now);
+	qog_ph_time[ph] += now.t - m->t;
+	qog_ph_xacc[ph] += now.acc - m->acc;
+	qog_ph_xhit[ph] += now.hit - m->hit;
+	qog_ph_fcalls[ph] += now.fcalls - m->fcalls;
+	qog_ph_dcalls[ph] += now.dcalls - m->dcalls;
+}
+
+static void qog_phase_clear_xip (void)
+{
+	memset (qog_ph_xacc, 0, sizeof qog_ph_xacc);
+	memset (qog_ph_xhit, 0, sizeof qog_ph_xhit);
+	memset (qog_ph_fcalls, 0, sizeof qog_ph_fcalls);
+	memset (qog_ph_dcalls, 0, sizeof qog_ph_dcalls);
+	memset (qog_wc_count, 0, sizeof qog_wc_count);
+#if !defined(_WIN32)
+	// the hardware counters saturate at 2^32, so they restart every report
+	// (no phase is open between frames, where the report runs)
+	xip_ctrl_hw->ctr_acc = 0;
+	xip_ctrl_hw->ctr_hit = 0;
+#endif
+}
+#endif
+
 void qog_phase_report (void (*print) (char *fmt, ...))
 {
 	static const char	*names[QOG_PH_N] = { "setup", "world", "bmodels", "scan", "lmap", "grad",
@@ -72,6 +136,12 @@ void qog_phase_report (void (*print) (char *fmt, ...))
 		   qog_ph_count[QOG_PC_LITSPANS] / n, qog_ph_count[QOG_PC_LITPX] / n,
 		   qog_ph_count[QOG_PC_LITANYPX] / n, qog_ph_count[QOG_PC_RUNS] / n,
 		   qog_ph_count[QOG_PC_ZPX] / n, qog_ph_count[QOG_PC_SKYPX] / n, qog_ph_count[QOG_PC_TURBPX] / n);
+#ifdef QOG_PHASE_XIP
+	print ("[phase] world per frame: nodes %u leafs %u faces %u clipedge %u emitedge %u cached %u\n",
+		   qog_wc_count[QOG_WC_NODES] / n, qog_wc_count[QOG_WC_LEAFS] / n, qog_wc_count[QOG_WC_FACES] / n,
+		   qog_wc_count[QOG_WC_CLIPEDGE] / n, qog_wc_count[QOG_WC_EMITEDGE] / n, qog_wc_count[QOG_WC_CACHED] / n);
+	qog_phase_clear_xip ();
+#endif
 	memset (qog_ph_time, 0, sizeof qog_ph_time);
 	memset (qog_ph_count, 0, sizeof qog_ph_count);
 }
@@ -96,6 +166,57 @@ static int ph_put (char *out, int room, const char *name, unsigned sum, unsigned
 
 	return k < 0 ? 0 : (k < room ? k : room - 1);
 }
+
+#ifdef QOG_PHASE_XIP
+/* QuakeOG (Agent Z): the measurement lines, per view means over the report
+   (engine/qog_phase.h, docs/changes.md). edgescan is scan less the surface
+   drawing inside it, as in the time line. */
+static unsigned ph_edgescan (const unsigned *a)
+{
+	return a[QOG_PH_SCAN] - a[QOG_PH_LIGHTMAP] - a[QOG_PH_GRADIENTS] - a[QOG_PH_SPANS]
+		 - a[QOG_PH_ZSPANS] - a[QOG_PH_SKY] - a[QOG_PH_TURB];
+}
+
+static int ph_put2 (char *out, int room, const char *name, unsigned a, unsigned b, unsigned n)
+{
+	int	k = snprintf (out, room, " %s %u/%u", name, a / n, b / n);
+
+	return k < 0 ? 0 : (k < room ? k : room - 1);
+}
+
+static void qog_phase_board_xip (void (*print) (char *fmt, ...), const char *who, unsigned r)
+{
+	static const char	*const names[QOG_PH_N] = { "setup", "world", "bmodels", "scan", "lmap", "grad",
+											"spans", "zspans", "sky", "turb", "models", "vmodel",
+											"parts", "total" };
+	unsigned	miss[QOG_PH_N];
+	char		line[400];
+	int			i, k;
+
+	for (i = 0 ; i < QOG_PH_N ; i++)
+		miss[i] = qog_ph_xacc[i] - qog_ph_xhit[i];
+	// XIP cache accesses/misses (both cores) per view in each phase
+	k = snprintf (line, sizeof line, "[time %s] xip acc/miss", who);
+	for (i = 0 ; i < QOG_PH_N ; i++)
+		if (i != QOG_PH_SCAN)
+			k += ph_put2 (line + k, (int)sizeof line - k, names[i], qog_ph_xacc[i], miss[i], r);
+	k += ph_put2 (line + k, (int)sizeof line - k, "edgescan", ph_edgescan (qog_ph_xacc), ph_edgescan (miss), r);
+	print ("%s\n", line);
+	print ("[time %s] work per view nodes %u leafs %u faces %u clipedge %u emitedge %u cached %u\n",
+		   who, qog_wc_count[QOG_WC_NODES] / r, qog_wc_count[QOG_WC_LEAFS] / r, qog_wc_count[QOG_WC_FACES] / r,
+		   qog_wc_count[QOG_WC_CLIPEDGE] / r, qog_wc_count[QOG_WC_EMITEDGE] / r, qog_wc_count[QOG_WC_CACHED] / r);
+#ifdef QOG_PHASE_FPCOUNT
+	// core 0's float/double helper calls per view in each phase
+	k = snprintf (line, sizeof line, "[time %s] fp f/d", who);
+	for (i = 0 ; i < QOG_PH_N ; i++)
+		if (i != QOG_PH_SCAN)
+			k += ph_put2 (line + k, (int)sizeof line - k, names[i], qog_ph_fcalls[i], qog_ph_dcalls[i], r);
+	k += ph_put2 (line + k, (int)sizeof line - k, "edgescan", ph_edgescan (qog_ph_fcalls), ph_edgescan (qog_ph_dcalls), r);
+	print ("%s\n", line);
+	qog_fpcount_report (print, who, r, qog_ph_fcalls, qog_ph_dcalls);
+#endif
+}
+#endif
 
 void qog_phase_board_report (void (*print) (char *fmt, ...), const char *who, unsigned elapsed_us)
 {
@@ -141,7 +262,13 @@ void qog_phase_board_report (void (*print) (char *fmt, ...), const char *who, un
 			   qog_ph_count[QOG_PC_LITSPANS] / r, qog_ph_count[QOG_PC_LITPX] / r,
 			   qog_ph_count[QOG_PC_RUNS] / r, qog_ph_count[QOG_PC_ZPX] / r,
 			   qog_ph_count[QOG_PC_SKYPX] / r, qog_ph_count[QOG_PC_TURBPX] / r);
+#ifdef QOG_PHASE_XIP
+		qog_phase_board_xip (print, who, r);
+#endif
 	}
+#ifdef QOG_PHASE_XIP
+	qog_phase_clear_xip ();
+#endif
 	memset (qog_ph_time, 0, sizeof qog_ph_time);
 	memset (qog_ph_count, 0, sizeof qog_ph_count);
 	memset (qog_hp_time, 0, sizeof qog_hp_time);

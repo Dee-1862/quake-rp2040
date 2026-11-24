@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "d_local.h"	// FIXME: shouldn't need to include this
+#include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
 
 #define MAXLEFTCLIPEDGES		100
 
@@ -200,6 +201,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	float	scale, lzi0, u0, v0;
 	int		side;
 
+	QOG_WC (QOG_WC_EMITEDGE);	// QuakeOG (Agent Z)
 	if (r_lastvertvalid)
 	{
 		u0 = r_u1;
@@ -374,6 +376,7 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 	float		d0, d1, f;
 	mvertex_t	clipvert;
 
+	QOG_WC (QOG_WC_CLIPEDGE);	// QuakeOG (Agent Z)
 	if (clip)
 	{
 		do
@@ -477,6 +480,7 @@ void R_EmitCachedEdge (void)
 {
 	edge_t		*pedge_t;
 
+	QOG_WC (QOG_WC_CACHED);	// QuakeOG (Agent Z)
 	pedge_t = EC_EDGE (currententity->model, r_pedge);	// QuakeOG
 
 	if (!pedge_t->surfs[0])
@@ -506,6 +510,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	medge_t		*pedges, tedge;
 	clipplane_t	*pclip;
 
+	QOG_WC (QOG_WC_FACES);	// QuakeOG (Agent Z)
 #if defined(QOG_EDGECACHE16) && !defined(QOG_EDGECACHE_ZBUFFER)
 	R_QogEdgeCacheWindow (currententity->model);	// QuakeOG
 #endif

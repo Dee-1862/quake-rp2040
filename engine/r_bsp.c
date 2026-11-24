@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
 
 //
 // current entity info
@@ -478,6 +479,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	mleaf_t		*pleaf;
 	double		d, dot;
 
+	QOG_WC (QOG_WC_NODES);	// QuakeOG (Agent Z)
 	if (node->contents == CONTENTS_SOLID)
 		return;		// solid
 
@@ -526,6 +528,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	if (node->contents < 0)
 	{
 		pleaf = (mleaf_t *)node;
+		QOG_WC (QOG_WC_LEAFS);	// QuakeOG (Agent Z)
 
 		mark = LEAF_MARKSURFACES (cl.worldmodel, pleaf);	// QuakeOG
 		c = pleaf->nummarksurfaces;

@@ -312,6 +312,27 @@ if(QOG_SPLIT)
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
     endif()
+    # QuakeOG (Agent Z): measurement builds, off by default, with
+    # QOG_BOARD_TIMING. XIPSTATS adds "[time cl] xip" (XIP cache accesses and
+    # misses per view in each render phase) and "[time cl] work" (the world
+    # front end's nodes, faces and edges per view). FPCOUNT adds the "[time
+    # cl] fp" lines (float and double helper calls per view and phase, their
+    # measured cost) and implies XIPSTATS. FPCOUNT renames the engine
+    # library's helper calls to counting stubs, so its times run a little slow.
+    option(QOG_BOARD_XIPSTATS "measurement: XIP cache counts per render phase and world work counts" OFF)
+    option(QOG_BOARD_FPCOUNT "measurement: float and double helper calls per view and phase (implies XIPSTATS)" OFF)
+    if(QOG_BOARD_TIMING AND (QOG_BOARD_XIPSTATS OR QOG_BOARD_FPCOUNT))
+        list(APPEND _cl_defs QOG_PHASE_XIP)
+        if(QOG_BOARD_FPCOUNT)
+            list(APPEND _cl_defs QOG_PHASE_FPCOUNT)
+            target_sources(quake_display PRIVATE
+                ${QOG_ROOT}/port/rp2040/qog_fpcount.S ${QOG_ROOT}/port/rp2040/qog_fpcount.c)
+            add_custom_command(TARGET qog_engine_cl POST_BUILD
+                COMMAND ${CMAKE_OBJCOPY} --redefine-syms=${QOG_ROOT}/port/rp2040/qog_fpcount.syms
+                        $<TARGET_FILE:qog_engine_cl>
+                COMMENT "QOG_BOARD_FPCOUNT: engine helper calls go through the counting stubs")
+        endif()
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer
