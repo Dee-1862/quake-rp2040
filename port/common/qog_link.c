@@ -19,15 +19,25 @@
 
 qog_link_stats_t qog_link_stats;
 int qog_link_peer_restarted;
+void (*qog_link_side)(const uint8_t *payload, int len);   /* QuakeOG (Agent T) */
 
 static int      s_role;
 static int      s_up;
 static uint32_t s_session;          /* ours */
 static uint32_t s_peer_session;
 
+/* QuakeOG (Agent T): QOG_LINK_SCRATCH puts the two rings in the RP2040's
+   SCRATCH_X bank (4 KB), which the main chip's server half does not use
+   otherwise: core1 never starts there, so no core1 stack is linked. */
+#ifdef QOG_LINK_SCRATCH
+#define LINK_RING_PLACE __attribute__((section(".scratch_x.qog_link")))
+#else
+#define LINK_RING_PLACE
+#endif
+
 /* transmit: bytes [tx_acked, tx_head) are unacknowledged, of which the
    first tx_inflight were sent in the frame with sequence tx_seq */
-static uint8_t  s_tx[QOG_LINK_TXRING];
+static uint8_t  s_tx[QOG_LINK_TXRING] LINK_RING_PLACE;
 static uint32_t s_tx_head, s_tx_acked;
 static int      s_tx_inflight;
 static uint8_t  s_tx_seq;
@@ -35,7 +45,7 @@ static uint32_t s_tx_sent_ms, s_tx_timeout_ms;
 static int      s_tx_tries;
 
 /* receive: [rx_tail, rx_head) are delivered and not yet read */
-static uint8_t  s_rx[QOG_LINK_RXRING];
+static uint8_t  s_rx[QOG_LINK_RXRING] LINK_RING_PLACE;
 static uint32_t s_rx_head, s_rx_tail;
 static uint8_t  s_rx_expect;
 
@@ -93,6 +103,11 @@ static void send_payload(const uint8_t *payload, int len) {
     qog_link_hw_write(payload, len);
     qog_link_hw_write(c, 2);
     qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
+}
+
+/* QuakeOG (Agent T): a side frame, sent at once (see qog_link.h) */
+void qog_link_send_side(const void *payload, int len) {
+    if (len > 0 && len <= DEC_MAX) send_payload(payload, len);
 }
 
 static void send_small(uint8_t type, uint8_t a) {
@@ -174,6 +189,10 @@ static void handle_payload(const uint8_t *p, int len) {
         return;
     default:
         qog_link_stats.other_rx++;
+        if (p[0] >= QOG_LINK_T_SAVES_ASK && p[0] <= QOG_LINK_T_SIDE_LAST) {
+            if (qog_link_side) qog_link_side(p, len);   /* QuakeOG (Agent T): side frames */
+            return;
+        }
         qog_link_hw_other(p, len);
         return;
     }

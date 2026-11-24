@@ -443,23 +443,43 @@ int		load_cursor;		// 0 < load_cursor < MAX_SAVEGAMES
 char	m_filenames[MAX_SAVEGAMES][SAVEGAME_COMMENT_LENGTH+1];
 int		loadable[MAX_SAVEGAMES];
 
+#ifdef QOG_SPLIT_CLIENT
+// QuakeOG (Agent T): in the split game the save files are on the server's
+// side (main's FAT volume on the board). The server reads each slot's
+// comment as below and sends the list over the link (engine/net_link.c).
+void Link_ScanSaves (char names[][SAVEGAME_COMMENT_LENGTH+1], int *found, int count);
+#endif
+
 void M_ScanSaves (void)
 {
 	int		i, j;
 	char	name[MAX_OSPATH];
+#ifdef QOG_SPLIT_CLIENT
+	char	link_names[MAX_SAVEGAMES][SAVEGAME_COMMENT_LENGTH+1];
+	int		link_found[MAX_SAVEGAMES];
+
+	Link_ScanSaves (link_names, link_found, MAX_SAVEGAMES);
+#else
 	FILE	*f;
 	int		version;
+#endif
 
 	for (i=0 ; i<MAX_SAVEGAMES ; i++)
 	{
 		strcpy (m_filenames[i], "--- UNUSED SLOT ---");
 		loadable[i] = false;
+#ifdef QOG_SPLIT_CLIENT
+		if (!link_found[i])
+			continue;
+		strcpy (name, link_names[i]);
+#else
 		sprintf (name, "%s/s%i.sav", com_gamedir, i);
 		f = fopen (name, "r");
 		if (!f)
 			continue;
 		fscanf (f, "%i\n", &version);
 		fscanf (f, "%79s\n", name);
+#endif
 		strncpy (m_filenames[i], name, sizeof(m_filenames[i])-1);
 
 	// change _ back to space
@@ -467,7 +487,9 @@ void M_ScanSaves (void)
 			if (m_filenames[i][j] == '_')
 				m_filenames[i][j] = ' ';
 		loadable[i] = true;
+#ifndef QOG_SPLIT_CLIENT
 		fclose (f);
+#endif
 	}
 }
 

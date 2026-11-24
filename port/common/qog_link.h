@@ -33,6 +33,18 @@
 #define QOG_LINK_T_HELLO    0x42u
 #define QOG_LINK_T_HELLOK   0x43u
 
+/* QuakeOG (Agent T): requests and replies outside the stream, one frame
+   each, for things the client asks while no exchange runs. The asker
+   sends again after a timeout, and every request is answered.
+ *
+ *   0x44 SAVES_ASK [type][seq]                        the client's load and save menus
+ *   0x45 SAVES     [type][seq][count][count x 40]     slot i: loadable byte + 39-byte comment
+ *
+ * Types 0x44 to 0x4F go to qog_link_side, which the engine sets. */
+#define QOG_LINK_T_SAVES_ASK 0x44u
+#define QOG_LINK_T_SAVES     0x45u
+#define QOG_LINK_T_SIDE_LAST 0x4Fu
+
 #define QOG_LINK_ROLE_SERVER 1   /* main CPU */
 #define QOG_LINK_ROLE_CLIENT 2   /* display CPU */
 
@@ -74,6 +86,10 @@ void qog_link_pump(void);
 void qog_link_drain(void);
 /* Set when the peer started a new session (it restarted). The caller clears it. */
 extern int qog_link_peer_restarted;
+/* QuakeOG (Agent T): send one frame of a side type (0x44-0x4F) now, and the
+   handler of the side frames that arrive (called from the pump). */
+void qog_link_send_side(const void *payload, int len);
+extern void (*qog_link_side)(const uint8_t *payload, int len);
 
 /* ---- supplied by the port (port/pc/link_pc.c, port/rp2040/link_rp2040.c) ---- */
 /* Bring the transport up. */

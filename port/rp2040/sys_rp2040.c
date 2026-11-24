@@ -33,7 +33,9 @@ See the GNU General Public License for more details.
  * QuakeOG (Agent R): built with QOG_SYS_MAIN it is the main CPU's layer for
  * the split game's server half (apps/quake/main): the pack and the baked
  * image are the server's copy in main's own flash (QOG_MAIN_DATA_XIP_ADDR),
- * main() boots the display CPU first, and every wait kicks the watchdog. */
+ * main() boots the display CPU first, and every wait kicks the watchdog.
+ * Saves go to main's FAT volume (Agent T, "saves on main's FAT volume"
+ * below); tools/mkboard.py --main writes the server's data region. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -78,6 +80,101 @@ FWOG_POWER_DEFAULT();
 
 /* newlib's remove() wants this; there is no filesystem to delete from. */
 int _unlink(const char *path) { (void)path; return -1; }
+
+#ifdef QOG_SYS_MAIN
+/* ---- saves on main's FAT volume ------------------------------------------
+ *
+ * QuakeOG (Agent T): the server half saves and loads with id's stdio calls
+ * (fopen, fprintf, fscanf, fgetc in host_cmd.c and pr_edict.c, and the
+ * client menus' save list in engine/net_link.c). newlib turns them into the
+ * system calls below, which keep the file in the folder "quake" of main's
+ * FAT volume through the BSP's API (bsp/main_cpu/fs/fwog_fs.h): the engine's
+ * "./id1/s0.sav" is "quake/s0.sav". One file at a time, as the BSP allows.
+ *
+ * The BSP's flash write hazards: core1 never runs on main in this app (no
+ * multicore launch anywhere in quake_main), and the BSP's disk driver kicks
+ * the watchdog after every chunk of at most 8 sectors it writes (FatFs
+ * writes one 4 KB sector at a time here), so a long save cannot outlive the
+ * 8.3 s window. The volume is mounted at the first open and never formatted
+ * from here: without a volume a save fails with id's "couldn't open". */
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include "fs/fwog_fs.h"
+
+#define FAT_FD  3
+#define FAT_DIR "quake"
+static int s_fat_state;     /* 0 not tried, 1 mounted, -1 no volume */
+static int s_fat_open;
+
+static int fat_ready(void) {
+    if (!s_fat_state) {
+        s_fat_state = fwog_fs_mount() ? 1 : -1;
+        if (s_fat_state > 0 && !fwog_fs_exists(FAT_DIR) && !fwog_fs_mkdir(FAT_DIR))
+            DIAG("[quake_main] cannot make the folder %s on the FAT volume\n", FAT_DIR);
+        DIAG("[quake_main] FAT volume %s\n", s_fat_state > 0 ? "mounted, saves in quake/" : "missing, no saves");
+    }
+    return s_fat_state > 0;
+}
+
+int _open(const char *path, int flags, ...) {
+    char name[64];
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    if (!*base || strlen(base) + sizeof FAT_DIR + 1 > sizeof name || s_fat_open || !fat_ready()) {
+        errno = ENOENT;
+        return -1;
+    }
+    snprintf(name, sizeof name, FAT_DIR "/%s", base);
+    if (!fwog_fs_open(name, (flags & O_ACCMODE) != O_RDONLY, (flags & O_APPEND) != 0)) {
+        errno = ENOENT;
+        return -1;
+    }
+    s_fat_open = 1;
+    return FAT_FD;
+}
+
+int _close(int fd) {
+    if (fd != FAT_FD || !s_fat_open) return -1;
+    s_fat_open = 0;
+    return fwog_fs_close() ? 0 : -1;
+}
+
+int _read(int fd, char *buf, int len) {
+    if (fd == 0) return stdio_get_until(buf, len, at_the_end_of_time);   /* as the SDK's */
+    if (fd != FAT_FD || !s_fat_open) return -1;
+    size_t n = (size_t)len;
+    return fwog_fs_read(buf, &n) ? (int)n : -1;
+}
+
+int _write(int fd, char *buf, int len) {
+    if (fd == 1 || fd == 2) {   /* as the SDK's */
+        stdio_put_string(buf, len, false, true);
+        return len;
+    }
+    if (fd != FAT_FD || !s_fat_open) return -1;
+    return fwog_fs_write(buf, (size_t)len) ? len : -1;
+}
+
+off_t _lseek(int fd, off_t pos, int whence) {
+    if (fd != FAT_FD || !s_fat_open) return -1;
+    if (whence == SEEK_CUR) pos += (off_t)fwog_fs_tell();
+    else if (whence == SEEK_END) pos += (off_t)fwog_fs_size();
+    if (pos < 0 || !fwog_fs_seek((uint32_t)pos)) return -1;
+    return pos;
+}
+
+int _fstat(int fd, struct stat *st) {
+    if (fd != FAT_FD || !s_fat_open) return -1;
+    memset(st, 0, sizeof *st);
+    st->st_mode = S_IFREG;
+    st->st_size = (off_t)fwog_fs_size();
+    st->st_blksize = 512;   /* newlib's buffer for the file (BUFSIZ 1024 otherwise) */
+    return 0;
+}
+
+int _isatty(int fd) { return fd >= 0 && fd <= 2; }
+#endif	/* QOG_SYS_MAIN */
 
 /* ---- the pack in flash ------------------------------------------------ */
 
