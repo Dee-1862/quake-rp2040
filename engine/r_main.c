@@ -94,17 +94,111 @@ from, so R_RenderView can draw the same picture again in frames where id's
 code would have left it on screen.
 ===============
 */
+#ifdef QOG_HUD_SKIP
+/*
+QuakeOG (Agent AK): the status bar rows are sent to the panel only when they
+change, as id's own VID_Update leaves the status bar out when nothing drew
+it. The panel keeps what it shows. A frame whose rows would be the repaint
+below (the tile and the status bar drawn again from r_hudshot) with nothing
+else drawn over them (SCR_QogHudQuiet), while the panel already shows that
+same repaint of the same r_hudshot, leaves the rows as the view left them
+and VID_Update sends only the rows above them. r_hudshot_gen counts the
+saved states and r_hudpanel_gen is the one the panel shows, -1 for rows
+that are not such a repaint. A palette change makes VID_Update send every
+row again, after the repaint is done late (R_HudFrameEndRows).
+*/
+static int			r_hudshot_gen;
+static int			r_hudpanel_gen = -1;
+static byte			r_hud_viewed;	// R_RenderView's status bar block ran this frame
+static byte			r_hud_quiet;	// and nothing after it draws into those rows
+static byte			r_hud_fromshot;	// it drew the status bar from r_hudshot
+static byte			r_hud_skipnow;	// it left the rows alone
+#endif
+
+// QuakeOG: the rows the view's z-buffer overwrote, as a separate frame
+// buffer would still hold them (see R_RenderView)
+static void R_HudRepaint (void)
+{
+	extern int	sb_updates;
+
+	Draw_TileClear (0, r_zalias_row, vid.width, vid.height - r_zalias_row);
+	r_hud_sbbefore = sb_updates;
+	if (sb_updates >= vid.numpages && !cl.intermission)
+	{
+		if (r_hudshot_valid)
+		{
+			r_hudstate_t	now;
+			int				updates = sb_updates;
+
+			R_HudStateGet (&now);
+			R_HudStateSet (&r_hudshot);
+			sb_updates = 0;
+			Sbar_Draw ();
+			sb_updates = updates;
+			R_HudStateSet (&now);
+#ifdef QOG_HUD_SKIP
+			r_hud_fromshot = true;
+#endif
+		}
+		else
+			Sbar_Changed ();	// nothing drawn yet, draw it now
+	}
+}
+
 void R_HudFrameEnd (void)
 {
 	extern int	sb_updates;
+#ifdef QOG_HUD_SKIP
+	qboolean	saved = false;
+#endif
 
 	if (r_hud_sbbefore >= 0 && r_hud_sbbefore < vid.numpages && sb_updates >= vid.numpages)
 	{
 		R_HudStateGet (&r_hudshot);
 		r_hudshot_valid = true;
+#ifdef QOG_HUD_SKIP
+		r_hudshot_gen++;
+		saved = true;
+#endif
 	}
+#ifdef QOG_HUD_SKIP
+	// what the panel shows in the status bar rows after this frame: the
+	// repaint of a known r_hudshot, Sbar_Draw's own drawing over the tile,
+	// which equals the repaint of the state saved just now, or anything else
+	if (!r_hud_skipnow)
+		r_hudpanel_gen = r_hud_viewed && r_hud_quiet && !cl.intermission && (r_hud_fromshot || saved)
+			? r_hudshot_gen : -1;
+	r_hud_viewed = r_hud_quiet = r_hud_fromshot = r_hud_skipnow = false;
+#endif
 	r_hud_sbbefore = -1;
 }
+
+#ifdef QOG_HUD_SKIP
+/*
+QuakeOG (Agent AK): VID_Update's R_HudFrameEnd. Returns the rows to send:
+r_zalias_row when the status bar rows were left alone and the panel shows
+them, else vid.height. palette_same is false when the palette changed since
+the panel last got every row: then the rows left alone are repainted now
+(nothing drew over them since the view, SCR_QogHudQuiet) and all are sent.
+*/
+int R_HudFrameEndRows (qboolean palette_same)
+{
+	int		rows = vid.height;
+
+	if (r_hud_skipnow)
+	{
+		if (palette_same)
+			rows = r_zalias_row;
+		else
+		{
+			R_HudRepaint ();
+			r_hud_skipnow = false;
+		}
+	}
+	R_HudFrameEnd ();
+	return rows;
+}
+#endif
 #endif
 qboolean	r_drawpolys;
 qboolean	r_drawculledpolys;
@@ -1159,6 +1253,11 @@ void R_EdgeDrawing (void)
 							  SPAN_RESERVE_EDGES);
 #endif
 	// id's sentinels were zeroed statics, and R_ScanEdges sets only some fields
+#if defined(QOG_VID_SCANRACE) && defined(QOG_EDGES_IN_ZBUFFER)
+	// QuakeOG (Agent AK): the last frame's scanout may still read the start
+	// of the z-buffer (the status bar rows), which a big edge table reaches
+	VID_QogScanFree (r_edgesentinels, r_ztemp_base + r_ztemp_bytes);
+#endif
 	memset (r_edgesentinels, 0, EDGE_SENTINELS * sizeof(edge_t));
 	r_qog_owneredges = cl.worldmodel->edges;
 	r_qog_ownerbytes = cl.worldmodel->numedges * sizeof(medge_t);
@@ -1207,6 +1306,11 @@ void R_EdgeDrawing (void)
 #endif
 	// QuakeOG: entries from earlier frames never match (r_draw.c), and the
 	// z-buffer has held z since, so the cache starts empty every frame
+#ifdef QOG_VID_SCANRACE
+	// QuakeOG (Agent AK): in the frame buffer's first rows, which the last
+	// frame's scanout reads first
+	VID_QogScanFree (r_qog_edgecache, (byte *)r_qog_edgecache + r_qog_edgecachebytes);
+#endif
 	memset (r_qog_edgecache, 0xFF, r_qog_edgecachebytes);
 #endif
 
@@ -1226,6 +1330,13 @@ void R_EdgeDrawing (void)
 #endif
 	QOG_PH_ADD (QOG_PH_WORLD, ph);
 	}
+
+#ifdef QOG_VID_SCANRACE
+	// QuakeOG (Agent AK): from here on the view draws anywhere in the frame
+	// and the z-buffer (brush clip buffers, spans): the last frame's scanout
+	// has to be over. The world's front end above is what it overlapped.
+	VID_QogScanDone ();
+#endif
 
 	if (r_drawculledpolys)
 		R_ScanEdges ();
@@ -1458,28 +1569,27 @@ void R_RenderView (void)
 	// redraws by itself in the other frames. The 2D overlay comes after this.
 	if (r_zalias_row < vid.height)
 	{
-		extern int	sb_updates;
 		QOG_PH_T (hp_hud);	// QuakeOG (Agent V)
+#ifdef QOG_HUD_SKIP
+		extern int	sb_updates;
+		qboolean	SCR_QogHudQuiet (void);
 
-		Draw_TileClear (0, r_zalias_row, vid.width, vid.height - r_zalias_row);
-		r_hud_sbbefore = sb_updates;
-		if (sb_updates >= vid.numpages && !cl.intermission)
+		// QuakeOG (Agent AK): the panel already shows the repaint of this
+		// r_hudshot and nothing else will draw there: leave the rows
+		r_hud_viewed = true;
+		r_hud_quiet = SCR_QogHudQuiet ();
+		if (r_hud_quiet && sb_updates >= vid.numpages && !cl.intermission && r_hudshot_valid
+			&& r_hudpanel_gen == r_hudshot_gen)
 		{
-			if (r_hudshot_valid)
-			{
-				r_hudstate_t	now;
-				int				updates = sb_updates;
-
-				R_HudStateGet (&now);
-				R_HudStateSet (&r_hudshot);
-				sb_updates = 0;
-				Sbar_Draw ();
-				sb_updates = updates;
-				R_HudStateSet (&now);
-			}
-			else
-				Sbar_Changed ();	// nothing drawn yet, draw it now
+			r_hud_sbbefore = sb_updates;
+			r_hud_skipnow = true;
+#ifdef QOG_HUD_SKIP_CHECK
+			R_HudRepaint ();	// PC test builds: vid_pc.c checks it against the panel
+#endif
 		}
+		else
+#endif
+		R_HudRepaint ();
 		QOG_HP_ADD (QOG_HP_HUD, hp_hud);	// QuakeOG
 	}
 #endif

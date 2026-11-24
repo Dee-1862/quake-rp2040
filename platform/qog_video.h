@@ -52,6 +52,14 @@ void qog_video_present(const uint8_t *fb);
 void qog_video_wait(void);
 bool qog_video_busy(void);
 
+/* QuakeOG (Agent AK): present only the first `rows` panel lines (the rest of
+ * the panel keeps what it shows), when src_h == out_h, else the whole frame.
+ * qog_video_wait_rows returns once the scanout in flight has read the frame
+ * buffer's first `rows` rows (each row is read once, into a line buffer, so
+ * the game may draw over them), or when no scanout runs. */
+void qog_video_present_rows(const uint8_t *fb, uint32_t rows);
+void qog_video_wait_rows(uint32_t rows);
+
 /* Optional work for core 1 to do while its line DMA runs (sound mixing in
  * Phase 5). Must return quickly: one line is ~100 us on the wire. */
 void qog_video_set_core1_hook(void (*fn)(void));
