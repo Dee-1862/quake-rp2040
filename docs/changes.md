@@ -2,6 +2,51 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Alias models and particles in integers in Fast mode, an exact faster alias span loop (Agent AI, PC and ARM build, registered data)
+
+The board's timedemo demo3 spends 14.3 ms of a 75.7 ms view on models, 5.2 on the view weapon and 3.4 on particles. Counted on the PC (`QOG_ALIAS_STATS`, timedemo demo3, per view): 9.05 alias bounding box checks, 2.82 models drawn, 299 vertices, 502 triangles of which 123 rasterised with gradients (84 of them 4 pixels or fewer) and 55 by subdivision, 748 span pixels, and the view weapon with 71 vertices, 40 rasterised triangles, 27 clipped ones and 2,772 pixels, plus 205 particles (74 on the screen). Pixels are few, the time is float work: an M0+ has no FPU and every float is a call to the ROM (objdump: 56 helper calls per triangle gradient, about 44 per vertex, 3 double sines and 3 double cosines in every AngleVectors). So Fast mode replaces the float work with integers, the way MG24Quake's rasteriser is fixed point but further (MG24Quake keeps float vertices, it has an FPU). MG24Quake's other alias ideas (per-triangle skin layout and DMA reads from its SPI flash) suit its external flash, not our XIP cache, and need the pak converter and RAM, so they are not taken. Nothing ran on hardware. Savings are estimates.
+
+| Change | Flag | Mode | What it does |
+| --- | --- | --- | --- |
+| Integer vertices | `QOG_ALIAS_FAST` (board option `QOG_BOARD_ALIASFAST`, on with `QOG_BOARD_FAST`) | Fast | each vertex is nine integer multiplies with the model to view transform in 16.16, 1/z one unsigned divide (the hardware divider), the screen position two divides in 28.4 (within 1/16 pixel of id's), the light three multiplies with id's normals in 2.14 (engine/anorms14.h). Both cores share them as Agent Z's exact vertices do (`QOG_ALIAS_CORE1`). A point too far off screen for 32 bits takes a float divide |
+| Integer transform | same | Fast | R_QogAliasXform builds the transform from a 1,024 step sine table (engine/qogsin.h, linear between steps) and integer products, the floats read into fixed point by their bits (R_QogFix). No AngleVectors, no R_ConcatTransforms. The light vector is rotated in 2.14. Only a clipped model also gets id's float aliastransform (for the clipper's z clip) |
+| Integer bounding box test | same | Fast | a bounding sphere test (boundingradius with margin) rejects models wholly behind or beside the view before any transform, the box corners go through the integer transform, id's near plane edge points are kept. Reject only when more than a pixel off, accept unclipped only when a pixel inside, which covers the projection's rounding. Models drawn per view 2.85 (id 2.82) |
+| Integer triangle gradients | same | Fast | D_QogCalcGradients: the same numerators, quotient and remainder by the same denominator, values shifted so products fit 32 bits (s and t keep whole texels, 1/z 21 bits), light keeps id's ceil |
+| Integer clip points | same (engine/r_aclip.c) | Fast | the left, right, top and bottom clip points of a clipped triangle (the view weapon at the bottom edge) are integer quotients rounded as id's + 0.5. Distances of 2^14 pixels or more keep id's float |
+| Integer particles | same (d_part.c, r_part.c) | Fast | the position read into 24.8 by its bits, shifted with the eye's until below 2^15, products with the view vectors in 2.14, two divides for the screen position and one for 1/z. R_DrawParticles makes the view's constants once (64 B of its stack) |
+| Particle depth first | none, always | exact | D_DrawParticle computes the depth product first and returns before the other two, the compare as `(float)8.0` (the same) |
+| Alias span loop | `QOG_ALIASSPAN_FAST` (both lists) | exact, both modes | id's D_PolysetDrawSpans8 reloaded every step from memory at each pixel (a byte store may alias any global, L110). Steps in locals, the texel as skin[(T >> 16) * width + (S >> 16)] which is id's pointer and two carries added up, and with the one-byte z-buffer a span whose ends lie in the same linear piece of D_ZQ takes that piece's shift (1/z is linear along the span). Player colours as before |
+| Static matrices | none | exact | id's static tmatrix and viewmatrix (zeros kept for their off-diagonals) are locals with the same zeros, 96 B static RAM less |
+
+Estimated board saving per view of demo3 at 250 MHz (cycle counts from the objdump of the ARM build, ROM float calls taken at 55 to 75 cycles, the PC's work counts above, an estimate the lead measures):
+
+| Item | Before (cycles each) | After | Per view | Estimate |
+| --- | --- | --- | --- | --- |
+| vertices (370 a view) | about 2,400 | about 200 (3 divides) | 0.8 M CPU, two cores | about 1.8 ms |
+| triangle gradients (about 200 incl. clipped fans) | about 3,250 | about 450 | 0.56 M | about 2.2 ms |
+| transform builds (9 checks, 3.8 draws) | about 18,000 (double trig, two 3x4 products) | sphere test about 2,600, transform about 1,500 | 0.2 M | about 0.8 ms |
+| box corners (9 checks) | about 15,000 | about 1,500 | 0.12 M | about 0.5 ms |
+| particles (205, 74 on screen) | about 1,150 to 2,000 | about 150 to 250 | 0.27 M | about 1.1 ms |
+| weapon clip points (about 40 a view) | about 2,500 | about 300 | 0.09 M | about 0.35 ms |
+| span pixels (3,520) | about 48 instructions a written pixel | about 30 | 0.06 M | about 0.25 ms, both modes |
+| total | | | | about 7 ms of the 22.9 ms of models, vmodel and parts, more if the board's float calls cost more than their ROM cycle counts (the measured phases are about twice what these counts predict) |
+
+Fast pictures (quakeog_pc, the 121 shot frames, view rows, against main with r_fast 1, so only this change): 0.315% of the pixels differ, 114 frames, worst d_demo1_12 1.26%. The fight shots (fhash) 0.29 to 0.59%. The changed pixels are on models and the view weapon: light steps of one colour map row and texels moved by one at triangle edges. Side by side the models look the same. All of Fast mode against Exact is now 3.19% (main's Fast spans alone 2.88%). On the board-flag split pair (one-byte z-buffer, both cores as threads, `QOG_ALIAS_CORE1`) the 94 frames it reaches differ by 0.47% from the same pair without the change. Pairs (Fast reference, Fast new, changed pixels red, 2x) are in the session scratchpad's `fast2\models` folder.
+
+Exact proof (hidden, `-nosound`, own data folder, link ports 27921 and 27922): quakeog_pc `qogtest_hash` ce86f894f9de, `qogtest_f_hash` e92bc9e9650d, the 121 shot frames byte identical (all 200 rows) with an untouched build of main, before and after each merge of main (the last full run on a29cbce, the hashes again on 97f9a75). The split pair with the board client flags (`QOG_ZBUFFER8_NEAR`, `QOG_SPANS_CORE1`, `QOG_ALIAS_CORE1`, Agent Z's flags) against the same pair of 85a3d22: 94 frames (it stops loading e2m3 in both builds, L113), 93 byte identical and one differing only in rows 1 to 23 (the statehash notify text, which appears a frame apart from run to run). That pair is what exercises the one-byte z per span piece.
+
+RAM and stack (board, merged with main 97f9a75): quake_display `end` 0x2003ea28, main's 0x2003ea84, so 92 B less (96 B of matrices freed, one 4 B pointer to the model's transform). quake_main `end` 0x2003f544, unchanged code. quake_display.bin 390,048 B. Stack: R_AliasDrawModel 9,256 to 9,392 B (the 112 B transform), D_PolysetDrawSpans8 96 to 104, so the deepest alias chain (R_AliasDrawModel, R_AliasPreparePoints, R_AliasClipTriangle, D_PolysetDraw, D_RasterizeAliasPolySmooth, D_PolysetDrawSpans8) grows by 144 B. Side branches stay below it: R_QogAliasCheckBBoxFast 520 B beside R_AliasCheckBBox 824 B (832 before), R_QogAliasXform 184 B, R_DrawParticles 80 to 152 B. Core 1's alias job about 100 B. The SIO interpolators are not used, so nothing collides with Agent AH's `QOG_LITSPAN_INTERP`.
+
+`QOG_ALIAS_STATS` (PC measurement only, `-DQOG_PC_EXTRA_DEFS=QOG_ALIAS_STATS`) prints `qog_aliasstats ents ...` and `qog_aliasstats vm ...` every 100 views, the sums since the level started. Test scripts `qogtest_ai_fast.cfg`, `qogtest_ai_exact.cfg` and `qogtest_ai_td3.cfg` (timedemo demo3 with `qog_quitafter`) are in the branch's git-ignored data folder.
+
+Files: engine/r_alias.c, engine/d_polyse.c, engine/d_part.c, engine/r_part.c, engine/r_aclip.c (not in my list, alias clipping, nobody else's), engine/r_qogalias.h, engine/anorms14.h and engine/qogsin.h (new), pc/CMakeLists.txt and apps/quake/CMakeLists.txt (flags, shared). r_main.c, r_sprite.c and d_sprite.c are not touched.
+
+Not done, for the lead or the user:
+- R_LightPoint (r_light.c) runs a float BSP trace for every drawn model, about 3.8 a view, and R_DrawEntitiesOnList measures every dynamic light's distance with a sqrt. Not my files.
+- The particle physics in R_DrawParticles stays float (about 12 float ops a particle a view), its state is the particles' float positions.
+- Tiny triangles (64 of 123 a view are 4 pixels or fewer) still get gradients, now cheap. Drawing them flat would show on near models.
+- MG24Quake's per-triangle skin layout needs the pak converter and a RAM buffer per triangle, our skins are read through the XIP cache.
+
 ## 2026-11-24: World and brush model front end in integers for Fast mode, brush entities without trig, integer node culling (Agent AJ, PC and ARM build, registered data)
 
 The display's world front end (world 13.7 ms, bmodels 4.3 ms a view in the board's timedemo demo3) does most of its work in software float, about 55 cycles an operation on the RP2040, while a multiply takes one cycle and the SIO divider eight. Three changes, two exact in both render modes and one for Fast mode only. Nothing ran on hardware, every saving below is an estimate from the Thumb code (objdump of `build-aj/arm2`) and the PC's work counts per view of `timedemo demo3` (nodes 265, faces 193, edges emitted 450, points projected 468, plane distances 1,242, brush entity rotations 18).
