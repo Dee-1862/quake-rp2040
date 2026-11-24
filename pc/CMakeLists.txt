@@ -227,6 +227,7 @@ if(QOG_PC_DEMO_BOARD)
         list(APPEND _pcdemo_defs QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7)
     endif()
     set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_pcdemo_defs}")
+endif()
 # Renderer speed, exact (Agent P). Same pixels as id's code, less work.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_LITSPAN_FAST                # lit spans without modulo, texture origin folded into the light pointer, a loop per mip
