@@ -1813,7 +1813,13 @@ static void Mod_BakeOpen (void)
 	if (!img)
 		return;
 	if (img->magic != QOGB_MAGIC || img->version != QOGB_VERSION
-		|| img->layout != Mod_BakeLayout () || img->size != (unsigned)len)
+#ifdef QOG_SPLIT_SERVER
+		// QuakeOG (Agent T): the server half also takes the server's image
+		|| (img->layout != Mod_BakeLayout () && img->layout != (Mod_BakeLayout () ^ QOGB_SERVER_LAYOUT))
+#else
+		|| img->layout != Mod_BakeLayout ()
+#endif
+		|| img->size != (unsigned)len)
 	{
 		Con_Printf ("qogbake.bin was baked by another build, not used (run qog_bake again)\n");
 		return;
@@ -1824,7 +1830,8 @@ static void Mod_BakeOpen (void)
 		return;
 	}
 	mod_bake = img;
-	Con_Printf ("Baked models: %i in qogbake.bin, %i KB\n", img->nummaps, img->size / 1024);
+	Con_Printf ("Baked models: %i in qogbake.bin, %i KB%s\n", img->nummaps, img->size / 1024,
+		img->layout != Mod_BakeLayout () ? ", the server's image" : "");
 }
 
 /*
@@ -1964,11 +1971,13 @@ typedef struct
 #define	MAX_BAKE_SHARED	4096
 
 static qboolean		bk_stubs, bk_detach;
+static qboolean		bk_server;	// QuakeOG (Agent T): -bakeserver, see QOGB_SERVER_LAYOUT
 static bakeshared_t	bk_shared[MAX_BAKE_SHARED];
 static int			bk_numshared;
 static int			bk_sharedbytes, bk_savedbytes;	// texture pixels stored, and not stored twice
 #else
 #define bk_detach	false
+#define bk_server	false
 #endif
 
 static int Bake_Reserve (int size)
@@ -2181,6 +2190,27 @@ static unsigned Bake_Map (char *name, byte *f, int flen)
 	at = bk_base + Bake_Reserve (nsub * sizeof(model_t));
 #ifdef QOG_BAKE_STUBS
 	bk_detach = bk_stubs;	// QuakeOG: the lumps below are copied from the pack too
+	if (bk_server)
+	{	// QuakeOG (Agent T): what only the client draws is left out of the
+		// server's image, and nothing points at it
+		m.numtextures = m.numtexinfo = m.numsurfaces = m.numvertexes = 0;
+		m.numedges = m.numsurfedges = m.nummarksurfaces = 0;
+		m.textures = NULL;
+		m.texinfo = NULL;
+		m.surfaces = NULL;
+		m.vertexes = NULL;
+		m.edges = NULL;
+		m.surfedges = NULL;
+		m.marksurfaces = NULL;
+		m.lightdata = NULL;
+		for (i=0 ; i<m.numleafs ; i++)
+		{
+			m.leafs[i].firstmarksurface = 0;
+			m.leafs[i].nummarksurfaces = 0;
+		}
+		for (i=0 ; i<m.numnodes ; i++)
+			m.nodes[i].firstsurface = m.nodes[i].numsurfaces = 0;
+	}
 #endif
 	Bake_Copy (m.planes, m.numplanes * sizeof(mplane_t));
 	if (m.textures)
@@ -2308,6 +2338,8 @@ static unsigned Bake_Map (char *name, byte *f, int flen)
 		t.flags = 0;
 		if (i < m.numsubmodels)
 			Mod_SetSubmodel (&t, i);
+		if (bk_server)
+			t.firstmodelsurface = t.nummodelsurfaces = 0;	// QuakeOG (Agent T): no surfaces
 		if (i)
 		{
 			memset (t.name, 0, sizeof(t.name));
@@ -2357,6 +2389,13 @@ static unsigned Bake_Alias (char *name, byte *f, int flen)
 		return 0;
 
 	at = bk_base + Bake_Reserve (sizeof(model_t));
+	if (bk_server)
+	{	// QuakeOG (Agent T): the server reads only the model_t (bounds, frames)
+		Cache_Free (&m.cache);
+		m.cache.data = NULL;
+		*BAKE_AT(model_t, at) = m;
+		return at;
+	}
 	data = bk_base + Bake_Reserve (mod_aliassize);
 	memcpy (BAKE_AT(byte, data), m.cache.data, mod_aliassize);
 	Cache_Free (&m.cache);
@@ -2392,6 +2431,13 @@ static unsigned Bake_Sprite (char *name, byte *f, int flen)
 	end = Hunk_AllocName (16, "bakeend");	// the hunk's end, past the last frame
 
 	at = bk_base + Bake_Reserve (sizeof(model_t));
+	if (bk_server)
+	{	// QuakeOG (Agent T): the server reads only the model_t
+		m.cache.data = NULL;
+		*BAKE_AT(model_t, at) = m;
+		Hunk_FreeToLowMark (mark);
+		return at;
+	}
 	Bake_Copy (m.cache.data, end - (byte *)m.cache.data);
 	ps = BAKE_AT(msprite_t, Bake_Ptr (m.cache.data));
 	for (i=0 ; i<ps->numframes ; i++)
@@ -2454,7 +2500,7 @@ static qboolean Bake_Model (char *name, qogbake_entry_t *e)
 		at = 0;
 	// QuakeOG: an alias model's frames and skins stay in the pack, which
 	// must then lie below the image (-bakestubs with -bakebase)
-	if (at && id == IDPOLYHEADER && (unsigned)(size_t)(f + flen) > bk_limit)
+	if (at && id == IDPOLYHEADER && !bk_server && (unsigned)(size_t)(f + flen) > bk_limit)
 	{
 		Con_Printf ("qog_bake: %s lies past the image's address\n", name);
 		at = 0;
@@ -2483,6 +2529,19 @@ static qboolean Bake_Model (char *name, qogbake_entry_t *e)
 		qogbake_stub_t	st;
 
 		Bake_MakeStub (f, flen, &st);
+		e->fileaddr = 0;
+		e->filelen = sizeof(st);
+		e->filehash = Mod_FileHash ((byte *)&st, sizeof(st));
+	}
+	else if (bk_server)
+	{	// QuakeOG (Agent T): an alias model or sprite of the server's image
+		// is used through its 16-byte stub (tools/mkboard.py writes the same)
+		qogbake_mstub_t	st;
+
+		st.ident = QOGB_STUB_IDENT;
+		st.fileident = id;
+		st.filelen = flen;
+		st.filehash = Mod_FileHash (f, flen);
 		e->fileaddr = 0;
 		e->filelen = sizeof(st);
 		e->filehash = Mod_FileHash ((byte *)&st, sizeof(st));
@@ -3038,6 +3097,13 @@ static void Mod_Bake_f (void)
 #ifdef QOG_BAKE_STUBS
 	bk_stubs = COM_CheckParm ("-bakestubs") != 0;
 	bk_numshared = bk_sharedbytes = bk_savedbytes = 0;
+	// QuakeOG (Agent T): the server's image for the main chip (QOGB_SERVER_LAYOUT)
+	bk_server = COM_CheckParm ("-bakeserver") != 0;
+	if (bk_server && !bk_stubs)
+	{
+		Con_Printf ("qog_bake: -bakeserver needs -bakestubs\n");
+		return;
+	}
 #endif
 	// QuakeOG: -bakebase <address> builds the image for another flash address
 	// (at or after the packs, 64 KB aligned), for example where a board data
@@ -3083,6 +3149,8 @@ static void Mod_Bake_f (void)
 	hd->magic = QOGB_MAGIC;
 	hd->version = QOGB_VERSION;
 	hd->layout = Mod_BakeLayout ();
+	if (bk_server)
+		hd->layout ^= QOGB_SERVER_LAYOUT;	// QuakeOG (Agent T): only a server half takes it
 	hd->base = bk_base;
 	hd->size = bk_len;
 	hd->nummaps = n;
@@ -3098,7 +3166,9 @@ static void Mod_Bake_f (void)
 	Sys_FileWrite (hnd, bk_buf, bk_len);
 	Sys_FileClose (hnd);
 #ifdef QOG_BAKE_STUBS
-	if (bk_stubs)
+	if (bk_server)
+		Con_Printf ("qog_bake: the server's image, no textures, surfaces, edges or light\n");
+	else if (bk_stubs)
 		Con_Printf ("qog_bake: maps detached, texture pixels %i bytes, %i bytes shared between maps\n",
 			bk_sharedbytes, bk_savedbytes);
 #endif
@@ -3166,6 +3236,11 @@ static void Mod_FinishBrushModel (model_t *mod)
 #endif
 	fr = MODFRAME (loadmodel);
 
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG (Agent T): the server half draws nothing, so a map gets none
+	// of the renderer's per-frame arrays below (on e3m5 9,152 bytes of hunk)
+	memset (fr, 0, sizeof(*fr));
+#else
 	// QuakeOG: the per-frame state id kept inside the structures, in RAM
 	// (zeroed by the hunk, as the fields were). Copied into the submodels
 	// below with the rest of the model, so they share it like the arrays.
@@ -3215,6 +3290,7 @@ static void Mod_FinishBrushModel (model_t *mod)
 #else
 	fr->edge_cache = Hunk_AllocName ((loadmodel->numedges + 1) * sizeof(unsigned int), loadname);
 #endif
+#endif	// QOG_SPLIT_SERVER
 
 #ifdef QOG_MOD_FLASH
 	// QuakeOG: a baked map is already finished in the image, its inline

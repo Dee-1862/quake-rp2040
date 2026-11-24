@@ -681,6 +681,26 @@ typedef struct
 	unsigned	filehash;
 } qogbake_stub_t;			// 132 bytes
 
+// QuakeOG (Agent T): the server's image for the main chip of the split game.
+// qog_bake -bakestubs -bakeserver keeps what the server reads of a map
+// (planes, leafs, nodes, clip nodes and hulls, submodels, entities,
+// visibility) and leaves out textures, texinfo, surfaces, edges, vertexes,
+// mark surfaces and light, which only the client draws. An alias model or
+// sprite is its model_t alone (type, bounds, frame count, flags), with no
+// cache data. Every model file in the server's pak is then a stub: a map
+// the qogbake_stub_t above, an alias model or sprite this 16-byte one. The
+// image's layout word is the build's layout XOR QOGB_SERVER_LAYOUT, so only
+// a server half (QOG_SPLIT_SERVER) uses it. tools/mkboard.py --main.
+#define QOGB_SERVER_LAYOUT	0x53525652	// "RVRS"
+
+typedef struct
+{
+	int			ident;		// QOGB_STUB_IDENT
+	int			fileident;	// IDPOLYHEADER or IDSPRITEHEADER of the file it replaces
+	unsigned	filelen;	// length and Mod_FileHash of that file
+	unsigned	filehash;
+} qogbake_mstub_t;			// 16 bytes
+
 //============================================================================
 
 void	Mod_Init (void);
