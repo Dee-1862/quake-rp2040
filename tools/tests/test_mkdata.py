@@ -39,6 +39,23 @@ class ImageFormat(unittest.TestCase):
             mkdata.build_image([("a", b""), ("a", b"")])
 
 
+class FlashMap(unittest.TestCase):
+    """Agent AC: the tools read platform/qog_flashmap.h, and the regions do not overlap."""
+
+    def test_offsets(self):
+        self.assertEqual(mkdata.XIP_BASE + mkdata.DATA_OFFSET, 0x10100000)
+        self.assertEqual(mkdata.DATA_MAX, 0xFF0000 - 0x100000)
+        self.assertEqual(mkdata.XIP_BASE + mkdata.MAIN_DATA_OFFSET, 0x10200000)
+        self.assertEqual(mkdata.MAIN_DATA_MAX, 0x800000 - 0x200000)
+
+    def test_no_overlap(self):
+        app = mkdata.flashmap_define("QOG_APP_OFFSET")
+        self.assertGreaterEqual(app, 0x21000)                           # bootloader and metadata below
+        self.assertGreater(mkdata.DATA_OFFSET, app)
+        self.assertLessEqual(mkdata.DATA_OFFSET + mkdata.DATA_MAX, 0x1000000)
+        self.assertLessEqual(mkdata.MAIN_DATA_OFFSET + mkdata.MAIN_DATA_MAX, 0x800000)   # the FAT volume
+
+
 class Uf2(unittest.TestCase):
     def test_blocks(self):
         data = bytes(range(256)) * 3 + b"z"

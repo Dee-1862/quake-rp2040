@@ -53,7 +53,7 @@ python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display  # only the displ
 # the display reboots into its bootloader: press GREEN to start the app
 ```
 
-The data UF2 writes only from 0x10400000 up, so the app and its metadata are untouched. Hold green while the app boots to time a full CRC check of the region. *This procedure has not yet been tested on a board.*
+The data UF2 writes only from 0x10100000 up (QOG_DATA_OFFSET in platform/qog_flashmap.h), so the app and its metadata are untouched. Hold green while the app boots to time a full CRC check of the region. *This procedure has not yet been tested on a board.*
 
 ## Controls (platform test)
 

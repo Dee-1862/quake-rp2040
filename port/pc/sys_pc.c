@@ -29,12 +29,13 @@ See the GNU General Public License for more details.
 #include "quakedef.h"
 #include "qog_mem.h"
 #include "qog_aim.h"
+#include "qog_flashmap.h"
 
 #ifndef QOG_DEFAULT_BASEDIR
 #define QOG_DEFAULT_BASEDIR "."
 #endif
 #define DEFAULT_HEAP_KB (8 * 1024)
-#define QOG_PC_FLASH_ADDR 0x10400000u   /* same address as the board's game data region */
+#define QOG_PC_FLASH_ADDR QOG_DATA_XIP_ADDR   /* same address as the board's game data region (0x10100000, Agent AC) */
 #define QOG_PC_HUNK_ADDR  0x30000000u
 
 qboolean isDedicated = false;
@@ -240,8 +241,8 @@ int main(int argc, char **argv) {
     parms.argv = com_argv;
 
     /* QuakeOG (Agent T): -flashbase <address> maps the packs from another
-       address, 0x10300000 for the main chip's server data region
-       (platform/qog_flashmap.h, tools/mkboard.py --main) */
+       address, 0x10200000 (QOG_MAIN_DATA_XIP_ADDR) for the main chip's
+       server data region (platform/qog_flashmap.h, tools/mkboard.py --main) */
     int i = COM_CheckParm("-flashbase");
     if (i && i + 1 < com_argc)
         s_flash_next = (byte *)(size_t)strtoul(com_argv[i + 1], NULL, 0);

@@ -18,6 +18,7 @@ Never commit or share an image built from id Software's data.
 """
 import argparse
 import os
+import re
 import struct
 import sys
 import zlib
@@ -28,9 +29,24 @@ HEADER_SIZE = 64
 ENTRY_SIZE = 32
 NAME_LEN = 24
 
-XIP_BASE = 0x10000000
-DATA_OFFSET = 0x00400000         # platform/qog_flashmap.h QOG_DATA_OFFSET
-DATA_MAX = 0x00FF0000 - DATA_OFFSET
+FLASHMAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "platform", "qog_flashmap.h")
+
+
+def flashmap_define(name, path=FLASHMAP):
+    """A hex or decimal #define of platform/qog_flashmap.h, so the tools and
+    the firmware read one flash map (Agent AC)."""
+    with open(path, encoding="utf-8") as f:
+        m = re.search(r"#define\s+%s\s+(0x[0-9A-Fa-f]+|\d+)u?\b" % name, f.read())
+    if not m:
+        raise SystemExit("mkdata: %s not found in %s" % (name, path))
+    return int(m.group(1), 0)
+
+
+XIP_BASE = flashmap_define("QOG_XIP_BASE")
+DATA_OFFSET = flashmap_define("QOG_DATA_OFFSET")             # display data region, 0x100000
+DATA_MAX = flashmap_define("QOG_SAVE_OFFSET") - DATA_OFFSET  # up to the save slots
+MAIN_DATA_OFFSET = flashmap_define("QOG_MAIN_DATA_OFFSET")   # main's server data region, 0x200000
+MAIN_DATA_MAX = flashmap_define("QOG_MAIN_FAT_OFFSET") - MAIN_DATA_OFFSET   # up to main's FAT volume
 
 UF2_MAGIC0, UF2_MAGIC1, UF2_MAGIC_END = 0x0A324655, 0x9E5D5157, 0x0AB16F30
 UF2_FLAG_FAMILY = 0x00002000

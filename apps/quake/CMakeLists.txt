@@ -222,6 +222,9 @@ target_link_options(quake_display PRIVATE -Wl,--allow-multiple-definition)
 fwog_display_app(quake_display
     VERSION 001
     DESCRIPTION "QuakeOG: Quake on the display RP2040 (does not fit RAM yet; built for measurement)")
+# Agent AC: the display app's slot ends at the data region (913,408 B with
+# the data at 0x100000), so a display app that outgrows it fails the build
+qog_check_app_size(quake_display)
 
 # QuakeOG (Agent R): the two-chip split. The server half (SV_*, QuakeC,
 # edicts) runs on the MAIN RP2040 as quake_main, the client half (CL_*,
