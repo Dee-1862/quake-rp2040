@@ -329,6 +329,17 @@ if(QOG_SPLIT)
     if(QOG_BOARD_VERTCACHE AND QOG_BOARD_CLIPDIST)
         list(APPEND _cl_defs QOG_VERTCACHE_CLIPDIST)   # r_draw.c R_QogClipDist
     endif()
+    # Flash miss experiments for the lit spans, exact, off until measured on
+    # the board: texels or the colour map read through the XIP no-allocate
+    # alias, so their misses do not evict code (d_scanlit.c)
+    option(QOG_BOARD_TEXNOALLOC "lit span texels through the XIP no-allocate alias (exact, measurement)" OFF)
+    option(QOG_BOARD_CMAPNOALLOC "lit span colour map through the XIP no-allocate alias (exact, measurement)" OFF)
+    if(QOG_BOARD_TEXNOALLOC)
+        list(APPEND _cl_defs QOG_LIT_TEX_NOALLOC)
+    endif()
+    if(QOG_BOARD_CMAPNOALLOC)
+        list(APPEND _cl_defs QOG_LIT_CMAP_NOALLOC)
+    endif()
     option(QOG_BOARD_ALIASCORE1 "with CORE1, alias model vertices shared by both cores (exact)" ON)
     if(QOG_BOARD_CORE1 AND QOG_BOARD_ALIASCORE1)
         list(APPEND _cl_defs QOG_ALIAS_CORE1)      # r_alias.c R_QogAliasPrepareRange

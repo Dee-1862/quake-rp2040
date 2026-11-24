@@ -129,6 +129,22 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 	lit_smax = (pface->extents[0] >> 4) + 1;
 	lit_lshift = 4 - mip;	// a lightmap cell is 16 texels at mip 0
 	lit_colormap = (byte *)vid.colormap;
+#if !defined(_WIN32) && (defined(QOG_LIT_TEX_NOALLOC) || defined(QOG_LIT_CMAP_NOALLOC))
+	// QuakeOG (Agent Z): measurement options for the board (exact, the same
+	// bytes). Texels, or the colour map, read from flash through the
+	// RP2040's XIP no-allocate alias (0x11000000): a read the XIP cache
+	// holds is served from it, a miss is read from flash without evicting
+	// anything, so streaming texels leave the span code, the colour map and
+	// the light grid code in the 16 KB cache.
+#define QOG_XIP_NOALLOC(p)	((unsigned)(size_t)(p) - 0x10000000u < 0x01000000u ? \
+							 (byte *)(p) + 0x01000000 : (byte *)(p))
+#ifdef QOG_LIT_TEX_NOALLOC
+	lit_tex = QOG_XIP_NOALLOC (lit_tex);
+#endif
+#ifdef QOG_LIT_CMAP_NOALLOC
+	lit_colormap = QOG_XIP_NOALLOC (lit_colormap);
+#endif
+#endif
 	QOG_PH_COUNT (QOG_PC_LITSURFS, 1);
 	QOG_PH_COUNT (QOG_PC_LMCELLS, lit_smax * ((pface->extents[1] >> 4) + 1));
 #ifdef QOG_LITSPAN_FAST

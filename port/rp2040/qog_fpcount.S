@@ -7,13 +7,14 @@
  * then jumps to the real helper (the SDK's wrapper, through the linker's
  * --wrap) with r0 to r3 and lr as the caller left them. Only ip and the
  * flags change, which the run-time ABI allows for every helper, the
- * flag-returning compares included. The stubs run from RAM, so they add
- * no XIP accesses. Generated, keep in step with qog_fpcount.syms. */
+ * flag-returning compares included. The stubs run from flash (no RAM left
+ * for them), so read XIP numbers from a QOG_BOARD_XIPSTATS build without
+ * FPCOUNT. Generated, keep in step with qog_fpcount.syms. */
 	.syntax unified
 	.cpu cortex-m0plus
 	.thumb
 
-	.section .time_critical.qog_fpcount, "ax"
+	.section .text.qog_fpcount, "ax"
 	.balign 4
 
 @ r0 the helper, r1 the group's byte offset, r2 the total's, r0 to r2 pushed

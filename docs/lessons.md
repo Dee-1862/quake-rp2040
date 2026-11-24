@@ -144,3 +144,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L64. Compare RAM cuts with the fixed-frame scripts, size the hunk with the fight tour.** The `qogtest_*_mem_<map>` scripts run at `host_framerate 0.05` and give the same smallest `-heapsize` every time. A `qog_tour_fight` ends a level with a different number of client entities from run to run (184 to 198 on e1m3), so its hunk low moves by a 16-entity block, but it reaches more of the level and needs up to 2 KB more than the script.
 
 **L65. The z-buffer between views is memory with an owner per byte range.** Today: the status bar rows (15,360 B), MSG_ReadString's fallback (2 KB), the link's receive buffer (7.5 KB), and the precache names at the very end. Anything placed there must be empty or dead whenever R_RenderView starts, and should check that at run time as `Link_RxCheckIdle` does.
+
+**L66. In the agents' bash tool a heredoc is not always literal.** Two backslash-n pairs in a quoted heredoc fed to Python arrived as a real newline and broke C string literals in qog_phase.c. Write text with backslashes through the Write or Edit tools (or build the bytes with chr), and grep the result for a broken string before building.
+
+**L67. Build folders keep their CMake cache values after main changes the defaults.** A reused build folder still had the old client hunk and stack sizes and reported RAM 5 KB away from a fresh one. Take `end` numbers from a freshly configured folder.
+
+**L68. Every level of a recursion carries the whole frame of the recursive function.** R_RecursiveWorldNode kept the frustum test's box corners and points in its frame at every BSP level. Moving the test into a function that is not inlined (R_QogCullNode) cut the frame from 96 to 48 B per level and made it faster.
+
+**L69. The XIP cache counters (XIP_CTRL CTR_ACC, CTR_HIT) count both cores and saturate at 2^32.** Read them as differences around a phase and clear them between reports, when no phase is open. Core 1's span half lands in the spans phase.
