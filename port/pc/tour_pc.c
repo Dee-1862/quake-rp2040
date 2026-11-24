@@ -216,8 +216,25 @@ void qog_tour_frame (void)
 	}
 }
 
+/* QuakeOG (Agent AD): `qog_tour_spot x y z` puts the player there and links
+   it, touching what is there, as a tour spot does (for one trigger) */
+static void cmd_qog_tour_spot (void)
+{
+	int		i;
+
+	if (!sv.active || Cmd_Argc () < 4)
+	{
+		Con_Printf ("qog_tour_spot <x> <y> <z> : move the player there\n");
+		return;
+	}
+	for (i = 0 ; i < 3 ; i++)
+		sv_player->v.origin[i] = Q_atof (Cmd_Argv (1 + i));
+	SV_LinkEdict (sv_player, true);
+}
+
 void qog_tour_register (void)
 {
+	Cmd_AddCommand ("qog_tour_spot", cmd_qog_tour_spot);
 	Cmd_AddCommand ("qog_tour", cmd_qog_tour);
 	Cmd_AddCommand ("qog_tour_fight", cmd_qog_tour);
 }
