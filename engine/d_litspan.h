@@ -47,6 +47,16 @@ See the GNU General Public License for more details.
 #ifndef D_LITSPAN_H
 #define D_LITSPAN_H
 
+// QuakeOG (Agent AH): every flash read of the drawer goes through
+// LITSPAN_RD (kind 0 texel, 1 colour map), so the PC measurement build
+// (QOG_XIPSIM, engine/d_xipsim.c) can model the board's XIP cache
+#ifdef QOG_XIPSIM
+const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
+#define LITSPAN_RD(kind, base, idx)	(*XipSim_Rd ((kind), (const unsigned char *)&(base)[idx]))
+#else
+#define LITSPAN_RD(kind, base, idx)	((base)[idx])
+#endif
+
 // Power-of-two texture, lshift L (4 - mip): a run of n pixels (1 to 8) in
 // two passes, so each pass keeps its values in the M0+'s eight low
 // registers. Pass 1 blends the light of each pixel and stores the colormap
@@ -77,7 +87,7 @@ See the GNU General Public License for more details.
 
 #define LITSPAN_TEXEL(i)												\
 	{																	\
-		pd[i] = lrow[i][tx[((T2 >> 16) & tmask2) + ((S >> 16) & smask)]];	\
+		pd[i] = LITSPAN_RD (1, lrow[i], LITSPAN_RD (0, tx, ((T2 >> 16) & tmask2) + ((S >> 16) & smask)));	\
 		S += sstep;														\
 		T2 += tstep2;													\
 	}
@@ -144,7 +154,7 @@ See the GNU General Public License for more details.
 			int		top_ = (int)l_[0] + ((((int)l_[1] - (int)l_[0]) * fx_) >> 8);	\
 			int		bot_ = (int)l_[lsmax] + ((((int)l_[lsmax+1] - (int)l_[lsmax]) * fx_) >> 8);	\
 			int		light_ = top_ + (((bot_ - top_) * ((tt >> l8) & 0xFF)) >> 8);	\
-			*pd++ = cm[(light_ & 0xFF00) + tx[(tw_ >> 16) * tw + (sw >> 16)]];	\
+			*pd++ = LITSPAN_RD (1, cm, (light_ & 0xFF00) + LITSPAN_RD (0, tx, (tw_ >> 16) * tw + (sw >> 16)));	\
 			ss += sstep;												\
 			tt += tstep;												\
 			sw += ssw;													\
@@ -174,6 +184,104 @@ See the GNU General Public License for more details.
 		(out_) = top_ + (((bot_ - top_) * f_) >> 8);					\
 	}
 
+// QOG_LITSPAN_INTERP (Agent AH, exact, board client): the linear light run
+// below with its texel address and colour map row from the RP2040's SIO
+// interpolators, which each core has a pair of. Interpolator 0 holds S
+// and T2 in its accumulators and the texture in BASE2: its FULL result is
+// tx + ((S >> 16) & smask) + ((T2 >> 16) & tmask2), the texel's address,
+// and reading it adds sstep and tstep2 (BASE0, BASE1) to S and T2, as the
+// pixel loop does. Interpolator 1 holds the light accumulator and the
+// colour map: FULL is cm + ((lacc >> 16) & 0x3F00), the light row
+// (lacc >> 24 << 8 while the light is below 64 rows, which the blend
+// guarantees), and the read steps lacc. So a pixel is two register reads,
+// two byte loads and a store, about 11 cycles in place of about 32, with
+// the same values. Lane control words (both lanes ADD_RAW, shift 16):
+// interpolator 0 lane 0 masks bits 0 to log2 width - 1, lane 1 bits tshift
+// to tshift + log2 height - 1. Interpolator 1 lane 0 masks bits 8 to 13,
+// lane 1 is 0 (accumulator and base 0). The PC emulates the registers
+// with the hardware's rules, so the PC's pictures test this code too.
+#ifdef QOG_LITSPAN_INTERP
+#define LITI_ACC0		0
+#define LITI_ACC1		1
+#define LITI_BASE0		2
+#define LITI_BASE1		3
+#define LITI_BASE2		4
+#define LITI_CTRL0		11
+#define LITI_CTRL1		12
+#define LITI_ADD_RAW	(1u << 18)
+#define LITI_CTRL(shift, lsb, msb)	(LITI_ADD_RAW | ((unsigned)(msb) << 10) | ((unsigned)(lsb) << 5) | (unsigned)(shift))
+#if defined(_WIN32)
+// PC: the SIO registers of one core, as words at the hardware's offsets
+// (ACCUM0, ACCUM1, BASE0 to BASE2 at words 0 to 4, POP at 5 to 7, PEEK at
+// 8 to 10, CTRL_LANE0 and CTRL_LANE1 at 11 and 12)
+extern __declspec(thread) unsigned	liti_regs[2][16];
+static __inline unsigned liti_lane (const unsigned *r, int lane)
+{
+	unsigned	c = r[LITI_CTRL0 + lane], lsb = (c >> 5) & 31, msb = (c >> 10) & 31;
+	unsigned	mask = (msb == 31 ? 0xFFFFFFFFu : (2u << msb) - 1) & ~((1u << lsb) - 1);
+
+	return (r[LITI_ACC0 + lane] >> (c & 31)) & mask;
+}
+static __inline unsigned liti_popfull (int n)
+{
+	unsigned	*r = liti_regs[n];
+	unsigned	l0 = liti_lane (r, 0), l1 = liti_lane (r, 1);
+	unsigned	full = r[LITI_BASE2] + l0 + l1;
+
+	r[LITI_ACC0] = r[LITI_BASE0] + ((r[LITI_CTRL0] & LITI_ADD_RAW) ? r[LITI_ACC0] : l0);
+	r[LITI_ACC1] = r[LITI_BASE1] + ((r[LITI_CTRL1] & LITI_ADD_RAW) ? r[LITI_ACC1] : l1);
+	return full;
+}
+#define LITI_SET(n, reg, v)	(liti_regs[n][reg] = (unsigned)(v))
+#define LITI_POPFULL(n)		liti_popfull (n)
+#else
+// the board: SIO_BASE 0xD0000000, INTERP0 at 0x80, INTERP1 at 0xC0
+#define LITI_REG(n, reg)	(((volatile unsigned *)(0xD0000080u + 0x40u * (n)))[reg])
+#define LITI_SET(n, reg, v)	(LITI_REG (n, reg) = (unsigned)(v))
+#define LITI_POPFULL(n)		LITI_REG (n, 7)
+#endif
+
+// once per surface on each core that draws it (power-of-two textures)
+#define LITI_SURFACE(ctrl0_, ctrl1_)										\
+	{																	\
+		LITI_SET (0, LITI_CTRL0, (ctrl0_));								\
+		LITI_SET (0, LITI_CTRL1, (ctrl1_));								\
+		LITI_SET (0, LITI_BASE2, (size_t)lit_tex);						\
+		LITI_SET (1, LITI_CTRL0, LITI_CTRL (16, 8, 13));				\
+		LITI_SET (1, LITI_CTRL1, 0);									\
+		LITI_SET (1, LITI_ACC1, 0);										\
+		LITI_SET (1, LITI_BASE1, 0);									\
+		LITI_SET (1, LITI_BASE2, (size_t)lit_colormap);					\
+	}
+
+#define LITSPAN_RUN_P2LIN(L, rs_, rt_, rn_, rpd_)						\
+	{																	\
+		int		la_, lz_;												\
+		{																\
+			const unsigned	*lb = lit_lbase;							\
+			int		lrowbytes = lit_smax * 4;							\
+			int		S0 = (rs_) + lit_soff16, T0 = (rt_) + lit_toff16;	\
+			int		S1 = S0 + ((rn_) - 1) * sstep, T1 = T0 + ((rn_) - 1) * tstep;	\
+			LITSPAN_BLEND (L, S0, T0, la_)								\
+			LITSPAN_BLEND (L, S1, T1, lz_)								\
+		}																\
+		LITI_SET (0, LITI_ACC0, (rs_) + lit_soff16);					\
+		LITI_SET (0, LITI_BASE0, sstep);								\
+		LITI_SET (0, LITI_ACC1, (unsigned)((rt_) + lit_toff16) << lit_tshift);	\
+		LITI_SET (0, LITI_BASE1, (unsigned)tstep << lit_tshift);		\
+		LITI_SET (1, LITI_ACC0, (unsigned)la_ << 16);					\
+		LITI_SET (1, LITI_BASE0, (lz_ - la_) * litspan_recip[(rn_) - 1]);	\
+		{																\
+			unsigned char	*pd = (rpd_), *pe = (rpd_) + (rn_);		\
+			do															\
+			{															\
+				const unsigned char	*tp_ = (const unsigned char *)(size_t)LITI_POPFULL (0);	\
+				const unsigned char	*rp_ = (const unsigned char *)(size_t)LITI_POPFULL (1);	\
+				*pd++ = rp_[*tp_];										\
+			} while (pd != pe);											\
+		}																\
+	}
+#else
 #define LITSPAN_RUN_P2LIN(L, rs_, rt_, rn_, rpd_)						\
 	{																	\
 		int		la_, lz_;												\
@@ -198,13 +306,14 @@ See the GNU General Public License for more details.
 			unsigned char	*pd = (rpd_), *pe = (rpd_) + (rn_);		\
 			do															\
 			{															\
-				*pd++ = cm[(lacc_ >> 24 << 8) + tx[((T2 >> 16) & tmask2) + ((S >> 16) & smask)]];	\
+				*pd++ = LITSPAN_RD (1, cm, (lacc_ >> 24 << 8) + LITSPAN_RD (0, tx, ((T2 >> 16) & tmask2) + ((S >> 16) & smask)));	\
 				lacc_ += lstep_;										\
 				S += sstep;												\
 				T2 += tstep2;											\
 			} while (pd != pe);											\
 		}																\
 	}
+#endif	// QOG_LITSPAN_INTERP
 
 // 65536 / n for the linear light step over n + 1 pixels (n = 0 steps none),
 // for runs of up to 32 pixels (Fast mode, QOG_RFAST)
@@ -452,6 +561,11 @@ static const int	litspan_recip[32] =
 //   per-pixel light.
 // - 0x10000 / zi comes from an integer divide of the mantissa (the RP2040's
 //   hardware divider) with about 16 good bits, not a float divide.
+// QuakeOG (Agent AH): the Fast drawer without float work per span (below)
+#if defined(QOG_RFAST) && !defined(QOG_RFAST_FLOATSETUP) && !defined(QOG_RFAST_FIX)
+#define QOG_RFAST_FIX
+#endif
+
 #ifndef LITSPAN_FAST_SUB
 #define LITSPAN_FAST_SUB	5		// log2 of the longest sub-span (3 to 5)
 #endif
@@ -664,5 +778,234 @@ extern unsigned	litfast_stats[6];
 		} while (count > 0);											\
 																		\
 	} while (LITSPAN_NEXT (pspan));
+
+
+// QOG_RFAST_FIX (Agent AH, Fast mode, on with QOG_RFAST unless
+// QOG_RFAST_FLOATSETUP is defined): the Fast drawer above with every float
+// operation of a span moved out of the span. Per span the float drawer
+// evaluates s/z, t/z and 1/z at the span start (two int to float, six
+// multiplies and six adds) and at each sub-span end three adds, a
+// reciprocal, two multiplies and two float to int conversions, all through
+// the M0+'s software float routines, about 2,000 cycles a span (1,760 spans
+// a view in demo3). Here they are integers:
+//
+// - Per surface, on core 0 (D_LitFixSetup, d_scanlit.c, about 40 float
+//   operations), the three linear functions of the screen position are
+//   turned into 64-bit fixed point at a reference point on the surface (its
+//   first span): D = 1/z * 2^k, and Ns, Nt = (s or t) * (1/z) * 2^(k - w),
+//   with sadjust and tadjust folded in, so Ns / D is the texture coordinate
+//   in [0, 2^w) over the surface (w from its extent, at most 10 bits for
+//   Quake's 256-texel surfaces). 2^k puts the surface's nearest 1/z near
+//   2^60, so the farthest points still have 40 or more bits.
+// - Per span, the start values are the reference values plus du and dv
+//   times the steps, in 64-bit integers (exact), then all six values move to
+//   32 bits with one shift chosen per span, about 2^25 for D.
+// - Per sub-span end, three adds, D normalised to 17 bits, one hardware
+//   integer divide (2^32 / D) and two multiplies give s and t in 16.16. The
+//   error is at most 2^(w - 16) texels from the dropped bits and 2^-15 of the
+//   coordinate from the reciprocal, at most 1/64 texel on the widest surface.
+// - The sub-span length is chosen as the float drawer chooses it (1/z
+//   against |d(1/z)/du| times the length over LITSPAN_FAST_ZREL), the light
+//   runs, clamping and steps are the float drawer's.
+#if defined(QOG_RFAST_FIX)
+typedef long long			litfix_i64;
+typedef unsigned long long	litfix_u64;
+
+// bits in x (0 for 0)
+static int litfix_bitlen (unsigned x)
+{
+	int		n = 0;
+
+	if (x >= 0x10000) { x >>= 16; n = 16; }
+	if (x >= 0x100) { x >>= 8; n += 8; }
+	if (x >= 0x10) { x >>= 4; n += 4; }
+	if (x >= 0x4) { x >>= 2; n += 2; }
+	if (x >= 0x2) { x >>= 1; n += 1; }
+	return n + (int)x;
+}
+
+// k * x for a screen distance k (|k| below 2^15), exact modulo 2^64 as the
+// sums that use it, in three 32-bit multiplies (no 64-bit multiply call)
+static __inline litfix_i64 litfix_mul (int k, litfix_i64 x)
+{
+	unsigned	lo = (unsigned)x;
+	litfix_u64	r = (litfix_u64)(litfix_i64)((int)(lo & 0xFFFF) * k) +
+					((litfix_u64)(litfix_i64)((int)(lo >> 16) * k) << 16) +
+					((litfix_u64)((unsigned)(x >> 32) * (unsigned)k) << 32);
+
+	return (litfix_i64)r;
+}
+
+// D (positive, below 2^30) to a divisor of 17 bits, m kept from the last
+// point, and r = (2^32 - 1) / Dm by the integer divider
+#define LITFIX_NORM(D_, m_, Dm_, r_)										\
+	{																	\
+		unsigned	d_ = (unsigned)(D_);								\
+		while ((d_ >> (m_)) >= 0x20000)									\
+			(m_)++;														\
+		while ((m_) > 0 && (d_ >> (m_)) < 0x10000)						\
+			(m_)--;														\
+		(Dm_) = d_ >> (m_);												\
+		if (!(Dm_))														\
+			(Dm_) = 1;													\
+		(r_) = 0xFFFFFFFFu / (Dm_);										\
+	}
+
+// a texture coordinate in 16.16 from N (Ns or Nt), clamped as id clamps it.
+// N / D below 0 is 0, at or above 1 (twice the surface's extent) the
+// extent, so the product never passes 2^32.
+#define LITFIX_COORD(N_, m_, Dm_, r_, sw_, ext_, lo_, out_)				\
+	{																	\
+		int		n_ = (N_) >> (m_);										\
+		if (n_ <= 0)													\
+			(out_) = 0;													\
+		else if ((unsigned)n_ >= (Dm_))									\
+			(out_) = (ext_);											\
+		else															\
+			(out_) = (fixed16_t)(((unsigned)n_ * (r_)) >> (sw_));		\
+		if ((out_) > (ext_))											\
+			(out_) = (ext_);											\
+		else if ((out_) < (lo_))										\
+			(out_) = (lo_);												\
+	}
+
+// sub-span length limits of the float drawer: 1/z above |d(1/z)/du| times
+// these takes 16 or 32 pixels
+#define LITFIX_LIM16	((unsigned)(16.0f / LITSPAN_FAST_ZREL))
+#define LITFIX_LIM32	((unsigned)(32.0f / LITSPAN_FAST_ZREL))
+
+#ifndef LITFIX_ZSPAN
+#define LITFIX_ZSPAN(p, D64)
+#endif
+
+#define D_LITSPANS_FIX_BODY												\
+	int				count, spancount, sh, m = 8;						\
+	unsigned char	*pdest;												\
+	fixed16_t		s, t, snext, tnext, sstep, tstep;					\
+	int				D, Ns, Nt, DU, SU, TU;								\
+	unsigned		Dm, r;												\
+	const int		ssw = litfix_sw, tsw = litfix_tw;					\
+	LITSPAN_ZDECL														\
+	LITSPAN_FAST_LROW													\
+	int				kind = lit_kind;									\
+																		\
+	sstep = 0;															\
+	tstep = 0;															\
+	do																	\
+	{																	\
+		pdest = (unsigned char *)((unsigned char *)d_viewbuffer +		\
+				(screenwidth * pspan->v) + pspan->u);					\
+																		\
+		count = pspan->count;											\
+		LITSPAN_FAST_STAT (4, 1);										\
+		LITSPAN_FAST_STAT (5, (count + 7) >> 3);						\
+																		\
+		/* the span start: exact 64-bit values, then one shift to 32 bits	\
+		   that puts D (or the largest step) near 2^25 */				\
+		{																\
+			int			du_ = pspan->u - litfix_uref, dv_ = pspan->v - litfix_vref;	\
+			litfix_i64	D64 = (litfix_i64)((litfix_u64)litfix_d0 +	\
+					(litfix_u64)litfix_mul (du_, litfix_du) + (litfix_u64)litfix_mul (dv_, litfix_dv));	\
+			litfix_i64	S64 = (litfix_i64)((litfix_u64)litfix_s0 +	\
+					(litfix_u64)litfix_mul (du_, litfix_su) + (litfix_u64)litfix_mul (dv_, litfix_sv));	\
+			litfix_i64	T64 = (litfix_i64)((litfix_u64)litfix_t0 +	\
+					(litfix_u64)litfix_mul (du_, litfix_tu) + (litfix_u64)litfix_mul (dv_, litfix_tv));	\
+			unsigned	hi_;											\
+			int			b_;												\
+																		\
+			if (D64 < 1)												\
+				D64 = 1;												\
+			LITFIX_ZSPAN (pspan, D64)									\
+			hi_ = (unsigned)(D64 >> 32);								\
+			b_ = (hi_ ? 32 + litfix_bitlen (hi_) : litfix_bitlen ((unsigned)D64)) - 25;	\
+			if (b_ < litfix_stepbits)									\
+				b_ = litfix_stepbits;									\
+			if (b_ < 0)													\
+				b_ = 0;													\
+			D = (int)(D64 >> b_);										\
+			Ns = (int)(S64 >> b_);										\
+			Nt = (int)(T64 >> b_);										\
+			DU = (int)(litfix_du >> b_);								\
+			SU = (int)(litfix_su >> b_);								\
+			TU = (int)(litfix_tu >> b_);								\
+		}																\
+		if (D < 1)														\
+			D = 1;														\
+		LITFIX_NORM (D, m, Dm, r)										\
+		LITFIX_COORD (Ns, m, Dm, r, ssw, bbextents, 0, s)				\
+		LITFIX_COORD (Nt, m, Dm, r, tsw, bbextentt, 0, t)				\
+																		\
+		do																\
+		{																\
+		/* the longest sub-span this 1/z allows */						\
+			unsigned	adu_ = (unsigned)(DU < 0 ? -DU : DU);			\
+			sh = 3;														\
+			if (LITSPAN_FAST_SUB > 3 && adu_ < 0x00200000u && (unsigned)D > adu_ * LITFIX_LIM16)	\
+			{															\
+				sh = 4;													\
+				if (LITSPAN_FAST_SUB > 4 && (unsigned)D > adu_ * LITFIX_LIM32)	\
+					sh = 5;												\
+			}															\
+			if (count >= (1 << sh))										\
+				spancount = 1 << sh;									\
+			else														\
+				spancount = count;										\
+			LITSPAN_FAST_STAT (sh - 3, 1);								\
+			LITSPAN_FAST_STAT (3, spancount);							\
+																		\
+			count -= spancount;											\
+																		\
+			if (count)													\
+			{															\
+				D += DU << sh;											\
+				Ns += SU << sh;											\
+				Nt += TU << sh;											\
+			}															\
+			else														\
+			{															\
+				D += DU * (spancount - 1);								\
+				Ns += SU * (spancount - 1);								\
+				Nt += TU * (spancount - 1);								\
+			}															\
+			if (D < 1)													\
+				D = 1;													\
+			else if (D >= 0x20000000)									\
+			{															\
+			/* nearer along the span: four bits less, the ratio stays */	\
+				D >>= 4; Ns >>= 4; Nt >>= 4;							\
+				DU >>= 4; SU >>= 4; TU >>= 4;							\
+			}															\
+			LITFIX_NORM (D, m, Dm, r)									\
+			LITFIX_COORD (Ns, m, Dm, r, ssw, bbextents, 8, snext)		\
+			LITFIX_COORD (Nt, m, Dm, r, tsw, bbextentt, 8, tnext)		\
+																		\
+			if (count)													\
+			{															\
+				sstep = (snext - s) >> sh;								\
+				tstep = (tnext - t) >> sh;								\
+			}															\
+			else if (spancount > 1)										\
+			{															\
+				sstep = (snext - s) / (spancount - 1);					\
+				tstep = (tnext - t) / (spancount - 1);					\
+			}															\
+																		\
+			switch (kind)												\
+			{															\
+			case 0:	LITSPAN_FAST_RUNS (4)	break;						\
+			case 1:	LITSPAN_FAST_RUNS (3)	break;						\
+			case 2:	LITSPAN_FAST_RUNS (2)	break;						\
+			case 3:	LITSPAN_FAST_RUNS (1)	break;						\
+			default: LITSPAN_RUN_ANY (s, t, spancount, pdest)	break;	\
+			}															\
+			pdest += spancount;											\
+																		\
+			s = snext;													\
+			t = tnext;													\
+																		\
+		} while (count > 0);											\
+																		\
+	} while (LITSPAN_NEXT (pspan));
+#endif	// QOG_RFAST_FIX
 
 #endif	// D_LITSPAN_H

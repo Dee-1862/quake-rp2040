@@ -625,6 +625,94 @@ void D_QogZSpan (espan_t *pspan, float zi, int izistep)
 #endif
 #ifdef QOG_ZBUFFER8
 	(void)ltemp; (void)doublecount;
+#if defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
+	// QuakeOG (Agent AH): exact. z is linear along the span, so when both
+	// ends are 32 units or farther (z below 1024) and the steps cannot wrap,
+	// every pixel's D_ZQ (z) is z >> 3, without D_ZQ's two tests a pixel
+	if (izi >= 0 && izi < (1024 << 16) && izistep > -(1 << 22) && izistep < (1 << 22))
+	{
+		int	last = izi + izistep * (count - 1);
+
+		if (last >= 0 && last < (1024 << 16))
+		{
+			do
+			{
+				*pdest++ = (d_zval_t)(izi >> 19);
+				izi += izistep;
+			} while (--count > 0);
+			return;
+		}
+	}
+#endif
+	do
+	{
+		int	z = izi >> 16;
+		*pdest++ = D_ZQ(z);
+		izi += izistep;
+	} while (--count > 0);
+#else
+	if ((long)pdest & 0x02)
+	{
+		*pdest++ = (short)(izi >> 16);
+		izi += izistep;
+		count--;
+	}
+
+	if ((doublecount = count >> 1) > 0)
+	{
+		do
+		{
+			ltemp = izi >> 16;
+			izi += izistep;
+			ltemp |= izi & 0xFFFF0000;
+			izi += izistep;
+			*(int *)pdest = ltemp;
+			pdest += 2;
+		} while (--doublecount > 0);
+	}
+
+	if (count & 1)
+		*pdest = (short)(izi >> 16);
+#endif
+}
+
+/*
+=============
+D_QogZSpanI
+
+QuakeOG (Agent AH): D_QogZSpan with the span start's 1/z * 2^31 already
+an integer, for the fixed point Fast drawer (QOG_RFAST_FIX, d_litspan.h)
+=============
+*/
+void D_QogZSpanI (espan_t *pspan, int izi, int izistep)
+{
+	int				count, doublecount;
+	d_zval_t		*pdest;
+	unsigned		ltemp;
+
+	pdest = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
+	count = pspan->count;
+#ifdef QOG_ZBUFFER8
+	(void)ltemp; (void)doublecount;
+#if defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
+	// QuakeOG (Agent AH): exact. z is linear along the span, so when both
+	// ends are 32 units or farther (z below 1024) and the steps cannot wrap,
+	// every pixel's D_ZQ (z) is z >> 3, without D_ZQ's two tests a pixel
+	if (izi >= 0 && izi < (1024 << 16) && izistep > -(1 << 22) && izistep < (1 << 22))
+	{
+		int	last = izi + izistep * (count - 1);
+
+		if (last >= 0 && last < (1024 << 16))
+		{
+			do
+			{
+				*pdest++ = (d_zval_t)(izi >> 19);
+				izi += izistep;
+			} while (--count > 0);
+			return;
+		}
+	}
+#endif
 	do
 	{
 		int	z = izi >> 16;

@@ -389,6 +389,20 @@ if(QOG_SPLIT)
     if(QOG_BOARD_FAST)
         list(APPEND _cl_defs QOG_RFAST QOG_RFAST_ON)
     endif()
+    # Agent AH: the console's text 4 KB to 1 KB (26 lines of scrollback, the
+    # 4 notify lines, MG24Quake keeps 913 B). It is taken from the client's
+    # hunk, so the hunk below shrinks by the same 3 KB and every level keeps
+    # Agent AD's margin, and the 3 KB become static RAM (docs/changes.md)
+    # Agent AH: Fast mode's pixel loop takes the texel address and the colour
+    # map row from the SIO interpolators (d_litspan.h, the same pixels)
+    option(QOG_BOARD_INTERP "Fast lit spans address texels through the interpolators" ON)
+    if(QOG_BOARD_FAST AND QOG_BOARD_INTERP)
+        list(APPEND _cl_defs QOG_LITSPAN_INTERP)
+    endif()
+    option(QOG_BOARD_CONSMALL "client console text 1 KB, its hunk 3 KB smaller" ON)
+    if(QOG_BOARD_CONSMALL)
+        list(TRANSFORM _cl_defs REPLACE "^QOG_CON_TEXTSIZE=[0-9]+$" "QOG_CON_TEXTSIZE=1024")
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer
@@ -461,7 +475,11 @@ if(QOG_SPLIT)
     endif()
     set(QOG_CL_STACK_KB ${_cl_stack_default} CACHE STRING "client half stack array in KB (tools/stack_chain.py from game_main, docs/changes.md)")
     get_target_property(_disp_defs quake_display COMPILE_DEFINITIONS)
-    list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")
+    set(_cl_hunk_kb ${QOG_CL_HUNK_KB})
+    if(QOG_BOARD_CONSMALL)
+        math(EXPR _cl_hunk_kb "${QOG_CL_HUNK_KB} - 3")   # Agent AH: the console's 3 KB (above)
+    endif()
+    list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${_cl_hunk_kb}")
     list(TRANSFORM _disp_defs REPLACE "^QOG_STACK_KB=[0-9]+$" "QOG_STACK_KB=${QOG_CL_STACK_KB}")
     set_property(TARGET quake_display PROPERTY COMPILE_DEFINITIONS ${_disp_defs})
     # Agent S: the BSP's frame sender without its 4 KB frame buffer (port/rp2040/link_rp2040.c)

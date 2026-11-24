@@ -53,6 +53,12 @@ void D_Init (void)
 	Cvar_RegisterVariable (&d_subdiv16);
 	Cvar_RegisterVariable (&d_mipcap);
 	Cvar_RegisterVariable (&d_mipscale);
+#ifdef QOG_XIPSIM
+	{
+		void XipSim_f (void);
+		Cmd_AddCommand ("qog_xipsim", XipSim_f);	// QuakeOG (Agent AH), PC measurement (d_xipsim.c)
+	}
+#endif
 
 	r_drawpolys = false;
 	r_worldpolysbacktofront = false;
