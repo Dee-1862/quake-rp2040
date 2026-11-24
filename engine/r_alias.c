@@ -116,8 +116,16 @@ void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	trivertx_t *pverts, stvert_t *pstverts);
 void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av);
 #ifdef QOG_ALIAS_FAST
-static qboolean R_QogAliasSphereOut (void);
-static qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc);
+// QuakeOG (Agent AI): kept out of R_AliasCheckBBox, whose frame stays id's
+#if defined(__GNUC__)
+#define QOG_ANOINLINE	__attribute__((noinline))
+#elif defined(_MSC_VER)
+#define QOG_ANOINLINE	__declspec(noinline)
+#else
+#define QOG_ANOINLINE
+#endif
+static QOG_ANOINLINE qboolean R_QogAliasSphereOut (void);
+static QOG_ANOINLINE qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc);
 #endif
 
 
@@ -150,8 +158,13 @@ qboolean R_AliasCheckBBox (void)
 	pmdl = (mdl_t *)((byte *)pahdr + pahdr->model);
 
 #ifdef QOG_ALIAS_FAST
-	if (r_qogfast && R_QogAliasSphereOut ())
-		return false;	// QuakeOG (Agent AI): Fast mode, wholly outside the view
+	if (r_qogfast)
+	{
+		// QuakeOG (Agent AI): Fast mode, the integer transform below
+		if (R_QogAliasSphereOut ())
+			return false;	// wholly outside the view
+	}
+	else
 #endif
 	R_AliasSetUpTransform (0);
 
@@ -389,15 +402,15 @@ static void R_QogAliasPrepareCore1 (void *job)
 Fast mode alias vertices
 
 QuakeOG (Agent AI): with r_fast 1 (QOG_ALIAS_FAST) the vertices of an alias
-model are made in integers. The model's transform (aliastransform without
-the screen scaling of the unclipped case) in 16.16 fixed point makes a
-vertex nine integer multiplies, 1/z is one unsigned divide (the RP2040's
+model are made in integers. The model's transform (R_QogAliasXform, the
+model to view space without the screen scaling of the unclipped case) in
+16.16 fixed point makes a vertex nine integer multiplies, 1/z is one unsigned divide (the RP2040's
 hardware divider) and the screen position two divides in 28.4, the light
 three multiplies with id's normals in 2.14 (anorms14.h). The screen
 position is within a sixteenth of a pixel of id's float projection, 1/z
 keeps 23 bits. A point too far off the screen for 32 bits takes a float
-divide. The triangle clipper's z clip still recomputes view space in float
-from the same transform (r_aclip.c).
+divide. The triangle clipper's z clip recomputes view space in float from
+the same transform made float (R_QogAliasFloatXform, r_aclip.c).
 ================
 */
 static const short	r_qoganorms[NUMVERTEXNORMALS][3] = {
@@ -406,7 +419,8 @@ static const short	r_qoganorms[NUMVERTEXNORMALS][3] = {
 
 typedef struct
 {
-	int		m[3][4];		// aliastransform, 16.16
+	int		m[3][4];		// model to view transform, 16.16
+	int		fwd[3], rt[3], up[3];	// the entity's AngleVectors, 2.14
 	int		lv[3];			// r_plightvec, 2.14
 	int		shade;			// r_shadelight
 	int		xc, yc;			// aliasxcenter and aliasycenter, 28.4
@@ -415,24 +429,113 @@ typedef struct
 	int		zimul;			// ziscale / 2^31, 3 for the view model
 } r_qogxf_t;
 
-static void R_QogAliasFastSetup (r_qogxf_t *xf)
+static r_qogxf_t	*r_qogxfp;	// the model being drawn (R_AliasDrawModel)
+
+static const short	r_qogsin[1025] = {
+#include "qogsin.h"
+};
+
+// sine and cosine of an angle in degrees, 2.14, from a table of 1024 steps
+// of a turn with linear steps between them (within 2^-13 of id's sin)
+static void R_QogSinCos (float deg, int *s, int *c)
+{
+	int		a, i, f;
+
+	a = (int)(deg * (65536.0f / 360.0f)) & 0xffff;
+	i = a >> 6;
+	f = a & 63;
+	*s = r_qogsin[i] + (((r_qogsin[i + 1] - r_qogsin[i]) * f) >> 6);
+	a = (a + 0x4000) & 0xffff;
+	i = a >> 6;
+	f = a & 63;
+	*c = r_qogsin[i] + (((r_qogsin[i + 1] - r_qogsin[i]) * f) >> 6);
+}
+
+#define QM14(a, b)	(((a) * (b)) >> 14)
+
+/*
+================
+R_QogAliasXform
+
+QuakeOG (Agent AI): R_AliasSetUpTransform (0) of Fast mode in integers.
+id's AngleVectors takes three double sines and cosines and the transform
+two float 3x4 products. Here the entity's three vectors come from a sine
+table in 2.14, the view vectors and the model's scale, origin and offset
+are read in fixed point by their bits (R_QogFix), and the products are
+integer: the model to view rotation in 2.14 times the scale in 16.16 (in
+two parts, so nothing passes 32 bits), the translation in 16.16.
+================
+*/
+static void R_QogAliasXform (r_qogxf_t *xf)
+{
+	int		sy, cy, sp, cp, sr, cr, srsp, crsp, i, j, c, t, mo, mo8;
+	int		t2[3][3], v[3][3], s16[3], so6[3];
+
+	R_QogSinCos (currententity->angles[YAW], &sy, &cy);
+	R_QogSinCos (-currententity->angles[PITCH], &sp, &cp);
+	R_QogSinCos (currententity->angles[ROLL], &sr, &cr);
+	srsp = QM14 (sr, sp);
+	crsp = QM14 (cr, sp);
+
+	xf->fwd[0] = QM14 (cp, cy);
+	xf->fwd[1] = QM14 (cp, sy);
+	xf->fwd[2] = -sp;
+	xf->rt[0] = -QM14 (srsp, cy) + QM14 (cr, sy);
+	xf->rt[1] = -QM14 (srsp, sy) - QM14 (cr, cy);
+	xf->rt[2] = -QM14 (sr, cp);
+	xf->up[0] = QM14 (crsp, cy) + QM14 (sr, sy);
+	xf->up[1] = QM14 (crsp, sy) - QM14 (sr, cy);
+	xf->up[2] = QM14 (cr, cp);
+
+	for (i=0 ; i<3 ; i++)
+	{
+		t2[i][0] = xf->fwd[i];
+		t2[i][1] = -xf->rt[i];
+		t2[i][2] = xf->up[i];
+		v[0][i] = R_QogFix (vright[i], 14);
+		v[1][i] = -R_QogFix (vup[i], 14);
+		v[2][i] = R_QogFix (vpn[i], 14);
+		s16[i] = R_QogFix (pmdl->scale[i], 16);
+		so6[i] = R_QogFix (pmdl->scale_origin[i], 6);
+	}
+
+	for (i=0 ; i<3 ; i++)
+	{
+		t = 0;
+		for (j=0 ; j<3 ; j++)
+		{
+			c = (v[i][0] * t2[0][j] + v[i][1] * t2[1][j] + v[i][2] * t2[2][j]) >> 14;
+			xf->m[i][j] = ((c * (s16[j] >> 8)) >> 6) + ((c * (s16[j] & 255)) >> 14);
+			t += c * so6[j];
+		}
+	// the entity's origin in view space, V . modelorg in two parts
+		mo = 0;
+		for (j=0 ; j<3 ; j++)
+		{
+			mo8 = R_QogFix (modelorg[j], 8);
+			mo += v[i][j] * (mo8 >> 8) * 4 + ((v[i][j] * (mo8 & 255)) >> 6);
+		}
+		xf->m[i][3] = (t >> 4) - mo;
+	}
+
+	xf->xc = R_QogFix (aliasxcenter, 4);
+	xf->yc = R_QogFix (aliasycenter, 4);
+	xf->xs = R_QogFix (aliasxscale, 4);
+	xf->ys = R_QogFix (aliasyscale, 4);
+	xf->xlim = 0x7fffffff / (xf->xs > 0 ? xf->xs : 1);
+	xf->ylim = 0x7fffffff / (xf->ys > 0 ? xf->ys : 1);
+	xf->zimul = currententity == &cl.viewent ? 3 : 1;
+}
+
+// id's float aliastransform (unscaled) from the integer one, for the
+// triangle clipper's z clip (r_aclip.c), only in a clipped model
+static void R_QogAliasFloatXform (const r_qogxf_t *xf)
 {
 	int		i, j;
 
 	for (i=0 ; i<3 ; i++)
-	{
 		for (j=0 ; j<4 ; j++)
-			xf->m[i][j] = (int)(aliastransform[i][j] * 65536.0f);
-		xf->lv[i] = (int)(r_plightvec[i] * 16384.0f);
-	}
-	xf->shade = (int)r_shadelight;
-	xf->xc = (int)(aliasxcenter * 16.0f);
-	xf->yc = (int)(aliasycenter * 16.0f);
-	xf->xs = (int)(aliasxscale * 16.0f);
-	xf->ys = (int)(aliasyscale * 16.0f);
-	xf->xlim = 0x7fffffff / (xf->xs > 0 ? xf->xs : 1);
-	xf->ylim = 0x7fffffff / (xf->ys > 0 ? xf->ys : 1);
-	xf->zimul = ziscale > (float)0x8000 * (float)0x10000 * 2.0f ? 3 : 1;
+			aliastransform[i][j] = (float)xf->m[i][j] * (1.0f / 65536.0f);
 }
 
 // x in 24.8 view space and z8 the depth in 24.8 (at least
@@ -530,11 +633,9 @@ static void R_QogAliasFastCore1 (void *job)
 // exact vertices are (QOG_ALIAS_CORE1)
 static void R_QogAliasFastVerts (finalvert_t *fv, stvert_t *pstverts, int clip)
 {
-	r_qogxf_t		xf;
 	r_qogfastjob_t	job0;
 
-	R_QogAliasFastSetup (&xf);
-	job0.xf = &xf;
+	job0.xf = r_qogxfp;
 	job0.fv = fv;
 	job0.pverts = r_apverts;
 	job0.pstverts = pstverts;
@@ -570,7 +671,7 @@ outside a side of the view, so its transform is never built. The side
 planes' lengths are taken a little long, which only keeps more models.
 ================
 */
-static qboolean R_QogAliasSphereOut (void)
+static QOG_ANOINLINE qboolean R_QogAliasSphereOut (void)
 {
 	float	x, y, z, r, hw, hh;
 
@@ -602,13 +703,13 @@ and accepted unclipped only when every corner is a pixel inside, which
 covers the rounding of the integer projection.
 ================
 */
-static qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc)
+static QOG_ANOINLINE qboolean R_QogAliasCheckBBoxFast (maliasframedesc_t *pframedesc)
 {
 	r_qogxf_t	xf;
 	int			i, x, y, z, z8, u, v, flags, anyclip, allclip, minz;
 	int			b[2][3];
 
-	R_QogAliasFastSetup (&xf);
+	R_QogAliasXform (&xf);
 	for (i=0 ; i<3 ; i++)
 	{
 		b[0][i] = pframedesc->bboxmin.v[i];
@@ -789,8 +890,10 @@ void R_AliasSetUpTransform (int trivial_accept)
 {
 	int				i;
 	float			rotationmatrix[3][4], t2matrix[3][4];
-	static float	tmatrix[3][4];
-	static float	viewmatrix[3][4];
+	// QuakeOG (Agent AI): id's tmatrix and viewmatrix were static only for
+	// their zeros, locals with the same zeros take no static RAM
+	float			tmatrix[3][4] = {{0}};
+	float			viewmatrix[3][4] = {{0}};
 	vec3_t			angles;
 
 // TODO: should really be stored with the entity instead of being reconstructed
@@ -1198,6 +1301,23 @@ void R_AliasSetupLighting (alight_t *plighting)
 
 	r_shadelight *= VID_GRADES;
 
+#ifdef QOG_ALIAS_FAST
+	if (r_qogfast)
+	{
+		// QuakeOG (Agent AI): Fast mode, the same rotation in 2.14
+		r_qogxf_t	*xf = r_qogxfp;
+		int			l0, l1, l2;
+
+		l0 = R_QogFix (plighting->plightvec[0], 14);
+		l1 = R_QogFix (plighting->plightvec[1], 14);
+		l2 = R_QogFix (plighting->plightvec[2], 14);
+		xf->lv[0] = (l0 * xf->fwd[0] + l1 * xf->fwd[1] + l2 * xf->fwd[2]) >> 14;
+		xf->lv[1] = -((l0 * xf->rt[0] + l1 * xf->rt[1] + l2 * xf->rt[2]) >> 14);
+		xf->lv[2] = (l0 * xf->up[0] + l1 * xf->up[1] + l2 * xf->up[2]) >> 14;
+		xf->shade = (int)r_shadelight;
+		return;
+	}
+#endif
 // rotate the lighting vector into the model's frame of reference
 	r_plightvec[0] = DotProduct (plighting->plightvec, alias_forward);
 	r_plightvec[1] = -DotProduct (plighting->plightvec, alias_right);
@@ -1345,6 +1465,9 @@ void R_AliasDrawModel (alight_t *plighting)
 #ifndef QOG_ALIAS_NO_AUXVERTS
 	auxvert_t		auxverts[MAXALIASVERTS];
 #endif
+#ifdef QOG_ALIAS_FAST
+	r_qogxf_t		qogxf;	// QuakeOG (Agent AI): Fast mode transform
+#endif
 
 	r_amodels_drawn++;
 #ifdef QOG_ALIAS_STATS
@@ -1368,11 +1491,17 @@ void R_AliasDrawModel (alight_t *plighting)
 
 	R_AliasSetupSkin ();
 #ifdef QOG_ALIAS_FAST
-	// QuakeOG (Agent AI): Fast mode vertices use the unscaled transform
-	R_AliasSetUpTransform (r_qogfast ? 0 : currententity->trivial_accept);
-#else
-	R_AliasSetUpTransform (currententity->trivial_accept);
+	if (r_qogfast)
+	{
+		// QuakeOG (Agent AI): Fast mode, the integer transform
+		R_QogAliasXform (&qogxf);
+		r_qogxfp = &qogxf;
+		if (!currententity->trivial_accept)
+			R_QogAliasFloatXform (&qogxf);
+	}
+	else
 #endif
+	R_AliasSetUpTransform (currententity->trivial_accept);
 	R_AliasSetupLighting (plighting);
 	R_AliasSetupFrame ();
 

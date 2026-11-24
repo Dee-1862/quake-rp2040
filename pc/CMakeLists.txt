@@ -235,7 +235,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LITSPAN_FAST                # lit spans without modulo, texture origin folded into the light pointer, a loop per mip
     QOG_LITSPAN_TAILMUL             # the last run of a span reuses the surface's float products for its length
     QOG_ZSPANS_FAST                 # z span start without double arithmetic (exact integer form of zi * 2^31)
-    QOG_LITSPAN_ZFUSE)              # lit spans write their z from the 1/z they compute anyway, no second span walk
+    QOG_LITSPAN_ZFUSE               # lit spans write their z from the 1/z they compute anyway, no second span walk
+    QOG_ALIASSPAN_FAST)             # Agent AI: alias spans with their steps in locals, one-byte z per span piece (d_polyse.c)
 # Fast render mode (Agent AA): the r_fast cvar, default 0 on the PC, so every
 # test runs the exact picture unless a script sets r_fast 1 (d_litspan.h).
 # QOG_FLOAT_EXACT is exact and applies in both modes.

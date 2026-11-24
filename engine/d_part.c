@@ -176,40 +176,20 @@ D_QogParticleView, D_QogDrawParticleFast
 
 QuakeOG (Agent AI): particles in Fast mode (r_fast 1, QOG_ALIAS_FAST) with
 no float arithmetic. The position is read into 24.8 fixed point by its bits
-(D_QogFix8), the eye's subtracted, and all three shifted right together
+(R_QogFix), the eye's subtracted, and all three shifted right together
 until they are below 2^15, so the products with the view vectors in 2.14
 fit 32 bits. The screen position is two divides and 1/z one, all on the
 hardware divider, within about a sixteenth of a pixel of id's float
 statements. R_DrawParticles makes the view's constants once.
 ==============
 */
-static int D_QogFix8 (float f)
-{
-	union
-	{
-		float	f;
-		int		i;
-	} b;
-	int		e, m;
-
-	b.f = f;
-	e = ((b.i >> 23) & 0xff) - (127 + 23 - 8);
-	if (e <= -24)
-		return 0;
-	if (e > 6)
-		return b.i < 0 ? -0x3fffffff : 0x3fffffff;	// beyond any map
-	m = (b.i & 0x7fffff) | 0x800000;
-	m = e >= 0 ? m << e : m >> -e;
-	return b.i < 0 ? -m : m;
-}
-
 void D_QogParticleView (d_qogpview_t *pv)
 {
 	int		i;
 
 	for (i=0 ; i<3 ; i++)
 	{
-		pv->org[i] = D_QogFix8 (r_origin[i]);
+		pv->org[i] = R_QogFix (r_origin[i], 8);
 		pv->right[i] = (int)(vright[i] * 16384.0f);
 		pv->up[i] = (int)(vup[i] * 16384.0f);
 		pv->fwd[i] = (int)(vpn[i] * 16384.0f);
@@ -228,9 +208,9 @@ void D_QogDrawParticleFast (particle_t *pparticle, const d_qogpview_t *pv)
 	qog_astat_vm = 0;
 	QOG_AST(QAS_PARTS, 1);
 #endif
-	lx = D_QogFix8 (pparticle->org[0]) - pv->org[0];
-	ly = D_QogFix8 (pparticle->org[1]) - pv->org[1];
-	lz = D_QogFix8 (pparticle->org[2]) - pv->org[2];
+	lx = R_QogFix (pparticle->org[0], 8) - pv->org[0];
+	ly = R_QogFix (pparticle->org[1], 8) - pv->org[1];
+	lz = R_QogFix (pparticle->org[2], 8) - pv->org[2];
 
 	ax = (lx < 0 ? -lx : lx) | (ly < 0 ? -ly : ly) | (lz < 0 ? -lz : lz);
 	sh = 0;

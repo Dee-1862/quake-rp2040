@@ -733,6 +733,139 @@ void InitGel (byte *palette)
 
 #if	!id386
 
+#ifdef QOG_ALIASSPAN_FAST
+/*
+================
+D_PolysetDrawSpans8
+
+QuakeOG (Agent AI): id's alias span drawer with the same pixels
+(QOG_ALIASSPAN_FAST, exact). Its steps, the colour map and the skin width
+are read once into locals: id's loop read every one of them from memory at
+every pixel, because a byte store may alias any global. The texel is
+skin[(T >> 16) * skinwidth + (S >> 16)] with S and T the span's 16.16
+texture position, which is id's pointer and two fraction carries added up
+(a_ststepxwhole and the fractions are r_sstepx and r_tstepx split at bit
+16), one multiply on the RP2040. With the one-byte z-buffer and its near
+steps (QOG_ZBUFFER8_NEAR) a span whose first and last depth lie in the same
+linear piece of D_ZQ takes that piece's shift for every pixel: 1/z is
+linear along the span, so every pixel between lies in the piece too.
+Player colours (QOG_TRANSLATE_INLINE) go through d_atranslate as before.
+================
+*/
+#define D_QOGTEX(t)		(t)
+#define D_QOGTEXTR(t)	(tr[t])
+#define D_QOGSPANLOOP(ZQ, TEX)										\
+	do																\
+	{																\
+		int		lz = ZQ;											\
+																	\
+		if (lz >= *lpz)												\
+		{															\
+			*lpdest = cmap[TEX (lptex[(lt >> 16) * skinw + (ls >> 16)])	\
+					+ (llight & 0xFF00)];							\
+			*lpz = lz;												\
+			QOG_AST(QAS_PIXW, 1);									\
+		}															\
+		lpdest++;													\
+		lpz++;														\
+		lzi += zistepx;												\
+		llight += lstepx;											\
+		ls += sstepx;												\
+		lt += tstepx;												\
+	} while (--lcount)
+#define D_QOGSPANTR(ZQ)												\
+	{																\
+		if (tr)														\
+			D_QOGSPANLOOP (ZQ, D_QOGTEXTR);							\
+		else														\
+			D_QOGSPANLOOP (ZQ, D_QOGTEX);							\
+	}
+
+void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
+{
+	int			lcount, aspancount, err;
+	int			adjup, adjdown, cextra, ubase;
+	int			zistepx, lstepx, sstepx, tstepx, skinw;
+	byte		*cmap, *tr;
+
+	aspancount = d_aspancount;
+	err = errorterm;
+	adjup = erroradjustup;
+	adjdown = erroradjustdown;
+	cextra = d_countextrastep;
+	ubase = ubasestep;
+	zistepx = r_zistepx;
+	lstepx = r_lstepx;
+	sstepx = r_sstepx;
+	tstepx = r_tstepx;
+	skinw = r_affinetridesc.skinwidth;
+	cmap = (byte *)acolormap;
+#ifdef QOG_TRANSLATE_INLINE
+	tr = d_atranslate;
+#else
+	tr = NULL;
+#endif
+
+	do
+	{
+		lcount = aspancount - pspanpackage->count;
+
+		err += adjup;
+		if (err >= 0)
+		{
+			aspancount += cextra;
+			err -= adjdown;
+		}
+		else
+		{
+			aspancount += ubase;
+		}
+
+		if (lcount)
+		{
+			byte		*lpdest, *lptex;
+			d_zval_t	*lpz;
+			int			ls, lt, llight, lzi;
+
+			QOG_AST(QAS_SPANS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_PIX, lcount);
+			lpdest = pspanpackage->pdest;
+			lptex = pspanpackage->ptex;
+			lpz = pspanpackage->pz;
+			ls = pspanpackage->sfrac;
+			lt = pspanpackage->tfrac;
+			llight = pspanpackage->light;
+			lzi = pspanpackage->zi;
+
+#if defined(QOG_ZBUFFER8) && defined(QOG_ZBUFFER8_NEAR)
+			{
+				int		z0, z1;
+
+				z0 = lzi >> 16;
+				z1 = (lzi + zistepx * (lcount - 1)) >> 16;
+				if (z0 >= 0 && z1 >= 0 && z0 < 1024 && z1 < 1024)
+					D_QOGSPANTR (lzi >> 19)
+				else if (z0 >= 1024 && z1 >= 1024 &&
+					z0 < 1024 + (128 << QOG_ZBUFFER8_NEAR) &&
+					z1 < 1024 + (128 << QOG_ZBUFFER8_NEAR))
+					D_QOGSPANTR (((lzi - (1024 << 16)) >> (16 + QOG_ZBUFFER8_NEAR)) + 128)
+				else
+					D_QOGSPANTR (D_ZQ(lzi >> 16))
+			}
+#elif defined(QOG_ZBUFFER8)
+			D_QOGSPANTR (D_ZQ(lzi >> 16))
+#else
+			D_QOGSPANTR (lzi >> 16)
+#endif
+		}
+
+		pspanpackage++;
+	} while (pspanpackage->count != -999999);
+
+	d_aspancount = aspancount;
+	errorterm = err;
+}
+#else	// QOG_ALIASSPAN_FAST
 /*
 ================
 D_PolysetDrawSpans8
@@ -912,6 +1045,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 		pspanpackage++;
 	} while (pspanpackage->count != -999999);
 }
+#endif	// QOG_ALIASSPAN_FAST
 #endif	// !id386
 
 

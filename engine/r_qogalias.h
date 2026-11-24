@@ -46,6 +46,29 @@ void R_QogAliasStatsView (void);
 #endif
 
 #ifdef QOG_ALIAS_FAST
+// QuakeOG (Agent AI): (int)(f * 2^frac), truncated, from the float's bits
+// with no float arithmetic, for |f * 2^frac| below 2^30 (larger values give
+// +-0x3fffffff). Fast mode only.
+static int R_QogFix (float f, int frac)
+{
+	union
+	{
+		float	f;
+		int		i;
+	} b;
+	int		e, m;
+
+	b.f = f;
+	e = ((b.i >> 23) & 0xff) - (127 + 23) + frac;
+	if (e <= -24)
+		return 0;
+	if (e > 6)
+		return b.i < 0 ? -0x3fffffff : 0x3fffffff;
+	m = (b.i & 0x7fffff) | 0x800000;
+	m = e >= 0 ? m << e : m >> -e;
+	return b.i < 0 ? -m : m;
+}
+
 // QuakeOG (Agent AI): the view's constants of the Fast mode particle drawer
 // (d_part.c), made by R_DrawParticles once a view
 typedef struct

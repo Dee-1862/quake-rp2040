@@ -94,11 +94,58 @@ void R_Alias_clip_z (finalvert_t *pfv0, finalvert_t *pfv1, finalvert_t *out)
 
 #if	!id386
 
+#ifdef QOG_ALIAS_FAST
+/*
+================
+R_QogAliasClipLerp
+
+QuakeOG (Agent AI): Fast mode (r_fast 1, QOG_ALIAS_FAST). A clipped point
+of id's R_Alias_clip_left, right, top and bottom in integers:
+out = a + (b - a) * num / den for the six values, rounded up from a half as
+id's + 0.5, from the quotient and the remainder of each difference by den
+(a screen distance), so nothing passes 32 bits. A distance of 2^14 or more
+(a point far off the screen) is left to id's float statements.
+================
+*/
+static int R_QogAliasClipLerp (finalvert_t *a, finalvert_t *b, int num,
+	int den, finalvert_t *out)
+{
+	int		i, d, t, q;
+
+	if (den < 0)
+	{
+		den = -den;
+		num = -num;
+	}
+	if (den >= 0x4000)
+		return 0;
+	for (i=0 ; i<6 ; i++)
+	{
+		d = b->v[i] - a->v[i];
+		t = (d % den) * num * 2 + den;
+		q = t / (2 * den);
+		if (t < 0 && q * 2 * den != t)
+			q--;	// floor, as id's + 0.5 truncated
+		out->v[i] = a->v[i] + (d / den) * num + q;
+	}
+	return 1;
+}
+#endif
+
 void R_Alias_clip_left (finalvert_t *pfv0, finalvert_t *pfv1, finalvert_t *out)
 {
 	float		scale;
 	int			i;
 
+#ifdef QOG_ALIAS_FAST
+	// QuakeOG (Agent AI): Fast mode, the same point in integers
+	if (r_qogfast && (pfv0->v[1] >= pfv1->v[1] ?
+			R_QogAliasClipLerp (pfv0, pfv1, r_refdef.aliasvrect.x - pfv0->v[0],
+					pfv1->v[0] - pfv0->v[0], out) :
+			R_QogAliasClipLerp (pfv1, pfv0, r_refdef.aliasvrect.x - pfv1->v[0],
+					pfv0->v[0] - pfv1->v[0], out)))
+		return;
+#endif
 	if (pfv0->v[1] >= pfv1->v[1])
 	{
 		scale = (float)(r_refdef.aliasvrect.x - pfv0->v[0]) /
@@ -122,6 +169,15 @@ void R_Alias_clip_right (finalvert_t *pfv0, finalvert_t *pfv1,
 	float		scale;
 	int			i;
 
+#ifdef QOG_ALIAS_FAST
+	// QuakeOG (Agent AI): Fast mode, the same point in integers
+	if (r_qogfast && (pfv0->v[1] >= pfv1->v[1] ?
+			R_QogAliasClipLerp (pfv0, pfv1, r_refdef.aliasvrectright - pfv0->v[0],
+					pfv1->v[0] - pfv0->v[0], out) :
+			R_QogAliasClipLerp (pfv1, pfv0, r_refdef.aliasvrectright - pfv1->v[0],
+					pfv0->v[0] - pfv1->v[0], out)))
+		return;
+#endif
 	if (pfv0->v[1] >= pfv1->v[1])
 	{
 		scale = (float)(r_refdef.aliasvrectright - pfv0->v[0]) /
@@ -144,6 +200,15 @@ void R_Alias_clip_top (finalvert_t *pfv0, finalvert_t *pfv1, finalvert_t *out)
 	float		scale;
 	int			i;
 
+#ifdef QOG_ALIAS_FAST
+	// QuakeOG (Agent AI): Fast mode, the same point in integers
+	if (r_qogfast && (pfv0->v[1] >= pfv1->v[1] ?
+			R_QogAliasClipLerp (pfv0, pfv1, r_refdef.aliasvrect.y - pfv0->v[1],
+					pfv1->v[1] - pfv0->v[1], out) :
+			R_QogAliasClipLerp (pfv1, pfv0, r_refdef.aliasvrect.y - pfv1->v[1],
+					pfv0->v[1] - pfv1->v[1], out)))
+		return;
+#endif
 	if (pfv0->v[1] >= pfv1->v[1])
 	{
 		scale = (float)(r_refdef.aliasvrect.y - pfv0->v[1]) /
@@ -167,6 +232,15 @@ void R_Alias_clip_bottom (finalvert_t *pfv0, finalvert_t *pfv1,
 	float		scale;
 	int			i;
 
+#ifdef QOG_ALIAS_FAST
+	// QuakeOG (Agent AI): Fast mode, the same point in integers
+	if (r_qogfast && (pfv0->v[1] >= pfv1->v[1] ?
+			R_QogAliasClipLerp (pfv0, pfv1, r_refdef.aliasvrectbottom - pfv0->v[1],
+					pfv1->v[1] - pfv0->v[1], out) :
+			R_QogAliasClipLerp (pfv1, pfv0, r_refdef.aliasvrectbottom - pfv1->v[1],
+					pfv0->v[1] - pfv1->v[1], out)))
+		return;
+#endif
 	if (pfv0->v[1] >= pfv1->v[1])
 	{
 		scale = (float)(r_refdef.aliasvrectbottom - pfv0->v[1]) /

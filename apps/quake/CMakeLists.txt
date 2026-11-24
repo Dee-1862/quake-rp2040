@@ -135,6 +135,7 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_LITSPAN_TAILMUL
     QOG_ZSPANS_FAST
     QOG_LITSPAN_ZFUSE
+    QOG_ALIASSPAN_FAST              # Agent AI, exact: alias spans with their steps in locals (d_polyse.c)
     QOG_FLOAT_EXACT)                # Agent AA, exact: single precision where id's double gives the same float (mathlib.h)
 # Episode 1 client RAM, exact (Agent Y), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
