@@ -2,6 +2,41 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Menus for five buttons and no keyboard (Agent X, PC and ARM build, registered data)
+
+id's menus expect a keyboard and a network. The board client now builds them with `QOG_BOARD_MENU` (engine/menu.c), set only for the display chip's engine (`_cl_defs` in apps/quake/CMakeLists.txt). Off, menu.c preprocesses to the same tokens as before (checked with the ARM compiler's `-E`, plain and split client), and the default PC build's `qogtest_hash` still gives `ce86f894f9de` (MD5 of its two `qog_statehash` lines). Nothing ran on hardware.
+
+| Menu | On the board |
+| --- | --- |
+| Main | Single Player, Options, Help, Quit. Multiplayer is gone (one board, no network, and the player name field went with it). The line is cut out of id's `gfx/mainmenu.lmp` (`M_DrawTransPicRows`) |
+| Single Player | New Game, Load, Save and a fourth line, Levels, in id's menu font at twice its size (`M_PrintBig`, id has no picture for it) |
+| Levels (new) | The maps the packs hold, base pack first: every `maps/<name>.bsp` in the pack directories except the item boxes `maps/b_*` (`COM_ForEachMap`, engine/common.c). So the list follows the data image mkboard writes, nothing is hardcoded. id's title next to each of id's maps (the `levels[]` table of the game options menu, now const). Pages of 16, up and down move, left and right turn pages, gray starts, green + blue goes back. Starting a level sends id's New Game commands through Cbuf: `disconnect` if a game runs, `maxplayers 1`, `deathmatch 0`, `coop 0`, `map <name>` |
+| Start a new game? (new) | id asks with `SCR_ModalMessage`, which waits in a loop of its own for Y or N. The board has neither key and reads its buttons only in the main loop and the link wait, so that loop would never end. The board asks inside the menu: gray yes, green + blue no. New Game and Levels both ask while a game runs |
+| Options | Controls, Reset to defaults, Screen size, Brightness, Sound Volume, Always Run. "Go to console" is gone (no keyboard), and so are Mouse Speed, CD Music Volume, Invert Mouse, Lookspring, Lookstrafe and Video Options (no mouse, CD or video modes on the board) |
+| Controls (was Customize controls) | The buttons in the game (mapping v4 of platform/qog_input.c) and in menus (vid_rp2040.c `menu_keys`), in id's menu font under id's title picture. Green + blue leaves it |
+| Quit | gray yes, green + blue no. id's jokes ask for Y and N, so the board shows its own box: quit and stop the game, then hold red for 6 s to switch the board off |
+| Load, Save, Help | id's, the buttons already drive them |
+
+No menu left takes typed text, so no letter picker was needed. The chat line (`messagemode`, key_message) is reachable only through a key binding the buttons cannot press.
+
+RAM. Leaving out the network menus (multiplayer, setup, net, serial, modem, LAN, game options, search, server list) and id's key binding page takes their tables with them: the mission pack level tables, the episode tables, the quit jokes, the bind names, the player colour tables (512 B) and the name fields. The kept level table and every new table are const, in flash. The new state is two ints (Levels cursor, which menu asked to confirm).
+
+| quake_display (`-DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`) | Before (f75051b) | After |
+| --- | ---: | ---: |
+| `end` (arm-none-eabi-nm) | 0x2003f5a0 | 0x2003ed7c (2,084 B lower) |
+| menu.c RAM (nm, B and D symbols) | 2,657 B | 592 B |
+| text | 376,044 B | 357,884 B |
+
+quake_main is unchanged (the server half does not get the flag).
+
+PC verification (hidden, `-nosound`, own build folders `build-pcx` and `build-pcx-bm`, own data folder `build-pcx\data\id1`, git-ignored). The test build adds the flag with `-DQOG_PC_EXTRA_DEFS=QOG_BOARD_MENU -DQOG_SPLIT_CL_EXTRA=QOG_BOARD_MENU`, which also registers `qog_key <key> ...` (port/pc/vid_pc.c, test builds only): it presses and releases keys, so a script drives the menus as the buttons do.
+
+- `qogtest_x_menu.cfg`: every new page and prompt, 16 screenshots. New Game asked and answered no, the Levels pages (38 maps from the registered paks, 3 pages), a level confirm answered no, Options, Controls, the volume slider, the quit prompt answered no and then yes, which quit the game.
+- `qogtest_x_level.cfg` (single process): Levels, e1m3, yes. The game loaded "the Necropolis". `qogtest_x_newgame.cfg`: New Game, yes, loaded "Introduction" (start).
+- `qogtest_x_level_split.cfg` on the split pair (`quakeog_cl` with the flag, `quakeog_sv`): the same level start crossed the link and the client entered "the Necropolis". The script has to end with the key that starts the level, because the menu's Cbuf text runs after the rest of a script (L52), so the pair was stopped by the 40 s timeout afterwards.
+
+To watch on the board: the Levels page lists what the data image holds, and today the client hunk fits only e1m1, so picking start (or any map past the hunk) stops the board with a hunk error until Agent Y's work lands. Quit ends in `Sys_Quit`, which on the display is `Sys_Error("quit")`: the picture freezes with the power-off still alive.
+
 ## 2026-11-24: Sound for the split game, mixed on main and played by the display (Agent W, PC and ARM build, registered data)
 
 The split game has sound. id's mixer (snd_dma.c, snd_mix.c, snd_mem.c) runs on the main chip for the display chip's sound calls, and the display plays the 8-bit samples it gets back on the I2S amplifier through PIO and DMA. On the PC the mixer of the split pair paints exactly what the single-process game paints for the same scripts, and the state hashes stay the same. Both board apps link with sound on. Nothing ran on hardware and nothing was played on this PC: every PC run mixed silently.

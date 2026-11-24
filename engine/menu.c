@@ -26,7 +26,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 void (*vid_menudrawfn)(void);
 void (*vid_menukeyfn)(int key);
 
-enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist} m_state;
+// QuakeOG: QOG_BOARD_MENU is the menus of a board with five buttons and no
+// keyboard or network (the FREE-WILi OG display). No Multiplayer and no
+// console entry, a Controls page that shows the buttons in place of key
+// binding, a Levels page that lists the maps the packs hold, and yes/no
+// prompts answered with enter and escape. Off, id's menus are unchanged.
+enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist
+#ifdef QOG_BOARD_MENU
+	, m_levels, m_confirm
+#endif
+	} m_state;
 
 void M_Menu_Main_f (void);
 	void M_Menu_SinglePlayer_f (void);
@@ -89,9 +98,11 @@ qboolean	m_entersound;		// play after drawing a frame, so caching
 								// won't disrupt the sound
 qboolean	m_recursiveDraw;
 
+#ifndef QOG_BOARD_MENU	// QuakeOG: the board has no network menus
 int			m_return_state;
 qboolean	m_return_onerror;
 char		m_return_reason [32];
+#endif
 
 #define StartingGame	(m_multiplayer_cursor == 1)
 #define JoiningGame		(m_multiplayer_cursor == 0)
@@ -144,6 +155,58 @@ void M_DrawPic (int x, int y, qpic_t *pic)
 	Draw_Pic (x + ((vid.width - 320)>>1), y, pic);
 }
 
+#ifdef QOG_BOARD_MENU
+/*
+================
+M_DrawTransPicRows
+
+QuakeOG: rows row to row+rows-1 of a menu picture, so the board's main menu
+can leave out the Multiplayer line of gfx/mainmenu.lmp
+================
+*/
+static void M_DrawTransPicRows (int x, int y, qpic_t *pic, int row, int rows)
+{
+	byte	*source, *dest, tbyte;
+	int		u, v;
+
+	source = pic->data + row * pic->width;
+	dest = vid.buffer + y * vid.rowbytes + x + ((vid.width - 320)>>1);
+	for (v=0 ; v<rows ; v++)
+	{
+		for (u=0 ; u<pic->width ; u++)
+			if ( (tbyte=source[u]) != TRANSPARENT_COLOR)
+				dest[u] = tbyte;
+		dest += vid.rowbytes;
+		source += pic->width;
+	}
+}
+
+/*
+================
+M_PrintBig
+
+QuakeOG: M_Print's font at twice its size, for the board's Levels line of
+the Single Player menu, which has no picture of its own
+================
+*/
+static void M_PrintBig (int cx, int cy, char *str)
+{
+	extern byte	*draw_chars;
+	byte	*source, *dest, tbyte;
+	int		num, u, v;
+
+	for ( ; *str ; str++, cx += 16)
+	{
+		num = (*str + 128) & 255;
+		source = draw_chars + ((num>>4)<<10) + ((num&15)<<3);
+		dest = vid.buffer + cy * vid.rowbytes + cx + ((vid.width - 320)>>1);
+		for (v=0 ; v<16 ; v++, dest += vid.rowbytes)
+			for (u=0 ; u<16 ; u++)
+				if ( (tbyte=source[(v>>1)*128 + (u>>1)]) )
+					dest[u] = tbyte;
+	}
+}
+#else	// QuakeOG: the player colour preview is in the network setup menu only
 byte identityTable[256];
 byte translationTable[256];
 
@@ -176,6 +239,7 @@ void M_DrawTransPicTranslate (int x, int y, qpic_t *pic)
 {
 	Draw_TransPicTranslate (x + ((vid.width - 320)>>1), y, pic, translationTable);
 }
+#endif
 
 
 void M_DrawTextBox (int x, int y, int width, int lines)
@@ -272,7 +336,14 @@ void M_ToggleMenu_f (void)
 /* MAIN MENU */
 
 int	m_main_cursor;
+#ifdef QOG_BOARD_MENU
+// QuakeOG: one board and no network, so no Multiplayer (id's item 1).
+// m_main_cursor counts the board's lines, this gives id's item for each.
+static const byte m_main_board[] = {0, 2, 3, 4};
+#define	MAIN_ITEMS	4
+#else
 #define	MAIN_ITEMS	5
+#endif
 
 
 void M_Menu_Main_f (void)
@@ -296,7 +367,14 @@ void M_Main_Draw (void)
 	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp") );
 	p = Draw_CachePic ("gfx/ttl_main.lmp");
 	M_DrawPic ( (320-p->width)/2, 4, p);
+#ifdef QOG_BOARD_MENU
+	// QuakeOG: the picture's lines are 20 rows each, skip the second
+	p = Draw_CachePic ("gfx/mainmenu.lmp");
+	M_DrawTransPicRows (72, 32, p, 0, 20);
+	M_DrawTransPicRows (72, 52, p, 40, p->height - 40);
+#else
 	M_DrawTransPic (72, 32, Draw_CachePic ("gfx/mainmenu.lmp") );
+#endif
 
 	f = (int)(host_time * 10)%6;
 
@@ -331,15 +409,21 @@ void M_Main_Key (int key)
 	case K_ENTER:
 		m_entersound = true;
 
+#ifdef QOG_BOARD_MENU
+		switch (m_main_board[m_main_cursor])
+#else
 		switch (m_main_cursor)
+#endif
 		{
 		case 0:
 			M_Menu_SinglePlayer_f ();
 			break;
 
+#ifndef QOG_BOARD_MENU
 		case 1:
 			M_Menu_MultiPlayer_f ();
 			break;
+#endif
 
 		case 2:
 			M_Menu_Options_f ();
@@ -360,7 +444,14 @@ void M_Main_Key (int key)
 /* SINGLE PLAYER MENU */
 
 int	m_singleplayer_cursor;
+#ifdef QOG_BOARD_MENU
+#define	SINGLEPLAYER_ITEMS	4	// QuakeOG: and Levels
+void M_Menu_Levels_f (void);
+static void M_Confirm (int from);
+static void M_BoardStartMap (const char *map, int len);
+#else
 #define	SINGLEPLAYER_ITEMS	3
+#endif
 
 
 void M_Menu_SinglePlayer_f (void)
@@ -380,6 +471,10 @@ void M_SinglePlayer_Draw (void)
 	p = Draw_CachePic ("gfx/ttl_sgl.lmp");
 	M_DrawPic ( (320-p->width)/2, 4, p);
 	M_DrawTransPic (72, 32, Draw_CachePic ("gfx/sp_menu.lmp") );
+#ifdef QOG_BOARD_MENU
+	// QuakeOG: id has no picture for it, so the menu font at twice its size
+	M_PrintBig (74, 32 + 3*20 + 2, "LEVELS");
+#endif
 
 	f = (int)(host_time * 10)%6;
 
@@ -413,6 +508,15 @@ void M_SinglePlayer_Key (int key)
 		switch (m_singleplayer_cursor)
 		{
 		case 0:
+#ifdef QOG_BOARD_MENU
+			// QuakeOG: SCR_ModalMessage waits for a Y or N key in a loop of
+			// its own, which the board's buttons never give. Ask in the menu.
+			if (sv.active)
+				M_Confirm (m_singleplayer);
+			else
+				M_BoardStartMap ("start", 5);
+			break;
+#else
 			if (sv.active)
 				if (!SCR_ModalMessage("Are you sure you want to\nstart a new game?\n"))
 					break;
@@ -422,6 +526,7 @@ void M_SinglePlayer_Key (int key)
 			Cbuf_AddText ("maxplayers 1\n");
 			Cbuf_AddText ("map start\n");
 			break;
+#endif
 
 		case 1:
 			M_Menu_Load_f ();
@@ -430,6 +535,11 @@ void M_SinglePlayer_Key (int key)
 		case 2:
 			M_Menu_Save_f ();
 			break;
+#ifdef QOG_BOARD_MENU
+		case 3:
+			M_Menu_Levels_f ();
+			break;
+#endif
 		}
 	}
 }
@@ -623,6 +733,7 @@ void M_Save_Key (int k)
 	}
 }
 
+#ifndef QOG_BOARD_MENU	// QuakeOG: no network menus on the board (one board, no keyboard)
 //=============================================================================
 /* MULTIPLAYER MENU */
 
@@ -1055,6 +1166,7 @@ again:
 		goto again;
 }
 
+#endif	// QOG_BOARD_MENU
 //=============================================================================
 /* OPTIONS MENU */
 
@@ -1197,6 +1309,122 @@ void M_DrawCheckbox (int x, int y, int on)
 		M_Print (x, y, "off");
 }
 
+#ifdef QOG_BOARD_MENU
+// QuakeOG: the board's options. options_cursor keeps id's numbers, so
+// M_AdjustSliders is id's, but only these lines show: no console (no
+// keyboard), and no mouse, CD music or video modes on the board.
+static const struct
+{
+	byte	item;		// id's options_cursor
+	char	label[23];
+} m_board_options[] =
+{
+	{0, "              Controls"},
+	{2, "     Reset to defaults"},
+	{3, "           Screen size"},
+	{4, "            Brightness"},
+	{7, "          Sound Volume"},
+	{8, "            Always Run"}
+};
+#define	BOARD_OPTIONS	(int)(sizeof(m_board_options)/sizeof(m_board_options[0]))
+
+static int M_BoardOptionLine (void)
+{
+	int		i;
+
+	for (i=0 ; i<BOARD_OPTIONS ; i++)
+		if (m_board_options[i].item == options_cursor)
+			return i;
+	return 0;
+}
+
+void M_Options_Draw (void)
+{
+	int		i, y;
+	qpic_t	*p;
+
+	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp") );
+	p = Draw_CachePic ("gfx/p_option.lmp");
+	M_DrawPic ( (320-p->width)/2, 4, p);
+
+	for (i=0 ; i<BOARD_OPTIONS ; i++)
+	{
+		y = 32 + i*8;
+		M_Print (16, y, (char *)m_board_options[i].label);
+		switch (m_board_options[i].item)
+		{
+		case 3:
+			M_DrawSlider (220, y, (scr_viewsize.value - 30) / (120 - 30));
+			break;
+		case 4:
+			M_DrawSlider (220, y, (1.0 - v_gamma.value) / 0.5);
+			break;
+		case 7:
+			M_DrawSlider (220, y, volume.value);
+			break;
+		case 8:
+			M_DrawCheckbox (220, y, cl_forwardspeed.value > 200);
+			break;
+		}
+	}
+
+// cursor
+	M_DrawCharacter (200, 32 + M_BoardOptionLine()*8, 12+((int)(realtime*4)&1));
+}
+
+
+void M_Options_Key (int k)
+{
+	int		line;
+
+	line = M_BoardOptionLine ();
+	switch (k)
+	{
+	case K_ESCAPE:
+		M_Menu_Main_f ();
+		break;
+
+	case K_ENTER:
+		m_entersound = true;
+		switch (options_cursor)
+		{
+		case 0:
+			M_Menu_Keys_f ();	// the board's Controls page
+			break;
+		case 2:
+			Cbuf_AddText ("exec default.cfg\n");
+			break;
+		default:
+			M_AdjustSliders (1);
+			break;
+		}
+		return;
+
+	case K_UPARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (--line < 0)
+			line = BOARD_OPTIONS-1;
+		break;
+
+	case K_DOWNARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (++line >= BOARD_OPTIONS)
+			line = 0;
+		break;
+
+	case K_LEFTARROW:
+		M_AdjustSliders (-1);
+		break;
+
+	case K_RIGHTARROW:
+		M_AdjustSliders (1);
+		break;
+	}
+	options_cursor = m_board_options[line].item;
+}
+
+#else	// QOG_BOARD_MENU
+
 void M_Options_Draw (void)
 {
 	float		r;
@@ -1331,9 +1559,12 @@ void M_Options_Key (int k)
 #endif
 }
 
+#endif	// QOG_BOARD_MENU
+
 //=============================================================================
 /* KEYS MENU */
 
+#ifndef QOG_BOARD_MENU	// QuakeOG: no key binding on the board
 char *bindnames[][2] =
 {
 {"+attack", 		"attack"},
@@ -1361,6 +1592,8 @@ char *bindnames[][2] =
 int		keys_cursor;
 int		bind_grab;
 
+#endif	// QOG_BOARD_MENU
+
 void M_Menu_Keys_f (void)
 {
 	key_dest = key_menu;
@@ -1368,6 +1601,67 @@ void M_Menu_Keys_f (void)
 	m_entersound = true;
 }
 
+
+#ifdef QOG_BOARD_MENU
+// QuakeOG: the board has no keys to bind, so Customize controls shows what
+// its five buttons do: in the game platform/qog_input.c, in menus
+// port/rp2040/vid_rp2040.c. Escape (green + blue) leaves it.
+static const struct
+{
+	const char	*button;	// NULL for a heading
+	const char	*action;
+} m_controls[] =
+{
+	{NULL,				"In the game"},
+	{"gray",			"fire, hold keeps firing"},
+	{"yellow",			"forward"},
+	{"green",			"turn left"},
+	{"blue",			"turn right"},
+	{"red",				"next weapon"},
+	{"red+yellow",		"back"},
+	{"red+green",		"jump"},
+	{"red+blue",		"swim down"},
+	{"red+gray",		"previous weapon"},
+	{"green+blue",		"menu"},
+	{"hold red 6 s",	"power off"},
+	{NULL,				"In menus"},
+	{"yellow, blue",	"up, down"},
+	{"green, red",		"left, right"},
+	{"gray",			"enter"},
+	{"green+blue",		"back"}
+};
+
+void M_Keys_Draw (void)
+{
+	int		i, y;
+	qpic_t	*p;
+
+	p = Draw_CachePic ("gfx/ttl_cstm.lmp");
+	M_DrawPic ( (320-p->width)/2, 4, p);
+
+	y = 32;
+	for (i=0 ; i<sizeof(m_controls)/sizeof(m_controls[0]) ; i++, y += 8)
+	{
+		if (!m_controls[i].button)
+		{
+			if (i)
+				y += 8;
+			M_PrintWhite (16, y, (char *)m_controls[i].action);
+			continue;
+		}
+		M_Print (24, y, (char *)m_controls[i].button);
+		M_Print (128, y, (char *)m_controls[i].action);
+	}
+}
+
+
+void M_Keys_Key (int k)
+{
+	if (k == K_ESCAPE)
+		M_Menu_Options_f ();
+}
+
+#else	// QOG_BOARD_MENU
 
 void M_FindKeysForCommand (char *command, int *twokeys)
 {
@@ -1525,6 +1819,8 @@ void M_Keys_Key (int k)
 	}
 }
 
+#endif	// QOG_BOARD_MENU
+
 //=============================================================================
 /* VIDEO MENU */
 
@@ -1602,8 +1898,8 @@ int		msgNumber;
 int		m_quit_prevstate;
 qboolean	wasInMenus;
 
-#ifndef	ID_WIN32
-char *quitMessage [] = 
+#if !defined(ID_WIN32) && !defined(QOG_BOARD_MENU)	// QuakeOG: the board has its own prompt
+char *quitMessage [] =
 {
 /* .........1.........2.... */
   "  Are you gonna quit    ",
@@ -1680,6 +1976,9 @@ void M_Quit_Key (int key)
 		}
 		break;
 
+#ifdef QOG_BOARD_MENU
+	case K_ENTER:	// QuakeOG: gray is yes on the board, green + blue (escape) no
+#endif
 	case 'Y':
 	case 'y':
 		key_dest = key_console;
@@ -1726,6 +2025,14 @@ void M_Quit_Draw (void)
 	M_PrintWhite (16, 164, "registered trademark licensed to\n");
 	M_PrintWhite (16, 172, "Nothing Interactive, Inc. All rights\n");
 	M_PrintWhite (16, 180, "reserved. Press y to exit\n");
+#elif defined(QOG_BOARD_MENU)
+	// QuakeOG: id's lines ask for Y or N. Quitting stops the board's game
+	// (Sys_Quit), and the board switches off with red held alone.
+	M_DrawTextBox (56, 76, 24, 4);
+	M_Print (64, 84,  "Quit and stop the game?");
+	M_Print (64, 92,  "Then hold red for 6 s");
+	M_Print (64, 100, "to switch the board off.");
+	M_PrintWhite (64, 108, " gray yes  green+blue no");
 #else
 	M_DrawTextBox (56, 76, 24, 4);
 	M_Print (64, 84,  quitMessage[msgNumber*4+0]);
@@ -1735,6 +2042,7 @@ void M_Quit_Draw (void)
 #endif
 }
 
+#ifndef QOG_BOARD_MENU	// QuakeOG: no network menus on the board
 //=============================================================================
 
 /* SERIAL CONFIG MENU */
@@ -2398,6 +2706,7 @@ void M_LanConfig_Key (int key)
 	sprintf(lanConfig_portname, "%u", lanConfig_port);
 }
 
+#endif	// QOG_BOARD_MENU
 //=============================================================================
 /* GAME OPTIONS MENU */
 
@@ -2407,6 +2716,9 @@ typedef struct
 	char	*description;
 } level_t;
 
+#ifdef QOG_BOARD_MENU
+const	// QuakeOG: the board's Levels page reads the titles, in flash
+#endif
 level_t		levels[] =
 {
 	{"start", "Entrance"},	// 0
@@ -2455,6 +2767,208 @@ level_t		levels[] =
 	{"dm6", "The Dark Zone"}
 };
 
+#ifdef QOG_BOARD_MENU
+//=============================================================================
+/* LEVELS MENU */
+
+// QuakeOG: the maps the packs hold (COM_ForEachMap, common.c), so the list
+// follows the board's data image. A page of LEVELS_ROWS lines, with id's
+// title when the map is one of id's. Nothing is kept but the cursor: each
+// frame and each key walks the pack directories again.
+
+int		m_levels_cursor;
+#define	LEVELS_ROWS	16
+
+typedef struct
+{
+	int			top;		// first line drawn, -1 to draw none
+	int			pick;		// the line whose name is wanted
+	const char	*name;		// that name in the pack's directory, not terminated
+	int			len;
+} m_levelwalk_t;
+
+static void M_Levels_Line (const char *name, int len, int n, void *ctx)
+{
+	m_levelwalk_t	*w = ctx;
+	char			line[9];
+	int				i, y;
+
+	if (n == w->pick)
+	{
+		w->name = name;
+		w->len = len;
+	}
+	if (w->top < 0 || n < w->top || n >= w->top + LEVELS_ROWS)
+		return;
+	y = 32 + (n - w->top) * 8;
+	for (i=0 ; i<sizeof(levels)/sizeof(levels[0]) ; i++)
+		if (!strncmp (levels[i].name, name, len) && !levels[i].name[len])
+		{
+			M_Print (88, y, levels[i].description);
+			break;
+		}
+	if (len > sizeof(line) - 1)
+		len = sizeof(line) - 1;
+	memcpy (line, name, len);
+	line[len] = 0;
+	M_PrintWhite (16, y, line);
+}
+
+static int M_Levels_Walk (m_levelwalk_t *w, int top, int pick)
+{
+	w->top = top;
+	w->pick = pick;
+	w->name = NULL;
+	w->len = 0;
+	return COM_ForEachMap (M_Levels_Line, w);
+}
+
+void M_Menu_Levels_f (void)
+{
+	key_dest = key_menu;
+	m_state = m_levels;
+	m_entersound = true;
+}
+
+void M_Levels_Draw (void)
+{
+	m_levelwalk_t	w;
+	int		count, top;
+	qpic_t	*p;
+
+	p = Draw_CachePic ("gfx/ttl_sgl.lmp");
+	M_DrawPic ( (320-p->width)/2, 4, p);
+
+	top = m_levels_cursor - m_levels_cursor % LEVELS_ROWS;
+	count = M_Levels_Walk (&w, top, -1);
+	if (!count)
+	{
+		M_Print (16, 32, "No levels in the game data");
+		return;
+	}
+	M_DrawCharacter (8, 32 + (m_levels_cursor - top)*8, 12+((int)(realtime*4)&1));
+	if (count > LEVELS_ROWS)
+		M_Print (16, 32 + LEVELS_ROWS*8 + 4, va ("page %i of %i  (left, right)",
+			top / LEVELS_ROWS + 1, (count + LEVELS_ROWS - 1) / LEVELS_ROWS));
+	M_Print (16, 184, "gray start, green+blue back");
+}
+
+void M_Levels_Key (int key)
+{
+	m_levelwalk_t	w;
+	int		count;
+
+	count = M_Levels_Walk (&w, -1, m_levels_cursor);
+
+	switch (key)
+	{
+	case K_ESCAPE:
+		M_Menu_SinglePlayer_f ();
+		break;
+
+	case K_UPARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (--m_levels_cursor < 0)
+			m_levels_cursor = count - 1;
+		break;
+
+	case K_DOWNARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (++m_levels_cursor >= count)
+			m_levels_cursor = 0;
+		break;
+
+	case K_LEFTARROW:
+		S_LocalSound ("misc/menu1.wav");
+		m_levels_cursor -= LEVELS_ROWS;
+		break;
+
+	case K_RIGHTARROW:
+		S_LocalSound ("misc/menu1.wav");
+		m_levels_cursor += LEVELS_ROWS;
+		if (m_levels_cursor >= count)
+			m_levels_cursor = count - 1;
+		break;
+
+	case K_ENTER:
+		if (!w.name)
+			break;
+		if (sv.active)
+			M_Confirm (m_levels);
+		else
+			M_BoardStartMap (w.name, w.len);
+		break;
+	}
+	if (m_levels_cursor < 0)
+		m_levels_cursor = 0;
+}
+
+//=============================================================================
+/* CONFIRM MENU */
+
+// QuakeOG: id asks "start a new game?" with SCR_ModalMessage, which waits in
+// a loop of its own for a Y or N key. The board has neither key and its
+// buttons are read outside that loop, so the board asks in the menu: enter
+// (gray) is yes, escape (green + blue) is no.
+
+int		m_confirm_from;		// the menu that asked, m_singleplayer or m_levels
+
+static void M_Confirm (int from)
+{
+	m_confirm_from = from;
+	m_state = m_confirm;
+	m_entersound = true;
+}
+
+void M_Confirm_Draw (void)
+{
+	m_state = m_confirm_from;
+	m_recursiveDraw = true;
+	M_Draw ();
+	m_state = m_confirm;
+
+	M_DrawTextBox (56, 76, 24, 4);
+	M_Print (64, 84,  "Are you sure you want to");
+	M_Print (64, 92,  "   start a new game?");
+	M_PrintWhite (64, 108, " gray yes  green+blue no");
+}
+
+void M_Confirm_Key (int key)
+{
+	m_levelwalk_t	w;
+
+	switch (key)
+	{
+	case K_ESCAPE:
+		m_state = m_confirm_from;
+		m_entersound = true;
+		break;
+
+	case K_ENTER:
+		if (m_confirm_from != m_levels)
+			M_BoardStartMap ("start", 5);
+		else
+		{
+			M_Levels_Walk (&w, -1, m_levels_cursor);
+			if (w.name)
+				M_BoardStartMap (w.name, w.len);
+		}
+		break;
+	}
+}
+
+static void M_BoardStartMap (const char *map, int len)
+{
+	// id's New Game, for any level: one player, no deathmatch or coop
+	key_dest = key_game;
+	m_state = m_none;
+	if (sv.active)
+		Cbuf_AddText ("disconnect\n");
+	Cbuf_AddText ("maxplayers 1\ndeathmatch 0\ncoop 0\n");
+	Cbuf_AddText (va ("map %.*s\n", len, map));
+}
+
+#else	// QOG_BOARD_MENU, the network game menus follow
 //MED 01/06/97 added hipnotic levels
 level_t     hipnoticlevels[] =
 {
@@ -3018,6 +3532,7 @@ void M_ServerList_Key (int k)
 
 }
 
+#endif	// QOG_BOARD_MENU
 //=============================================================================
 /* Menu Subsystem */
 
@@ -3030,8 +3545,10 @@ void M_Init (void)
 	Cmd_AddCommand ("menu_singleplayer", M_Menu_SinglePlayer_f);
 	Cmd_AddCommand ("menu_load", M_Menu_Load_f);
 	Cmd_AddCommand ("menu_save", M_Menu_Save_f);
+#ifndef QOG_BOARD_MENU
 	Cmd_AddCommand ("menu_multiplayer", M_Menu_MultiPlayer_f);
 	Cmd_AddCommand ("menu_setup", M_Menu_Setup_f);
+#endif
 	Cmd_AddCommand ("menu_options", M_Menu_Options_f);
 	Cmd_AddCommand ("menu_keys", M_Menu_Keys_f);
 	Cmd_AddCommand ("menu_video", M_Menu_Video_f);
@@ -3087,6 +3604,7 @@ void M_Draw (void)
 		M_Save_Draw ();
 		break;
 
+#ifndef QOG_BOARD_MENU	// QuakeOG: no network menus on the board
 	case m_multiplayer:
 		M_MultiPlayer_Draw ();
 		break;
@@ -3098,6 +3616,8 @@ void M_Draw (void)
 	case m_net:
 		M_Net_Draw ();
 		break;
+
+#endif
 
 	case m_options:
 		M_Options_Draw ();
@@ -3119,6 +3639,7 @@ void M_Draw (void)
 		M_Quit_Draw ();
 		break;
 
+#ifndef QOG_BOARD_MENU
 	case m_serialconfig:
 		M_SerialConfig_Draw ();
 		break;
@@ -3142,6 +3663,15 @@ void M_Draw (void)
 	case m_slist:
 		M_ServerList_Draw ();
 		break;
+#else
+	case m_levels:
+		M_Levels_Draw ();
+		break;
+
+	case m_confirm:
+		M_Confirm_Draw ();
+		break;
+#endif
 	}
 
 	if (m_entersound)
@@ -3179,6 +3709,7 @@ void M_Keydown (int key)
 		M_Save_Key (key);
 		return;
 
+#ifndef QOG_BOARD_MENU
 	case m_multiplayer:
 		M_MultiPlayer_Key (key);
 		return;
@@ -3190,6 +3721,8 @@ void M_Keydown (int key)
 	case m_net:
 		M_Net_Key (key);
 		return;
+
+#endif
 
 	case m_options:
 		M_Options_Key (key);
@@ -3211,6 +3744,7 @@ void M_Keydown (int key)
 		M_Quit_Key (key);
 		return;
 
+#ifndef QOG_BOARD_MENU
 	case m_serialconfig:
 		M_SerialConfig_Key (key);
 		return;
@@ -3234,10 +3768,20 @@ void M_Keydown (int key)
 	case m_slist:
 		M_ServerList_Key (key);
 		return;
+#else
+	case m_levels:
+		M_Levels_Key (key);
+		return;
+
+	case m_confirm:
+		M_Confirm_Key (key);
+		return;
+#endif
 	}
 }
 
 
+#ifndef QOG_BOARD_MENU
 void M_ConfigureNetSubsystem(void)
 {
 // enable/disable net systems to match desired config
@@ -3251,3 +3795,4 @@ void M_ConfigureNetSubsystem(void)
 	if (IPXConfig || TCPIPConfig)
 		net_hostport = lanConfig_port;
 }
+#endif

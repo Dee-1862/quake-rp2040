@@ -278,6 +278,20 @@ static void cmd_qog_rpeaks(void) {
             r_qog_peakframespans = r_qog_peakflushspans = 0;
 }
 
+#ifdef QOG_BOARD_MENU
+/* QuakeOG (Agent X): `qog_key <key> ...` presses and releases each key, so a
+   test script can drive the board's menus (engine/menu.c) as the buttons do
+   (enter, escape and the arrows). Test builds with QOG_BOARD_MENU only. */
+static void cmd_qog_key(void) {
+    for (int i = 1; i < Cmd_Argc(); i++) {
+        int k = Key_StringToKeynum(Cmd_Argv(i));
+        if (k < 0) { Con_Printf("qog_key: no key %s\n", Cmd_Argv(i)); continue; }
+        Key_Event(k, true);
+        Key_Event(k, false);
+    }
+}
+#endif
+
 static void cmd_qog_shot(void) {
     write_shot(Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot");
 }
@@ -471,6 +485,9 @@ void VID_Init(unsigned char *palette) {
 #endif
     Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
     Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
+#ifdef QOG_BOARD_MENU
+    Cmd_AddCommand("qog_key", cmd_qog_key);
+#endif
     {
         extern void qog_manifest_register(void);
         qog_manifest_register();

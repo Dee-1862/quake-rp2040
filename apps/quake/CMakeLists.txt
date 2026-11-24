@@ -282,6 +282,11 @@ if(QOG_SPLIT)
         QOG_CL_PRECACHE_SV              # model and sound precache tables of the server half's sizes (208 and 176)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
         QOG_CMD_ARGV_ARENA=640)         # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+    # QuakeOG (Agent X): menus for five buttons and no keyboard (engine/menu.c).
+    # No Multiplayer or console entry, a Controls page that shows the buttons,
+    # a Levels page of the maps in the data image, yes/no answered with gray
+    # and green + blue. The network menus are left out, which frees RAM.
+    list(APPEND _cl_defs QOG_BOARD_MENU)
     # QuakeOG (Agent W): sound. id's mixer runs on the server half for the
     # client half's sound calls (engine/snd_link.c, engine/net_link.c), which
     # plays the 8-bit samples it sends back on the I2S amplifier through PIO
