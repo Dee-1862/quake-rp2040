@@ -434,6 +434,24 @@ if(QOG_SPLIT)
     fwog_main_app(quake_main
         VERSION 001
         DESCRIPTION "QuakeOG: the Quake server half (QuakeC, physics, edicts) on the main RP2040, with the client half on the display")
+    # QuakeOG (Agent AB): faster clocks for both Quake apps only, set at run
+    # time right after board_init() (port/rp2040/clock_rp2040.c). The BSP, its
+    # display bootloader and every other app keep 200 MHz and flash CLKDIV 4.
+    # QOG_SYS_KHZ=0 keeps the BSP's clock, QOG_FLASH_FAST=OFF the flash divider.
+    set(QOG_SYS_KHZ 250000 CACHE STRING "clk_sys of the Quake apps in kHz, 0 keeps the BSP's 200 MHz")
+    set(QOG_SYS_MV 1200 CACHE STRING "core voltage in mV for QOG_SYS_KHZ (1150 to 1300), set before the clock")
+    option(QOG_FLASH_FAST "Quake apps switch the QSPI flash to clk_sys / 2 at run time, checked, falling back to 4" ON)
+    if(QOG_FLASH_FAST)
+        set(_flash_fast 1)
+    else()
+        set(_flash_fast 0)
+    endif()
+    foreach(_app quake_display quake_main)
+        target_sources(${_app} PRIVATE ${QOG_ROOT}/port/rp2040/clock_rp2040.c)
+        target_compile_definitions(${_app} PRIVATE QOG_CLOCK_BOOST
+            QOG_SYS_KHZ=${QOG_SYS_KHZ} QOG_SYS_MV=${QOG_SYS_MV} QOG_FLASH_FAST=${_flash_fast})
+    endforeach()
+
     add_custom_command(TARGET quake_main POST_BUILD
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_app_size.py
                 $<TARGET_FILE_DIR:quake_main>/quake_main.bin

@@ -57,6 +57,17 @@ See the GNU General Public License for more details.
 #define QOG_SYS_SOUNDARG "-nosound",
 #endif
 #include "qog_phase.h"
+#ifdef QOG_CLOCK_BOOST
+/* Agent AB: the Quake apps' faster clock and flash (port/rp2040/clock_rp2040.c) */
+#include "qog_clock.h"
+#define QOG_CLOCK_BOOST_NOW()   qog_clock_boost()
+#define QOG_CLOCK_REPORT_ONCE() qog_clock_report_once()
+#define QOG_FLASH_REAPPLY()     qog_flash_fast_reapply()
+#else
+#define QOG_CLOCK_BOOST_NOW()   ((void)0)
+#define QOG_CLOCK_REPORT_ONCE() ((void)0)
+#define QOG_FLASH_REAPPLY()     ((void)0)
+#endif
 
 #ifdef QOG_PHASE_TIME
 /* QuakeOG (Agent V): where the frame time goes, over USB every 2 s
@@ -233,6 +244,7 @@ static int fat_ready(void) {
         s_fat_state = fwog_fs_mount() ? 1 : -1;
         if (s_fat_state > 0 && !fwog_fs_exists(FAT_DIR) && !fwog_fs_mkdir(FAT_DIR))
             DIAG("[quake_main] cannot make the folder %s on the FAT volume\n", FAT_DIR);
+        QOG_FLASH_REAPPLY();    /* a flash write runs boot2 again, which resets the divider */
         DIAG("[quake_main] FAT volume %s\n", s_fat_state > 0 ? "mounted, saves in quake/" : "missing, no saves");
     }
     return s_fat_state > 0;
@@ -258,7 +270,9 @@ int _open(const char *path, int flags, ...) {
 int _close(int fd) {
     if (fd != FAT_FD || !s_fat_open) return -1;
     s_fat_open = 0;
-    return fwog_fs_close() ? 0 : -1;
+    int ok = fwog_fs_close();
+    QOG_FLASH_REAPPLY();
+    return ok ? 0 : -1;
 }
 
 int _read(int fd, char *buf, int len) {
@@ -274,7 +288,9 @@ int _write(int fd, char *buf, int len) {
         return len;
     }
     if (fd != FAT_FD || !s_fat_open) return -1;
-    return fwog_fs_write(buf, (size_t)len) ? len : -1;
+    int ok = fwog_fs_write(buf, (size_t)len);
+    QOG_FLASH_REAPPLY();
+    return ok ? len : -1;
 }
 
 off_t _lseek(int fd, off_t pos, int whence) {
@@ -516,11 +532,17 @@ static void __attribute__((noreturn)) server_main(void) {
 #ifdef QOG_PHASE_TIME
         board_timing("sv");
 #endif
+        QOG_CLOCK_REPORT_ONCE();
     }
 }
 
 int main(void) {
     board_init();
+    /* Agent AB: 250 MHz and the faster flash before the display update. The
+       display is still held in reset and the link is down, and the link comes
+       up at 12.5 Mbaud from either clock (clk_peri / 16 / 1.25 at 250 MHz,
+       the bootloader's / 16 / 1 at 200 MHz). */
+    QOG_CLOCK_BOOST_NOW();
     fwog_display_result_t d = fwog_display_update_run();
     DIAG("[quake_main] display: %s\n", fwog_display_result_text(d));
 #ifdef QOG_STACK_KB
@@ -583,6 +605,9 @@ static void __attribute__((noreturn)) game_main(void);
 
 int main(void) {
     board_init();
+    /* Agent AB: before core 1 starts (VID_Init) and before any driver takes
+       a divider from clock_get_hz() (port/rp2040/clock_rp2040.c) */
+    QOG_CLOCK_BOOST_NOW();
     run_on_stack(s_stack + sizeof s_stack / sizeof s_stack[0], game_main);
 }
 
@@ -604,6 +629,7 @@ int main(void) {
 #endif
 #ifndef QOG_STACK_KB
     board_init();
+    QOG_CLOCK_BOOST_NOW();
 #endif
 #ifdef QOG_POWER_RED_ALONE
     /* the LED bar shows the red-hold power-off countdown (power_qog.c draws
@@ -638,6 +664,7 @@ int main(void) {
 #ifdef QOG_PHASE_TIME
         board_timing("cl");
 #endif
+        QOG_CLOCK_REPORT_ONCE();
         if (!frame && host_framecount >= 1) { frame = 1; qog_aim_apply_defaults(); }
         oldtime = newtime;
     }

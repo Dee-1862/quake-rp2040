@@ -7,8 +7,11 @@
  *
  *  - PIO runs the BSP's audio_i2s program (bsp/display_cpu/audio/i2s_audio.c,
  *    from rpI2S.cpp), clocked for 11025 Hz with the BSP's integer divider
- *    (200 MHz / (64 x 283) = 11042 Hz, 0.16% fast: id's soundtime follows
- *    the samples played, so nothing drifts).
+ *    (200 MHz / (64 x 283) = 11042 Hz, 0.16% fast, and with the Quake apps'
+ *    250 MHz (Agent AB, clock_rp2040.c) 250 MHz / (64 x 354) = 11035 Hz,
+ *    0.09% fast: id's soundtime follows the samples played, so nothing
+ *    drifts). The divider is taken from clock_get_hz() at S_Init, after the
+ *    clock is raised.
  *  - A DMA channel reads the ring of QOG_SND_RING signed 8-bit samples into
  *    the PIO's TX FIFO, one byte per frame. An 8-bit write to a FIFO register
  *    is replicated across the 32-bit word, so each byte b goes out as the
