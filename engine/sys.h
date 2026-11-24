@@ -77,3 +77,8 @@ void Sys_LowFPPrecision (void);
 void Sys_HighFPPrecision (void);
 void Sys_SetFPCW (void);
 
+// QuakeOG: the system and flash clocks in kHz, for the board's benchmark
+// result (menu.c). 0 where they are not known (the PC).
+unsigned Sys_QogClockKHz (void);
+unsigned Sys_QogFlashKHz (void);
+

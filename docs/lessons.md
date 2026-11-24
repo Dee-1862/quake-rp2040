@@ -174,3 +174,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L79. A script run with `-basedir <board image>` must be in that image's `id1`.** Otherwise `exec` finds nothing, the game plays its demo loop (none in the image) and waits for the timeout. mkboard does not copy the test scripts (as L71 says, copy them into both id1 folders).
 
 **L80. `git fetch` in a worktree can wait for credentials with no prompt.** To take main's latest, merge the local `main` branch, which every worktree shares, with `GIT_TERMINAL_PROMPT=0`.
+
+**L81. `sed -i` in the agents' bash rewrites a CRLF file with LF endings.** A one-line `sed -i` on engine/menu.c turned all 4,005 of its CRLF line ends into LF, so the diff became the whole file. The engine files are `-text` and keep id's CRLF bytes (.gitattributes). Edit them with the Edit tool or a script that reads and writes bytes, and check `git ls-files --eol <file>` before committing.
+
+**L82. A timedemo on the PC measures the PC's pacing, not its speed.** sys_pc.c's main loop runs at most 72 frames a second and sleeps in steps of a millisecond, so `timedemo demo3` gave 54 to 57 fps on quakeog_pc and the split pair alike, Exact or Fast. Only the board's number says how fast the code is.
+
+**L83. To run a script's lines after the text a menu queues, bind a key and press it after the menu key.** The menu's `Cbuf_AddText` goes behind the rest of the script (L52), and `exec` inserts in front. A key binding pressed with `qog_key` in the game appends its text behind the menu's, so `bind f12 "exec after.cfg"` then `qog_key enter f12` runs the menu's `timedemo` first and the script's waits and shots during and after it.
+
+**L84. Check a demo exists before anything that ends the game for it.** id's `timedemo` disconnects in `CL_PlayDemo_f` before it opens the file, and sets `cls.timedemo` even when the file is missing, so a missing demo ends the game and leaves a timedemo flag no demo will clear. The board's Benchmark checks `COM_HasFile` before its prompt. mkboard leaves `demo*.dem` out of the images unless `--demos` is given.

@@ -34,5 +34,8 @@ void M_Init (void);
 void M_Keydown (int key);
 void M_Draw (void);
 void M_ToggleMenu_f (void);
+#ifdef QOG_BOARD_MENU
+void M_BenchDone (qboolean whole);	// QuakeOG: a timedemo ended, show its result (menu.c)
+#endif
 
 

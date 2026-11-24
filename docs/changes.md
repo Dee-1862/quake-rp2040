@@ -2,6 +2,54 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Benchmark in the board menu, id's timedemo demo3 with its result on the screen (Agent AF, PC and ARM build, registered data)
+
+The user wants a number to set beside MG24Quake's published `timedemo demo3` (about 29 fps on a Cortex-M33). The board's Single Player menu has a fifth line, Benchmark, which runs id's `timedemo demo3` (e1m6) through the command buffer as id's console would, and shows the result on the screen when the demo ends. Nothing ran on hardware.
+
+On the board, step by step:
+1. Single Player, Benchmark (down four times from New Game), gray.
+2. If a game runs, the in-menu prompt asks "end the game and run the timedemo benchmark?" (gray yes, green + blue no), because id's `timedemo` disconnects first. With no game it starts at once.
+3. If `demo3.dem` is not in the display's data image, a page says so and how to write the image (`mkboard.py --demos`), and the game goes on. The check comes before the prompt, so the game is never ended for nothing.
+4. Otherwise the menu closes and `timedemo demo3` runs. id's `CL_PlayDemo_f` disconnects: the client closes its link socket and the server half on main shuts its server down (`Link_ServerPeerClosed`), then waits for the client's frame ticks as it does between levels. Every client frame still makes its exchange with main (an idle server frame, the watchdog is kicked in the link wait) and the demo's sound calls go to main's mixer as in play. The pipelined screen update is off during a demo (`Host_PipelineCan`), so each frame is the client's full frame plus the exchange.
+5. When the demo ends id prints `N frames X seconds Y fps` and the board then prints one line on the console, which the display echoes over USB (COM8), for example
+   `[bench] timedemo demo3 <N> frames <X> seconds <Y> fps, render Fast, clock 250 MHz, flash 125 MHz, view 100, 320x200`
+   (the PC prints `PC` in place of the clocks). The clocks are read from the hardware at that moment (`clock_get_hz(clk_sys)` and the SSI divider, `Sys_QogClockKHz` and `Sys_QogFlashKHz` in sys_rp2040.c), the render mode is the `r_fast` cvar (Exact or Fast), the view size `scr_viewsize`.
+6. The result page stays until gray or green + blue: the demo name, frames and seconds, the fps in the big font, the render mode, clock, flash clock, view size and screen size. Either button goes back to the Single Player menu with Benchmark selected. The game is over (id's timedemo ended it), so New Game, Levels or Load go on from there.
+7. A demo stopped before its end (a level started from the menu during the run) prints `[bench] timedemo demo3 stopped after N frames ... no result` and the page says "stopped before the end" with no fps. Opening the menu during the run is allowed and slows that run.
+
+RAM: none. The display's `end` is 0x2003f7f0, the same as main 4a787a9, main's 0x2003f520. The result is kept in fields that nothing reads once a timedemo is over: frames and seconds in `cls.td_startframe` and `cls.td_starttime` (set by `CL_FinishTimeDemo`), how it ended in `cls.td_lastframe`, the demo's name in `cls.mapstring` (id's map command writes it, nothing reads it). The page is a menu state (`m_bench`), its strings are in flash. quake_display is 366,456 B of its 913,408 B slot.
+
+The data image needs the demos. mkboard leaves them out unless `--demos` is given, and Agent AC's episode 1 command did not give it. Built from the merged tree with `--demos` (`python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps --main --display-no-sounds --display-no-progs --demos -o build-board\qb_ep1`):
+
+| Image | Without demos | With demos |
+| --- | --- | --- |
+| display pak | 3,562,912 B | 4,097,984 B (demo1 to demo3, 535,072 B more) |
+| display image | 13,831,152 B, ends 0x10E30BF0, 88.3% | 14,355,440 B (13.69 MB), ends 0x10EB0BF0, 91.7% of 14.94 MB |
+| main image | 6,029,312 B | byte identical (mkboard puts no demo in main's image) |
+
+So only the display's data UF2 changes, main's stays. Flash it as step 3 of the episode 1 flashing in docs/handoff.md. With the demos in the image the board still boots into e1m1 (`+map e1m1` runs before quake.rc's `startdemos`, which then sees a running server and starts no loop), checked on the PC pair from the image.
+
+PC checks (hidden, `-nosound`, own build folders `build-af/pc`, `build-af/pc-ref` (untouched 4a787a9) and `build-af/pcb` (the split pair with the board client flags of Agent AD's list, `QOG_RFAST_ON`, `QOG_BOARD_MENU`, `QOG_AOT`, the server's board flags), own git-ignored `data\id1`, link ports 27661 to 27669, one run at a time):
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc and board-flag pair | ce86f894f9de, ce86f894f9de |
+| `qogtest_f_hash`, quakeog_pc | e92bc9e9650d |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames) against `build-af/pc-ref` | 121 of 121 byte identical |
+| `qogtest_af_menu.cfg`, board-flag pair, full paks: e1m1, menu, Benchmark, prompt, yes, the result page shot after 1,400 frames, gray, quit | result page, back to the menu, both halves quit cleanly |
+| the same from the episode 1 images with demos, board hunks (`-heapsize 174` and `75`) | the same, `[bench]` line, no link error |
+| `qogtest_af_menu2.cfg` (no game running, no prompt) | runs, result |
+| `qogtest_af_nodemo.cfg` from the images without demos | the missing page, no prompt, e1m1 keeps running |
+| boot from the image with demos, `+map e1m1` | e1m1, no demo loop |
+
+PC timedemo numbers, for reference only: 1090 frames in 19.0 to 20.0 s, 54.4 to 57.5 fps for quakeog_pc, the board-flag pair, Exact and Fast alike. The PC's main loop runs at most 72 frames a second and sleeps in steps of a millisecond (sys_pc.c), so this is the PC's pacing, not a speed. The board number is the one to publish.
+
+To compare with MG24Quake, the honest details are on the page and in the `[bench]` line: the render mode (Fast is the board default, Exact draws id's pixels), the clocks (250 MHz, flash 125 MHz), the full view (100) on 320x200 with the status bar, the one-byte z-buffer, sound mixed on main, and each frame's exchange with main.
+
+Test scripts (in the branch's git-ignored data folder, copy both into each image's `id1` as L79 says): `qogtest_af_menu.cfg`, `qogtest_af_menu2.cfg`, `qogtest_af_nodemo.cfg`, `qogtest_af_after1.cfg`, `qogtest_af_after2.cfg`, `qogtest_af_exact.cfg`.
+
+Files: engine/menu.c (Benchmark line, prompt text, result page, all under `QOG_BOARD_MENU`), engine/menu.h, engine/cl_demo.c (`QOG_BOARD_MENU` blocks in CL_StopPlayback, CL_FinishTimeDemo and CL_TimeDemo_f), engine/sys.h, port/rp2040/sys_rp2040.c and port/pc/sys_pc.c (the clock functions). tools/mkboard.py is not changed (Agent AG works there).
+
 ## 2026-11-24: Episode 1 on the board, the new flash map, the server stack and the edge fallback (Agent AC, PC and ARM build, registered data)
 
 Start and all of episode 1 now fit both chips, with sound. The display's data moved from 0x10400000 to 0x10100000 and main's from 0x10300000 to 0x10200000 (Agent Y's proposal), the server's stack went from 35 to 21 KB after measuring its deepest chain in board bytes, which gives the server hunk 174 KB (160 before), and the one-byte z-buffer's edge fallback draws one view without z instead of stopping the game. Nothing ran on hardware. Merged with main 34e03d2 (Agents Z and AD) before the final numbers, and with c42be89 (the save volume format, the full view) for the last board link and hashes.
