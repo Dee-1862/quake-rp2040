@@ -199,3 +199,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L102. The SIO interpolators make a texel address and its step one register read.** With ADD_RAW on both lanes, shift 16 and masks for s and the row of t, INTERP0's POP_FULL returns BASE2 (the texture) plus both masked lanes and adds BASE0 and BASE1 to the accumulators, as the pixel loop's own C does. Each core has its own pair, so each core sets them per surface. The PC emulates the registers with the same rules (d_litspan.h), so the PC's frames test the loop, and the board checks the hardware once against the C expressions before it trusts them.
 
 **L103. A smaller hunk allocation is only static RAM when the hunk shrinks with it.** The console's text comes from the client hunk, so cutting it 3 KB freed nothing until the display's `QOG_HUNK_KB` dropped by 3 too. Doing the subtraction in apps/quake/CMakeLists.txt keeps the lead's `-DQOG_CL_HUNK_KB=75` meaning Agent AD's measured hunk.
+
+**L120. A fixed-point rewrite is checked against the float code point by point before any picture.** The first integer front end changed 1.2% of the pixels even with the exact spans, and the cause (the first scan line's u stepped with 1/256 of its slope) only showed when a check build projected every point both ways and printed the mean and worst error. With it fixed the same shots changed 0.07%.
+
+**L121. Approximate front end changes are amplified by the Fast span drawer.** Agent AA's sub-spans start at each span's first pixel, so a span end moved by one pixel shifts every sub-span join of that row and changes texels along the whole span. Measure a front end change with the exact spans first (`QOG_FRONT_FAST_ALWAYS`), then in Fast mode.
+
+**L122. An integer test can be exact if it decides only outside its error bound.** Bound the integer error and the float rounding of id's expression (here 0.5 and 0.003 times the sum of the corners' magnitudes), and fall back to id's float statement inside that margin: the node culling then gives id's answer in both modes for a twentieth of the cost.
+
+**L123. Ill-conditioned points are where approximations differ most.** A point near the eye plane (z clamped to id's near clip) projects to a u that depends on every rounding, so the integer projection hands such points, and points far off the view, to id's float code.
