@@ -765,6 +765,108 @@ extern int	r_ztemp_bytes;
 #define LOADGAME_ALLOC()	((char *)Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame"))
 #endif
 
+/*
+===============
+Host_LoadgameEdicts
+
+QuakeOG: the light styles, the globals and the edicts of a save, read with
+the line buffer str (id's code from Host_Loadgame_f). Returns the edicts.
+===============
+*/
+static int Host_LoadgameEdicts (FILE *f, char *str)
+{
+	char	*start;
+	int		i, r;
+	edict_t	*ent;
+	int		entnum;
+
+// load the light styles
+
+	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
+	{
+		fscanf (f, "%s\n", str);
+#ifdef QOG_HUNK_PACKED
+		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG: packed, zone.c
+#else
+		sv.lightstyles[i] = Hunk_Alloc (strlen(str)+1);
+#endif
+		strcpy (sv.lightstyles[i], str);
+	}
+
+// load the edicts out of the savegame file
+	entnum = -1;		// -1 is the globals
+	while (!feof(f))
+	{
+		for (i=0 ; i<LOADGAME_STRSIZE-1 ; i++)	// QuakeOG: was sizeof(str)
+		{
+			r = fgetc (f);
+			if (r == EOF || !r)
+				break;
+			str[i] = r;
+			if (r == '}')
+			{
+				i++;
+				break;
+			}
+		}
+		if (i == LOADGAME_STRSIZE-1)	// QuakeOG: was sizeof(str)
+			Sys_Error ("Loadgame buffer overflow");
+		str[i] = 0;
+		start = str;
+		start = COM_Parse(str);
+		if (!com_token[0])
+			break;		// end of file
+		if (strcmp(com_token,"{"))
+			Sys_Error ("First token isn't a brace");
+			
+		if (entnum == -1)
+		{	// parse the global vars
+			ED_ParseGlobals (start);
+		}
+		else
+		{	// parse an edict
+
+			ent = EDICT_NUM(entnum);
+			ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
+			ent->free = false;
+			ED_ParseEdict (start, ent);
+	
+		// link it into the bsp tree
+			if (!ent->free)
+				SV_LinkEdict (ent, false);
+		}
+
+		entnum++;
+	}
+	
+	return entnum;
+}
+
+#ifdef QOG_LOADGAME_STACKBUF
+/*
+===============
+Host_LoadgameStack
+
+QuakeOG (Agent AG): the line buffer on the stack of a frame of its own,
+taken once the map has spawned, not on the high hunk under the loaded
+level: a load needed the level's hunk plus the 8 KB buffer, which was the
+server's peak (e2m7 with sound 179 KB of the board's 174). The deep chains
+of the load (SV_SpawnServer, its physics frames) have returned by then.
+===============
+*/
+#if defined(_MSC_VER)
+#define QOG_NOINLINE_LG	__declspec(noinline)
+#else
+#define QOG_NOINLINE_LG	__attribute__((noinline))
+#endif
+static QOG_NOINLINE_LG int Host_LoadgameStack (FILE *f)
+{
+	char	str[LOADGAME_STRSIZE];
+
+	return Host_LoadgameEdicts (f, str);
+}
+#endif
+
 void Host_Loadgame_f (void)
 {
 	char	name[MAX_OSPATH];
@@ -882,75 +984,22 @@ void Host_Loadgame_f (void)
 	sv.paused = true;		// pause until all clients connect
 	sv.loadgame = true;
 
+#ifdef QOG_LOADGAME_STACKBUF
+	entnum = Host_LoadgameStack (f);
+#else
 	himark = Hunk_HighMark ();	// QuakeOG: buffer for the rest of the file
 	str = LOADGAME_ALLOC ();
 	if (!str)
 		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
-
-// load the light styles
-
-	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)
-	{
-		fscanf (f, "%s\n", str);
-#ifdef QOG_HUNK_PACKED
-		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG: packed, zone.c
-#else
-		sv.lightstyles[i] = Hunk_Alloc (strlen(str)+1);
+	entnum = Host_LoadgameEdicts (f, str);
 #endif
-		strcpy (sv.lightstyles[i], str);
-	}
-
-// load the edicts out of the savegame file
-	entnum = -1;		// -1 is the globals
-	while (!feof(f))
-	{
-		for (i=0 ; i<LOADGAME_STRSIZE-1 ; i++)	// QuakeOG: was sizeof(str)
-		{
-			r = fgetc (f);
-			if (r == EOF || !r)
-				break;
-			str[i] = r;
-			if (r == '}')
-			{
-				i++;
-				break;
-			}
-		}
-		if (i == LOADGAME_STRSIZE-1)	// QuakeOG: was sizeof(str)
-			Sys_Error ("Loadgame buffer overflow");
-		str[i] = 0;
-		start = str;
-		start = COM_Parse(str);
-		if (!com_token[0])
-			break;		// end of file
-		if (strcmp(com_token,"{"))
-			Sys_Error ("First token isn't a brace");
-			
-		if (entnum == -1)
-		{	// parse the global vars
-			ED_ParseGlobals (start);
-		}
-		else
-		{	// parse an edict
-
-			ent = EDICT_NUM(entnum);
-			ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
-			ent->free = false;
-			ED_ParseEdict (start, ent);
-	
-		// link it into the bsp tree
-			if (!ent->free)
-				SV_LinkEdict (ent, false);
-		}
-
-		entnum++;
-	}
-	
 	sv.num_edicts = entnum;
 	sv.time = time;
 
 	fclose (f);
+#ifndef QOG_LOADGAME_STACKBUF
 	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the line buffer
+#endif
 
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		svs.clients->spawn_parms[i] = spawn_parms[i];
