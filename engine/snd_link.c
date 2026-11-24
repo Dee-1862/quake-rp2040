@@ -47,6 +47,9 @@ See the GNU General Public License for more details.
 cvar_t	bgmvolume = {"bgmvolume", "1", true};
 cvar_t	volume = {"volume", "0.7", true};
 cvar_t	_snd_mixahead = {"_snd_mixahead", "0.1", true};
+// QuakeOG: the background (ambient) level, mixed on main. Registered here
+// too so the board menu can set it and the cvar sync carries it over.
+cvar_t	ambient_level = {"ambient_level", "0.3", true};
 cvar_t	snd_noextraupdate = {"snd_noextraupdate", "0"};	// read here too, see S_ExtraUpdate
 
 static qboolean	snd_on;
@@ -112,6 +115,7 @@ void S_Init (void)
 	Cvar_RegisterVariable (&bgmvolume);
 	Cvar_RegisterVariable (&_snd_mixahead);
 	Cvar_RegisterVariable (&snd_noextraupdate);
+	Cvar_RegisterVariable (&ambient_level);
 	if (!qog_snd_out_init ())
 	{
 		Con_Printf ("S_Startup: SNDDMA_Init failed.\n");

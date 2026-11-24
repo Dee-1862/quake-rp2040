@@ -1198,6 +1198,9 @@ void M_Menu_Options_f (void)
 #if defined(QOG_BOARD_MENU) && defined(QOG_RFAST)
 extern cvar_t	r_fast;	// QuakeOG (Agent AA): render mode (r_main.c)
 #endif
+#if defined(QOG_BOARD_MENU) && defined(QOG_SND_REMOTE)
+extern cvar_t	ambient_level;	// QuakeOG: background sound level (snd_link.c)
+#endif
 
 void M_AdjustSliders (int dir)
 {
@@ -1285,6 +1288,16 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("r_fast", !r_fast.value);
 		break;
 #endif
+#if defined(QOG_BOARD_MENU) && defined(QOG_SND_REMOTE)
+	case 21:	// QuakeOG: background sounds only (ambient_level, snd_link.c)
+		{
+			float	a = ambient_level.value + dir * 0.05f;
+			if (a < 0) a = 0;
+			if (a > 1) a = 1;
+			Cvar_SetValue ("ambient_level", a);
+		}
+		break;
+#endif
 	}
 }
 
@@ -1336,6 +1349,9 @@ static const struct
 #endif
 	{4, "            Brightness"},
 	{7, "          Sound Volume"},
+#ifdef QOG_SND_REMOTE
+	{21, "        Ambient Volume"},	// background wind, water and hum only
+#endif
 	{8, "            Always Run"}
 #ifdef QOG_RFAST
 	,{20, "                Render"}
@@ -1383,6 +1399,11 @@ void M_Options_Draw (void)
 #ifdef QOG_RFAST
 		case 20:	// QuakeOG (Agent AA)
 			M_Print (220, y, r_fast.value ? "Fast" : "Exact");
+			break;
+#endif
+#ifdef QOG_SND_REMOTE
+		case 21:
+			M_DrawSlider (220, y, ambient_level.value);
 			break;
 #endif
 		}

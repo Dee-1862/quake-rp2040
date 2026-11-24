@@ -17,8 +17,6 @@
 #include "qog_power.h"
 
 static fwog_ship_state_t s_ship;
-static uint8_t  s_saved[FWOG_LED_COUNT][3];
-static bool     s_saved_ok;
 static uint32_t s_next_draw;
 
 static void countdown_draw(unsigned progress) {
@@ -29,19 +27,14 @@ static void countdown_draw(unsigned progress) {
     ws2812_process();
 }
 
-static void leds_save(void) {
-    for (unsigned i = 0u; i < FWOG_LED_COUNT; i++)
-        if (!ws2812_get_color(i, &s_saved[i][0], &s_saved[i][1], &s_saved[i][2]))
-            s_saved[i][0] = s_saved[i][1] = s_saved[i][2] = 0u;
-    s_saved_ok = true;
-}
+/* The game never lights the bar, so a let-go hold turns it off again rather
+   than keeping a 21-byte copy of its colours (the display has no RAM spare). */
+static void leds_save(void) {}
 
 static void leds_restore(void) {
-    if (!s_saved_ok) return;
     for (unsigned i = 0u; i < FWOG_LED_COUNT; i++)
-        ws2812_set_color(i, s_saved[i][0], s_saved[i][1], s_saved[i][2]);
+        ws2812_set_color(i, 0u, 0u, 0u);
     ws2812_process();
-    s_saved_ok = false;
 }
 
 fwog_power_t qog_power_poll(uint32_t now_ms) {
