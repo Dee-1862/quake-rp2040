@@ -184,9 +184,70 @@ static int action_key(int action) {
     return 0;
 }
 
+/* QuakeOG: menus and the console get a layout of their own, since the game's
+   combos make them hard to drive (down was red + yellow, and left + right is
+   the menu chord). Each button press is one key press and release:
+     yellow up, blue down, green left, red right, gray enter,
+     green + blue escape (the same chord that opens the menu). */
+static bool s_in_menu;        /* the last step drove the menu layout */
+static bool s_wait_release;   /* back in the game: ignore buttons until all are up */
+static uint8_t s_menu_prev;
+static bool s_menu_chord;
+
+static void menu_keys(uint8_t b, uint8_t seen) {
+#define prev  s_menu_prev
+#define chord s_menu_chord
+    if (!s_in_menu) {
+        /* buttons already down when the menu opened (the chord that opened
+           it) are not presses here */
+        s_in_menu = true;
+        prev = b;
+        chord = (b & ((1u << 2) | (1u << 3))) == ((1u << 2) | (1u << 3));
+        return;
+    }
+    const uint8_t gray = 1u << 0, yellow = 1u << 1, green = 1u << 2, blue = 1u << 3, red = 1u << 4;
+    const uint8_t went_down = (uint8_t)((b | seen) & ~prev);
+    static const struct { uint8_t bit; int key; } map[] = {
+        { 1u << 1, K_UPARROW }, { 1u << 3, K_DOWNARROW }, { 1u << 2, K_LEFTARROW },
+        { 1u << 4, K_RIGHTARROW }, { 1u << 0, K_ENTER },
+    };
+    (void)gray; (void)yellow; (void)red;
+    if ((b & (green | blue)) == (green | blue)) {
+        if (!chord) { Key_Event(K_ESCAPE, true); Key_Event(K_ESCAPE, false); chord = true; }
+    } else {
+        if (!(b & (green | blue))) chord = false;
+        if (!chord)
+            for (unsigned i = 0; i < sizeof map / sizeof map[0]; i++)
+                if (went_down & map[i].bit) { Key_Event(map[i].key, true); Key_Event(map[i].key, false); }
+    }
+    prev = b;
+#undef prev
+#undef chord
+}
+
 void Sys_SendKeyEvents(void) {
     static int held_key[QOG_ACT_COUNT];
     if (!s_input_ready) { qog_input_reset(&s_input); s_input_ready = true; }
+    if (key_dest != key_game) {
+        /* release anything the game layout still holds, then drive the menu */
+        for (int a = 0; a < QOG_ACT_COUNT; a++)
+            if (held_key[a]) { Key_Event(held_key[a], false); held_key[a] = 0; }
+        qog_input_reset(&s_input);
+        menu_keys(qog_rp2040_buttons, qog_rp2040_buttons_seen);
+        qog_rp2040_buttons_seen = 0;
+        return;
+    }
+    if (s_in_menu) {
+        /* buttons still down when the menu closes (green + blue that closed
+           it) must not act in the game, or the chord would reopen the menu */
+        s_in_menu = false;
+        s_wait_release = true;
+    }
+    if (s_wait_release) {
+        if (qog_rp2040_buttons) { qog_rp2040_buttons_seen = 0; return; }
+        s_wait_release = false;
+        qog_input_reset(&s_input);
+    }
     s_input.seen |= qog_rp2040_buttons_seen;   /* taps between game frames */
     qog_rp2040_buttons_seen = 0;
     qog_input_t in = qog_input_step(&s_input, qog_rp2040_buttons, (uint32_t)(Sys_FloatTime() * 1000.0));

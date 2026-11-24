@@ -586,6 +586,12 @@ int main(void) {
 #ifndef QOG_STACK_KB
     board_init();
 #endif
+#ifdef QOG_POWER_RED_ALONE
+    /* the LED bar shows the red-hold power-off countdown (power_qog.c draws
+       it only once the driver is up, as the BSP's own poll does) */
+    if (!ws2812_init(pio0, 0u))
+        DIAG("[quake_display] LED bar not started, no power-off countdown\n");
+#endif
     memset(&parms, 0, sizeof parms);
     COM_InitArgv((int)(sizeof argv / sizeof argv[0]), argv);
     parms.argc = com_argc;
