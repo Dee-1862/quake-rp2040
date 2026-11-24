@@ -295,7 +295,14 @@ if(QOG_SPLIT)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
         QOG_CMD_ARGV_ARENA=640          # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
         QOG_MSG_STRING_INPLACE          # Agent Y: message strings read in place, no 2 KB static copy (exact, common.c)
-        QOG_LINK_RX_ZTEMP)              # Agent Y: the link's 7.5 KB receive buffer in the z-buffer between views, not the hunk (net_link.c)
+        QOG_LINK_RX_ZTEMP               # Agent Y: the link's 7.5 KB receive buffer in the z-buffer between views, not the hunk (net_link.c)
+        QOG_TEMPENT_SMALL               # Agent AD: beam segments are only the drawn part of entity_t, 40 bytes not 88 (exact, cl_tent.c)
+        QOG_HUNK_HDR8                   # Agent AD: 8-byte hunk block headers and 8-byte rounding, not 16 (exact, zone.c)
+        QOG_ITEMBOX_PACKED              # Agent AD: item box frame bits share packed hunk blocks (exact, model.c)
+        QOG_ENTITY_NOEFRAG              # Agent AD: efrag and visframe of statics share the client entity's network part (exact, render.h)
+        QOG_ENTITY_NOTOPNODE            # Agent AD: the drawn bmodel's top node in one variable, entities 76 bytes (exact, render.h)
+        QOG_CACHEPIC_NAMEPTR            # Agent AD: menu pic names point into the mapped pack's directory, 672 B not 1,792 (exact, draw.c)
+        QOG_LIGHTSTYLE_SHORT)           # Agent AD: light style values as shorts, 512 B (exact, r_shared.h)
     # QuakeOG (Agent X): menus for five buttons and no keyboard (engine/menu.c).
     # No Multiplayer or console entry, a Controls page that shows the buttons,
     # a Levels page of the maps in the data image, yes/no answered with gray
@@ -323,8 +330,57 @@ if(QOG_SPLIT)
     if(QOG_BOARD_PIPELINE)
         list(APPEND _cl_defs QOG_LINK_PIPELINE)    # a frame's screen update runs while the server half runs the next frame (host.c)
     endif()
+    # QuakeOG (Agent Z): world front end speed, exact (same pixels, docs/changes.md)
+    option(QOG_BOARD_VERTCACHE "world vertices projected once a frame through a cache in free frame buffer rows (exact)" ON)
+    option(QOG_BOARD_WORLDNODE "BSP node culling and side tests in float compares, no double arithmetic (exact)" ON)
+    if(QOG_BOARD_VERTCACHE)
+        list(APPEND _cl_defs QOG_VERTCACHE)        # r_draw.c R_QogProject
+    endif()
+    if(QOG_BOARD_WORLDNODE)
+        list(APPEND _cl_defs QOG_WORLDNODE_FAST)   # r_bsp.c R_RecursiveWorldNode
+    endif()
+    option(QOG_BOARD_CLIPDIST "with VERTCACHE, each world vertex's distance to the view planes measured once a frame (exact)" ON)
+    if(QOG_BOARD_VERTCACHE AND QOG_BOARD_CLIPDIST)
+        list(APPEND _cl_defs QOG_VERTCACHE_CLIPDIST)   # r_draw.c R_QogClipDist
+    endif()
+    # Flash miss experiments for the lit spans, exact, off until measured on
+    # the board: texels or the colour map read through the XIP no-allocate
+    # alias, so their misses do not evict code (d_scanlit.c)
+    option(QOG_BOARD_TEXNOALLOC "lit span texels through the XIP no-allocate alias (exact, measurement)" OFF)
+    option(QOG_BOARD_CMAPNOALLOC "lit span colour map through the XIP no-allocate alias (exact, measurement)" OFF)
+    if(QOG_BOARD_TEXNOALLOC)
+        list(APPEND _cl_defs QOG_LIT_TEX_NOALLOC)
+    endif()
+    if(QOG_BOARD_CMAPNOALLOC)
+        list(APPEND _cl_defs QOG_LIT_CMAP_NOALLOC)
+    endif()
+    option(QOG_BOARD_ALIASCORE1 "with CORE1, alias model vertices shared by both cores (exact)" ON)
+    if(QOG_BOARD_CORE1 AND QOG_BOARD_ALIASCORE1)
+        list(APPEND _cl_defs QOG_ALIAS_CORE1)      # r_alias.c R_QogAliasPrepareRange
+    endif()
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
+    endif()
+    # QuakeOG (Agent Z): measurement builds, off by default, with
+    # QOG_BOARD_TIMING. XIPSTATS adds "[time cl] xip" (XIP cache accesses and
+    # misses per view in each render phase) and "[time cl] work" (the world
+    # front end's nodes, faces and edges per view). FPCOUNT adds the "[time
+    # cl] fp" lines (float and double helper calls per view and phase, their
+    # measured cost) and implies XIPSTATS. FPCOUNT renames the engine
+    # library's helper calls to counting stubs, so its times run a little slow.
+    option(QOG_BOARD_XIPSTATS "measurement: XIP cache counts per render phase and world work counts" OFF)
+    option(QOG_BOARD_FPCOUNT "measurement: float and double helper calls per view and phase (implies XIPSTATS)" OFF)
+    if(QOG_BOARD_TIMING AND (QOG_BOARD_XIPSTATS OR QOG_BOARD_FPCOUNT))
+        list(APPEND _cl_defs QOG_PHASE_XIP)
+        if(QOG_BOARD_FPCOUNT)
+            list(APPEND _cl_defs QOG_PHASE_FPCOUNT)
+            target_sources(quake_display PRIVATE
+                ${QOG_ROOT}/port/rp2040/qog_fpcount.S ${QOG_ROOT}/port/rp2040/qog_fpcount.c)
+            add_custom_command(TARGET qog_engine_cl POST_BUILD
+                COMMAND ${CMAKE_OBJCOPY} --redefine-syms=${QOG_ROOT}/port/rp2040/qog_fpcount.syms
+                        $<TARGET_FILE:qog_engine_cl>
+                COMMENT "QOG_BOARD_FPCOUNT: engine helper calls go through the counting stubs")
+        endif()
     endif()
     # QuakeOG (Agent AA): the Fast render mode, approximate and hard to see,
     # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
@@ -345,6 +401,7 @@ if(QOG_SPLIT)
     list(REMOVE_ITEM _sv_defs QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
     list(TRANSFORM _sv_defs REPLACE "^QOG_CMDBUF_SIZE=[0-9]+$" "QOG_CMDBUF_SIZE=256")
     list(APPEND _sv_defs QOG_LOADGAME_STRSIZE=8192)   # a save's biggest block 2,485 B (id 32 KB on the hunk)
+    list(APPEND _sv_defs QOG_RECONNECT_FIRST)         # Agent AD: the client's reconnect before its message, else every changelevel stopped the client (sv_main.c)
     list(TRANSFORM _sv_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=6")   # server zone peak 1.9 KB
     set(_sv_sound "")
     if(QOG_SOUND)
@@ -394,7 +451,7 @@ if(QOG_SPLIT)
     get_target_property(_disp_libs quake_display LINK_LIBRARIES)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
-    set(QOG_CL_HUNK_KB 73 CACHE STRING "client half hunk in KB. Agent Y: start and all of episode 1, the worst a fight tour of e1m4 at 70.4 KB and a fight, save and load on e1m3 at 69 KB (docs/changes.md)")
+    set(QOG_CL_HUNK_KB 75 CACHE STRING "client half hunk in KB. Agent AD: every episode, the worst fight tours on the board images e2m6 and e4m5, see docs/changes.md (Agent Y had 73 for episode 1)")
     # Agent W: with sound the client gives 2 KB of its stack to the speaker's ring
     # (the board's watermark had 5.4 KB spare, the sound exchange adds about 1.1 KB)
     if(QOG_SOUND)

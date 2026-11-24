@@ -144,3 +144,21 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L64. Compare RAM cuts with the fixed-frame scripts, size the hunk with the fight tour.** The `qogtest_*_mem_<map>` scripts run at `host_framerate 0.05` and give the same smallest `-heapsize` every time. A `qog_tour_fight` ends a level with a different number of client entities from run to run (184 to 198 on e1m3), so its hunk low moves by a 16-entity block, but it reaches more of the level and needs up to 2 KB more than the script.
 
 **L65. The z-buffer between views is memory with an owner per byte range.** Today: the status bar rows (15,360 B), MSG_ReadString's fallback (2 KB), the link's receive buffer (7.5 KB), and the precache names at the very end. Anything placed there must be empty or dead whenever R_RenderView starts, and should check that at run time as `Link_RxCheckIdle` does.
+
+**L66. In the agents' bash tool a heredoc is not always literal.** Two backslash-n pairs in a quoted heredoc fed to Python arrived as a real newline and broke C string literals in qog_phase.c. Write text with backslashes through the Write or Edit tools (or build the bytes with chr), and grep the result for a broken string before building.
+
+**L67. Build folders keep their CMake cache values after main changes the defaults.** A reused build folder still had the old client hunk and stack sizes and reported RAM 5 KB away from a fresh one. Take `end` numbers from a freshly configured folder.
+
+**L68. Every level of a recursion carries the whole frame of the recursive function.** R_RecursiveWorldNode kept the frustum test's box corners and points in its frame at every BSP level. Moving the test into a function that is not inlined (R_QogCullNode) cut the frame from 96 to 48 B per level and made it faster.
+
+**L69. The XIP cache counters (XIP_CTRL CTR_ACC, CTR_HIT) count both cores and saturate at 2^32.** Read them as differences around a phase and clear them between reports, when no phase is open. Core 1's span half lands in the spans phase.
+
+**L70. A command the server half has the client run inside an exchange can draw a view.** `reconnect` (SV_SendReconnect, every changelevel) draws the loading plaque over the old level while the reconnect message already waited in the z-buffer receive buffer, so the board client stopped at every level exit. Scripts that change level with `map` from the client never reach it, because the client disconnects first. Test level changes with `changelevel` too (`qogtest_ad_chg.cfg`), and look at every `Link_ServerClientExec` for what it draws.
+
+**L71. Measure the client hunk on the board images, not on data/id1.** On the PC a pak in data/id1 is laid out differently from its flash copy, so the client keeps a `packpos` block per pak (1,744 B for pak0 and pak1) that the board never has. Build the episode's images with `mkboard.py --stub-maps --main` and run the pair with `-basedir <img>` for the client and `-basedir <img>_main -flashbase 0x10300000` for the server, with the test cfgs copied into both id1 folders.
+
+**L72. A noclip tour walks into level exits and dead teleporters.** A spot inside a `trigger_changelevel` changed the level halfway through a tour (the hunk lines then belong to another level), and e4m5 and e4m8 each have a `trigger_teleport` aimed at an `info_null`, which QuakeC removes at spawn, so touching it is a Host_Error in id's own game. The tour now takes both out before it starts. Give every pair its own `-linkport` and its own data folder, a tour and a hash run on one port is a race (L63).
+
+**L73. Before two structs share bytes in a union, list every reader of each field.** `efrag` and `visframe` of entity_t are read only through efrags, which only statics get, and `topnode` only while its bmodel is drawn, which `grep -n "\->field"` over engine/*.c showed in five lines. The one call that touched a client entity's efrag (R_RemoveEfrags of an emptied entity) did nothing in id's game, so it can be skipped, but it would have written into the network state.
+
+**L74. MSVC compiles a call to an undeclared function as returning int.** `COM_FlashName` was declared only under the server's flag, the PC client built and passed every test (32-bit pointers survive the int), and only the ARM build stopped. Build the board after any change to a header guard.

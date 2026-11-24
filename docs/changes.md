@@ -2,6 +2,132 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Board measurements of the split game (lead, on hardware)
+
+Read from the board's USB logs (display COM8, main COM7) with QOG_PHASE_TIME and QOG_LINK_DIAG, standing in E1M1 at the spawn point, each line an average over about 2 s.
+
+| Build | fps | Frame ms | View ms | world | spans | vmodel | edgescan | Server frame ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 200 MHz, flash 50 MHz, sound (f75051b) | 7.5 | 132 | 109 | 38.3 | 43.2 | 7.6 | 7.9 | 17.2 |
+| 250 MHz at 1.20 V, flash 125 MHz (c5fa930) | 10.4 | 96 | 78 | 26.3 | 30.7 | 4.9 | 5.8 | 11.8 |
+| 250 MHz plus Fast mode (agent-aa merge) | 10.9 | 91 | 71 | 22.5 | 29.8 | 4.6 | 6.1 | not read |
+
+- The clock log lines read "clock 250000 kHz at 1200 mV" and "flash 125.0 MHz ok (div 2 from 4, rx delay 1, 128 KB checked)". No fault, hang or error line on either chip in any of these runs.
+- Fast mode cut the span arithmetic by about 2.9 M cycles a view (Agent AA's estimate) but spans fell only 0.9 ms, so the span time looks bound by XIP misses rather than compute. Agent Z's XIP counter build is meant to confirm it.
+- Stack free on the board with sound and the 73 KB client hunk (9192bc9): display 4,192 B, main 19,204 B.
+- Sound through the speaker was heard by the user on f75051b. The game has run 15 minutes in E1M1 without a restart since the strict aliasing fix. Saving on the board has not been tried.
+## 2026-11-24: XIP and float counters, world front end and alias vertices faster, same pixels (Agent Z, PC and ARM build, registered data)
+
+A measurement build that tells whether a render phase waits on flash or on float helpers, and four exact speed-ups of the display chip's 3D view, all with the same pixels as main. Nothing ran on hardware. The savings are estimates from the PC's work counts and the Thumb code at 250 MHz, the lead measures them.
+
+### Measurement build (off by default, needs `QOG_BOARD_TIMING`)
+
+```powershell
+cmake -B build-zx --preset target -DQOG_AOT=ON -DQOG_AOT_PAK=<pak0.pak> -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32 -DQOG_BOARD_XIPSTATS=ON
+cmake --build build-zx --target quake_main
+```
+
+Add `-DQOG_BOARD_TEXNOALLOC=ON` or `-DQOG_BOARD_CMAPNOALLOC=ON` for the flash experiments below. The float counts are a second build, `-DQOG_BOARD_FPCOUNT=ON -DQOG_CL_STACK_KB=31` (it needs 1 KB of the client's stack, measurement only, watch the stack watermark line). Its times run slow (each helper call passes a counting stub in flash), so read times and XIP numbers from the XIPSTATS build and only the counts from this one.
+
+Every 2 s on COM8, after the three `[time cl]` lines:
+
+```
+[time cl] xip acc/miss setup a/m world a/m bmodels a/m lmap a/m grad a/m spans a/m zspans a/m sky a/m turb a/m models a/m vmodel a/m parts a/m total a/m edgescan a/m
+[time cl] work per view nodes <n> leafs <n> faces <n> clipedge <n> emitedge <n> cached <n> project <n> clipdot <n>
+FPCOUNT only:
+[time cl] fp f/d setup f/d world f/d ... total f/d edgescan f/d
+[time cl] fp calls per view core0 fadd <n> fsub fmul fdiv fcmp f2i i2f f2d fmath dadd dsub dmul ddiv dcmp d2i d2f i2d dmath idiv l64 core1 f <n> d <n>
+[time cl] fp ns per call fadd <ns> ... l64 <ns> meanf <ns> meand <ns>
+[time cl] fp est ms core0 all <ms> setup <ms> world <ms> ...
+```
+
+- xip: XIP cache accesses and misses (accesses less hits, XIP_CTRL CTR_ACC and CTR_HIT) per view in each phase, both cores together (core 1 draws half the spans inside the spans phase). Misses times the cost of one (an 8-byte line from the 125 MHz flash, a few hundred ns) against the phase's time says how much of the phase waits on flash. The counters saturate at 2^32, so the report clears them every 2 s. Phase marks run from RAM (`qog_phase_mark`, `qog_phase_add`) and add no XIP accesses of their own, but cost about 0.2 ms a frame.
+- work: the world front end's calls per view, and the points projected and the plane distances computed (what `QOG_VERTCACHE` saves).
+- fp: core 0's float (f) and double (d) helper calls in each phase. `objcopy --redefine-syms` (port/rp2040/qog_fpcount.syms) renames the engine library's calls to stubs (port/rp2040/qog_fpcount.S) that count per core and jump on to the SDK's routine with the caller's registers (only ip changes). The ns per call are timed once on core 0 at the first report (2,000 calls, best of three). est ms is the calls times the mean measured cost, so a phase whose est ms is near its time is float bound.
+
+RAM: the XIPSTATS build ends at 0x2003f7f0 (16 B above the 2 KB heap reserve), the FPCOUNT build at 0x2003f550 with the 31 KB stack.
+
+### Exact speed-ups (on for the board client, apps/quake/CMakeLists.txt)
+
+| Change | Flag (CMake option) | Why the pixels are the same | Estimated saving per view, 250 MHz, E1M1 spawn | RAM |
+| --- | --- | --- | --- | --- |
+| World vertices projected once a frame. A direct-mapped cache keyed by vertex number keeps u, v, 1/z and ceil(v) of each world vertex R_EmitEdge projects, in memory nothing uses while R_RenderWorld runs (the frame buffer's view rows past the edge cache, or the z-buffer between the edge cache and the edge table), emptied every frame. PC E1M1 spawn, 1,092 projections a view became 506 | `QOG_VERTCACHE` (`QOG_BOARD_VERTCACHE`) | a hit returns what id's statements (now in R_QogProject) computed for the same vertex in the same frame. Brush entities (insubmodel) and clipped points never use it | 586 projections of about 1,750 cycles less 1,600 lookups of about 30, about 4 ms of world | 16 B static, 512 to 4,096 entries in the frame buffer (E1M1 on the board 512 with CLIPDIST) |
+| Each world vertex's distance to the four view planes measured once a frame, in the same entries. R_ClipEdge's 954 dot products a view became 464 | `QOG_VERTCACHE_CLIPDIST` (`QOG_BOARD_CLIPDIST`) | the same expression, once per vertex and plane in a frame (the view planes do not change while the world is drawn). An unknown distance holds a NaN pattern, a real NaN with those bits is only computed again | 490 dot products of about 370 cycles, about 0.7 ms | entries 32 B instead of 16 |
+| BSP node frustum tests in a function off the recursion, the box corners converted once per node, compares instead of a difference (main's `QOG_FLOAT_EXACT` already made the doubles floats), the side tests as an int | `QOG_WORLDNODE_FAST` (`QOG_BOARD_WORLDNODE`) | `(double)dot - (double)dist <= 0` is `dot <= dist` exactly, and for a float x `x < -0.01` and `x > 0.01` are `x < -0.01f` and `x > 0.01f` | about 0.3 ms. R_RecursiveWorldNode's frame 96 to 48 B, 48 B less stack at every level of the BSP recursion | 0 |
+| Alias model vertices made by both cores, core 0 the even ones and core 1 the odd ones (R_AliasPreparePoints and the unclipped R_AliasTransformAndProjectFinalVerts), models of 24 vertices or more. Triangles stay on core 0 in id's order | `QOG_ALIAS_CORE1` (`QOG_BOARD_ALIASCORE1`, with `QOG_BOARD_CORE1`) | each vertex is computed by id's statements from data nothing changes meanwhile and written only to its own finalvert | v_shot (68 vertices) about 0.3 ms, a soldier (170) about 0.7 ms | 0, core 1's chain about 150 B |
+
+PC verification, hidden and silent, against a build of the same tree with the flags off (`build-pc-mbase`, which gives main's hashes): `qogtest_hash` (`ce86f894f9de`), `qogtest_f_hash` (`e92bc9e9650d`) and its 8 shots, `qogtest_k_quiet` + `qogtest_d_shots` 113 frames, all identical, and the split pair's `qogtest_hash`, `qogtest_r_fhash` and `qogtest_d_shots` identical to the single process. With `QOG_SPANS_CORE1` the PC runs the core 1 job on a second thread, first or last (`-core1first`, `-core1last`), identical in all three. With `+r_fast 1` (main's Fast mode, whose 113 frames differ from r_fast 0) the 113 frames and the fhash shots are identical to the flags-off build with r_fast 1 too. A build with the cache cut to 64 entries (`QOG_VERTCACHE_MAX=64`, many collisions) is identical too. An integer FloorDivMod was checked against id's double version over 3.8 M pairs (0 differences) and then dropped, since main's `QOG_FLOAT_EXACT` has the same change.
+
+Board RAM (`arm-none-eabi-nm`, merged with main 9192bc9): quake_display `end` 0x2003f650 with the four flags off, 0x2003f660 on (16 B), quake_main 0x2003f51c (unchanged), 416 B above the display's 2 KB heap reserve. Stack: R_RecursiveWorldNode 48 B a level less, R_EmitEdge with R_QogProject 144 B against 96 B at the chain's end, R_ClipEdge 80 to 56 B (up to 4 deep).
+
+### Flash misses in the spans
+
+Fast mode cut 2.9 M cycles of arithmetic and the spans moved by 0.9 ms, which points at flash. Per lit pixel the spans read a texel and a colour map entry from flash (the colour map is `gfx/colormap.lmp` in the mapped pack, 16 KB, as big as the XIP cache) and the light grid from RAM. Exact options, in the order I would try them:
+- `QOG_BOARD_TEXNOALLOC` and `QOG_BOARD_CMAPNOALLOC` (off): texels or the colour map read through the XIP no-allocate alias 0x11000000 (d_scanlit.c). Hits come from the cache, misses do not allocate, so streaming texels cannot push out the span code, the colour map rows in use and the light grid code. It can also be worse (a texel line read twice is fetched twice), so both are off until two A/B flashes with the xip line decide.
+- Colour map rows in RAM: 64 rows of 256 B, no RAM for all of them. A cache of the rows a surface uses would need about 2 KB.
+- Hot span loop in RAM: one mip variant of the exact drawer is about 2 KB, the display has 416 B. Only if the xip line shows misses the code causes and RAM comes back.
+- Texture prefetch by DMA into RAM: no RAM to put a 4 KB tile in while the spans draw.
+- Interpolator for the texel address (SIO interp0, lane 0 s, lane 1 t, base the texture): about 6 cycles a pixel of address arithmetic per core, about 0.6 ms a view, compute only. Not done.
+
+### Picture-changing ideas (for the user, not done)
+
+- Edge u stepping in 16.16 fixed point instead of float in R_EmitEdge: edge positions move by a sub-pixel, maybe 1 to 2 ms of world.
+- Node culling with integer box tests against quantised planes: rare one-node differences, about 1 ms.
+## 2026-11-24: Every episode in the split client's RAM, and level exits on the board client (Agent AD, PC and ARM build, registered data)
+
+The board client's hunk goes from 73 to 75 KB and now holds every level of the game with at least 3.8 KB to spare on a fight tour: seven exact cuts take 7.4 KB off the worst level (e2m6, 78.4 to 71.2 KB) and free 1,656 B of static RAM for the hunk. Before them, a bug of the z-buffer receive buffer stopped the board client at every level exit. Nothing ran on hardware.
+
+Bug found and fixed (`QOG_RECONNECT_FIRST`, both server halves, engine/sv_main.c): with Agent Y's `QOG_LINK_RX_ZTEMP` every `changelevel` stopped the board-flag client with "link: 16 bytes of messages wait while the view is drawn". SV_SendReconnect sent the reconnect message and then had the client run `reconnect` in the same exchange. The client's reconnect draws the loading plaque over the old level's view while that message waited in the z-buffer. The server now has the client run `reconnect` first. Nothing the reconnect runs reads the receive buffer and a delivery runs no client code, so the client does the same work. `qogtest_ad_chg.cfg` (map e1m1, changelevel e1m2) gives the single process's state hash on the board-flag pair, and stopped before. Every level exit in play is a changelevel, while the test scripts changed levels with `map`, which disconnects first (L70).
+
+Cuts (all on the board client list in apps/quake/CMakeLists.txt, each behind a flag of its own):
+
+| Cut | Flag | Saved on e2m6 |
+| --- | --- | ---: |
+| Beam segments of temp entities are only the drawn part of entity_t (40 bytes, not 88), they never get a network update or efrags | `QOG_TEMPENT_SMALL` (cl_tent.c) | 3,136 B of hunk with 64 segments |
+| entity_t 88 to 76 bytes. Only statics have efrags and only R_StoreEfrags reads visframe, through them, so both share 8 bytes with the network state in a union. The bmodel being drawn keeps its top node in one variable (`ENT_TOPNODE`, set before its faces are drawn, read only then). A static entity is 48 bytes. R_RemoveEfrags of an emptied client entity is left out, its efrag was always NULL | `QOG_ENTITY_NOEFRAG`, `QOG_ENTITY_NOTOPNODE` (render.h, cl_main.c, r_efrag.c, one or two lines in r_main.c and r_bsp.c) | 2,600 B (13 blocks of 16 entities) and 440 B of statics |
+| Hunk blocks get an 8-byte header (size and four letters of the name, no sentinel) and 8-byte rounding, not 16 and 16 | `QOG_HUNK_HDR8` (zone.c) | about 1 KB over about 110 blocks |
+| An item box's four frame bit arrays share packed blocks instead of four 32-byte blocks | `QOG_ITEMBOX_PACKED` (model.c) | 960 B with 11 item boxes |
+| Menu pic names point into the mapped pack's directory (as the mixer's sound names do), 12 bytes a slot, not 32. A pic not in the pack stops with id's "failed to load" | `QOG_CACHEPIC_NAMEPTR` (draw.c, common.c, common.h) | 1,120 B static |
+| Light style values are shorts ((char - 'a') * 22 or 256 fits) | `QOG_LIGHTSTYLE_SHORT` (r_shared.h, r_main.c) | 512 B static |
+
+Client hunk per level (hunk low at the end of each level of a `qog_tour_fight`, PC split pair with the board client flags, on that episode's board image `mkboard.py --stub-maps --main --display-no-sounds --display-no-progs`, KB). Before is main 9192bc9's client with the fixed server. The tour now takes out level exits and the two dead teleporters first (L72). Tour numbers move by a block of entities from run to run (L64).
+
+| Map | Before | After | | Map | Before | After | | Map | Before | After |
+| --- | ---: | ---: | --- | --- | ---: | ---: | --- | --- | ---: | ---: |
+| e2m1 | 65.0 | 60.5 | | e3m1 | 63.9 | 60.4 | | e4m1 | 60.2 | 57.4 |
+| e2m2 | 61.8 | 58.5 | | e3m2 | 63.5 | 59.4 | | e4m2 | 65.4 | 61.8 |
+| e2m3 | 67.5 | 63.8 | | e3m3 | 58.5 | 55.8 | | e4m3 | 72.2 | 69.1 |
+| e2m4 | 70.7 | 66.3 | | e3m4 | 71.9 | 64.7 | | e4m4 | 71.6 | 66.9 |
+| e2m5 | 70.1 | 63.4 | | e3m5 | 69.8 | 64.1 | | e4m5 | 78.4 | 71.0 |
+| e2m6 | 78.4 | 71.2 | | e3m6 | 71.1 | 67.2 | | e4m6 | 74.0 | 67.2 |
+| e2m7 | 72.9 | 69.0 | | e3m7 | 60.2 | 58.7 | | e4m7 | 70.1 | 66.3 |
+| start | 53.1 | 52.2 | | | | | | e4m8 | 74.0 | 65.8 |
+| | | | | | | | | end | 58.6 | 53.5 |
+
+Episode 1 after (its own image, the same tour): start 52.2, e1m1 53.0, e1m2 58.6, e1m3 66.3, e1m4 67.0, e1m5 60.8, e1m6 62.6, e1m7 46.8, e1m8 53.8 (Agent Y's before, e1m4 70.4). Worst per episode after: 1 67.0, 2 71.2, 3 67.2, 4 71.0. Agent Y's whole-game figure (80.4 on e2m6) was taken on data/id1, where the PC keeps a 1,744-byte `packpos` block the board never has (L71). e4m5 and e4m8 were never toured before because of the teleport error, and e4m5 is as big as e2m6.
+
+e2m6 by block, before and after (bytes): entities 18,512 to 15,912, temp entities 5,760 to 2,624, statics 4,752 to 4,312, item boxes 1,408 into the packed blocks (1,520 to 1,968), the rest only the smaller headers. Total 80,288 to 72,920.
+
+Exactness (hidden, `-nosound`, `+_cl_color 0`, own data folder and link ports): on the board-flag split pair `qogtest_hash` md5 ce86f894f9de and `qogtest_f_hash` e92bc9e9650d, and the 121 frames (113 of `qogtest_d_shots` after `qogtest_k_quiet` and the 8 fhash frames) byte identical with the same pair built from main. `qogtest_ad_beam.cfg` (lightning gun on e1m1 and e2m6, 21 beam segments a frame, 14 frames) byte identical with the same state hash. The default pair and quakeog_pc give ce86f894f9de and e92bc9e9650d.
+
+Board links (`cmake -B build-ad/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=160`, free is beside the 2 KB heap reserve):
+
+| | main 9192bc9, 73 KB | cuts, 73 KB | cuts, 75 KB (the new default) |
+| --- | --- | --- | --- |
+| quake_display `end` | 0x2003f650, 432 B free | 0x2003efd8, 2,088 B free | 0x2003f7d8, 40 B free |
+| quake_main `end` | 0x2003f51c | 0x2003f51c | 0x2003f51c |
+
+quake_display.bin 363,320 B. The client stack stays 32 KB, no frame on the deep path grew.
+
+The e4m5 and e4m8 teleport error is a game data bug, not the port and not the script. In each map a `trigger_teleport` (e4m5 entity 508, model *95, at 816 2208 256, and e4m8 entity 400, model *75, at -456 808 32) targets `t178` and `t273`, which name only an `info_null`. QuakeC's `info_null` removes itself at spawn, so `teleport_touch` finds no target and calls objerror, a Host_Error ("Program error"). id's interpreter in one process (quakeog_pc without compiled QuakeC) stops the same way when the player is put on them (`qog_tour_spot 824 2216 296` on e4m5, `qog_tour_spot -448 816 64` on e4m8). The tour reached them by noclip, whether a player can reach them in normal play is not known. `start` has one more (to `t11`), never touched.
+
+Not done, or to watch:
+- Once a full episode 4 tour stopped the server half at `end` with "MOVETYPE_PUSH with a non bsp model" (world.c). Three tours of `end` alone (two with the cuts, one before) did not. The server half's code is main's apart from the reconnect order and the PC tour.
+- Not approved, sizes on the board client: particles 512 to 256 9,216 B, console text 4 to 2 KB 2,048 B, command buffer 4 to 2 KB 2,048 B, edge-drawing surfaces 600 to 500 3,200 B of stack, zone 8 to 6 KB 2,048 B. None is needed now.
+- Further exact candidates, not done: efrag_t as 8 bytes of 16-bit indices (1.3 KB on e2m6), the model table as parallel arrays (576 B static), the entity colormap as a byte (entities 72 bytes, about 1 KB on e4m5).
+- Files shared with Agent Z: engine/r_main.c (the light style array type and two `ENT_TOPNODE` lines), engine/r_bsp.c (two `ENT_TOPNODE` reads). With Agent AC: engine/sv_main.c (SV_SendReconnect) and apps/quake/CMakeLists.txt.
+- Test scripts (`qogtest_ad_chg.cfg`, `qogtest_ad_beam.cfg`, `qogtest_ad_tele5.cfg`, `qogtest_ad_tele8.cfg`) are in the branch's git-ignored data/id1, the tour runs in build-ad/tours.sh.
+
 ## 2026-11-24: Fast render mode and single precision front end math (Agent AA, PC and ARM build, registered data)
 
 The user asked for a picture that loses a little, like MG24Quake's, but where the loss is hard to see. The board client now has a render mode switch, the `r_fast` cvar (archived), shown in the board Options menu as `Render  Exact / Fast` (engine/menu.c, item 20, left, right or gray toggles it). It is 1 by default on the board client (`QOG_BOARD_FAST`, on, adds `QOG_RFAST QOG_RFAST_ON` to the client's flags) and 0 in every other build. `r_fast 0` draws exactly what main draws. Nothing ran on hardware. The board savings below are estimates from the generated Thumb code and the PC's work counts, the lead measures them.

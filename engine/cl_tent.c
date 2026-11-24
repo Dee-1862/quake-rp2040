@@ -22,6 +22,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 int			num_temp_entities;
+#if defined(QOG_TEMPENT_SMALL) && (!defined(QOG_ENTITY_TIGHT) || !defined(QOG_TEMPENT_BLOCK))
+#error QOG_TEMPENT_SMALL needs QOG_ENTITY_TIGHT and QOG_TEMPENT_BLOCK
+#endif
 #ifdef QOG_TEMPENT_BLOCK
 // QuakeOG (Agent S): the beam segments come from the level's hunk in blocks
 // of QOG_TEMPENT_BLOCK as a frame first needs them (CL_NewTempEntity), so a
@@ -333,15 +336,30 @@ entity_t *CL_NewTempEntity (void)
 	}
 	else
 	{
+#ifdef QOG_TEMPENT_SMALL
+		// QuakeOG (Agent AD): a beam segment is drawn and never gets a
+		// network update and has no efrags, so it is the drawn part of
+		// entity_t (render.h, ENT_RENDER_SIZE), 40 to 52 bytes, not 88
+		if (!cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK])
+			cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK] =
+				Hunk_AllocName (QOG_TEMPENT_BLOCK * ENT_RENDER_SIZE, "tempents");
+		ent = (entity_t *)((byte *)cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK]
+			+ (num_temp_entities % QOG_TEMPENT_BLOCK) * ENT_RENDER_SIZE);
+#else
 		if (!cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK])
 			cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK] =
 				Hunk_AllocName (QOG_TEMPENT_BLOCK * sizeof(entity_t), "tempents");
 		ent = &cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK][num_temp_entities % QOG_TEMPENT_BLOCK];
+#endif
 	}
 #else
 	ent = &cl_temp_entities[num_temp_entities];
 #endif
+#ifdef QOG_TEMPENT_SMALL
+	memset (ent, 0, ENT_RENDER_SIZE);	// the scratch entity's network part stays zero
+#else
 	memset (ent, 0, sizeof(*ent));
+#endif
 	num_temp_entities++;
 #ifdef QOG_CL_PEAKS
 	if (num_temp_entities > cl_qog_peaktemp)

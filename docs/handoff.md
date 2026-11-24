@@ -8,7 +8,7 @@
 ## The full game, split across both RP2040s
 - Server on the main chip (quake_main), client on the display chip (quake_display), joined by the link driver. Exact on the PC (state hashes, saves and frames identical to the single-process game).
 - quake_main links (about 1.7 KB RAM spare). quake_display links for E1M1 only (68 KB hunk, 34 KB stack, about 1 KB spare), using the 1-byte depth buffer the user approved for the board client only.
-- Client hunk (Agent Y): 73 KB now covers start and all of episode 1 (worst e1m4 70.4 KB on a fight tour). The whole game needs about 82 KB (e2m6). The display image without sounds and progs.dat (`mkboard.py --display-no-sounds --display-no-progs`) still needs 13.19 MB for episode 1 and main 5.75 MB, so the data offsets must move first (docs/changes.md, Agent Y). The server hunk is 160 KB, e1m3 needs about 170 with sound.
+- Client hunk (Agent AD): 75 KB now covers every level of the game on a fight tour (worst e2m6 71.2 KB and e4m5 71.0 KB, episode 1 67.0), from exact cuts (docs/changes.md). Every changelevel used to stop the board client (receive buffer in the z-buffer), fixed by QOG_RECONNECT_FIRST. The display image without sounds and progs.dat still needs 13.19 MB for episode 1 and main 5.75 MB, so the data offsets must move first (Agent Y). The server hunk is 160 KB, e1m3 needs about 170 with sound.
 - Sound (agent-w, not yet heard on the board): id's mixer runs on main for the display's sound calls, the display plays the samples on the I2S amplifier by PIO and DMA. Main's data image must carry the sounds (`mkboard.py --main`), the client stack is 32 KB with sound. Exact on the PC. Agent K's 48 KB exact edge fallback is not reserved: on the board it stops with an error (QOG_ZEDGE_STACK_GUARD).
 - The display chip's flash fits start plus e1m1 to e1m4 (12.47 MB). All of episode 1 does not fit (16.07 MB). The options are in docs/changes.md (agent-j): move QOG_DATA_OFFSET to 0x200000, 4-bit ADPCM sounds, or load levels from the PC companion.
 
@@ -28,7 +28,7 @@ Expect a debugging round: the full-speed link and saving to the main chip's FAT 
 - Game data (data/id1, qogbake.bin, any board image) is never committed.
 
 ## Still open (nothing was done on it)
-- Client hunk gap: about 17 KB more for start to e1m4, about 29 KB for the whole game. Agent U was meant to start on it but was blocked and did no engineering work (branch agent-u holds only a note, do not merge it).
+- Client hunk: closed for the whole game by Agent AD (75 KB). e4m5 and e4m8 have teleporters aimed at an info_null, a Host_Error in id's game too.
 - Next steps, from the measurements: build a base, a depth and a split pair build, measure `qog_mem hunk` per map on the split client, then cut the biggest blocks exactly. Candidates are the 7.5 KB net_message in the z-buffer temp region during signon, the per-level map arrays (about 35 KB on E1M1) and the model_t RAM table. The 4 KB console and command buffer cuts change behaviour, so they need the user's decision.
 - Find out why the 1-byte depth buffer reaches the edge fallback in some views, since on the board that stops the game with an error.
 - Sound: listen on the board, and raise `_snd_mixahead` (0.1, at most 0.18) if it breaks up. The display's flash image still holds sounds the client no longer opens (about 1.6 MB to win for maps).

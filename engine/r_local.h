@@ -414,6 +414,10 @@ void R_SetupFrame (void);
 void R_cshift_f (void);
 void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1);
 void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip);
+#ifdef QOG_VERTCACHE
+void R_QogVertCacheBegin (void);	// QuakeOG (Agent Z): r_draw.c
+void R_QogVertCacheEnd (void);
+#endif
 void R_SplitEntityOnNode2 (mnode_t *node);
 void R_MarkLights (dlight_t *light, int bit, mnode_t *node);
 

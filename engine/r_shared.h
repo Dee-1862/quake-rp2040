@@ -253,7 +253,14 @@ extern	float	xscale, yscale;
 extern	float	xscaleinv, yscaleinv;
 extern	float	xscaleshrink, yscaleshrink;
 
-extern	int d_lightstylevalue[256]; // 8.8 frac of base light value
+#ifdef QOG_LIGHTSTYLE_SHORT
+// QuakeOG (Agent AD): R_AnimateLight writes (char - 'a') * 22 or 256, which a
+// short holds, and every reader widens it to an int as before (512 B)
+typedef short	lightstyleval_t;
+#else
+typedef int		lightstyleval_t;
+#endif
+extern	lightstyleval_t d_lightstylevalue[256]; // 8.8 frac of base light value
 
 extern void TransformVector (vec3_t in, vec3_t out);
 extern void SetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,

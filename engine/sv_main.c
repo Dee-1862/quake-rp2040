@@ -1031,12 +1031,23 @@ void SV_SendReconnect (void)
 	msg.cursize = 0;
 	msg.maxsize = sizeof(data);
 
+#if defined(QOG_SPLIT_SERVER) && defined(QOG_RECONNECT_FIRST)
+	// QuakeOG (Agent AD): the client's reconnect goes before the message.
+	// It draws the loading plaque over the old level's view, and a client
+	// whose receive buffer is in the z-buffer (QOG_LINK_RX_ZTEMP) stops with
+	// an error when a message waits there while a view is drawn: every
+	// changelevel did. Nothing the reconnect runs reads the receive buffer
+	// and the delivery runs no client code, so the client does the same.
+	Link_ServerClientExec ("reconnect\n");
+#endif
 	MSG_WriteChar (&msg, svc_stufftext);
 	MSG_WriteString (&msg, "reconnect\n");
 	NET_SendToAll (&msg, 5);
-	
+
 #ifdef QOG_SPLIT_SERVER
+#ifndef QOG_RECONNECT_FIRST
 	Link_ServerClientExec ("reconnect\n");	// QuakeOG: the client runs it now (net_link.c)
+#endif
 #else
 	if (cls.state != ca_dedicated)
 #endif

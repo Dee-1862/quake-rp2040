@@ -282,12 +282,32 @@ void Z_CheckHeap (void)
 
 #define	HUNK_SENTINAL	0x1df001ed
 
+#ifdef QOG_HUNK_HDR8
+// QuakeOG (Agent AD): an 8-byte block header (the size and the first four
+// letters of the name, no sentinel) and blocks rounded to 8 bytes, not 16.
+// The client half's level holds about 110 blocks, which gives back about
+// 1 KB. Nothing in the engine needs more than 8-byte alignment.
+#define	HUNK_NAMELEN	4
+#define	HUNK_ROUND(n)	(((n) + 7) & ~7)
+typedef struct
+{
+	int		size;		// including sizeof(hunk_t), -1 = not allocated
+	char	name[HUNK_NAMELEN];
+} hunk_t;
+#define	HUNK_SENTINEL_OK(h)	true
+#define	HUNK_SET_SENTINEL(h)
+#else
+#define	HUNK_NAMELEN	8
+#define	HUNK_ROUND(n)	(((n) + 15) & ~15)
 typedef struct
 {
 	int		sentinal;
 	int		size;		// including sizeof(hunk_t), -1 = not allocated
 	char	name[8];
 } hunk_t;
+#define	HUNK_SENTINEL_OK(h)	((h)->sentinal == HUNK_SENTINAL)
+#define	HUNK_SET_SENTINEL(h)	((h)->sentinal = HUNK_SENTINAL)
+#endif
 
 byte	*hunk_base;
 int		hunk_size;
@@ -313,9 +333,9 @@ void Hunk_Check (void)
 	
 	for (h = (hunk_t *)hunk_base ; (byte *)h != hunk_base + hunk_low_used ; )
 	{
-		if (h->sentinal != HUNK_SENTINAL)
+		if (!HUNK_SENTINEL_OK (h))
 			Sys_Error ("Hunk_Check: trahsed sentinal");
-		if (h->size < 16 || h->size + (byte *)h - hunk_base > hunk_size)
+		if (h->size < (int)sizeof(hunk_t) || h->size + (byte *)h - hunk_base > hunk_size)
 			Sys_Error ("Hunk_Check: bad size");
 		h = (hunk_t *)((byte *)h+h->size);
 	}
@@ -334,9 +354,9 @@ void Hunk_Print (qboolean all)
 	hunk_t	*h, *next, *endlow, *starthigh, *endhigh;
 	int		count, sum;
 	int		totalblocks;
-	char	name[9];
+	char	name[HUNK_NAMELEN+1];
 
-	name[8] = 0;
+	name[HUNK_NAMELEN] = 0;
 	count = 0;
 	sum = 0;
 	totalblocks = 0;
@@ -371,9 +391,9 @@ void Hunk_Print (qboolean all)
 	//
 	// run consistancy checks
 	//
-		if (h->sentinal != HUNK_SENTINAL)
+		if (!HUNK_SENTINEL_OK (h))
 			Sys_Error ("Hunk_Check: trahsed sentinal");
-		if (h->size < 16 || h->size + (byte *)h - hunk_base > hunk_size)
+		if (h->size < (int)sizeof(hunk_t) || h->size + (byte *)h - hunk_base > hunk_size)
 			Sys_Error ("Hunk_Check: bad size");
 			
 		next = (hunk_t *)((byte *)h+h->size);
@@ -384,7 +404,7 @@ void Hunk_Print (qboolean all)
 	//
 	// print the single block
 	//
-		memcpy (name, h->name, 8);
+		memcpy (name, h->name, HUNK_NAMELEN);
 		if (all)
 			Con_Printf ("%8p :%8i %8s\n",h, h->size, name);
 			
@@ -392,7 +412,7 @@ void Hunk_Print (qboolean all)
 	// print the total
 	//
 		if (next == endlow || next == endhigh || 
-		strncmp (h->name, next->name, 8) )
+		strncmp (h->name, next->name, HUNK_NAMELEN) )
 		{
 			if (!all)
 				Con_Printf ("          :%8i %8s (TOTAL)\n",sum, name);
@@ -424,7 +444,7 @@ void *Hunk_AllocName (int size, char *name)
 	if (size < 0)
 		Sys_Error ("Hunk_Alloc: bad size: %i", size);
 		
-	size = sizeof(hunk_t) + ((size+15)&~15);
+	size = sizeof(hunk_t) + HUNK_ROUND(size);
 	
 	if (hunk_size - hunk_low_used - hunk_high_used < size)
 		Sys_Error ("Hunk_Alloc: failed on %i bytes",size);
@@ -437,8 +457,9 @@ void *Hunk_AllocName (int size, char *name)
 	memset (h, 0, size);
 	
 	h->size = size;
-	h->sentinal = HUNK_SENTINAL;
-	Q_strncpy (h->name, name, 8);
+	HUNK_SET_SENTINEL (h);
+	memset (h->name, 0, HUNK_NAMELEN);
+	Q_strncpy (h->name, name, HUNK_NAMELEN);
 	
 	return (void *)(h+1);
 }
@@ -489,7 +510,7 @@ void *Hunk_AllocPacked (int size, int align)
 		}
 		if (hunk_packed_start + h->size == hunk_low_used)
 		{	// last block on the low hunk: grow it
-			grow = (ofs + size - room + 15) & ~15;
+			grow = HUNK_ROUND (ofs + size - room);
 			if (hunk_size - hunk_low_used - hunk_high_used < grow)
 				Sys_Error ("Hunk_Alloc: failed on %i bytes", grow);
 			// QuakeOG (Agent W): move the cache out of the way before
@@ -588,7 +609,7 @@ void *Hunk_HighAllocName (int size, char *name)
 	Hunk_Check ();
 #endif
 
-	size = sizeof(hunk_t) + ((size+15)&~15);
+	size = sizeof(hunk_t) + HUNK_ROUND(size);
 
 	if (hunk_size - hunk_low_used - hunk_high_used < size)
 	{
@@ -603,8 +624,9 @@ void *Hunk_HighAllocName (int size, char *name)
 
 	memset (h, 0, size);
 	h->size = size;
-	h->sentinal = HUNK_SENTINAL;
-	Q_strncpy (h->name, name, 8);
+	HUNK_SET_SENTINEL (h);
+	memset (h->name, 0, HUNK_NAMELEN);
+	Q_strncpy (h->name, name, HUNK_NAMELEN);
 
 	return (void *)(h+1);
 }
@@ -621,7 +643,7 @@ void *Hunk_TempAlloc (int size)
 {
 	void	*buf;
 
-	size = (size+15)&~15;
+	size = HUNK_ROUND (size);
 	
 	if (hunk_tempactive)
 	{
