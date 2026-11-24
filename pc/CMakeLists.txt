@@ -242,6 +242,10 @@ target_compile_definitions(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_RFAST                       # r_fast 1 draws approximate lit spans, r_fast 0 exactly as before
     QOG_FLOAT_EXACT)                # front end divides and ceils in single precision where the float result is the same (mathlib.h)
+# Episode 1 client RAM, exact (Agent Y)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)
+    QOG_CON_DEBUGLOG_DIRECT)        # -condebug writes the console text as it is, no 1 KB static copy
 # Render phase times for profiling (Agent P), off by default: `qog_phase` in
 # the console and the end of `-qogfly` print where render time goes.
 #   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON

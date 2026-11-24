@@ -1434,6 +1434,12 @@ void R_RenderView (void)
 	if ( (long)(&r_warpbuffer) & 3 )
 		Sys_Error ("Globals are missaligned");
 
+#ifdef QOG_LINK_RX_ZTEMP
+	{	// QuakeOG (Agent Y): the link's receive buffer shares the z-buffer (net_link.c)
+		void Link_RxCheckIdle (void);
+		Link_RxCheckIdle ();
+	}
+#endif
 	R_RenderView_ ();
 
 #ifdef QOG_HUD_IN_ZBUFFER

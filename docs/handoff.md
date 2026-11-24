@@ -8,7 +8,7 @@
 ## The full game, split across both RP2040s
 - Server on the main chip (quake_main), client on the display chip (quake_display), joined by the link driver. Exact on the PC (state hashes, saves and frames identical to the single-process game).
 - quake_main links (about 1.7 KB RAM spare). quake_display links for E1M1 only (68 KB hunk, 34 KB stack, about 1 KB spare), using the 1-byte depth buffer the user approved for the board client only.
-- Client hunk needed per map: start 65 to 73 KB, e1m1 66, e1m2 72, e1m3 85, e1m4 85, worst map (e2m6) 97 KB. Agent U was closing the gap.
+- Client hunk (Agent Y): 73 KB now covers start and all of episode 1 (worst e1m4 70.4 KB on a fight tour). The whole game needs about 82 KB (e2m6). The display image without sounds and progs.dat (`mkboard.py --display-no-sounds --display-no-progs`) still needs 13.19 MB for episode 1 and main 5.75 MB, so the data offsets must move first (docs/changes.md, Agent Y). The server hunk is 160 KB, e1m3 needs about 170 with sound.
 - Sound (agent-w, not yet heard on the board): id's mixer runs on main for the display's sound calls, the display plays the samples on the I2S amplifier by PIO and DMA. Main's data image must carry the sounds (`mkboard.py --main`), the client stack is 32 KB with sound. Exact on the PC. Agent K's 48 KB exact edge fallback is not reserved: on the board it stops with an error (QOG_ZEDGE_STACK_GUARD).
 - The display chip's flash fits start plus e1m1 to e1m4 (12.47 MB). All of episode 1 does not fit (16.07 MB). The options are in docs/changes.md (agent-j): move QOG_DATA_OFFSET to 0x200000, 4-bit ADPCM sounds, or load levels from the PC companion.
 

@@ -59,6 +59,13 @@ display's full pak for the address -bakebase gives, then writes
 with -basedir <out>_main -flashbase 0x10300000), <out>_main.bin and
 <out>_main.uf2, a UF2 of that region only.
 
+--display-no-sounds (Agent Y) leaves every sound out of the display's image:
+the split game's client never opens one, the mixer on main plays them from
+main's image, which keeps them all. --display-no-progs leaves progs.dat out
+the same way (QuakeC runs on main). Both need --stub-maps. The files left
+out go after every kept file and before the maps in the pak the bake reads,
+so the kept files have the same address in it and in the display's pak.
+
 Never commit or share the output: it is converted id Software data.
 Standard library only.
 """
@@ -150,15 +157,33 @@ def pak_entries(pak):
     return out
 
 
-def stub_pak(pak):
-    """The board's pak: every map replaced by its stub. Checks that no other
-    file moves, so the image's pointers into the pak stay right."""
-    ents = pak_entries(pak)
+def stub_pak(pak, drop=()):
+    """The board's pak: every map replaced by its stub, the files in drop
+    left out (Agent Y). Checks that no other file moves, so the image's
+    pointers into the pak stay right."""
+    ents = [e for e in pak_entries(pak) if e[0] not in drop]
     new = mkpak.build_pak([(n, make_stub(d) if mkpak.is_map(n) else d) for n, _, d in ents])
     for (n, o, _), (_, o2, _) in zip(ents, pak_entries(new)):
         if not mkpak.is_map(n) and o != o2:
             sys.exit("mkboard: %s moves when the maps become stubs (build the pak with the maps last)" % n)
     return new
+
+
+def display_drop(names, sounds, progs):
+    """The files the display's image leaves out (Agent Y): the sounds, which
+    the mixer on main plays, and progs.dat, which QuakeC on main runs."""
+    return {n for n in names if (sounds and is_sound(n)) or (progs and n == "progs.dat")}
+
+
+def drop_last(pak, drop):
+    """The same pak with the files in drop moved after every other file but
+    before the maps, each group in its order, so the kept files keep their
+    addresses when the dropped ones and the maps go."""
+    ents = pak_entries(pak)
+    rest = [(n, d) for n, _, d in ents if n not in drop and not mkpak.is_map(n)]
+    out = [(n, d) for n, _, d in ents if n in drop]
+    maps = [(n, d) for n, _, d in ents if mkpak.is_map(n) and n not in drop]
+    return mkpak.build_pak(rest + out + maps)
 
 
 def bake_dir(img):
@@ -298,8 +323,14 @@ def main(argv=None):
                     help="also write the main chip's server data image <out>_main (the split game)")
     ap.add_argument("--main-no-sounds", action="store_true",
                     help="leave the sounds out of the main chip's image (a build with QOG_SOUND off)")
+    ap.add_argument("--display-no-sounds", action="store_true",
+                    help="leave the sounds out of the display's image (the split game, main keeps them)")
+    ap.add_argument("--display-no-progs", action="store_true",
+                    help="leave progs.dat out of the display's image (the split game, main keeps it)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension, also the PC basedir")
     a = ap.parse_args(argv)
+    if (a.display_no_sounds or a.display_no_progs) and not a.stub_maps:
+        sys.exit("mkboard: --display-no-sounds and --display-no-progs need --stub-maps")
 
     out = os.path.abspath(a.out)
     if len(out) > 80:   # the engine keeps paths in MAX_OSPATH (128) buffers
@@ -320,6 +351,14 @@ def main(argv=None):
     pak = open(pakpath + ".pak", "rb").read()
     if pc_layout(pak) != len(pak):
         sys.exit("mkboard: the pak is not laid out the way the PC maps it")
+    drop = display_drop([n for n, _, _ in pak_entries(pak)], a.display_no_sounds, a.display_no_progs)
+    if drop:
+        # Agent Y: the files the display leaves out go before the maps
+        pak = drop_last(pak, drop)
+        with open(pakpath + ".pak", "wb") as f:
+            f.write(pak)
+        if pc_layout(pak) != len(pak):
+            sys.exit("mkboard: the pak is not laid out the way the PC maps it")
     full = pak            # every file whole, for the main chip's image (--main)
     srcpath = os.path.join(out, "src.pak")
     if a.stub_maps:
@@ -328,7 +367,7 @@ def main(argv=None):
         with open(srcpath, "wb") as f:
             f.write(src)
         maps_bytes = sum(len(d) for n, _, d in pak_entries(src) if mkpak.is_map(n))
-        pak = stub_pak(src)
+        pak = stub_pak(src, drop)
         if pc_layout(pak) != len(pak):
             sys.exit("mkboard: the pak with stubs is not laid out the way the PC maps it")
 
@@ -376,6 +415,10 @@ def main(argv=None):
     if a.stub_maps:
         print("            maps are stubs (the full pak's maps took %d bytes, %.2f MB, kept in %s)"
               % (maps_bytes, maps_bytes / 2**20, srcpath))
+    if drop:
+        print("            left out for main: %d files, %d bytes (%s)"
+              % (len(drop), sum(len(d) for n, _, d in pak_entries(full) if n in drop),
+                 ", ".join(w for w, on in (("sounds", a.display_no_sounds), ("progs.dat", a.display_no_progs)) if on)))
     print("  0x%08X  padding    %9d bytes" % (DATA_ADDR + len(pak), ofs - len(pak)))
     print("  0x%08X  qogbake    %9d bytes  %6.2f MB, %d models" % (base, len(img), len(img) / 2**20, h[5]))
     print("  0x%08X  end        %9d bytes  %6.2f MB, %.1f%% of the region"

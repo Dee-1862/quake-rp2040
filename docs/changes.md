@@ -50,6 +50,90 @@ Looked at and left, or for the user to decide (ideas to get nearer 27 fps, none 
 - The front end (world 26.3 ms) has no cheap approximation that stays hard to see: it is the BSP walk and edge setup, whose cost is mostly memory and exact float work. That is Agent Z's field.
 - The view model (4.9 ms): an affine alias drawer is already affine. Skipping its per-vertex light or drawing it in fewer rows would show.
 - 27 fps is a frame of 37 ms. The view alone is 75.7 ms today and Fast takes about 6 to 10 ms of it. Getting there needs the front end halved as well, or a smaller picture, which the user has not approved.
+## 2026-11-24: Episode 1 in the split client's RAM, the display image without sounds, whole-game numbers (Agent Y, PC and ARM build, registered data)
+
+The split client now runs start and all of episode 1 in its hunk: QOG_CL_HUNK_KB goes from 68 to 73 KB, from four exact cuts that free 10.6 KB of static RAM and hunk. `tools/mkboard.py --display-no-sounds --display-no-progs` leaves 2.86 MB of files the client never opens out of the display image, but episode 1 still needs 13.19 MB of the 11.94 MB region, and main's image with episode 1's sounds needs 5.75 MB of its 5 MB. Both fit if the data offsets move (proposed below, not applied). Main frees 4 KB and its server hunk goes from 156 to 160 KB, still short of e1m3 (165 KB without sound). Nothing ran on hardware.
+
+Cuts (`QOG_ENTITY_TIGHT` and `QOG_CON_DEBUGLOG_DIRECT` in both flag lists, the other two on the board client list only):
+
+| Cut | Flag | Saved |
+| --- | --- | ---: |
+| entity_t 104 to 88 bytes. frame is a short, effects, skin and trivial_accept are bytes, the ST_RAND start is kept as the 15-bit number id draws and turned into id's float where it is read (`ENT_SYNCBASE`). The network state goes last, so a static entity is only the first 52 bytes, its baseline is read into a scratch entity | `QOG_ENTITY_TIGHT` (engine/render.h, cl_main.c, cl_parse.c, r_alias.c, r_sprite.c) | 16 B a client entity, 52 B a static entity, about 4.5 KB of hunk on e1m3 |
+| MSG_ReadString returns a string that ends in a 0 within 2047 characters in place in the message (every string a server writes). Any other ending (a 0xFF byte, the end of the message, 2047 characters) is copied the way id copies it, into 2 KB of the z-buffer after the status bar rows | `QOG_MSG_STRING_INPLACE` (engine/common.c) | 2,048 B static |
+| The link's receive buffer (a reliable message and a datagram, 7,536 B) lives in the z-buffer after that, not on the hunk. It holds messages only from their delivery until CL_ReadFromServer has read them all, and no view is drawn in between. The server half sends messages only in its frame's answer and in a console line's answer, both read after any pipelined view and before the frame's own, and sound answers carry none. R_RenderView stops with an error if bytes still wait (`Link_RxCheckIdle`), so a break of that rule can never draw over a message | `QOG_LINK_RX_ZTEMP` (engine/net_link.c, r_main.c) | 7,536 B of hunk |
+| Con_DebugLog writes its text directly (both callers pass "%s" and the text) | `QOG_CON_DEBUGLOG_DIRECT` (engine/console.c) | 1,024 B static |
+| main only. The BSP frame sender wrapped as on the display, the same bytes in three writes | `QOG_LINK_STREAM_SEND` on quake_main | 4,168 B static on main |
+
+The z-buffer between views now holds, after the 15,360 status bar bytes, MSG_ReadString's fallback (2,048 B), the receive buffer (7,536 B), and at its end the precache names of CL_ParseServerInfo (at most one message). Link_RxBuffer checks the room.
+
+Client hunk per level (split PC pair, board client flags plus `QOG_CL_PEAKS`, from the episode 1 board images, KB). Script is the smallest `-heapsize` that runs `qogtest_y_mem_<map>.cfg` (Agent R's fight, save and load on that map, deterministic). Tour is the hunk low at the end of each level of a `qog_tour_fight` of start to e1m8 (it varies by a block of entities between runs).
+
+| Map | Script before | Script after | Tour before | Tour after |
+| --- | ---: | ---: | ---: | ---: |
+| start | 66 | 55 | 63.5 | 53.1 |
+| e1m1 | 66 | 57 | 63.9 | 55.0 |
+| e1m2 | 72 | 62 | 70.0 | 59.7 |
+| e1m3 | 82 | 69 | 84.3 | 69.8 |
+| e1m4 | 80 | 68 | 82.8 | 70.4 |
+| e1m5 | 75 | 64 | 74.9 | 63.8 |
+| e1m6 | 75 | 64 | 77.8 | 66.5 |
+| e1m7 | 58 | 49 | 59.0 | 50.0 |
+| e1m8 | 65 | 55 | 66.6 | 56.8 |
+
+At `-heapsize 73` all nine scripts and the whole fight tour of start to e1m8 run.
+
+Exactness (hidden, `-nosound`, `+_cl_color 0`, against untouched builds of f75051b in the same worktree, and again after merging main c5fa930): `qogtest_hash` ce86f894f9de and `qogtest_f_hash` e92bc9e9650d (md5 of the statehash lines) on quakeog_pc, on the default split pair and on the split pair with the board client flags. `qogtest_r_fhash` 32 hashes on both pairs. 121 frames (113 of `qogtest_d_shots` after `qogtest_k_quiet` and the 8 fhash frames) byte identical, quakeog_pc against its base and the board-flag client against its base (one run showed a notify line in rows 1 to 23 of f_e1m3 at another moment, the rerun was identical). `qogtest_j_ep1.cfg` (9 hashes), `qogtest_j_menu.cfg` and the e1m3 script give the same hashes from the image with sounds and progs.dat and from the image without them. The receive buffer check never fired.
+
+Board links (`cmake -B build-y/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`, merged with main c5fa930):
+
+| | main c5fa930 | this branch |
+| --- | --- | --- |
+| quake_display `end` | 0x2003ee60, 2,464 B free | 0x2003f63c with a 73 KB hunk, 452 B free |
+| quake_main `end` | 0x2003f564, 668 B free | 0x2003f51c with a 160 KB hunk, 740 B free |
+| quake_display.bin | | 359,816 B |
+| quake_main.bin | | 1,296,636 B, 41.2% of the slot |
+
+Server hunk (smallest `-heapsize` of the server half for the same scripts, QOG_AOT, the board's server flags, run with `-nosound`, so the board needs 4 to 8 KB more for sound, Agent W measured 116 to 120 on e1m1): start 90, e1m1 112, e1m2 139, e1m3 165, e1m4 155, e1m5 154, e1m6 140, e1m7 88, e1m8 115. With 160 KB start, e1m1, e1m2, e1m6, e1m7 and e1m8 fit with sound, e1m4 and e1m5 only without it, e1m3 needs about 170. Hunk low after the script on other levels: e2m6 154.8, e4m5 167.2, e4m8 152.0, end 101.2.
+
+Display data (`mkboard.py --stub-maps --display-no-sounds --display-no-progs`, start plus the episode, manifests of every level recorded in the branch's `build-y/manifests`):
+
+| Set | Display image | Main image (with its sounds) |
+| --- | ---: | ---: |
+| episode 1, sounds kept | 16,845,808 B (16.07 MB) | 6,029,312 B |
+| episode 1, no sounds | 14,224,368 B (13.57 MB) | 6,029,312 B |
+| episode 1, no sounds or progs.dat | 13,831,152 B (13.19 MB) | 6,029,312 B (5.75 MB) |
+| episode 2 | 14,654,720 B (13.98 MB) | 6,262,784 B (5.97 MB) |
+| episode 3 | 13,812,656 B (13.17 MB) | 6,246,400 B (5.96 MB) |
+| episode 4 and end | 16,237,888 B (15.49 MB) | 6,967,296 B (6.64 MB) |
+| whole game | 39,819,120 B (37.97 MB) | 15,261,696 B (14.55 MB) |
+
+Proposed offsets (not applied. `platform/qog_flashmap.h`, `tools/mkdata.py` and mkboard's constants change together, the bootloader's 128 KB stays):
+- Display data at 0x100000. The app slot becomes 913,408 B (the app is 359,816 B), the data region 15,663,104 B (14.94 MB). Episodes 1, 2 and 3 fit one at a time (1.75, 0.96 and 1.77 MB spare), episode 4 is 574,784 B over. At 0x200000 (13.94 MB) episodes 1 and 3 fit, episode 2 is 40,192 B over.
+- Main data at 0x200000. The main slot becomes 2 MB (the app is 1.30 MB), the region 6 MB up to the FAT volume. Episodes 1, 2 and 3 fit (256, 28 and 44 KB spare), episode 4 is 675,840 B over. Today main's 5 MB do not hold episode 1 with its sounds (786,432 B over).
+
+Client hunk per episode after the cuts (worst level, tour or script): episode 1 70.4 KB (e1m4), episode 2 80.4 (e2m6), episode 3 73.9 (e3m4), episode 4 76.1 (e4m6, e4m5 and e4m8 stop the tour with a QuakeC teleport error, their scripts 73.4 and 69.0). With about 1.5 KB of margin episode 1 needs 73 KB, episode 3 76, episode 4 78, episode 2 and the whole game 82, 9 KB more than the board has.
+
+Not approved, for the user (sizes on the board client):
+- particles 512 to 256, 9,216 B (closes the whole game alone)
+- console text 4 KB to 2 KB, 2,048 B, and the command buffer 4 KB to 2 KB, 2,048 B
+- edge-drawing surfaces 600 to 500, 3,200 B of stack (the e1m8 tour peaks at 509)
+- zone 8 to 6 KB, 2,048 B (Agent S saw 6 KB fail at level loads)
+
+Level swap (estimates, nothing built). A level is about 1.1 MB of display data on average and 1.6 MB at most (start), plus 0.2 to 0.5 MB on main. Main cannot hold the whole game (14.55 MB of server data alone against its 5 MB region and the FAT volume's 8 MB), so the next level comes from the PC companion over USB, or one episode is written at a time. The display must stop running from flash while it erases and programs, and with 452 B of RAM spare it takes 4 KB sectors one at a time from main over the link. For 1.6 MB the link at 12.5 Mbaud takes about 1.4 s (1.1 MB/s after framing, wire to stream 93% on the PC), 64 KB block erases 25 x 150 ms typical 3.8 s (up to 50 s worst case by the datasheet), page programs at about 0.5 MB/s 3.2 s, and USB full speed CDC at about 1 MB/s 1.6 s overlapping the link. About 6 to 9 s per level typical, an episode at a time (14 MB) about 70 to 90 s.
+
+Not done, or to watch:
+- The one-byte z-buffer's edge fallback ran 4 times in an episode 1 fight tour on the PC (3, 3 and 1 in episodes 2, 3 and 4, at most 341 edges). On the board each stops the game (`QOG_ZEDGE_STACK_GUARD`). Open before, not changed here.
+- The server hunk was measured without sound because PC tests run with `-nosound`.
+- The receive buffer and the in-place strings are on the board client list only, the single-process PC game keeps id's buffers.
+- Test scripts (`qogtest_y_mem_<map>.cfg`, `qogtest_y_manifest*.cfg`) are in the branch's git-ignored `data/id1`.
+
+Episode 1 images for the board once the offsets move (today the display image is 1.31 MB too big and main's 0.75 MB):
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
+    --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --exe build-pc-dev\Release\quakeog_pc.exe `
+    --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
+```
 
 ## 2026-11-24: 250 MHz and 125 MHz flash for the Quake apps (Agent AB, ARM build, not run on hardware)
 

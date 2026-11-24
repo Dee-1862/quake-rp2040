@@ -362,11 +362,22 @@ Con_DebugLog
 void Con_DebugLog(char *file, char *fmt, ...)
 {
     va_list argptr; 
+#ifdef QOG_CON_DEBUGLOG_DIRECT
+    // QuakeOG (Agent Y): both callers pass "%s" and the text, so the text is
+    // written as it is, without a 1 KB static copy (which a text over 1023
+    // characters overran)
+    char *data;
+#else
     static char data[1024];
+#endif
     int fd;
     
     va_start(argptr, fmt);
+#ifdef QOG_CON_DEBUGLOG_DIRECT
+    data = va_arg(argptr, char *);
+#else
     vsprintf(data, fmt, argptr);
+#endif
     va_end(argptr);
     fd = open(file, O_WRONLY | O_CREAT | O_APPEND, 0666);
     write(fd, data, strlen(data));
