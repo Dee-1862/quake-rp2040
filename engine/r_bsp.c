@@ -80,6 +80,68 @@ void R_EntityRotate (vec3_t vec)
 R_RotateBmodel
 ================
 */
+#ifdef QOG_BMODEL_ZEROANGLE
+/*
+QuakeOG (Agent AJ): a brush entity that does not turn (doors, plats,
+buttons, nearly all of them) has zero angles, and sin (+-0) is +-0 and
+cos (+-0) is 1 exactly, so the angle conversion and the double sine and
+cosine are left out for a zero angle. The board pays about 5,000 cycles
+for each axis otherwise, twice for every brush entity drawn and twice more
+for each of its surfaces in D_DrawSurfaces.
+*/
+#define QOG_ROT_SINCOS(a)												\
+	if ((a) == 0)														\
+	{																	\
+		s = (a);														\
+		c = 1;															\
+	}																	\
+	else																\
+	{																	\
+		QOG_WC (QOG_WC_ROTTRIG);										\
+		angle = (a);													\
+		angle = angle * M_PI*2 / 360;									\
+		s = sin(angle);													\
+		c = cos(angle);													\
+	}
+
+/*
+QuakeOG (Agent AJ): with all three angles +0 the code below builds
+entity_rotation as the identity with every zero +0 (worked through by
+hand: each entry is a sum of products of 1, +0 and -0 that rounds to 1 or
++0). R_EntityRotate by that matrix computes, for each component,
+(t0 * r0 + t1 * r1) + t2 * r2 with one r 1 and two r +0: a nonzero t
+comes out unchanged, a zero comes out -0 only if all three products are
+-0, that is if all three components have the sign bit set. Infinities or
+NaNs would make NaNs from 0 * t, so such a vector takes id's dot products.
+*/
+static const float	r_qog_identity[3][3] = { {1, 0, 0}, {0, 1, 0}, {0, 0, 1} };
+
+static void R_QogIdentityRotate (vec3_t vec)
+{
+	unsigned	b[3];
+	int			i;
+
+	memcpy (b, vec, sizeof b);
+	for (i=0 ; i<3 ; i++)
+	{
+		unsigned	e = b[i] & 0x7F800000;
+
+		if (e == 0x7F800000 || (e == 0 && (b[i] & 0x007FFFFF)))
+		{
+			// not finite, or denormal (which the RP2040's float routines
+			// take as zero): id's arithmetic
+			R_EntityRotate (vec);
+			return;
+		}
+	}
+	for (i=0 ; i<3 ; i++)
+	{
+		if (b[i] == 0x80000000 && !(b[0] & b[1] & b[2] & 0x80000000))
+			vec[i] = 0;	// -0 plus a +0 product is +0
+	}
+}
+#endif
+
 void R_RotateBmodel (void)
 {
 	float	angle, s, c, temp1[3][3], temp2[3][3], temp3[3][3];
@@ -89,11 +151,35 @@ void R_RotateBmodel (void)
 // TODO: could cache lazily, stored in the entity
 // TODO: share work with R_SetUpAliasTransform
 
+	QOG_WC (QOG_WC_ROTATE);	// QuakeOG (Agent AJ)
+#ifdef QOG_BMODEL_ZEROANGLE
+	{
+		unsigned	ab[3];
+
+		memcpy (ab, currententity->angles, sizeof ab);
+		if (!(ab[0] | ab[1] | ab[2]))
+		{
+			// QuakeOG (Agent AJ): no turn, the same values without the
+			// matrix products
+			memcpy (entity_rotation, r_qog_identity, sizeof entity_rotation);
+			R_QogIdentityRotate (modelorg);
+			R_QogIdentityRotate (vpn);
+			R_QogIdentityRotate (vright);
+			R_QogIdentityRotate (vup);
+			R_TransformFrustum ();
+			return;
+		}
+	}
+#endif
 // yaw
-	angle = currententity->angles[YAW];		
+#ifdef QOG_BMODEL_ZEROANGLE
+	QOG_ROT_SINCOS (currententity->angles[YAW])
+#else
+	angle = currententity->angles[YAW];
 	angle = angle * M_PI*2 / 360;
 	s = sin(angle);
 	c = cos(angle);
+#endif
 
 	temp1[0][0] = c;
 	temp1[0][1] = s;
@@ -107,10 +193,14 @@ void R_RotateBmodel (void)
 
 
 // pitch
-	angle = currententity->angles[PITCH];		
+#ifdef QOG_BMODEL_ZEROANGLE
+	QOG_ROT_SINCOS (currententity->angles[PITCH])
+#else
+	angle = currententity->angles[PITCH];
 	angle = angle * M_PI*2 / 360;
 	s = sin(angle);
 	c = cos(angle);
+#endif
 
 	temp2[0][0] = c;
 	temp2[0][1] = 0;
@@ -125,10 +215,14 @@ void R_RotateBmodel (void)
 	R_ConcatRotations (temp2, temp1, temp3);
 
 // roll
-	angle = currententity->angles[ROLL];		
+#ifdef QOG_BMODEL_ZEROANGLE
+	QOG_ROT_SINCOS (currententity->angles[ROLL])
+#else
+	angle = currententity->angles[ROLL];
 	angle = angle * M_PI*2 / 360;
 	s = sin(angle);
 	c = cos(angle);
+#endif
 
 	temp1[0][0] = 1;
 	temp1[0][1] = 0;
@@ -485,12 +579,87 @@ inlined, so its locals are not in every level of the recursion.
 #else
 #define QOG_NOINLINE
 #endif
+#ifdef QOG_WORLDNODE_INT
+#ifndef QOG_FRONT_FAST
+#error "QOG_WORLDNODE_INT needs QOG_FRONT_FAST (the planes live in its header)"
+#endif
+/*
+QuakeOG (Agent AJ): the same tests in integers first. With the corners c
+(shorts), the plane's normal N and dist D in 1/16384 (rounded, R_QogFxSetup)
+the integer d = c.N - D is within 0.5 (|c0| + |c1| + |c2|) + 0.5 of
+16384 (c.n - dist), and id's float dot product within 0.003 (|c0| + |c1| +
+|c2|) of the real one, so where |d| reaches e = |c0| + |c1| + |c2| + 512 its
+sign is the sign of id's float test. Only boxes closer than that to a plane
+(a fraction of a unit near the view, about e / 16384 units) take id's floats.
+*/
+static int R_QogCullFloat (mnode_t *node, int i, int *pindex)
+{
+	vec3_t	pt;
+
+	pt[0] = (float)node->minmaxs[pindex[0]];
+	pt[1] = (float)node->minmaxs[pindex[1]];
+	pt[2] = (float)node->minmaxs[pindex[2]];
+	return DotProduct (pt, view_clipplanes[i].normal) <= view_clipplanes[i].dist;
+}
+
+static QOG_NOINLINE int R_QogCullNodeInt (mnode_t *node, int clipflags, const int *pl)
+{
+	int		i, *pindex, c0, c1, c2, d, e;
+	float	dot;
+	vec3_t	pt;
+
+	for (i=0 ; i<4 ; i++, pl += 4)
+	{
+		if (! (clipflags & (1<<i)) )
+			continue;	// don't need to clip against it
+
+		pindex = pfrustum_indexes[i];
+
+		// reject: id's dot (rejectpt) <= dist
+		c0 = node->minmaxs[pindex[0]];
+		c1 = node->minmaxs[pindex[1]];
+		c2 = node->minmaxs[pindex[2]];
+		d = pl[0] * c0 + pl[1] * c1 + pl[2] * c2 - pl[3];
+		e = (c0 < 0 ? -c0 : c0) + (c1 < 0 ? -c1 : c1) + (c2 < 0 ? -c2 : c2) + 512;
+		if (d <= -e)
+			return -1;
+		if (d < e && R_QogCullFloat (node, i, pindex))
+			return -1;
+
+		// accept: id's dot (acceptpt) >= dist
+		c0 = node->minmaxs[pindex[3+0]];
+		c1 = node->minmaxs[pindex[3+1]];
+		c2 = node->minmaxs[pindex[3+2]];
+		d = pl[0] * c0 + pl[1] * c1 + pl[2] * c2 - pl[3];
+		e = (c0 < 0 ? -c0 : c0) + (c1 < 0 ? -c1 : c1) + (c2 < 0 ? -c2 : c2) + 512;
+		if (d >= e)
+			clipflags &= ~(1<<i);	// node is entirely on screen
+		else if (d > -e)
+		{
+			pt[0] = (float)c0;
+			pt[1] = (float)c1;
+			pt[2] = (float)c2;
+			dot = DotProduct (pt, view_clipplanes[i].normal);
+			if (dot >= view_clipplanes[i].dist)
+				clipflags &= ~(1<<i);
+		}
+	}
+	return clipflags;
+}
+#endif
+
 static QOG_NOINLINE int R_QogCullNode (mnode_t *node, int clipflags)
 {
 	int		i, *pindex;
 	float	mm[6];
 	vec3_t	acceptpt, rejectpt;
 
+#ifdef QOG_WORLDNODE_INT
+	const int	*pl = R_QogFxPlanes ();
+
+	if (pl)
+		return R_QogCullNodeInt (node, clipflags, pl);
+#endif
 	for (i=0 ; i<6 ; i++)
 		mm[i] = (float)node->minmaxs[i];
 
@@ -809,6 +978,9 @@ void R_RenderWorld (void)
 	VectorCopy (r_origin, modelorg);
 	clmodel = currententity->model;
 	r_pcurrentvertbase = clmodel->vertexes;
+#ifdef QOG_FRONT_FAST
+	R_QogFxSetup ();	// QuakeOG (Agent AJ): Fast mode's integer front end
+#endif
 
 	R_RecursiveWorldNode (clmodel->nodes, 15);
 

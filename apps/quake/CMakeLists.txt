@@ -145,6 +145,9 @@ list(APPEND QOG_ENGINE_DEFS
 # lists for sv.max_edicts entries, not 600 (sv_phys.c)
 list(APPEND QOG_ENGINE_DEFS
     QOG_PUSHMOVE_ALLOCA)
+# World and brush model front end, exact (Agent AJ), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_BMODEL_ZEROANGLE)           # r_bsp.c R_RotateBmodel: zero angles without double trig or matrix products
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -415,6 +418,18 @@ if(QOG_SPLIT)
     option(QOG_BOARD_ALIASFAST "with FAST, alias vertices, triangle gradients and particles in integers in Fast mode" ON)
     if(QOG_BOARD_FAST AND QOG_BOARD_ALIASFAST)
         list(APPEND _cl_defs QOG_ALIAS_FAST)      # r_alias.c, d_polyse.c, d_part.c
+    endif()
+    # QuakeOG (Agent AJ): in Fast mode the world and brush model edges are
+    # projected and stepped in integers (r_draw.c), r_fast 0 is unchanged
+    option(QOG_BOARD_FRONTFAST "Fast mode projects and sets up edges in fixed point (needs FAST, VERTCACHE, CLIPDIST)" ON)
+    if(QOG_BOARD_FRONTFAST AND QOG_BOARD_FAST AND QOG_BOARD_VERTCACHE AND QOG_BOARD_CLIPDIST)
+        list(APPEND _cl_defs QOG_FRONT_FAST)
+        # exact, both modes: BSP node frustum tests in integers with a
+        # margin, id's floats only near a plane (r_bsp.c R_QogCullNodeInt)
+        option(QOG_BOARD_WORLDNODEINT "with FRONTFAST and WORLDNODE, node culling in integers first (exact)" ON)
+        if(QOG_BOARD_WORLDNODEINT AND QOG_BOARD_WORLDNODE)
+            list(APPEND _cl_defs QOG_WORLDNODE_INT)
+        endif()
     endif()
     # Agent AH: the console's text 4 KB to 1 KB (26 lines of scrollback, the
     # 4 notify lines, MG24Quake keeps 913 B). It is taken from the client's

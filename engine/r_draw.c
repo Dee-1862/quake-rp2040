@@ -243,6 +243,85 @@ static unsigned		r_qog_vertmask;
 static byte			*r_qog_vertbase;	// the world's vertices
 static unsigned		r_qog_vertbytes;	//   and their size, at most 0xFFFF vertices
 
+#ifdef QOG_FRONT_FAST
+#if !defined(QOG_VERTCACHE_CLIPDIST) || !defined(QOG_RFAST)
+#error "QOG_FRONT_FAST needs QOG_VERTCACHE_CLIPDIST and QOG_RFAST"
+#endif
+/*
+QuakeOG (Agent AJ): the Fast mode (r_fast 1) front end in integers.
+
+The RP2040 has no FPU, so each float operation of id's projection is a
+call of tens of cycles (about 1,750 cycles a point), while its multiply
+takes one cycle and its divider eight. In Fast mode the world and brush
+model front end works in fixed point:
+ - a position less the view origin, in 1/1024 units within 128 units of
+   the eye on each axis and in 1/32 units out to 4096, is multiplied by
+   xscale vright and yscale vup (scaled by a power of two that keeps the
+   products in 32 bits) and by vpn in 1/8192. The origin's rounding goes
+   in as a constant per view, so the view does not move in steps.
+ - z is taken to 14 bits, and u and v come from two integer divides, in
+   1/256 pixel, with id's clamps. ceil (v) is an integer step.
+ - the edge's u and u_step in 12.20 come from integer divides of the
+   1/256 pixel ends.
+ - the nearest 1/z of an edge and of a face is kept as the smallest z
+   (0x7FFFFFFF - z in the float's bits, so 0 still means none) and turned
+   into id's float 1/z once per surface.
+ - R_ClipEdge takes the plane sides from integer distances (the view
+   planes pass through the eye) and interpolates the clipped point with
+   id's floats from their ratio.
+ - a face's 1/z gradients come from its plane normal in 1/16384 against
+   three rows made once per view or entity.
+Points land within about 0.02 pixel of id's on average, so edges and span
+ends move by a pixel only where id's value lies that close to a pixel
+boundary (0.07% of the pixels of the test shots with the exact spans).
+Points out of the integer range, at the eye or far off the view take
+id's float projection. The constants per view or brush entity live in a
+header after the vertex cache entries (memory nothing else uses before
+the spans are drawn), so no static RAM is used.
+*/
+typedef struct
+{
+	int		on;					// set up for the current entity
+	int		org[3];				// modelorg in 1/1024 units
+	int		mx[3], my[3], mz[3];	// xscale vright 2^xl, yscale vup 2^yl, vpn 2^13
+	int		cx, cy, cz;			// the origin's rounding through the same rows
+	int		xsh, ysh;			// 21 - xl, 21 - yl
+	int		xlim, ylim;			// a |x|, |y| from which the point is far off the view
+	int		xc, yc;				// xcenter, ycenter in 1/256 pixel
+	int		umin, umax, vmin, vmax;	// id's clamps in 1/256 pixel
+	int		cn[4][4];			// view_clipplanes normals in 1/8192 and the origin's rounding
+	int		gr[3][3];			// the face gradient rows (R_QogFaceGradFast), 2^gs times
+	float	gk[3];				//   and 2^-(gs + 14) for each
+#ifdef QOG_WORLDNODE_INT
+	int		plon;				// the world's view planes below are set
+	int		pl[4][4];			// view_clipplanes normal and dist in 1/16384
+#endif
+} r_qogfx_t;
+
+// the header follows the vertex cache entries (R_QogVertCacheBegin)
+#define R_QOGFX			((r_qogfx_t *)(r_qog_vertcache + r_qog_vertmask + 1))
+#ifdef QOG_FRONT_FAST_ALWAYS
+#define R_QOGFX_ON()	(r_qog_vertcache && R_QOGFX->on)
+#else
+#define R_QOGFX_ON()	(r_qogfast && r_qog_vertcache && R_QOGFX->on)
+#endif
+#define QOG_FX_NEARZ	655		// NEAR_CLIP in 1/65536 units
+#define QOG_FX_LMAX		(1 << 17)	// |position - origin| per axis: 128 units in 1/1024, 4096 in 1/32
+#define QOG_FX_RESERVE	sizeof(r_qogfx_t)
+#ifndef QOG_VERTCACHE_FASTMAX
+#define QOG_VERTCACHE_FASTMAX	128	// entries in Fast mode (R_QogVertCacheBegin)
+#endif
+// an int that may alias a float (the Fast state kept in id's float globals)
+#if defined(__GNUC__)
+typedef int __attribute__((may_alias))	r_qogaint_t;
+#else
+typedef int								r_qogaint_t;
+#endif
+#define QOG_FI(f)		(*(r_qogaint_t *)&(f))
+#else
+#define QOG_FX_RESERVE	0
+#endif
+
 /* called by R_EdgeDrawing before R_RenderWorld, after the edge cache is set */
 void R_QogVertCacheBegin (void)
 {
@@ -269,17 +348,24 @@ void R_QogVertCacheBegin (void)
 		hi = (byte *)r_edgesentinels;
 	}
 	lo = (byte *)(((size_t)lo + 3) & ~(size_t)3);
-	if (hi <= lo)
+	if (hi <= lo + QOG_FX_RESERVE)	// QuakeOG (Agent AJ): the Fast header
 		return;
-	n = (unsigned)(hi - lo) / sizeof(r_qogvert_t);
+	n = (unsigned)(hi - lo - QOG_FX_RESERVE) / sizeof(r_qogvert_t);
 	if (n > QOG_VERTCACHE_MAX)
 		n = QOG_VERTCACHE_MAX;
+#ifdef QOG_FRONT_FAST
+	// QuakeOG (Agent AJ): in Fast mode a miss costs a few hundred cycles,
+	// not 1,750, so fewer entries do: the cache then ends in a higher frame
+	// buffer row, which the last frame's scanout leaves sooner
+	if (r_qogfast && n > QOG_VERTCACHE_FASTMAX)
+		n = QOG_VERTCACHE_FASTMAX;
+#endif
 	while (n & (n - 1))
 		n &= n - 1;
 	if (n < 64)
 		return;
 #ifdef QOG_VID_SCANRACE
-	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t));	// QuakeOG (Agent AK): the last scanout may still read these rows
+	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t) + QOG_FX_RESERVE);	// QuakeOG (Agent AK): the last scanout may still read these rows (Agent AJ: and the Fast header after them)
 #endif
 	for (i = 0 ; i < n ; i++)
 		((r_qogvert_t *)lo)[i].tag = 0xFFFF;
@@ -288,6 +374,12 @@ void R_QogVertCacheBegin (void)
 	r_qog_vertbytes = verts * sizeof(mvertex_t);
 	r_qog_vertmask = n - 1;
 	r_qog_vertcache = (r_qogvert_t *)lo;
+#ifdef QOG_FRONT_FAST
+	R_QOGFX->on = 0;	// QuakeOG (Agent AJ): R_QogFxSetup turns it on
+#ifdef QOG_WORLDNODE_INT
+	R_QOGFX->plon = 0;
+#endif
+#endif
 }
 
 void R_QogVertCacheEnd (void)
@@ -427,6 +519,671 @@ static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int
 	*plzi = lzi;
 	*pceilv = ceilv;
 }
+
+#ifdef QOG_FRONT_FAST
+/* QuakeOG (Agent AJ): the Fast front end, see r_qogfx_t above */
+
+static int R_QogRound (float f)
+{
+	return f >= 0 ? (int)(f + 0.5f) : -(int)(0.5f - f);
+}
+
+/* the bit length of v (0 for 0), without a count leading zeros instruction */
+static int R_QogBits (unsigned v)
+{
+	int	n = 0;
+
+	if (v >= 1u << 16) { v >>= 16; n += 16; }
+	if (v >= 1u << 8) { v >>= 8; n += 8; }
+	if (v >= 1u << 4) { v >>= 4; n += 4; }
+	if (v >= 1u << 2) { v >>= 2; n += 2; }
+	if (v >= 1u << 1) { v >>= 1; n += 1; }
+	return n + (int)v;
+}
+
+/* f * 1024 rounded, for |f| below 8192, else 2^26 */
+static int R_QogQ10 (float f)
+{
+	unsigned	b, m;
+	int			e, q;
+
+	b = (unsigned)QOG_FI (f);
+	e = (int)((b >> 23) & 0xFF) - 127;	// |f| = 1.m * 2^e
+	if (e < -11)
+		return 0;						// |f * 1024| below 0.5
+	if (e >= 13)
+		return 1 << 26;
+	m = (b & 0x7FFFFF) | 0x800000;		// 1.m * 2^23
+	q = (int)((m + (1u << (12 - e))) >> (13 - e));
+	return (b & 0x80000000) ? -q : q;
+}
+
+/* a point less the origin: in 1/1024 units within 256 units on each axis
+   (returns 1), else in 1/32 units (returns 0), or out of range (-1) */
+static int R_QogLocal (mvertex_t *pv, int *l)
+{
+	r_qogfx_t	*fx = R_QOGFX;
+
+	l[0] = R_QogQ10 (pv->position[0]) - fx->org[0];
+	l[1] = R_QogQ10 (pv->position[1]) - fx->org[1];
+	l[2] = R_QogQ10 (pv->position[2]) - fx->org[2];
+	if ((unsigned)(l[0] + QOG_FX_LMAX) < 2 * QOG_FX_LMAX &&
+		(unsigned)(l[1] + QOG_FX_LMAX) < 2 * QOG_FX_LMAX &&
+		(unsigned)(l[2] + QOG_FX_LMAX) < 2 * QOG_FX_LMAX)
+		return 1;
+	l[0] = (l[0] + 16) >> 5;
+	l[1] = (l[1] + 16) >> 5;
+	l[2] = (l[2] + 16) >> 5;
+	if ((unsigned)(l[0] + QOG_FX_LMAX) < 2 * QOG_FX_LMAX &&
+		(unsigned)(l[1] + QOG_FX_LMAX) < 2 * QOG_FX_LMAX &&
+		(unsigned)(l[2] + QOG_FX_LMAX) < 2 * QOG_FX_LMAX)
+		return 0;
+	return -1;
+}
+
+/*
+The constants of the current view (R_RenderWorld) or brush entity
+(R_DrawBEntitiesOnList, after R_RotateBmodel), from modelorg, vright, vup,
+vpn and the view's projection values. Off when not in Fast mode, without
+a vertex cache, or for values the integer ranges do not cover.
+*/
+void R_QogFxSetup (void)
+{
+	r_qogfx_t	*fx;
+	vec3_t		r;
+	float		xs, ys, gr[3][3];
+	int			i, k, xl, yl;
+
+	if (!r_qog_vertcache)
+		return;
+	fx = R_QOGFX;
+	fx->on = 0;
+#ifdef QOG_WORLDNODE_INT
+	// QuakeOG (Agent AJ): the world's view planes for R_QogCullNode, in
+	// both render modes (its integer tests decide only with a margin)
+	fx->plon = 0;
+	if (!insubmodel)
+	{
+		for (i=0 ; i<4 ; i++)
+		{
+			if (view_clipplanes[i].dist > 65536 || view_clipplanes[i].dist < -65536)
+				break;
+			fx->pl[i][0] = R_QogRound (view_clipplanes[i].normal[0] * 16384);
+			fx->pl[i][1] = R_QogRound (view_clipplanes[i].normal[1] * 16384);
+			fx->pl[i][2] = R_QogRound (view_clipplanes[i].normal[2] * 16384);
+			fx->pl[i][3] = R_QogRound (view_clipplanes[i].dist * 16384);
+		}
+		fx->plon = i == 4;
+	}
+#endif
+#ifndef QOG_FRONT_FAST_ALWAYS	// measurement: the integer front end with the exact spans
+	if (!r_qogfast)
+		return;
+#endif
+#ifdef QOG_EDGES_IN_ZBUFFER
+	// brush entities clip their polygons in buffers at the start of the
+	// z-buffer (r_bsp.c), which must not reach the header
+	if (insubmodel && (byte *)(fx + 1) > r_ztemp_base &&
+		(byte *)fx < r_ztemp_base + MAX_BMODEL_VERTS * sizeof(mvertex_t) + MAX_BMODEL_EDGES * sizeof(bedge_t))
+		return;
+#endif
+	for (i=0 ; i<3 ; i++)
+	{
+		if (modelorg[i] > 8000 || modelorg[i] < -8000)
+			return;
+		fx->org[i] = R_QogRound (modelorg[i] * 1024);
+		r[i] = fx->org[i] * (1.0f / 1024) - modelorg[i];
+	}
+	// the largest power of two that keeps xscale * 2^xl within 8192
+	if (xscale > 8192 || yscale > 8192 || xscale < 1.0f / 512 || yscale < 1.0f / 512)
+		return;
+	for (xl = 0, xs = xscale ; xl < 21 && xs * 2 <= 8192 ; xl++)
+		xs *= 2;
+	for (yl = 0, ys = yscale ; yl < 21 && ys * 2 <= 8192 ; yl++)
+		ys *= 2;
+	for (i=0 ; i<3 ; i++)
+	{
+		fx->mx[i] = R_QogRound (vright[i] * xs);
+		fx->my[i] = R_QogRound (vup[i] * ys);
+		fx->mz[i] = R_QogRound (vpn[i] * 8192);
+	}
+	fx->cx = R_QogRound (DotProduct (r, vright) * xs * 1024);
+	fx->cy = R_QogRound (DotProduct (r, vup) * ys * 1024);
+	fx->cz = R_QogRound (DotProduct (r, vpn) * (8192.0f * 1024));
+	fx->xsh = 21 - xl;
+	fx->ysh = 21 - yl;
+	fx->xlim = 1 << (31 - fx->xsh);
+	fx->ylim = 1 << (31 - fx->ysh);
+	fx->xc = R_QogRound (xcenter * 256);
+	fx->yc = R_QogRound (ycenter * 256);
+	fx->umin = R_QogRound (r_refdef.fvrectx_adj * 256);
+	fx->umax = R_QogRound (r_refdef.fvrectright_adj * 256);
+	fx->vmin = R_QogRound (r_refdef.fvrecty_adj * 256);
+	fx->vmax = R_QogRound (r_refdef.fvrectbottom_adj * 256);
+	// the view planes pass through the eye (R_TransformFrustum), so a
+	// point's distance is normal . (position - modelorg), in 1/262144
+	for (i=0 ; i<4 ; i++)
+	{
+		fx->cn[i][0] = R_QogRound (view_clipplanes[i].normal[0] * 8192);
+		fx->cn[i][1] = R_QogRound (view_clipplanes[i].normal[1] * 8192);
+		fx->cn[i][2] = R_QogRound (view_clipplanes[i].normal[2] * 8192);
+		fx->cn[i][3] = R_QogRound (DotProduct (r, view_clipplanes[i].normal) * 262144);
+	}
+	// the face gradients' rows: d_zistepu = distinv vright . n / xscale,
+	// d_zistepv = -distinv vup . n / yscale and d_ziorigin = distinv
+	// (vpn - xcenter vright / xscale + ycenter vup / yscale) . n
+	for (i=0 ; i<3 ; i++)
+	{
+		gr[0][i] = vright[i] * xscaleinv;
+		gr[1][i] = -vup[i] * yscaleinv;
+		gr[2][i] = vpn[i] - xcenter * xscaleinv * vright[i] + ycenter * yscaleinv * vup[i];
+	}
+	for (k=0 ; k<3 ; k++)
+	{
+		float	m = 0, sc = 1;
+
+		for (i=0 ; i<3 ; i++)
+			if (gr[k][i] > m || -gr[k][i] > m)
+				m = gr[k][i] > 0 ? gr[k][i] : -gr[k][i];
+		if (m > 65536 || m < 1.0f / 65536)
+			return;
+		// 2^gs with m 2^gs in [32768, 65536), the dot products stay below 2^30.8
+		while (m * sc >= 65536)
+			sc *= 0.5f;
+		while (m * sc < 32768)
+			sc *= 2;
+		for (i=0 ; i<3 ; i++)
+			fx->gr[k][i] = R_QogRound (gr[k][i] * sc);
+		fx->gk[k] = 1.0f / (sc * 16384);
+	}
+	fx->on = 1;
+}
+
+#ifdef QOG_WORLDNODE_INT
+/* the world's view planes in integers for R_QogCullNode, or NULL */
+const int *R_QogFxPlanes (void)
+{
+	if (!r_qog_vertcache || insubmodel || !R_QOGFX->plon)
+		return NULL;
+	return &R_QOGFX->pl[0][0];
+}
+#endif
+
+/*
+id's float projection, with the result in the Fast front end's units:
+o[0] u and o[1] v in 1/256 pixel, o[2] z in 1/65536 units, o[3] ceil (v).
+Only for points out of the integer range, so not inlined.
+*/
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+static void R_QogProjectFloatFx (mvertex_t *pv, int *o)
+{
+	vec3_t	local, transformed;
+	float	lzi, u, v;
+
+	VectorSubtract (pv->position, modelorg, local);
+	TransformVector (local, transformed);
+	if (QOG_NEARCLIPPED (transformed[2]))
+		transformed[2] = NEAR_CLIP;
+	lzi = QOG_FRECIP (transformed[2]);
+	u = (xcenter + xscale * lzi * transformed[0]);
+	if (u < r_refdef.fvrectx_adj)
+		u = r_refdef.fvrectx_adj;
+	if (u > r_refdef.fvrectright_adj)
+		u = r_refdef.fvrectright_adj;
+	v = (ycenter - yscale * lzi * transformed[1]);
+	if (v < r_refdef.fvrecty_adj)
+		v = r_refdef.fvrecty_adj;
+	if (v > r_refdef.fvrectbottom_adj)
+		v = r_refdef.fvrectbottom_adj;
+	o[0] = R_QogRound (u * 256);
+	o[1] = R_QogRound (v * 256);
+	o[2] = transformed[2] < 30000 ? R_QogRound (transformed[2] * 65536) : 0x7FFFFFFE;
+	if (o[2] < QOG_FX_NEARZ)
+		o[2] = QOG_FX_NEARZ;
+	o[3] = (o[1] + 255) >> 8;
+}
+
+/*
+A point in integers. Returns 0 for id's float projection instead: out of
+the integer range, at or behind id's near clip (where id clamps z and u, v
+depend on the rounding of everything) or far past the view's sides (only
+points no clip has seen, whose u or v id clamps).
+*/
+static int R_QogProjectFx (mvertex_t *pv, int *o)
+{
+	r_qogfx_t	*fx = R_QOGFX;
+	int			l[3], x, y, z, zn, r, u, v, near, cx, cy, cz;
+
+	near = R_QogLocal (pv, l);
+	if (near < 0)
+		return 0;
+	cx = fx->cx;
+	cy = fx->cy;
+	cz = fx->cz;
+	if (!near)
+	{
+		cx >>= 5;
+		cy >>= 5;
+		cz >>= 5;
+	}
+	// z in 1/2^23 units near, 1/2^18 far, x and y in the same ratio
+	z = fx->mz[0] * l[0] + fx->mz[1] * l[1] + fx->mz[2] * l[2] + cz;
+	if (z <= (near ? QOG_FX_NEARZ * 128 : QOG_FX_NEARZ * 4))
+		return 0;
+	x = fx->mx[0] * l[0] + fx->mx[1] * l[1] + fx->mx[2] * l[2] + cx;
+	y = fx->my[0] * l[0] + fx->my[1] * l[1] + fx->my[2] * l[2] + cy;
+
+	// z to 14 bits, so the quotients below are 1/256 pixel
+	zn = z;
+	r = R_QogBits ((unsigned)z) - 14;
+	if (r > 0)
+	{
+		zn >>= r;
+		x >>= r;
+		y >>= r;
+	}
+	if (x >= fx->xlim || x <= -fx->xlim || y >= fx->ylim || y <= -fx->ylim)
+		return 0;
+
+	u = fx->xc + x * (1 << fx->xsh) / zn;
+	if (u < fx->umin)
+		u = fx->umin;
+	if (u > fx->umax)
+		u = fx->umax;
+
+	v = fx->yc - y * (1 << fx->ysh) / zn;
+	if (v < fx->vmin)
+		v = fx->vmin;
+	if (v > fx->vmax)
+		v = fx->vmax;
+
+	o[0] = u;
+	o[1] = v;
+	o[2] = near ? z >> 7 : z >> 2;	// 1/65536 units
+	o[3] = (v + 255) >> 8;	// ceil (v)
+	return 1;
+}
+
+/* a point through the vertex cache (world vertices) */
+static void R_QogProjectFast (mvertex_t *pv, int *o)
+{
+	r_qogvert_t	*e = R_QogVertEntry (pv);
+
+	if (e && e->ceilv != QOG_VC_NOPROJ)
+	{
+		// the floats' bits hold the ints in Fast mode
+		o[0] = QOG_FI (e->u);
+		o[1] = QOG_FI (e->v);
+		o[2] = QOG_FI (e->lzi);
+		o[3] = e->ceilv;
+		return;
+	}
+	QOG_WC (QOG_WC_PROJECT);
+	if (!R_QogProjectFx (pv, o))
+		R_QogProjectFloatFx (pv, o);
+#ifdef QOG_FRONT_FAST_CHECK
+	// measurement (PC): the integer point against id's float one
+	{
+		static int	n, maxdu, maxdv, ceildiff, zbad;
+		static double	sdu, sdv;
+		int			f[4], du, dv;
+
+		R_QogProjectFloatFx (pv, f);
+		du = o[0] - f[0];
+		dv = o[1] - f[1];
+		if (du < 0) du = -du;
+		if (dv < 0) dv = -dv;
+		sdu += du; sdv += dv;
+		if (du > maxdu) maxdu = du;
+		if (dv > maxdv) maxdv = dv;
+		if (o[3] != f[3]) ceildiff++;
+		if (o[2] > f[2] + f[2] / 1000 + 2 || o[2] < f[2] - f[2] / 1000 - 2) zbad++;
+		if (++n % 200000 == 0)
+			Con_Printf ("fxcheck %d points, max du %d dv %d (1/256 px), ceil v differs %d, z off by 0.1%% %d mean du %.2f dv %.2f\n", n, maxdu, maxdv, ceildiff, zbad, sdu / n, sdv / n);
+	}
+#endif
+	if (e)
+	{
+		QOG_FI (e->u) = o[0];
+		QOG_FI (e->v) = o[1];
+		QOG_FI (e->lzi) = o[2];
+		e->ceilv = (short)o[3];
+	}
+}
+
+/* a float variable's bits as an int, and back (the Fast state in id's globals) */
+static int R_QogGetI (float *f)
+{
+	return QOG_FI (*f);
+}
+
+static void R_QogSetI (float *f, int i)
+{
+	QOG_FI (*f) = i;
+}
+
+/* the nearest 1/z of a face from the Fast key (0x7FFFFFFF - z), as id's float */
+static float R_QogNearzi (void)
+{
+	int	key = R_QogGetI (&r_nearzi);
+
+	if (key <= 0)
+		return 0;
+	return 65536.0f / (float)(0x7FFFFFFF - key);
+}
+
+/* f * 16384 rounded, for |f| at most 1 (a plane normal's component) */
+static int R_QogQ14 (float f)
+{
+	unsigned	b, m;
+	int			e, q;
+
+	b = (unsigned)QOG_FI (f);
+	e = (int)((b >> 23) & 0xFF) - 127;	// |f| = 1.m * 2^e
+	if (e < -15)
+		return 0;
+	if (e > 0)
+		e = 0;							// not a unit normal: 1
+	m = (b & 0x7FFFFF) | 0x800000;
+	q = (int)((m + (1u << (8 - e))) >> (9 - e));
+	return (b & 0x80000000) ? -q : q;
+}
+
+/*
+A face's 1/z gradients in Fast mode: the plane normal in 1/16384 against
+rows made once per view or entity (R_QogFxSetup), so the face costs the
+distance's reciprocal, three int dot products and six float multiplies
+instead of id's 30 float operations.
+*/
+static void R_QogFaceGradFast (mplane_t *pplane)
+{
+	r_qogfx_t	*fx = R_QOGFX;
+	int			n0, n1, n2, g;
+	float		distinv;
+
+	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));
+	n0 = R_QogQ14 (pplane->normal[0]);
+	n1 = R_QogQ14 (pplane->normal[1]);
+	n2 = R_QogQ14 (pplane->normal[2]);
+	g = fx->gr[0][0] * n0 + fx->gr[0][1] * n1 + fx->gr[0][2] * n2;
+	surface_p->d_zistepu = (float)g * (distinv * fx->gk[0]);
+	g = fx->gr[1][0] * n0 + fx->gr[1][1] * n1 + fx->gr[1][2] * n2;
+	surface_p->d_zistepv = (float)g * (distinv * fx->gk[1]);
+	g = fx->gr[2][0] * n0 + fx->gr[2][1] * n1 + fx->gr[2][2] * n2;
+	surface_p->d_ziorigin = (float)g * (distinv * fx->gk[2]);
+}
+
+/*
+R_EmitEdge in Fast mode: the same edges, with the points and the stepping
+in integers. r_u1, r_v1 and r_lzi1 hold u, v (1/256 pixel) and z as ints,
+r_nearzi and edge->nearzi the key 0x7FFFFFFF - z.
+*/
+static void R_QogEmitEdgeFast (mvertex_t *pv0, mvertex_t *pv1)
+{
+	edge_t	*edge, *pcheck;
+	int		u_check, v, v2, side, key, zmin;
+	int		p0[4], p1[4], ua, va, du, dv, a, rem, ustep, u;
+
+	QOG_WC (QOG_WC_EMITEDGE);
+	if (r_lastvertvalid)
+	{
+		p0[0] = R_QogGetI (&r_u1);
+		p0[1] = R_QogGetI (&r_v1);
+		p0[2] = R_QogGetI (&r_lzi1);
+		p0[3] = r_ceilv1;
+	}
+	else
+		R_QogProjectFast (pv0, p0);
+	R_QogProjectFast (pv1, p1);
+	R_QogSetI (&r_u1, p1[0]);
+	R_QogSetI (&r_v1, p1[1]);
+	R_QogSetI (&r_lzi1, p1[2]);
+
+	zmin = p0[2] < p1[2] ? p0[2] : p1[2];
+	key = 0x7FFFFFFF - zmin;
+	if (key > R_QogGetI (&r_nearzi))	// for mipmap finding
+		R_QogSetI (&r_nearzi, key);
+
+// for right edges, all we want is the effect on 1/z
+	if (r_nearzionly)
+		return;
+
+	r_emitted = 1;
+	r_ceilv1 = p1[3];
+
+// create the edge
+	if (p0[3] == r_ceilv1)
+	{
+	// we cache unclipped horizontal edges as fully clipped
+		if (cacheoffset != 0x7FFFFFFF)
+		{
+			cacheoffset = FULLY_CLIPPED_CACHED |
+					(r_framecount & FRAMECOUNT_MASK);
+		}
+		return;		// horizontal edge
+	}
+
+	side = p0[3] > r_ceilv1;
+
+	edge = edge_p++;
+	edge->owner = EDGE_OWNER (r_pedge);
+	R_QogSetI (&edge->nearzi, key);
+
+	if (side == 0)
+	{
+	// trailing edge (go from p1 to p2)
+		v = p0[3];
+		v2 = r_ceilv1 - 1;
+		edge->surfs[0] = surface_p - surfaces;
+		edge->surfs[1] = 0;
+		ua = p0[0];
+		va = p0[1];
+		du = p1[0] - p0[0];
+		dv = p1[1] - p0[1];
+	}
+	else
+	{
+	// leading edge (go from p2 to p1)
+		v2 = p0[3] - 1;
+		v = r_ceilv1;
+		edge->surfs[0] = 0;
+		edge->surfs[1] = surface_p - surfaces;
+		ua = p1[0];
+		va = p1[1];
+		du = p0[0] - p1[0];
+		dv = p0[1] - p1[1];
+	}
+
+	// dv > 0 (the ceilings differ). The slope in 20.12 and its 12.20 step,
+	// limited to 1024 pixels a line (such an edge covers one line, which is
+	// never stepped)
+	if (du >= dv * 1024 || -du >= dv * 1024)
+	{
+		a = du > 0 ? (1 << 22) : -(1 << 22);
+		ustep = a * 256;
+	}
+	else
+	{
+		a = du * 4096 / dv;
+		rem = du * 4096 - a * dv;
+		ustep = a * 256 + rem * 256 / dv;
+	}
+	u = ua * 4096 + ((v << 8) - va) * a;	// at the first line, 12.20 (1/256 times 1/4096)
+
+	edge->u_step = ustep;
+	edge->u = u + 0xFFFFF;
+
+// we need to do this to avoid stepping off the edges if a very nearly
+// horizontal edge is less than epsilon above a scan, and numeric error causes
+// it to incorrectly extend to the scan, and the extension of the line goes off
+// the edge of the screen
+	if (edge->u < r_refdef.vrect_x_adj_shift20)
+		edge->u = r_refdef.vrect_x_adj_shift20;
+	if (edge->u > r_refdef.vrectright_adj_shift20)
+		edge->u = r_refdef.vrectright_adj_shift20;
+
+//
+// sort the edge in normally
+//
+	u_check = edge->u;
+	if (edge->surfs[0])
+		u_check++;	// sort trailers after leaders
+
+	if (!newedges[v] || EDGE_PTR(newedges[v])->u >= u_check)
+	{
+		edge->next = newedges[v];
+		newedges[v] = EDGE_REF(edge);
+	}
+	else
+	{
+		pcheck = EDGE_PTR(newedges[v]);
+		while (pcheck->next && EDGE_PTR(pcheck->next)->u < u_check)
+			pcheck = EDGE_PTR(pcheck->next);
+		edge->next = pcheck->next;
+		pcheck->next = EDGE_REF(edge);
+	}
+
+	edge->nextremove = removeedges[v2];
+	removeedges[v2] = EDGE_REF(edge);
+}
+
+/*
+A point's distance to view plane k in Fast mode, in 1/262144 units, from
+the same integer position as the projection (through the vertex cache's
+distance slots for world vertices, which then hold ints).
+*/
+static int R_QogClipDistFx (mvertex_t *pv, int k)
+{
+	r_qogfx_t	*fx = R_QOGFX;
+	r_qogvert_t	*e = R_QogVertEntry (pv);
+	int			l0, l1, l2, d;
+
+	if (e && e->d[k].bits != QOG_VC_NODIST)
+		return (int)e->d[k].bits;
+	QOG_WC (QOG_WC_CLIPDOT);
+	// in 1/32 units, so every point's distance has the same scale
+	l0 = (R_QogQ10 (pv->position[0]) - fx->org[0] + 16) >> 5;
+	l1 = (R_QogQ10 (pv->position[1]) - fx->org[1] + 16) >> 5;
+	l2 = (R_QogQ10 (pv->position[2]) - fx->org[2] + 16) >> 5;
+	// far points (past 4096 units on an axis) are pulled in, only their
+	// distance's sign matters for them
+	if (l0 >= QOG_FX_LMAX) l0 = QOG_FX_LMAX - 1;
+	if (l0 <= -QOG_FX_LMAX) l0 = 1 - QOG_FX_LMAX;
+	if (l1 >= QOG_FX_LMAX) l1 = QOG_FX_LMAX - 1;
+	if (l1 <= -QOG_FX_LMAX) l1 = 1 - QOG_FX_LMAX;
+	if (l2 >= QOG_FX_LMAX) l2 = QOG_FX_LMAX - 1;
+	if (l2 <= -QOG_FX_LMAX) l2 = 1 - QOG_FX_LMAX;
+	d = fx->cn[k][0] * l0 + fx->cn[k][1] * l1 + fx->cn[k][2] * l2 + fx->cn[k][3];
+	if (e)
+		e->d[k].bits = (unsigned)d;	// never QOG_VC_NODIST, |d| is below 2^30.8
+	return d;
+}
+
+/*
+R_ClipEdge in Fast mode: the plane sides from the integer distances, the
+clipped point by id's float interpolation with their ratio.
+*/
+static void R_QogClipEdgeFast (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
+{
+	int			d0, d1, k;
+	float		f;
+	mvertex_t	clipvert;
+
+	QOG_WC (QOG_WC_CLIPEDGE);
+	if (clip)
+	{
+		do
+		{
+			k = clip - view_clipplanes;
+			d0 = R_QogClipDistFx (pv0, k);
+			d1 = R_QogClipDistFx (pv1, k);
+
+			if (d0 >= 0)
+			{
+			// point 0 is unclipped
+				if (d1 >= 0)
+				{
+				// both points are unclipped
+					continue;
+				}
+
+			// only point 1 is clipped
+
+			// we don't cache clipped edges
+				cacheoffset = 0x7FFFFFFF;
+
+				f = (float)d0 / ((float)d0 - (float)d1);
+				clipvert.position[0] = pv0->position[0] +
+						f * (pv1->position[0] - pv0->position[0]);
+				clipvert.position[1] = pv0->position[1] +
+						f * (pv1->position[1] - pv0->position[1]);
+				clipvert.position[2] = pv0->position[2] +
+						f * (pv1->position[2] - pv0->position[2]);
+
+				if (clip->leftedge)
+				{
+					r_leftclipped = true;
+					r_leftexit = clipvert;
+				}
+				else if (clip->rightedge)
+				{
+					r_rightclipped = true;
+					r_rightexit = clipvert;
+				}
+
+				R_QogClipEdgeFast (pv0, &clipvert, clip->next);
+				return;
+			}
+			else
+			{
+			// point 0 is clipped
+				if (d1 < 0)
+				{
+				// both points are clipped
+				// we do cache fully clipped edges
+					if (!r_leftclipped)
+						cacheoffset = FULLY_CLIPPED_CACHED |
+								(r_framecount & FRAMECOUNT_MASK);
+					return;
+				}
+
+			// only point 0 is clipped
+				r_lastvertvalid = false;
+
+			// we don't cache partially clipped edges
+				cacheoffset = 0x7FFFFFFF;
+
+				f = (float)d0 / ((float)d0 - (float)d1);
+				clipvert.position[0] = pv0->position[0] +
+						f * (pv1->position[0] - pv0->position[0]);
+				clipvert.position[1] = pv0->position[1] +
+						f * (pv1->position[1] - pv0->position[1]);
+				clipvert.position[2] = pv0->position[2] +
+						f * (pv1->position[2] - pv0->position[2]);
+
+				if (clip->leftedge)
+				{
+					r_leftclipped = true;
+					r_leftenter = clipvert;
+				}
+				else if (clip->rightedge)
+				{
+					r_rightclipped = true;
+					r_rightenter = clipvert;
+				}
+
+				R_QogClipEdgeFast (&clipvert, pv1, clip->next);
+				return;
+			}
+		} while ((clip = clip->next) != NULL);
+	}
+
+// add the edge
+	R_QogEmitEdgeFast (pv0, pv1);
+}
+#endif	// QOG_FRONT_FAST
 #endif
 
 
@@ -451,6 +1208,13 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	int		ceilv1;
 #endif
 
+#ifdef QOG_FRONT_FAST
+	if (R_QOGFX_ON ())
+	{
+		R_QogEmitEdgeFast (pv0, pv1);	// QuakeOG (Agent AJ)
+		return;
+	}
+#endif
 	QOG_WC (QOG_WC_EMITEDGE);	// QuakeOG (Agent Z)
 	if (r_lastvertvalid)
 	{
@@ -639,6 +1403,13 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 	float		d0, d1, f;
 	mvertex_t	clipvert;
 
+#ifdef QOG_FRONT_FAST
+	if (R_QOGFX_ON ())
+	{
+		R_QogClipEdgeFast (pv0, pv1, clip);	// QuakeOG (Agent AJ)
+		return;
+	}
+#endif
 	QOG_WC (QOG_WC_CLIPEDGE);	// QuakeOG (Agent Z)
 	if (clip)
 	{
@@ -758,6 +1529,15 @@ void R_EmitCachedEdge (void)
 	else
 		pedge_t->surfs[1] = surface_p - surfaces;
 
+#ifdef QOG_FRONT_FAST
+	if (R_QOGFX_ON ())
+	{
+		// QuakeOG (Agent AJ): Fast keys (0x7FFFFFFF - z) as ints
+		if (R_QogGetI (&pedge_t->nearzi) > R_QogGetI (&r_nearzi))
+			R_QogSetI (&r_nearzi, R_QogGetI (&pedge_t->nearzi));
+	}
+	else
+#endif
 	if (pedge_t->nearzi > r_nearzi)	// for mipmap finding
 		r_nearzi = pedge_t->nearzi;
 
@@ -945,7 +1725,11 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 #else
 	surface_p->data = (void *)fa;
 #endif
+#ifdef QOG_FRONT_FAST
+	surface_p->nearzi = R_QOGFX_ON () ? R_QogNearzi () : r_nearzi;	// QuakeOG (Agent AJ)
+#else
 	surface_p->nearzi = r_nearzi;
+#endif
 	surface_p->flags = fa->flags;
 	surface_p->insubmodel = insubmodel;
 	surface_p->spanstate = 0;
@@ -956,6 +1740,12 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	surface_p->spans = SPAN_NONE;	// QuakeOG
 
 	pplane = SURF_PLANE (currententity->model, fa);	// QuakeOG
+#ifdef QOG_FRONT_FAST
+	if (R_QOGFX_ON ())
+		R_QogFaceGradFast (pplane);	// QuakeOG (Agent AJ)
+	else
+#endif
+	{
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
@@ -966,6 +1756,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	surface_p->d_ziorigin = p_normal[2] * distinv -
 			xcenter * surface_p->d_zistepu -
 			ycenter * surface_p->d_zistepv;
+	}
 
 //JDC	VectorCopy (r_worldmodelorg, surface_p->modelorg);
 	surface_p++;
@@ -1070,7 +1861,11 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 #else
 	surface_p->data = (void *)psurf;
 #endif
+#ifdef QOG_FRONT_FAST
+	surface_p->nearzi = R_QOGFX_ON () ? R_QogNearzi () : r_nearzi;	// QuakeOG (Agent AJ)
+#else
 	surface_p->nearzi = r_nearzi;
+#endif
 	surface_p->flags = psurf->flags;
 	surface_p->insubmodel = true;
 	surface_p->spanstate = 0;
@@ -1081,6 +1876,12 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	surface_p->spans = SPAN_NONE;	// QuakeOG
 
 	pplane = SURF_PLANE (currententity->model, psurf);	// QuakeOG
+#ifdef QOG_FRONT_FAST
+	if (R_QOGFX_ON ())
+		R_QogFaceGradFast (pplane);	// QuakeOG (Agent AJ)
+	else
+#endif
+	{
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
@@ -1091,6 +1892,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	surface_p->d_ziorigin = p_normal[2] * distinv -
 			xcenter * surface_p->d_zistepu -
 			ycenter * surface_p->d_zistepv;
+	}
 
 //JDC	VectorCopy (r_worldmodelorg, surface_p->modelorg);
 	surface_p++;

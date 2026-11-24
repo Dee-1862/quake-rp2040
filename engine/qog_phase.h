@@ -86,6 +86,8 @@ enum
 	QOG_WC_CACHED,		/* edges reused from the edge cache */
 	QOG_WC_PROJECT,		/* points projected (R_EmitEdge, not from QOG_VERTCACHE) */
 	QOG_WC_CLIPDOT,		/* plane distances computed in R_ClipEdge (not from QOG_VERTCACHE_CLIPDIST) */
+	QOG_WC_ROTATE,		/* R_RotateBmodel calls (Agent AJ) */
+	QOG_WC_ROTTRIG,		/*   of which computed a sine and cosine (an angle not zero) */
 	QOG_WC_N
 };
 
