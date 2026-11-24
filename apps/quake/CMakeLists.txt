@@ -392,6 +392,18 @@ if(QOG_SPLIT)
     if(QOG_BOARD_FAST)
         list(APPEND _cl_defs QOG_RFAST QOG_RFAST_ON)
     endif()
+    # QuakeOG (Agent AJ): in Fast mode the world and brush model edges are
+    # projected and stepped in integers (r_draw.c), r_fast 0 is unchanged
+    option(QOG_BOARD_FRONTFAST "Fast mode projects and sets up edges in fixed point (needs FAST, VERTCACHE, CLIPDIST)" ON)
+    if(QOG_BOARD_FRONTFAST AND QOG_BOARD_FAST AND QOG_BOARD_VERTCACHE AND QOG_BOARD_CLIPDIST)
+        list(APPEND _cl_defs QOG_FRONT_FAST)
+        # exact, both modes: BSP node frustum tests in integers with a
+        # margin, id's floats only near a plane (r_bsp.c R_QogCullNodeInt)
+        option(QOG_BOARD_WORLDNODEINT "with FRONTFAST and WORLDNODE, node culling in integers first (exact)" ON)
+        if(QOG_BOARD_WORLDNODEINT AND QOG_BOARD_WORLDNODE)
+            list(APPEND _cl_defs QOG_WORLDNODE_INT)
+        endif()
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer

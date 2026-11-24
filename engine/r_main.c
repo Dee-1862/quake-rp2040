@@ -1016,6 +1016,9 @@ void R_DrawBEntitiesOnList (void)
 		
 			// FIXME: stop transforming twice
 				R_RotateBmodel ();
+#ifdef QOG_FRONT_FAST
+				R_QogFxSetup ();	// QuakeOG (Agent AJ): Fast mode's integer front end
+#endif
 
 			// calculate dynamic lighting for bmodel if it's not an
 			// instanced model
@@ -1221,7 +1224,7 @@ void R_EdgeDrawing (void)
 	R_QogVertCacheBegin ();	// QuakeOG (Agent Z): world vertices projected once (r_draw.c)
 #endif
 	R_RenderWorld ();
-#ifdef QOG_VERTCACHE
+#if defined(QOG_VERTCACHE) && !defined(QOG_FRONT_FAST)
 	R_QogVertCacheEnd ();
 #endif
 	QOG_PH_ADD (QOG_PH_WORLD, ph);
@@ -1243,6 +1246,11 @@ void R_EdgeDrawing (void)
 	{
 	QOG_PH_T (ph);	// QuakeOG
 	R_DrawBEntitiesOnList ();
+#ifdef QOG_FRONT_FAST
+	// QuakeOG (Agent AJ): the Fast header after the cache serves the brush
+	// entities too (the cache itself is for world faces only)
+	R_QogVertCacheEnd ();
+#endif
 	QOG_PH_ADD (QOG_PH_BMODELS, ph);
 	}
 

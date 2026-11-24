@@ -579,12 +579,87 @@ inlined, so its locals are not in every level of the recursion.
 #else
 #define QOG_NOINLINE
 #endif
+#ifdef QOG_WORLDNODE_INT
+#ifndef QOG_FRONT_FAST
+#error "QOG_WORLDNODE_INT needs QOG_FRONT_FAST (the planes live in its header)"
+#endif
+/*
+QuakeOG (Agent AJ): the same tests in integers first. With the corners c
+(shorts), the plane's normal N and dist D in 1/16384 (rounded, R_QogFxSetup)
+the integer d = c.N - D is within 0.5 (|c0| + |c1| + |c2|) + 0.5 of
+16384 (c.n - dist), and id's float dot product within 0.003 (|c0| + |c1| +
+|c2|) of the real one, so where |d| reaches e = |c0| + |c1| + |c2| + 512 its
+sign is the sign of id's float test. Only boxes closer than that to a plane
+(a fraction of a unit near the view, about e / 16384 units) take id's floats.
+*/
+static int R_QogCullFloat (mnode_t *node, int i, int *pindex)
+{
+	vec3_t	pt;
+
+	pt[0] = (float)node->minmaxs[pindex[0]];
+	pt[1] = (float)node->minmaxs[pindex[1]];
+	pt[2] = (float)node->minmaxs[pindex[2]];
+	return DotProduct (pt, view_clipplanes[i].normal) <= view_clipplanes[i].dist;
+}
+
+static QOG_NOINLINE int R_QogCullNodeInt (mnode_t *node, int clipflags, const int *pl)
+{
+	int		i, *pindex, c0, c1, c2, d, e;
+	float	dot;
+	vec3_t	pt;
+
+	for (i=0 ; i<4 ; i++, pl += 4)
+	{
+		if (! (clipflags & (1<<i)) )
+			continue;	// don't need to clip against it
+
+		pindex = pfrustum_indexes[i];
+
+		// reject: id's dot (rejectpt) <= dist
+		c0 = node->minmaxs[pindex[0]];
+		c1 = node->minmaxs[pindex[1]];
+		c2 = node->minmaxs[pindex[2]];
+		d = pl[0] * c0 + pl[1] * c1 + pl[2] * c2 - pl[3];
+		e = (c0 < 0 ? -c0 : c0) + (c1 < 0 ? -c1 : c1) + (c2 < 0 ? -c2 : c2) + 512;
+		if (d <= -e)
+			return -1;
+		if (d < e && R_QogCullFloat (node, i, pindex))
+			return -1;
+
+		// accept: id's dot (acceptpt) >= dist
+		c0 = node->minmaxs[pindex[3+0]];
+		c1 = node->minmaxs[pindex[3+1]];
+		c2 = node->minmaxs[pindex[3+2]];
+		d = pl[0] * c0 + pl[1] * c1 + pl[2] * c2 - pl[3];
+		e = (c0 < 0 ? -c0 : c0) + (c1 < 0 ? -c1 : c1) + (c2 < 0 ? -c2 : c2) + 512;
+		if (d >= e)
+			clipflags &= ~(1<<i);	// node is entirely on screen
+		else if (d > -e)
+		{
+			pt[0] = (float)c0;
+			pt[1] = (float)c1;
+			pt[2] = (float)c2;
+			dot = DotProduct (pt, view_clipplanes[i].normal);
+			if (dot >= view_clipplanes[i].dist)
+				clipflags &= ~(1<<i);
+		}
+	}
+	return clipflags;
+}
+#endif
+
 static QOG_NOINLINE int R_QogCullNode (mnode_t *node, int clipflags)
 {
 	int		i, *pindex;
 	float	mm[6];
 	vec3_t	acceptpt, rejectpt;
 
+#ifdef QOG_WORLDNODE_INT
+	const int	*pl = R_QogFxPlanes ();
+
+	if (pl)
+		return R_QogCullNodeInt (node, clipflags, pl);
+#endif
 	for (i=0 ; i<6 ; i++)
 		mm[i] = (float)node->minmaxs[i];
 
@@ -903,6 +978,9 @@ void R_RenderWorld (void)
 	VectorCopy (r_origin, modelorg);
 	clmodel = currententity->model;
 	r_pcurrentvertbase = clmodel->vertexes;
+#ifdef QOG_FRONT_FAST
+	R_QogFxSetup ();	// QuakeOG (Agent AJ): Fast mode's integer front end
+#endif
 
 	R_RecursiveWorldNode (clmodel->nodes, 15);
 
