@@ -2,6 +2,62 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: The client half links on the display chip for E1M1 (Agent S, PC and ARM build, registered data)
+
+`quake_display` (the split game's client half, `QOG_SPLIT`) now links: a 68 KB hunk, a 34 KB stack and the one-byte depth buffer the user approved, with 1,104 bytes of RAM free beside the 2 KB heap reserve. Before, it overflowed by 118,024 bytes with E1M1's hunk. 68 KB is the smallest PC hunk of the split client with these flags that runs E1M1 with a fight, a save and a load. The other start to e1m4 maps need up to 85 KB and do not fit yet, and Agent K's edge fallback, which the one-byte z-buffer reaches now and then, stops the game on the board (both below). Every other change is exact. Nothing ran on hardware.
+
+Merges first: agent-o (demo player) and agent-p (renderer speed, exact flags) into agent-s. Conflicts only in the flag lists (`apps/quake/CMakeLists.txt`, `pc/CMakeLists.txt`, `tools/ram_meter.py`, every block kept, agent-p's before the split block so both halves get them) and in this log (every entry kept). The split PC client stubs the demo host's PC commands like the other single-process tools (`port/pc/split_cl_pc.c`). Against a build of f6ce8fd (agent-r, scratch copy), the merged single-process game and the merged split pair gave the same `qogtest_hash` (2) and `qogtest_r_fhash` (32) state hashes, the same 8 fhash frames and the same 113 `qogtest_d_shots` frames after `qogtest_k_quiet`. That merged tree is `build-pc-base`.
+
+Board client settings (`apps/quake/CMakeLists.txt`, the client library `qog_engine_cl` and `quake_display` only, never the PC game list). Savings are RAM of the link at the same hunk unless marked hunk.
+
+| Change | Flag | Saved |
+| --- | --- | ---: |
+| One-byte z-buffer with its near steps, 1,800 edges so the edge table fits it, the world's edge cache in the frame buffer's view rows (approved, picture below) | `QOG_ZBUFFER8`, `QOG_ZBUFFER8_NEAR=7`, `QOG_NUMSTACKEDGES=1800`, `QOG_EDGECACHE_FRAME=152` | 48,640 |
+| Client entities in hunk blocks of 16 only for the entity numbers a level uses, 16-bit slot numbers, at most 600, more stops with Host_Error. Extends agent-o's `QOG_CL_ENTSLOTS` | `QOG_CL_ENTSLOTS=600`, `QOG_CL_ENTBLOCK=16` (new) | hunk, E1M1 26.3 KB of id's array to 8.4 KB (e4m3 280 numbers in use) |
+| Beam segments from the level's hunk in blocks of 8 when a frame needs them, id's 64 kept (the fight tour fills 64 and drops segments as id does), a scratch entity before signon | `QOG_TEMPENT_BLOCK=8` (new) | 6,520 static, hunk only on levels with beams |
+| Stack: the renderer's bmodel warning prints without Con_Printf's 4 KB buffer, CL_NextDemo's command line 32 bytes, 32-byte edge-drawing surfaces (16-bit keys, face index, entity by visedict), player colours through a 256-byte texel map instead of a 16 KB colour map on the stack | `QOG_CON_PRINTTEXT`, `QOG_NEXTDEMO_STR`, `QOG_SURF_T_TINY`, `QOG_TRANSLATE_INLINE` (new) | stack 47 to 34 KB, 13,312 |
+| Zone 16 to 8 KB: cvar values stay at their initial strings until a set changes them, command tokens in a 640-byte buffer, light style texts in the zone at their length instead of 64 x 64 bytes | `QOG_CVAR_LITERAL`, `QOG_CMD_ARGV_ARENA=640`, `QOG_LIGHTSTYLE_ZONE` (new), `QOG_ZONE_BOARD_KB=8` | hunk 8 KB, static 3,200 net |
+| Link: the client's rings 1 KB (a frame that does not fit is not acknowledged and comes again), both in scratch X below core 1's stack (agent-t's `QOG_LINK_SCRATCH` hunk, the same lines), the BSP frame sender wrapped by one that writes the same bytes without its 4,165-byte buffer | `QOG_LINK_TXRING/RXRING=1024`, `QOG_LINK_SCRATCH`, `QOG_LINK_STREAM_SEND` with `--wrap=fwog_link_uart_send_frame` | 8,261 |
+| The console's 2 KB command history in scratch Y below the boot stack | `QOG_KEYLINES_SCRATCH` | 2,048 |
+| Lit surface hash 1,024 to 256 entries as the demo player, overflow takes Agent L's exact tree walk (slower in big fights) | `QOG_DLIGHT_SURFS=256` | 4,608 |
+| PVS row for `QOG_PVS_LEAFS` leafs, key names const, client precache tables of the server's sizes (208, 176), the unused 16-bit palette table in flash, a 64-byte surface cache header | `QOG_PVS_ROW_SMALL`, `QOG_KEYNAMES_CONST`, `QOG_CL_PRECACHE_SV`, `QOG_VID_NO_8TO16`, `QOG_VID_SURFCACHE_MIN` (new) | 3,088 |
+| Agent K's edge fallback stops with an error when the stack cannot hold its table | `QOG_ZEDGE_STACK_GUARD=1024` (new) | 4 bytes |
+
+Link of `quake_display` (`cmake --preset target -DQOG_AOT=ON`, `QOG_CL_HUNK_KB` 68, `QOG_CL_STACK_KB` 34): links, .data 4,096 + .bss 250,176, 1,104 bytes free plus the 2 KB `.heap` reserve. Video 97,280, hunk 69,632, stack 34,816, the rest 59,312 (engine statics, SDK, BSP, libc, heap reserve). `quake_main` still links with 1,712 bytes free, `qogdemo_display` with 1,704 plus its heap reserve, `qogfly_display` with its board values (18 and 34 KB).
+
+Stack (`tools/stack_chain.py --root game_main` on a copy of only the client's objects, Agent Q's cuts plus S_LoadSound, S_FindName, S_PaintChannels and S_Update_ excluded because SNDDMA_Init fails on the board so sound never starts, and R_RenderPoly, which only id's debug polygon modes reach): deepest chain 32,712 bytes, a demo start's loading plaque drawn under Cbuf_Execute, R_EdgeDrawing 29,752 (800 surfaces of 32 bytes and the span reserve), a bmodel clip to Sys_Error. The alias chain is 20.5 KB from R_RenderView_. 2,104 bytes are left for interrupts. Agent K's exact edge fallback (up to 1,804 edges of 24 bytes, 43 KB) is not reserved and on the board now stops with an error.
+
+Peaks on the split PC client with the board client flags (`qog_tour` and `qog_tour_fight` run by the server half, `QOG_CL_PEAKS`, hunk with an 8 KB zone, hunk low at the end of each level, KB):
+
+| Map | Fight tour hunk | Plain tour hunk | Entity numbers in use | Temp entities | Edges | Surfaces |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| start | 65.5 | 72.9 | 142 | 0 | 969 | 464 |
+| e1m1 | 65.9 | 64.2 | 90 | 0 | 1,053 | 430 |
+| e1m2 | 72.0 | 72.0 | 112 | 0 | 783 | 368 |
+| e1m3 | 84.7 | 81.4 | 184 | 0 | 667 | 338 |
+| e1m4 | 84.8 | 83.2 | 183 | 0 | 866 | 401 |
+| e1m5 to e1m8 | 59.4 to 78.9 | 61.0 to 76.9 | up to 170 | up to 13 | up to 1,081 | up to 511 |
+| worst of the game | e2m6 96.5 | | e4m3 254 (280 in one run) | 64, segments dropped as in id | e3m6 1,751 | e3m6 670 |
+
+`-heapsize` that runs Agent R's fight, save and load scripts: E1M1 68 KB (`qogtest_r_mem_e1m1.cfg`, 67 fails), e3m5 79 KB (`qogtest_r_mem_e3m5.cfg`). Before these flags: 97 and 115. The zone peaks at 5.9 KB of 8 (light styles included). 1,800 edges and 800 surfaces cover the game's peaks. The fight tour stops on e4m5 (below), e4m5 to e4m8 come from a plain tour with the 16 KB zone: 94.7, 90.0, 90.4, 86.4 KB, less 8.
+
+Edge fallback with the one-byte z-buffer (`z edges at exit`, PC): fight tour start to e1m8 0, episode 2 group 2, episode 3 group 2. Plain tour start to e1m4 0 and e1m5 to e1m8 0 in a second run, but 84 in a first run of start to e1m8 (the same run saw 1,483 edges on e1m1 against 861 to 1,053 in every other, an unusual view). With the 16-bit z-buffer no run reached it. On the board each one would now stop the game with an error (`QOG_ZEDGE_STACK_GUARD`): the table it moves (up to 43 KB) does not fit any board stack. A swap of the table into the frame buffer's free rows was tried and dropped: in a test build with forced stalls (`QOG_ZEDGE_TEST_SPANS=400`) the live edges never fitted below the scan line.
+
+Verification, hidden and silent, `-nosound`:
+
+- Single-process `quakeog_pc` of this branch against `build-pc-base`: `qogtest_hash` 2 hashes, `qogtest_r_fhash` 32 hashes and 8 frames, `qogtest_d_shots` 113 frames, all identical.
+- Split pair of this branch (`-ServerExe`): the same 2 + 32 hashes and 8 + 113 frames.
+- Split client built with the board client flags except the depth buffer (`-DQOG_SPLIT_CL_EXTRA`, `build-pc-f`), server with the board's: the same 2 + 32 hashes and 8 + 113 frames.
+- With the depth buffer as well (`build-pc-z`): the same 2 + 32 state hashes. Frames: 29 of 113 demo frames identical, 0.048% of view pixels differ, at most 155 pixels (d_demo1_20), status bar rows identical. The 8 fhash map frames 0.039%, at most 34 pixels.
+
+Not done or not fitting:
+
+- Start to e1m4 (agent-t's first data image) needs up to 85 KB of hunk (e1m3, e1m4 fight tour), 17 KB more than the board has. The whole game needs 97 KB (e2m6). Exact options left are small. Bigger ones change behaviour: the console text (4 KB) and command buffer (4 KB) sizes, or the message buffer (7.5 KB) in the z-buffer during signon, which is exact only while in-game messages stay small.
+- Sound: no room (1.1 KB free). Agent Q estimated about 25 KB.
+- `qog_tour_fight` stops on e4m5 with a QuakeC "Program error" on the server half (target t178), also in the measurement build that had only the slot counter, so e4m5 to e4m8 have plain tour figures only.
+
+New engine flags (off by default): `QOG_CL_ENTBLOCK`, `QOG_TEMPENT_BLOCK`, `QOG_CON_PRINTTEXT`, `QOG_NEXTDEMO_STR`, `QOG_SURF_T_TINY`, `QOG_TRANSLATE_INLINE`, `QOG_CVAR_LITERAL`, `QOG_CMD_ARGV_ARENA`, `QOG_LIGHTSTYLE_ZONE`, `QOG_PVS_ROW_SMALL`, `QOG_KEYNAMES_CONST`, `QOG_CL_PRECACHE_SV`, `QOG_VID_NO_8TO16`, `QOG_KEYLINES_SCRATCH`, `QOG_ZEDGE_STACK_GUARD`, `QOG_CL_PEAKS` (measurement, also the largest edge fallback). Port flags: `QOG_LINK_STREAM_SEND`, `QOG_VID_SURFCACHE_MIN`, `QOG_LINK_SCRATCH` (agent-t's lines), `QOG_SPLIT_TOUR` (PC server half runs `qog_tour`). Edits: engine/cl_main.c, cl_parse.c, cl_tent.c, client.h, cmd.c, console.c, console.h, cvar.c, d_edge.c, d_polyse.c, keys.c, model.c, r_alias.c, r_bsp.c, r_draw.c, r_edge.c, r_main.c, r_shared.h, vid.h, port/common/qog_link.c, qog_mem.c, qog_split_sv.c, port/pc/sys_pc.c, tour_pc.c, vid_pc.c, port/rp2040/link_rp2040.c, sys_rp2040.c, vid_rp2040.c, pc/CMakeLists.txt, apps/quake/CMakeLists.txt. No new qogtest scripts (writing to the shared data folder was refused): measurements use `qog_tour` on the command line and Agent R's `qogtest_r_*` scripts. Lessons L49 and L50.
+
 ## 2026-11-23: The game split across both RP2040s, server on main, client on the display (Agent R, PC and ARM build, registered data)
 
 The server half (SV_*, QuakeC, physics, edicts) and the client half (CL_*, renderer, status bar, input) are now separate builds joined by a new net driver over the inter-chip link. On the PC the two halves run as two processes over TCP at the UART's speed and give the same state hashes and frames as the single-process game. On the board `quake_main` (server) links with 1,712 bytes of RAM to spare. `quake_display` (client) still overflows RAM by 118,024 bytes with the E1M1 hunk (136,456 with e3m5's). Nothing ran on hardware.

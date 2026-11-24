@@ -703,6 +703,9 @@ z-buffer: the last flush writes every z row while it still reads them.
 #endif
 
 int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;	// measurements
+#ifdef QOG_CL_PEAKS
+int		r_qog_zstackedges;	// QuakeOG (Agent S): measurement, R_QogEdgesToStack
+#endif
 
 static byte		*r_qog_edgeend;		// end of the edge table
 static espan_t	*r_qog_basespan;	// the span buffer
@@ -973,6 +976,13 @@ static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
 
 	r_qog_zstack++;
 	n = R_QogMarkEdges (iv, bottom);
+#ifdef QOG_CL_PEAKS
+	{	// QuakeOG (Agent S): measurement only, the most edges a fallback moved
+		extern int	r_qog_zstackedges;
+		if (n > r_qog_zstackedges)
+			r_qog_zstackedges = n;
+	}
+#endif
 #ifdef QOG_ZEDGE_STACK_GUARD
 	// QuakeOG (Agent S): a board stack is not sized for this table (the
 	// port's qog_stack_bottom is its lowest byte), so stop with an error
