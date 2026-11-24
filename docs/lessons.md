@@ -12,7 +12,7 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 ## BSP and hardware rules (from wiliOGbsp AGENTS.md; these bite)
 
-**L4. Never UF2-copy a display *application*.** It lands at 0x10021000 without the metadata sector at 0x10020000, the bootloader refuses it, and the display CPU drops off USB. Display apps ride inside the main UF2 (`fw flash`). Data-only UF2s at 0x10400000 are a different case (see L8).
+**L4. Never UF2-copy a display *application*.** It lands at 0x10021000 without the metadata sector at 0x10020000, the bootloader refuses it, and the display CPU drops off USB. Display apps ride inside the main UF2 (`fw flash`). Data-only UF2s at 0x10100000 (0x10400000 before Agent AC) are a different case (see L8).
 
 **L5. Every display app calls `fwog_power_poll()` every loop iteration and takes its buttons from the result.** Calling `fwog_buttons_poll()` a second time steals edges from the 6 s red-hold power-off. `qog_input_step()` takes `power.buttons.down` for this reason. Never add a watchdog to the display CPU. The main CPU must call `board_watchdog_kick()` every loop.
 
@@ -118,7 +118,7 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L51. A client without a server still reads server cvars.** The client's particles fall by `sv_gravity`, which only SV_Init registers. Unregistered, its value is 0 and blood and debris float. Any host that leaves the server out must register it (or define it, on the board).
 
-**L52. Text a demo stuffs waits behind a script's `wait`s.** `stufftext "bf"` is appended to the command buffer, so in a scripted run it runs only after the rest of the script, and the bonus flashes come late or not at all. A script that compares demo frames must end right after starting the demo and leave the buffer free (`qog_quitafter`, port/pc/demo_pc.c).
+**L52. Text a demo stuffs waits behind a script's `wait`s.** `stufftext "bf"` is appended to the command buffer, so in a scripted run it runs only after the rest of the script, and the bonus flashes come late or not at all. A script that compares demo frames must end right after starting the demo and leave the buffer free (`qog_quitafter`, port/pc/demo_pc.c).
 
 **L53. A zone's sampled peak is not its size.** The client zone used 3.2 KB at every frame, yet 6 and 8 KB zones failed with "Z_Malloc: failed" at startup or at a level load. Between frames the zone fills and fragments: every command line's tokens were allocated and freed there, around long-lived bindings, cvar values and light styles. Size a zone by running the scripts with `-zone N` until they pass, then keep margin. `QOG_CMD_ARGV_ARENA` takes the tokens out and an 8 KB client zone ran everything.
 
@@ -155,10 +155,22 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L70. A command the server half has the client run inside an exchange can draw a view.** `reconnect` (SV_SendReconnect, every changelevel) draws the loading plaque over the old level while the reconnect message already waited in the z-buffer receive buffer, so the board client stopped at every level exit. Scripts that change level with `map` from the client never reach it, because the client disconnects first. Test level changes with `changelevel` too (`qogtest_ad_chg.cfg`), and look at every `Link_ServerClientExec` for what it draws.
 
-**L71. Measure the client hunk on the board images, not on data/id1.** On the PC a pak in data/id1 is laid out differently from its flash copy, so the client keeps a `packpos` block per pak (1,744 B for pak0 and pak1) that the board never has. Build the episode's images with `mkboard.py --stub-maps --main` and run the pair with `-basedir <img>` for the client and `-basedir <img>_main -flashbase 0x10300000` for the server, with the test cfgs copied into both id1 folders.
+**L71. Measure the client hunk on the board images, not on data/id1.** On the PC a pak in data/id1 is laid out differently from its flash copy, so the client keeps a `packpos` block per pak (1,744 B for pak0 and pak1) that the board never has. Build the episode's images with `mkboard.py --stub-maps --main` and run the pair with `-basedir <img>` for the client and `-basedir <img>_main -flashbase 0x10200000` (0x10300000 before Agent AC) for the server, with the test cfgs copied into both id1 folders.
 
 **L72. A noclip tour walks into level exits and dead teleporters.** A spot inside a `trigger_changelevel` changed the level halfway through a tour (the hunk lines then belong to another level), and e4m5 and e4m8 each have a `trigger_teleport` aimed at an `info_null`, which QuakeC removes at spawn, so touching it is a Host_Error in id's own game. The tour now takes both out before it starts. Give every pair its own `-linkport` and its own data folder, a tour and a hash run on one port is a race (L63).
 
 **L73. Before two structs share bytes in a union, list every reader of each field.** `efrag` and `visframe` of entity_t are read only through efrags, which only statics get, and `topnode` only while its bmodel is drawn, which `grep -n "\->field"` over engine/*.c showed in five lines. The one call that touched a client entity's efrag (R_RemoveEfrags of an emptied entity) did nothing in id's game, so it can be skipped, but it would have written into the network state.
 
 **L74. MSVC compiles a call to an undeclared function as returning int.** `COM_FlashName` was declared only under the server's flag, the PC client built and passed every test (32-bit pointers survive the int), and only the ARM build stopped. Build the board after any change to a header guard.
+
+**L75. The server's deepest stack is a pusher and a point trace, not QuakeC.** Weighed in board bytes (L76), every episode 1 script peaked inside `SV_PushMove`, whose two lists of 600 entries were 9,600 B of one frame, and the fight tour went deeper in `SV_RecursiveHullCheck`, 104 B a level on the board and as many levels as the hull's tree is deep. Hull 0 (points: grenades, nails, `traceline`) of e1m3 is 85 levels deep, so a grenade riding a plat there can take about 9 KB of recursion under the pusher's frame. tools/stack_chain.py cuts recursion and cannot see either, so bound it by the map (`python tools/hull_depth.py data/id1/pak0.pak,data/id1/pak1.pak e1m3` prints the tree depths).
+
+**L76. The PC can weigh every call of the server in board bytes.** Build quakeog_sv with `/Gh /GH /Ob0` (`QOG_SV_STACKPROBE`), keep a shadow call stack in `_penter` and `_pexit`, and add each function's ARM frame from the board build's `.su` files (`tools/stack_chain.py --su-table`). Popping by the stack pointer alone is wrong on x86: cdecl pushes the arguments before the call, so a sibling called with fewer arguments looks like the caller of the next one, which showed `Con_Printf` nested four times. `_pexit` pops, the stack pointer check only cleans up after `longjmp`.
+
+**L77. The split pair's fight tour does not repeat, even without pipelining.** Frame hashes of two runs of the same build differed from frame 652 on. To compare two ways of drawing the same view, draw it twice in one run from the same state (`QOG_ZEDGE_COMPARE`): put the particles and their list heads back and push the dynamic lights again before the second `R_RenderView`, or the second picture differs for those reasons alone.
+
+**L78. A drawer's z writes can be sent away without touching the drawer.** Every span computes its z address as `d_pzbuffer + d_zwidth * v + u`. With `d_zwidth` 0 and `d_pzbuffer` at a frame row no span has drawn yet, all of a flush's z lands in that row and the real z-buffer, here holding the edge table, is left alone (r_edge.c, `R_QogFlushNoZ`).
+
+**L79. A script run with `-basedir <board image>` must be in that image's `id1`.** Otherwise `exec` finds nothing, the game plays its demo loop (none in the image) and waits for the timeout. mkboard does not copy the test scripts (as L71 says, copy them into both id1 folders).
+
+**L80. `git fetch` in a worktree can wait for credentials with no prompt.** To take main's latest, merge the local `main` branch, which every worktree shares, with `GIT_TERMINAL_PROMPT=0`.
