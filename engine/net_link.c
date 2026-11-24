@@ -626,6 +626,14 @@ int Link_Sound (const byte *op, int len)
 		qog_link_write (h, 4);
 		if (len > 1)
 			qog_link_write (op + 1, len - 1);
+#ifdef QOG_LINK_OVERLAP
+		// QuakeOG (Agent AK): inside an exchange (the pipelined screen
+		// update, while the server half runs its frame and does not read) a
+		// frame could stall the render in the flow control. The operation
+		// waits in the ring and goes out when the client reads again, in the
+		// same order, and the server half runs it after the exchange as before.
+		if (!link_waiting)
+#endif
 		qog_link_pump ();
 		if (!(op[0] & LKS_REPLY))
 			return -1;
@@ -1051,6 +1059,7 @@ void Link_ServerWaitTick (void)
 		case LK_QUIT:
 			Link_Skip (len);
 			Sys_Printf ("link: the client quit\n");
+			qog_link_flush ();	// QuakeOG (Agent AK): its acknowledgement goes out first
 			Sys_Quit ();
 			break;
 		default:
