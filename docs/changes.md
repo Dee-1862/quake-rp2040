@@ -16,6 +16,63 @@ Read from the board's USB logs (display COM8, main COM7) with QOG_PHASE_TIME and
 - Fast mode cut the span arithmetic by about 2.9 M cycles a view (Agent AA's estimate) but spans fell only 0.9 ms, so the span time looks bound by XIP misses rather than compute. Agent Z's XIP counter build is meant to confirm it.
 - Stack free on the board with sound and the 73 KB client hunk (9192bc9): display 4,192 B, main 19,204 B.
 - Sound through the speaker was heard by the user on f75051b. The game has run 15 minutes in E1M1 without a restart since the strict aliasing fix. Saving on the board has not been tried.
+## 2026-11-24: XIP and float counters, world front end and alias vertices faster, same pixels (Agent Z, PC and ARM build, registered data)
+
+A measurement build that tells whether a render phase waits on flash or on float helpers, and four exact speed-ups of the display chip's 3D view, all with the same pixels as main. Nothing ran on hardware. The savings are estimates from the PC's work counts and the Thumb code at 250 MHz, the lead measures them.
+
+### Measurement build (off by default, needs `QOG_BOARD_TIMING`)
+
+```powershell
+cmake -B build-zx --preset target -DQOG_AOT=ON -DQOG_AOT_PAK=<pak0.pak> -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32 -DQOG_BOARD_XIPSTATS=ON
+cmake --build build-zx --target quake_main
+```
+
+Add `-DQOG_BOARD_TEXNOALLOC=ON` or `-DQOG_BOARD_CMAPNOALLOC=ON` for the flash experiments below. The float counts are a second build, `-DQOG_BOARD_FPCOUNT=ON -DQOG_CL_STACK_KB=31` (it needs 1 KB of the client's stack, measurement only, watch the stack watermark line). Its times run slow (each helper call passes a counting stub in flash), so read times and XIP numbers from the XIPSTATS build and only the counts from this one.
+
+Every 2 s on COM8, after the three `[time cl]` lines:
+
+```
+[time cl] xip acc/miss setup a/m world a/m bmodels a/m lmap a/m grad a/m spans a/m zspans a/m sky a/m turb a/m models a/m vmodel a/m parts a/m total a/m edgescan a/m
+[time cl] work per view nodes <n> leafs <n> faces <n> clipedge <n> emitedge <n> cached <n> project <n> clipdot <n>
+FPCOUNT only:
+[time cl] fp f/d setup f/d world f/d ... total f/d edgescan f/d
+[time cl] fp calls per view core0 fadd <n> fsub fmul fdiv fcmp f2i i2f f2d fmath dadd dsub dmul ddiv dcmp d2i d2f i2d dmath idiv l64 core1 f <n> d <n>
+[time cl] fp ns per call fadd <ns> ... l64 <ns> meanf <ns> meand <ns>
+[time cl] fp est ms core0 all <ms> setup <ms> world <ms> ...
+```
+
+- xip: XIP cache accesses and misses (accesses less hits, XIP_CTRL CTR_ACC and CTR_HIT) per view in each phase, both cores together (core 1 draws half the spans inside the spans phase). Misses times the cost of one (an 8-byte line from the 125 MHz flash, a few hundred ns) against the phase's time says how much of the phase waits on flash. The counters saturate at 2^32, so the report clears them every 2 s. Phase marks run from RAM (`qog_phase_mark`, `qog_phase_add`) and add no XIP accesses of their own, but cost about 0.2 ms a frame.
+- work: the world front end's calls per view, and the points projected and the plane distances computed (what `QOG_VERTCACHE` saves).
+- fp: core 0's float (f) and double (d) helper calls in each phase. `objcopy --redefine-syms` (port/rp2040/qog_fpcount.syms) renames the engine library's calls to stubs (port/rp2040/qog_fpcount.S) that count per core and jump on to the SDK's routine with the caller's registers (only ip changes). The ns per call are timed once on core 0 at the first report (2,000 calls, best of three). est ms is the calls times the mean measured cost, so a phase whose est ms is near its time is float bound.
+
+RAM: the XIPSTATS build ends at 0x2003f7f0 (16 B above the 2 KB heap reserve), the FPCOUNT build at 0x2003f550 with the 31 KB stack.
+
+### Exact speed-ups (on for the board client, apps/quake/CMakeLists.txt)
+
+| Change | Flag (CMake option) | Why the pixels are the same | Estimated saving per view, 250 MHz, E1M1 spawn | RAM |
+| --- | --- | --- | --- | --- |
+| World vertices projected once a frame. A direct-mapped cache keyed by vertex number keeps u, v, 1/z and ceil(v) of each world vertex R_EmitEdge projects, in memory nothing uses while R_RenderWorld runs (the frame buffer's view rows past the edge cache, or the z-buffer between the edge cache and the edge table), emptied every frame. PC E1M1 spawn, 1,092 projections a view became 506 | `QOG_VERTCACHE` (`QOG_BOARD_VERTCACHE`) | a hit returns what id's statements (now in R_QogProject) computed for the same vertex in the same frame. Brush entities (insubmodel) and clipped points never use it | 586 projections of about 1,750 cycles less 1,600 lookups of about 30, about 4 ms of world | 16 B static, 512 to 4,096 entries in the frame buffer (E1M1 on the board 512 with CLIPDIST) |
+| Each world vertex's distance to the four view planes measured once a frame, in the same entries. R_ClipEdge's 954 dot products a view became 464 | `QOG_VERTCACHE_CLIPDIST` (`QOG_BOARD_CLIPDIST`) | the same expression, once per vertex and plane in a frame (the view planes do not change while the world is drawn). An unknown distance holds a NaN pattern, a real NaN with those bits is only computed again | 490 dot products of about 370 cycles, about 0.7 ms | entries 32 B instead of 16 |
+| BSP node frustum tests in a function off the recursion, the box corners converted once per node, compares instead of a difference (main's `QOG_FLOAT_EXACT` already made the doubles floats), the side tests as an int | `QOG_WORLDNODE_FAST` (`QOG_BOARD_WORLDNODE`) | `(double)dot - (double)dist <= 0` is `dot <= dist` exactly, and for a float x `x < -0.01` and `x > 0.01` are `x < -0.01f` and `x > 0.01f` | about 0.3 ms. R_RecursiveWorldNode's frame 96 to 48 B, 48 B less stack at every level of the BSP recursion | 0 |
+| Alias model vertices made by both cores, core 0 the even ones and core 1 the odd ones (R_AliasPreparePoints and the unclipped R_AliasTransformAndProjectFinalVerts), models of 24 vertices or more. Triangles stay on core 0 in id's order | `QOG_ALIAS_CORE1` (`QOG_BOARD_ALIASCORE1`, with `QOG_BOARD_CORE1`) | each vertex is computed by id's statements from data nothing changes meanwhile and written only to its own finalvert | v_shot (68 vertices) about 0.3 ms, a soldier (170) about 0.7 ms | 0, core 1's chain about 150 B |
+
+PC verification, hidden and silent, against a build of the same tree with the flags off (`build-pc-mbase`, which gives main's hashes): `qogtest_hash` (`ce86f894f9de`), `qogtest_f_hash` (`e92bc9e9650d`) and its 8 shots, `qogtest_k_quiet` + `qogtest_d_shots` 113 frames, all identical, and the split pair's `qogtest_hash`, `qogtest_r_fhash` and `qogtest_d_shots` identical to the single process. With `QOG_SPANS_CORE1` the PC runs the core 1 job on a second thread, first or last (`-core1first`, `-core1last`), identical in all three. With `+r_fast 1` (main's Fast mode, whose 113 frames differ from r_fast 0) the 113 frames and the fhash shots are identical to the flags-off build with r_fast 1 too. A build with the cache cut to 64 entries (`QOG_VERTCACHE_MAX=64`, many collisions) is identical too. An integer FloorDivMod was checked against id's double version over 3.8 M pairs (0 differences) and then dropped, since main's `QOG_FLOAT_EXACT` has the same change.
+
+Board RAM (`arm-none-eabi-nm`, merged with main 9192bc9): quake_display `end` 0x2003f650 with the four flags off, 0x2003f660 on (16 B), quake_main 0x2003f51c (unchanged), 416 B above the display's 2 KB heap reserve. Stack: R_RecursiveWorldNode 48 B a level less, R_EmitEdge with R_QogProject 144 B against 96 B at the chain's end, R_ClipEdge 80 to 56 B (up to 4 deep).
+
+### Flash misses in the spans
+
+Fast mode cut 2.9 M cycles of arithmetic and the spans moved by 0.9 ms, which points at flash. Per lit pixel the spans read a texel and a colour map entry from flash (the colour map is `gfx/colormap.lmp` in the mapped pack, 16 KB, as big as the XIP cache) and the light grid from RAM. Exact options, in the order I would try them:
+- `QOG_BOARD_TEXNOALLOC` and `QOG_BOARD_CMAPNOALLOC` (off): texels or the colour map read through the XIP no-allocate alias 0x11000000 (d_scanlit.c). Hits come from the cache, misses do not allocate, so streaming texels cannot push out the span code, the colour map rows in use and the light grid code. It can also be worse (a texel line read twice is fetched twice), so both are off until two A/B flashes with the xip line decide.
+- Colour map rows in RAM: 64 rows of 256 B, no RAM for all of them. A cache of the rows a surface uses would need about 2 KB.
+- Hot span loop in RAM: one mip variant of the exact drawer is about 2 KB, the display has 416 B. Only if the xip line shows misses the code causes and RAM comes back.
+- Texture prefetch by DMA into RAM: no RAM to put a 4 KB tile in while the spans draw.
+- Interpolator for the texel address (SIO interp0, lane 0 s, lane 1 t, base the texture): about 6 cycles a pixel of address arithmetic per core, about 0.6 ms a view, compute only. Not done.
+
+### Picture-changing ideas (for the user, not done)
+
+- Edge u stepping in 16.16 fixed point instead of float in R_EmitEdge: edge positions move by a sub-pixel, maybe 1 to 2 ms of world.
+- Node culling with integer box tests against quantised planes: rare one-node differences, about 1 ms.
 
 ## 2026-11-24: Fast render mode and single precision front end math (Agent AA, PC and ARM build, registered data)
 

@@ -316,8 +316,57 @@ if(QOG_SPLIT)
     if(QOG_BOARD_PIPELINE)
         list(APPEND _cl_defs QOG_LINK_PIPELINE)    # a frame's screen update runs while the server half runs the next frame (host.c)
     endif()
+    # QuakeOG (Agent Z): world front end speed, exact (same pixels, docs/changes.md)
+    option(QOG_BOARD_VERTCACHE "world vertices projected once a frame through a cache in free frame buffer rows (exact)" ON)
+    option(QOG_BOARD_WORLDNODE "BSP node culling and side tests in float compares, no double arithmetic (exact)" ON)
+    if(QOG_BOARD_VERTCACHE)
+        list(APPEND _cl_defs QOG_VERTCACHE)        # r_draw.c R_QogProject
+    endif()
+    if(QOG_BOARD_WORLDNODE)
+        list(APPEND _cl_defs QOG_WORLDNODE_FAST)   # r_bsp.c R_RecursiveWorldNode
+    endif()
+    option(QOG_BOARD_CLIPDIST "with VERTCACHE, each world vertex's distance to the view planes measured once a frame (exact)" ON)
+    if(QOG_BOARD_VERTCACHE AND QOG_BOARD_CLIPDIST)
+        list(APPEND _cl_defs QOG_VERTCACHE_CLIPDIST)   # r_draw.c R_QogClipDist
+    endif()
+    # Flash miss experiments for the lit spans, exact, off until measured on
+    # the board: texels or the colour map read through the XIP no-allocate
+    # alias, so their misses do not evict code (d_scanlit.c)
+    option(QOG_BOARD_TEXNOALLOC "lit span texels through the XIP no-allocate alias (exact, measurement)" OFF)
+    option(QOG_BOARD_CMAPNOALLOC "lit span colour map through the XIP no-allocate alias (exact, measurement)" OFF)
+    if(QOG_BOARD_TEXNOALLOC)
+        list(APPEND _cl_defs QOG_LIT_TEX_NOALLOC)
+    endif()
+    if(QOG_BOARD_CMAPNOALLOC)
+        list(APPEND _cl_defs QOG_LIT_CMAP_NOALLOC)
+    endif()
+    option(QOG_BOARD_ALIASCORE1 "with CORE1, alias model vertices shared by both cores (exact)" ON)
+    if(QOG_BOARD_CORE1 AND QOG_BOARD_ALIASCORE1)
+        list(APPEND _cl_defs QOG_ALIAS_CORE1)      # r_alias.c R_QogAliasPrepareRange
+    endif()
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
+    endif()
+    # QuakeOG (Agent Z): measurement builds, off by default, with
+    # QOG_BOARD_TIMING. XIPSTATS adds "[time cl] xip" (XIP cache accesses and
+    # misses per view in each render phase) and "[time cl] work" (the world
+    # front end's nodes, faces and edges per view). FPCOUNT adds the "[time
+    # cl] fp" lines (float and double helper calls per view and phase, their
+    # measured cost) and implies XIPSTATS. FPCOUNT renames the engine
+    # library's helper calls to counting stubs, so its times run a little slow.
+    option(QOG_BOARD_XIPSTATS "measurement: XIP cache counts per render phase and world work counts" OFF)
+    option(QOG_BOARD_FPCOUNT "measurement: float and double helper calls per view and phase (implies XIPSTATS)" OFF)
+    if(QOG_BOARD_TIMING AND (QOG_BOARD_XIPSTATS OR QOG_BOARD_FPCOUNT))
+        list(APPEND _cl_defs QOG_PHASE_XIP)
+        if(QOG_BOARD_FPCOUNT)
+            list(APPEND _cl_defs QOG_PHASE_FPCOUNT)
+            target_sources(quake_display PRIVATE
+                ${QOG_ROOT}/port/rp2040/qog_fpcount.S ${QOG_ROOT}/port/rp2040/qog_fpcount.c)
+            add_custom_command(TARGET qog_engine_cl POST_BUILD
+                COMMAND ${CMAKE_OBJCOPY} --redefine-syms=${QOG_ROOT}/port/rp2040/qog_fpcount.syms
+                        $<TARGET_FILE:qog_engine_cl>
+                COMMENT "QOG_BOARD_FPCOUNT: engine helper calls go through the counting stubs")
+        endif()
     endif()
     # QuakeOG (Agent AA): the Fast render mode, approximate and hard to see,
     # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
