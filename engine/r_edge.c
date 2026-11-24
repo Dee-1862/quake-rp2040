@@ -702,7 +702,16 @@ z-buffer: the last flush writes every z row while it still reads them.
 #error "QOG_EDGES_IN_ZBUFFER needs alloca"
 #endif
 
+#ifdef QOG_ZEDGE_STACK_GUARD
+// QuakeOG (Agent AC): the board reads none of these PC measurements, and its
+// display has no static RAM to spare, so R_QogFlushNoZ's three ints take
+// their place there
+int		r_qog_zstack;
+#define QOG_ZMEASURE(x)	((void)0)
+#else
 int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;	// measurements
+#define QOG_ZMEASURE(x)	(x)
+#endif
 #ifdef QOG_CL_PEAKS
 int		r_qog_zstackedges;	// QuakeOG (Agent S): measurement, R_QogEdgesToStack
 #endif
@@ -710,6 +719,16 @@ int		r_qog_zstackedges;	// QuakeOG (Agent S): measurement, R_QogEdgesToStack
 static byte		*r_qog_edgeend;		// end of the edge table
 static espan_t	*r_qog_basespan;	// the span buffer
 static int		r_qog_framespans;	// measurement only
+
+#if defined(QOG_ZEDGE_STACK_GUARD) || defined(QOG_ZEDGE_FORCE_NOZ)
+// QuakeOG (Agent AC): the graceful end of the edge fallback, see R_QogFlushNoZ
+#define QOG_ZEDGE_NOZ
+int				r_qog_znoz;			// flushes without z so far
+#ifndef QOG_ZEDGE_STACK_GUARD
+int				r_qog_znozrows;		// PC measurement: their rows
+#endif
+static int		r_qog_noztop, r_qog_nozend;	// rows top to end - 1 drawn without z in this view, none if end is 0
+#endif
 
 #define EDGE_LIVE	0xFFFE		// marks in edge_t.owner, see R_QogMoveEdges
 #define EDGE_DEAD	0xFFFF
@@ -856,7 +875,70 @@ static void R_QogFlushSpans (void)
 	span_p = r_qog_basespan;
 }
 
-static void R_QogEdgesToStack (int iv, int bottom);
+#ifdef QOG_ZEDGE_NOZ
+/*
+==============
+R_QogFlushNoZ
+
+QuakeOG (Agent AC): the fallback when the edges still needed cannot move
+to the stack either (the board's stack, QOG_ZEDGE_STACK_GUARD). It used to
+stop the game with an error. Now the waiting spans are drawn at once, with
+every pixel as id draws it, but their z goes to the frame buffer's last
+view row (bottom), which no span of this frame has drawn yet and the last
+flush draws over, so the edges in the z-buffer stay intact. Their rows are
+noted (one range from the first to the last such row of the view, no static
+RAM to spare for more), and R_ScanEdges sets the z of those rows to the
+farthest value once no edge is needed. So the world is drawn exactly, and only the depth test
+of models, sprites and particles in those rows of this one frame changes:
+they show in front of the world there. Costs no stack.
+==============
+*/
+static void R_QogFlushNoZ (int iv, int bottom)
+{
+	d_zval_t	*zbuffer;
+	unsigned	zwidth;
+	int			v;
+
+	r_qog_znoz++;
+	v = r_qog_basespan->v;		// the buffer's spans are of scan lines v to iv
+#ifndef QOG_ZEDGE_STACK_GUARD
+	r_qog_znozrows += iv + 1 - v;
+#endif
+	if (!r_qog_nozend)
+		r_qog_noztop = v;
+	r_qog_nozend = iv + 1;
+
+	zbuffer = d_pzbuffer;
+	zwidth = d_zwidth;
+	// every span's z lands in one row: d_pzbuffer + 0 * v + u, u < screenwidth
+	d_pzbuffer = (d_zval_t *)(d_viewbuffer + bottom * screenwidth);
+	d_zwidth = 0;
+	R_QogFlushSpans ();
+	d_pzbuffer = zbuffer;
+	d_zwidth = zwidth;
+}
+
+/*
+==============
+R_QogClearNoZ
+
+QuakeOG (Agent AC): the farthest z in the rows R_QogFlushNoZ drew, once
+the edge table in the z-buffer is no longer needed. Rows inside the range
+that a normal flush drew lose their z as well, only in this view.
+==============
+*/
+static void R_QogClearNoZ (void)
+{
+	int		v;
+
+	for (v = r_qog_noztop ; v < r_qog_nozend ; v++)
+		memset (d_pzbuffer + v * (int)d_zwidth + r_refdef.vrect.x, 0,
+			r_refdef.vrect.width * sizeof(d_zval_t));
+	r_qog_nozend = 0;
+}
+#endif
+
+static qboolean R_QogEdgesToStack (int iv, int bottom);
 
 /*
 ==============
@@ -903,26 +985,27 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 			}
 			else if (ZROWS_END(iv + 1) > (byte *)r_edgesentinels && span_p > r_qog_basespan)
 			{
-				r_qog_zforced++;
+				QOG_ZMEASURE (r_qog_zforced++);
 				R_QogFlushSpans ();
 			}
 		}
 		else
 		{
-			if (span_p - r_qog_basespan > r_qog_peakheldspans)
-				r_qog_peakheldspans = span_p - r_qog_basespan;
+			QOG_ZMEASURE (span_p - r_qog_basespan > r_qog_peakheldspans
+				? r_qog_peakheldspans = span_p - r_qog_basespan : 0);
 			if (span_p >= max_span_p)
 			{
 			// full while spans wait: drop the edges no longer needed
-				r_qog_zcompacts++;
+				QOG_ZMEASURE (r_qog_zcompacts++);
 				R_QogMarkEdges (iv, bottom);
 				R_QogMoveEdges (iv, bottom, r_qog_edgeend, r_edgebase);
 				if (ZROWS_END(iv) > (byte *)r_edgesentinels)
 				{
-					R_QogEdgesToStack (iv, bottom);
-					return;
+					if (R_QogEdgesToStack (iv, bottom))
+						return;		// it scanned the rest
 				}
-				R_QogFlushSpans ();
+				else
+					R_QogFlushSpans ();
 			}
 		}
 
@@ -944,8 +1027,8 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 	(*pdrawfunc) ();
 
 // measurement only
-	if (edgesinz && span_p - r_qog_basespan > r_qog_peakheldspans)
-		r_qog_peakheldspans = span_p - r_qog_basespan;
+	QOG_ZMEASURE (edgesinz && span_p - r_qog_basespan > r_qog_peakheldspans
+		? r_qog_peakheldspans = span_p - r_qog_basespan : 0);
 	r_qog_framespans += span_p - r_qog_basespan;
 	if (span_p - r_qog_basespan > r_qog_peakflushspans)
 		r_qog_peakflushspans = span_p - r_qog_basespan;
@@ -967,9 +1050,13 @@ QuakeOG: the span buffer is full of spans that wait for edges still needed.
 Move those edges out of the z-buffer, to auxedges or a table on the stack
 just large enough (at most the old table's size), and go on with id's
 flushing. Not inlined, so the table is on the stack only when this runs.
+Returns true when it scanned the rest of the view. Agent AC: with
+QOG_ZEDGE_STACK_GUARD, when the stack cannot hold the table, it draws the
+waiting spans without z instead (R_QogFlushNoZ) and returns false, and the
+scan goes on with the edges in the z-buffer.
 ==============
 */
-static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
+static QOG_NOINLINE qboolean R_QogEdgesToStack (int iv, int bottom)
 {
 	edge_t	*dst;
 	int		n;
@@ -985,8 +1072,8 @@ static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
 #endif
 #ifdef QOG_ZEDGE_STACK_GUARD
 	// QuakeOG (Agent S): a board stack is not sized for this table (the
-	// port's qog_stack_bottom is its lowest byte), so stop with an error
-	// rather than write past the stack
+	// port's qog_stack_bottom is its lowest byte). Agent AC: when it cannot
+	// hold it, draw the waiting spans without z rather than stop the game
 	if (!auxedges)
 	{
 		extern byte	*qog_stack_bottom;
@@ -994,8 +1081,18 @@ static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
 		int			left = &here - qog_stack_bottom;
 
 		if (n * (int)sizeof(edge_t) + QOG_ZEDGE_STACK_GUARD > left)
-			Sys_Error ("R_QogEdgesToStack: %d edges need %d bytes, the stack has %d",
-				n, n * (int)sizeof(edge_t), left);
+		{
+			R_QogFlushNoZ (iv, bottom);
+			return false;
+		}
+	}
+#endif
+#ifdef QOG_ZEDGE_FORCE_NOZ
+	// PC test builds only: every fallback takes the board's graceful path
+	if (!auxedges)
+	{
+		R_QogFlushNoZ (iv, bottom);
+		return false;
 	}
 #endif
 	if (auxedges)
@@ -1009,6 +1106,7 @@ static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
 		R_StepActiveU (EDGE_PTR(edge_head.next));
 
 	R_QogScanRows (iv + 1, bottom, false);
+	return true;
 }
 
 /*
@@ -1090,6 +1188,9 @@ void R_ScanEdges (void)
 	edge_sentinel.prev = EDGE_REF(&edge_aftertail);
 
 	R_QogScanRows (r_refdef.vrect.y, r_refdef.vrectbottom - 1, true);
+#ifdef QOG_ZEDGE_NOZ
+	R_QogClearNoZ ();	// Agent AC: every edge is done with
+#endif
 }
 
 #else	// !QOG_EDGES_IN_ZBUFFER

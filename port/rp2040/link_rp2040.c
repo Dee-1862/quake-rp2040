@@ -114,6 +114,14 @@ void qog_link_hw_idle(void) {
 #elif defined(QOG_LINK_MAIN)
             DIAG("[quake_main] link wait t=%lu ms tx=%lu rx=%lu\n",
                  (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx);
+#elif defined(QOG_STACK_WATERMARK) && defined(QOG_ZEDGE_STACK_GUARD)
+            /* Agent AC: and the edge fallbacks so far (engine/r_edge.c), those
+               that moved the edges to the stack and those drawn without z */
+            extern uint32_t qog_stack_free(void);
+            extern int r_qog_zstack, r_qog_znoz;
+            DIAG("[quake_display] link wait t=%lu ms tx=%lu rx=%lu stack free %lu zedge %d noz %d\n",
+                 (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx,
+                 (unsigned long)qog_stack_free(), r_qog_zstack - r_qog_znoz, r_qog_znoz);
 #elif defined(QOG_STACK_WATERMARK)
             extern uint32_t qog_stack_free(void);
             DIAG("[quake_display] link wait t=%lu ms tx=%lu rx=%lu stack free %lu\n",
