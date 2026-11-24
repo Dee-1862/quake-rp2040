@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cvar.c -- dynamic variable tracking
 
 #include "quakedef.h"
+#ifdef QOG_NET_LINK
+#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#endif
 
 cvar_t	*cvar_vars;
 char	*cvar_null_string = "";
@@ -120,11 +123,16 @@ void Cvar_Set (char *var_name, char *value)
 	var->string = Z_Malloc (Q_strlen(value)+1);
 	Q_strcpy (var->string, value);
 	var->value = Q_atof (var->string);
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the server half announces it when it sets its copy
 	if (var->server && changed)
 	{
 		if (sv.active)
 			SV_BroadcastPrintf ("\"%s\" changed to \"%s\"\n", var->name, var->string);
 	}
+#endif
+#ifdef QOG_NET_LINK
+	Link_CvarChanged (var);	// QuakeOG: the other half sets its copy too
+#endif
 }
 
 /*

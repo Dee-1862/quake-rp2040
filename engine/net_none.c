@@ -20,9 +20,30 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 #include "net_loop.h"
+#ifdef QOG_NET_LINK
+#include "net_link.h"
+#endif
 
 net_driver_t net_drivers[NET_DRIVER_SLOTS] =	// QuakeOG: was MAX_NET_DRIVERS
 {
+#ifdef QOG_NET_LINK
+	{	// QuakeOG: the split game's link between the halves (net_link.c)
+	"Link",
+	false,
+	Link_Init,
+	Link_Listen,
+	Link_SearchForHosts,
+	Link_Connect,
+	Link_CheckNewConnections,
+	Link_GetMessage,
+	Link_SendMessage,
+	Link_SendUnreliableMessage,
+	Link_CanSendMessage,
+	Link_CanSendUnreliableMessage,
+	Link_Close,
+	Link_Shutdown
+	}
+#else
 	{
 	"Loopback",
 	false,
@@ -39,6 +60,7 @@ net_driver_t net_drivers[NET_DRIVER_SLOTS] =	// QuakeOG: was MAX_NET_DRIVERS
 	Loop_Close,
 	Loop_Shutdown
 	}
+#endif
 };
 int net_numdrivers = 1;
 

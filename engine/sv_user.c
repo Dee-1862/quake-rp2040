@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // sv_user.c -- server code for moving users
 
 #include "quakedef.h"
+#ifdef QOG_NET_LINK
+#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#endif
 
 edict_t	*sv_player;
 
@@ -635,7 +638,11 @@ void SV_RunClients (void)
 		}
 
 // always pause in single player if in console or menus
+#ifdef QOG_SPLIT_SERVER
+		if (!sv.paused && (svs.maxclients > 1 || link_keygame) )	// QuakeOG: the client's key_dest
+#else
 		if (!sv.paused && (svs.maxclients > 1 || key_dest == key_game) )
+#endif
 			SV_ClientThink ();
 	}
 }

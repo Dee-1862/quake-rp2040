@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cmd.c -- Quake script command processing module
 
 #include "quakedef.h"
+#ifdef QOG_NET_LINK
+#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#endif
 
 void Cmd_ForwardToServer (void);
 
@@ -93,7 +96,12 @@ Adds command text at the end of the buffer
 void Cbuf_AddText (char *text)
 {
 	int		l;
-	
+
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG: the command buffer is the client's, the server's text joins it
+	Link_ServerCbuf (text, false);
+	return;
+#endif
 	l = Q_strlen (text);
 
 	if (cmd_text.cursize + l >= cmd_text.maxsize)
@@ -120,6 +128,10 @@ void Cbuf_InsertText (char *text)
 	char	*temp;
 	int		templen;
 
+#ifdef QOG_SPLIT_SERVER
+	Link_ServerCbuf (text, true);	// QuakeOG: as Cbuf_AddText
+	return;
+#endif
 #ifdef QOG_CBUF_INPLACE
 	// QuakeOG: when both parts fit, move the waiting commands up in place
 	// instead of copying them through the zone (up to the whole buffer, the
@@ -670,7 +682,17 @@ void	Cmd_ExecuteString (char *text, cmd_source_t src)
 	
 // check cvars
 	if (!Cvar_Command ())
+	{
+#ifdef QOG_SPLIT_CLIENT
+		// QuakeOG: a command of the server half runs there, now
+		if (src == src_command)
+		{
+			Link_ForwardCommand (text);
+			return;
+		}
+#endif
 		Con_Printf ("Unknown command \"%s\"\n", Cmd_Argv(0));
+	}
 	
 }
 
@@ -684,6 +706,12 @@ Sends the entire command line over to the server
 */
 void Cmd_ForwardToServer (void)
 {
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG: only reached when no server runs, when the local client
+	// would not be connected either
+	Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
+	return;
+#else
 	if (cls.state != ca_connected)
 	{
 		Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
@@ -703,6 +731,7 @@ void Cmd_ForwardToServer (void)
 		SZ_Print (&cls.message, Cmd_Args());
 	else
 		SZ_Print (&cls.message, "\n");
+#endif
 }
 
 

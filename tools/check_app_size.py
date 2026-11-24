@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Fail the build if the display app would overlap the game data region.
 
-Usage: check_app_size.py <app.bin> <qog_flashmap.h>
+Usage: check_app_size.py <app.bin> <qog_flashmap.h> [main]
 Reads QOG_APP_OFFSET and QOG_DATA_OFFSET from the header so there is one
-source of truth. Also prints how much flash headroom is left.
+source of truth. Also prints how much flash headroom is left. With "main"
+the app is the main CPU's (the split game's quake_main, Agent R), which must
+stay below the server data region at QOG_MAIN_DATA_OFFSET.
 """
 import os
 import re
@@ -18,12 +20,15 @@ def read_define(text, name):
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         sys.exit(__doc__)
     bin_path, map_path = sys.argv[1], sys.argv[2]
     with open(map_path, encoding="utf-8") as f:
         text = f.read()
-    limit = read_define(text, "QOG_DATA_OFFSET") - read_define(text, "QOG_APP_OFFSET")
+    if len(sys.argv) == 4 and sys.argv[3] == "main":
+        limit = read_define(text, "QOG_MAIN_DATA_OFFSET")
+    else:
+        limit = read_define(text, "QOG_DATA_OFFSET") - read_define(text, "QOG_APP_OFFSET")
     size = os.path.getsize(bin_path)
     pct = 100.0 * size / limit
     print("qog: app %s is %d bytes, %.1f%% of the %d-byte app slot"

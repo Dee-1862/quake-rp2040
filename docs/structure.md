@@ -61,3 +61,19 @@ Start from a full Quake source, then remove whole subsystems before optimising a
 
 - `third_party/` is git-ignored. README lists the exact clone commands, and should pin commits once we depend on specific ones.
 - Anything copied out of MG24Quake into `engine/` gets its origin noted in `docs/engine-files.md`.
+
+## 9. Two chips, one engine
+
+The split game (docs/changes.md, Agent R) builds the same engine twice: the server half (`QOG_SPLIT_SERVER`, apps/quake `quake_main` on the main RP2040, PC `quakeog_sv`) and the client half (`QOG_SPLIT_CLIENT`, `quake_display`, PC `quakeog_cl`), joined by one net driver, `engine/net_link.c`.
+
+```
+engine/net_link.c        Quake's net driver, lockstep, the items both halves exchange
+port/common/qog_link.c   reliable byte stream over the BSP's link frames (types 0x40-0x43)
+port/pc/link_pc.c        that stream over TCP on 127.0.0.1 at the UART's rate
+port/rp2040/link_rp2040.c   that stream over the BSP's UART0 link, on both chips
+port/common/qog_split_sv.c  what the server half keeps of the client side (console, V_CalcRoll)
+```
+
+- The engine still never includes BSP or SDK headers: the link's hardware side is the port's.
+- A shared global the other half reads crosses the link as an item (net_link.c lists them). Add any new one there, or the halves drift.
+- **Check:** `qogtest_hash.cfg`, `qogtest_r_fhash.cfg` and `qogtest_d_shots.cfg` give the same hashes and frames from the pair (`tools/pctest.ps1 -ServerExe`) as from `quakeog_pc`.

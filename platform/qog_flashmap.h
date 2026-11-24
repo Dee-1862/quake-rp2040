@@ -28,4 +28,21 @@
 
 #define QOG_DATA_XIP_ADDR   (QOG_XIP_BASE + QOG_DATA_OFFSET)
 
+/* Main-CPU flash map for the split game (Agent R): the server half runs on
+ * the main RP2040, which has its own 16 MB flash.
+ *
+ *   0x000000  quake_main, the display image embedded in it   3 MB (QOG_MAIN_APP_MAX_SIZE, checked post-build)
+ *   0x300000  server data region                             5 MB (pak and baked image for this address)
+ *   0x800000  BSP FAT volume                                 8 MB (fs/fs_geom.h FWOG_FS_FLASH_OFFSET, never touch)
+ *
+ * The main app is linked by the SDK at the start of flash (fwog_main_app adds
+ * no offset). The server data is written with a data-only UF2 through main's
+ * BOOTSEL drive: it covers only 0x10300000 to 0x107FFFFF, so the app and the
+ * FAT volume keep their bytes. tools/mkboard.py --main writes it. */
+#define QOG_MAIN_DATA_OFFSET    0x00300000u
+#define QOG_MAIN_FAT_OFFSET     0x00800000u
+#define QOG_MAIN_APP_MAX_SIZE   QOG_MAIN_DATA_OFFSET
+#define QOG_MAIN_DATA_MAX_SIZE  (QOG_MAIN_FAT_OFFSET - QOG_MAIN_DATA_OFFSET)
+#define QOG_MAIN_DATA_XIP_ADDR  (QOG_XIP_BASE + QOG_MAIN_DATA_OFFSET)
+
 #endif

@@ -20,6 +20,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // sv_main.c -- server main program
 
 #include "quakedef.h"
+#ifdef QOG_NET_LINK
+#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#endif
 
 server_t		sv;
 server_static_t	svs;
@@ -1032,7 +1035,11 @@ void SV_SendReconnect (void)
 	MSG_WriteString (&msg, "reconnect\n");
 	NET_SendToAll (&msg, 5);
 	
+#ifdef QOG_SPLIT_SERVER
+	Link_ServerClientExec ("reconnect\n");	// QuakeOG: the client runs it now (net_link.c)
+#else
 	if (cls.state != ca_dedicated)
+#endif
 #ifdef QUAKE2
 		Cbuf_InsertText ("reconnect\n");
 #else
@@ -1152,6 +1159,10 @@ This is called at the start of each level
 */
 extern float		scr_centertime_off;
 
+#ifdef QOG_SPLIT_SERVER
+#define	scr_centertime_off	qog_split_centertime	// QuakeOG: the client's, see below
+static float	scr_centertime_off;
+#endif
 #ifdef QUAKE2
 void SV_SpawnServer (char *server, char *startspot)
 #else
@@ -1165,6 +1176,9 @@ void SV_SpawnServer (char *server)
 	if (hostname.string[0] == 0)
 		Cvar_Set ("hostname", "UNNAMED");
 	scr_centertime_off = 0;
+#ifdef QOG_SPLIT_SERVER
+	Link_ServerCenterOff ();	// QuakeOG: on the client
+#endif
 
 	Con_DPrintf ("SpawnServer: %s\n",server);
 	svs.changelevel_issued = false;		// now safe to issue another

@@ -19,6 +19,21 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "quakedef.h"
+#ifdef QOG_NET_LINK
+#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#endif
+
+// QuakeOG: in the split game (QOG_NET_LINK) the client half keeps the
+// console commands that act on the client, plus the client's part of map,
+// save and load. The server half keeps the rest, and console lines the
+// client does not know run there (Link_ForwardCommand). Commands that
+// forward themselves to the server in id's code (god, kill, ...) are
+// Cmd_ForwardToServer on the client.
+#ifdef QOG_SPLIT_SERVER
+#define	SPLIT_DEMOPLAYBACK	false	// the server half never plays a demo
+#else
+#define	SPLIT_DEMOPLAYBACK	cls.demoplayback
+#endif
 
 extern cvar_t	pausable;
 
@@ -34,6 +49,7 @@ Host_Quit_f
 
 extern void M_Menu_Quit_f (void);
 
+#ifndef QOG_SPLIT_SERVER
 void Host_Quit_f (void)
 {
 	if (key_dest != key_console && cls.state != ca_dedicated)
@@ -42,10 +58,11 @@ void Host_Quit_f (void)
 		return;
 	}
 	CL_Disconnect ();
-	Host_ShutdownServer(false);		
+	Host_ShutdownServer(false);
 
 	Sys_Quit ();
 }
+#endif
 
 
 /*
@@ -53,6 +70,7 @@ void Host_Quit_f (void)
 Host_Status_f
 ==================
 */
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, up to Host_Ping_f
 void Host_Status_f (void)
 {
 	client_t	*client;
@@ -234,6 +252,7 @@ void Host_Ping_f (void)
 		SV_ClientPrintf ("%4i %s\n", (int)(total*1000), client->name);
 	}
 }
+#endif	// QOG_SPLIT_CLIENT
 
 /*
 ===============================================================================
@@ -261,11 +280,14 @@ void Host_Map_f (void)
 	if (cmd_source != src_command)
 		return;
 
+#ifndef QOG_SPLIT_SERVER	// QuakeOG: the client's part
 	cls.demonum = -1;		// stop demo loop in case this fails
 
 	CL_Disconnect ();
-	Host_ShutdownServer(false);		
+#endif
+	Host_ShutdownServer(false);
 
+#ifndef QOG_SPLIT_SERVER
 	key_dest = key_game;			// remove console or menu
 	SCR_BeginLoadingPlaque ();
 
@@ -276,7 +298,19 @@ void Host_Map_f (void)
 		strcat (cls.mapstring, " ");
 	}
 	strcat (cls.mapstring, "\n");
+#endif
 
+#ifdef QOG_SPLIT_CLIENT
+	// QuakeOG: the spawn parms are taken now, as Cmd_Argv will not last;
+	// the server spawns the map and sends "connect local" back if it ran
+	strcpy (cls.spawnparms, "");
+	for (i=2 ; i<Cmd_Argc() ; i++)
+	{
+		strcat (cls.spawnparms, Cmd_Argv(i));
+		strcat (cls.spawnparms, " ");
+	}
+	Link_ForwardCommand (Cmd_Args () ? va ("map %s", Cmd_Args ()) : "map");
+#else
 	svs.serverflags = 0;			// haven't completed an episode yet
 	strcpy (name, Cmd_Argv(1));
 #ifdef QUAKE2
@@ -286,7 +320,10 @@ void Host_Map_f (void)
 #endif
 	if (!sv.active)
 		return;
-	
+
+#ifdef QOG_SPLIT_SERVER
+	Link_ServerClientExec ("connect local");	// QuakeOG: the client connects now
+#else
 	if (cls.state != ca_dedicated)
 	{
 		strcpy (cls.spawnparms, "");
@@ -296,9 +333,11 @@ void Host_Map_f (void)
 			strcat (cls.spawnparms, Cmd_Argv(i));
 			strcat (cls.spawnparms, " ");
 		}
-		
+
 		Cmd_ExecuteString ("connect local", src_command);
-	}	
+	}
+#endif
+#endif	// QOG_SPLIT_CLIENT
 }
 
 /*
@@ -308,6 +347,7 @@ Host_Changelevel_f
 Goes to a new map, taking all clients along
 ==================
 */
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, changelevel and restart
 void Host_Changelevel_f (void)
 {
 #ifdef QUAKE2
@@ -345,7 +385,7 @@ void Host_Changelevel_f (void)
 		Con_Printf ("changelevel <levelname> : continue game on a new level\n");
 		return;
 	}
-	if (!sv.active || cls.demoplayback)
+	if (!sv.active || SPLIT_DEMOPLAYBACK)	// QuakeOG: SPLIT_DEMOPLAYBACK was cls.demoplayback
 	{
 		Con_Printf ("Only the server may changelevel\n");
 		return;
@@ -370,7 +410,7 @@ void Host_Restart_f (void)
 	char	startspot[MAX_QPATH];
 #endif
 
-	if (cls.demoplayback || !sv.active)
+	if (SPLIT_DEMOPLAYBACK || !sv.active)	// QuakeOG: was cls.demoplayback
 		return;
 
 	if (cmd_source != src_command)
@@ -384,7 +424,9 @@ void Host_Restart_f (void)
 	SV_SpawnServer (mapname);
 #endif
 }
+#endif	// QOG_SPLIT_CLIENT
 
+#ifndef QOG_SPLIT_SERVER	// QuakeOG: client half only, reconnect and connect
 /*
 ==================
 Host_Reconnect_f
@@ -420,6 +462,7 @@ void Host_Connect_f (void)
 	CL_EstablishConnection (name);
 	Host_Reconnect_f ();
 }
+#endif	// QOG_SPLIT_SERVER
 
 
 /*
@@ -444,6 +487,11 @@ void Host_SavegameComment (char *text)
 	int		i;
 	char	kills[20];
 
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG: the client made it from its state and sent it with the save
+	memcpy (text, link_save_comment, SAVEGAME_COMMENT_LENGTH + 1);
+	return;
+#endif
 	for (i=0 ; i<SAVEGAME_COMMENT_LENGTH ; i++)
 		text[i] = ' ';
 	memcpy (text, cl.levelname, strlen(cl.levelname));
@@ -462,6 +510,25 @@ void Host_SavegameComment (char *text)
 Host_Savegame_f
 ===============
 */
+#ifdef QOG_SPLIT_CLIENT
+// QuakeOG: the server saves. It needs the client's intermission flag and
+// the comment, which come from client state.
+void Host_Savegame_f (void)
+{
+	char	comment[SAVEGAME_COMMENT_LENGTH+1];
+
+	if (cmd_source != src_command)
+		return;
+	Host_SavegameComment (comment);
+	Link_SaveInfo (cl.intermission, comment);
+	Link_ForwardCommand (Cmd_Argc () > 1 ? va ("save %s", Cmd_Args ()) : "save");
+}
+#else
+#ifdef QOG_SPLIT_SERVER
+#define	cl_intermission	link_cl_intermission	// QuakeOG: sent with the save
+#else
+#define	cl_intermission	cl.intermission
+#endif
 void Host_Savegame_f (void)
 {
 	char	name[256];
@@ -478,7 +545,7 @@ void Host_Savegame_f (void)
 		return;
 	}
 
-	if (cl.intermission)
+	if (cl_intermission)	// QuakeOG: was cl.intermission
 	{
 		Con_Printf ("Can't save in intermission.\n");
 		return;
@@ -551,6 +618,8 @@ void Host_Savegame_f (void)
 	fclose (f);
 	Con_Printf ("done.\n");
 }
+#undef	cl_intermission
+#endif	// QOG_SPLIT_CLIENT
 
 
 /*
@@ -561,7 +630,27 @@ Host_Loadgame_f
 // QuakeOG: the 32 KB line buffer was on the stack. It now lives in a
 // temporary block on the high hunk, taken once for the header and again
 // after the map has loaded, so the level loads with that space free.
+#ifdef QOG_SPLIT_CLIENT
+// QuakeOG: the server loads. Its part that disconnects and reconnects the
+// client comes back as "disconnect" and "connect local".
+void Host_Loadgame_f (void)
+{
+	if (cmd_source != src_command)
+		return;
+	if (Cmd_Argc() == 2)
+		cls.demonum = -1;		// stop demo loop in case this fails
+	Link_ForwardCommand (Cmd_Argc () > 1 ? va ("load %s", Cmd_Args ()) : "load");
+}
+#else
+#ifdef QOG_LOADGAME_STRSIZE
+// QuakeOG (Agent R): the split server has no z-buffer to borrow, so the
+// buffer is sized for the biggest brace block of a save instead (a fight
+// save of E1M1: the globals, 2,485 bytes). A bigger block still stops with
+// id's "Loadgame buffer overflow".
+#define LOADGAME_STRSIZE	QOG_LOADGAME_STRSIZE
+#else
 #define LOADGAME_STRSIZE	32768
+#endif
 #ifdef QOG_LOADGAME_ZTEMP
 // QuakeOG: the line buffer at the end of the z-buffer, which is free between
 // frames (r_shared.h): a load runs from the command buffer, before the
@@ -600,7 +689,9 @@ void Host_Loadgame_f (void)
 		return;
 	}
 
+#ifndef QOG_SPLIT_SERVER
 	cls.demonum = -1;		// stop demo loop in case this fails
+#endif
 
 	sprintf (name, "%s/%s", com_gamedir, Cmd_Argv(1));
 	COM_DefaultExtension (name, ".sav");
@@ -646,7 +737,14 @@ void Host_Loadgame_f (void)
 	fscanf (f, "%s\n",mapname);
 	fscanf (f, "%f\n",&time);
 
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG: CL_Disconnect_f, the client's part on the client, the
+	// server's part (it closes the connection and stops this server) here
+	Link_ServerClientExec ("disconnect");
+	Link_ServerPeerClosed ();
+#else
 	CL_Disconnect_f ();
+#endif
 	
 #ifdef QUAKE2
 	SV_SpawnServer (mapname, NULL);
@@ -734,12 +832,17 @@ void Host_Loadgame_f (void)
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		svs.clients->spawn_parms[i] = spawn_parms[i];
 
+#ifdef QOG_SPLIT_SERVER
+	Link_ServerClientExec ("connect local");	// QuakeOG: CL_EstablishConnection and Host_Reconnect_f
+#else
 	if (cls.state != ca_dedicated)
 	{
 		CL_EstablishConnection ("local");
 		Host_Reconnect_f ();
 	}
+#endif
 }
+#endif	// QOG_SPLIT_CLIENT
 
 #ifdef QUAKE2
 void SaveGamestate()
@@ -950,17 +1053,20 @@ void Host_Name_f (void)
 {
 	char	*newName;
 
+#ifndef QOG_SPLIT_SERVER
 	if (Cmd_Argc () == 1)
 	{
 		Con_Printf ("\"name\" is \"%s\"\n", cl_name.string);
 		return;
 	}
+#endif
 	if (Cmd_Argc () == 2)
 		newName = Cmd_Argv(1);	
 	else
 		newName = Cmd_Args();
 	newName[15] = 0;
 
+#ifndef QOG_SPLIT_SERVER
 	if (cmd_source == src_command)
 	{
 		if (Q_strcmp(cl_name.string, newName) == 0)
@@ -970,7 +1076,9 @@ void Host_Name_f (void)
 			Cmd_ForwardToServer ();
 		return;
 	}
+#endif
 
+#ifndef QOG_SPLIT_CLIENT
 	if (host_client->name[0] && strcmp(host_client->name, "unconnected") )
 		if (Q_strcmp(host_client->name, newName) != 0)
 			Con_Printf ("%s renamed to %s\n", host_client->name, newName);
@@ -982,6 +1090,7 @@ void Host_Name_f (void)
 	MSG_WriteByte (&sv.reliable_datagram, svc_updatename);
 	MSG_WriteByte (&sv.reliable_datagram, host_client - svs.clients);
 	MSG_WriteString (&sv.reliable_datagram, host_client->name);
+#endif
 }
 
 	
@@ -1044,6 +1153,7 @@ void Host_Please_f (void)
 #endif
 
 
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, say and tell
 void Host_Say(qboolean teamonly)
 {
 	client_t *client;
@@ -1055,16 +1165,20 @@ void Host_Say(qboolean teamonly)
 
 	if (cmd_source == src_command)
 	{
+#ifndef QOG_SPLIT_SERVER
 		if (cls.state == ca_dedicated)
+#endif
 		{
 			fromServer = true;
 			teamonly = false;
 		}
+#ifndef QOG_SPLIT_SERVER
 		else
 		{
 			Cmd_ForwardToServer ();
 			return;
 		}
+#endif
 	}
 
 	if (Cmd_Argc () < 2)
@@ -1170,6 +1284,7 @@ void Host_Tell_f(void)
 	}
 	host_client = save;
 }
+#endif	// QOG_SPLIT_CLIENT
 
 
 /*
@@ -1182,12 +1297,14 @@ void Host_Color_f(void)
 	int		top, bottom;
 	int		playercolor;
 	
+#ifndef QOG_SPLIT_SERVER
 	if (Cmd_Argc() == 1)
 	{
 		Con_Printf ("\"color\" is \"%i %i\"\n", ((int)cl_color.value) >> 4, ((int)cl_color.value) & 0x0f);
 		Con_Printf ("color <0-13> [0-13]\n");
 		return;
 	}
+#endif
 
 	if (Cmd_Argc() == 2)
 		top = bottom = atoi(Cmd_Argv(1));
@@ -1206,6 +1323,7 @@ void Host_Color_f(void)
 	
 	playercolor = top*16 + bottom;
 
+#ifndef QOG_SPLIT_SERVER
 	if (cmd_source == src_command)
 	{
 		Cvar_SetValue ("_cl_color", playercolor);
@@ -1213,7 +1331,9 @@ void Host_Color_f(void)
 			Cmd_ForwardToServer ();
 		return;
 	}
+#endif
 
+#ifndef QOG_SPLIT_CLIENT
 	host_client->colors = playercolor;
 	EV_SETFLOAT(host_client->edict, team, bottom + 1);
 
@@ -1221,6 +1341,7 @@ void Host_Color_f(void)
 	MSG_WriteByte (&sv.reliable_datagram, svc_updatecolors);
 	MSG_WriteByte (&sv.reliable_datagram, host_client - svs.clients);
 	MSG_WriteByte (&sv.reliable_datagram, host_client->colors);
+#endif
 }
 
 /*
@@ -1228,6 +1349,7 @@ void Host_Color_f(void)
 Host_Kill_f
 ==================
 */
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, kill to the view commands
 void Host_Kill_f (void)
 {
 	if (cmd_source == src_command)
@@ -1505,10 +1627,14 @@ void Host_Kick_f (void)
 	if (i < svs.maxclients)
 	{
 		if (cmd_source == src_command)
+#ifdef QOG_SPLIT_SERVER
+			who = cl_name.string;	// QuakeOG: the client's name, copied from the client
+#else
 			if (cls.state == ca_dedicated)
 				who = "Console";
 			else
 				who = cl_name.string;
+#endif
 		else
 			who = save->name;
 
@@ -1726,6 +1852,7 @@ edict_t	*FindViewthing (void)
 Host_Viewmodel_f
 ==================
 */
+#ifndef QOG_SPLIT_SERVER	// QuakeOG: these set and read the client's model list
 void Host_Viewmodel_f (void)
 {
 	edict_t	*e;
@@ -1827,6 +1954,8 @@ void Host_Viewprev_f (void)
 
 	PrintFrameName (m, e->v.frame);		
 }
+#endif	// QOG_SPLIT_SERVER
+#endif	// QOG_SPLIT_CLIENT
 
 /*
 ===============================================================================
@@ -1842,6 +1971,7 @@ DEMO LOOP CONTROL
 Host_Startdemos_f
 ==================
 */
+#ifndef QOG_SPLIT_SERVER	// QuakeOG: client half only, the demo commands
 void Host_Startdemos_f (void)
 {
 	int		i, c;
@@ -1932,6 +2062,7 @@ void Host_Stopdemo_f (void)
 	CL_StopPlayback ();
 	CL_Disconnect ();
 }
+#endif	// QOG_SPLIT_SERVER
 
 //=============================================================================
 
@@ -1942,6 +2073,62 @@ Host_InitCommands
 */
 void Host_InitCommands (void)
 {
+#ifdef QOG_SPLIT_CLIENT
+	// QuakeOG: the client half's commands. The ones id's code forwards to
+	// the server as a client message are that forward here. The server's
+	// own commands are not here, so they run on the server half.
+	Cmd_AddCommand ("quit", Host_Quit_f);
+	Cmd_AddCommand ("god", Cmd_ForwardToServer);
+	Cmd_AddCommand ("notarget", Cmd_ForwardToServer);
+	Cmd_AddCommand ("fly", Cmd_ForwardToServer);
+	Cmd_AddCommand ("map", Host_Map_f);
+	Cmd_AddCommand ("connect", Host_Connect_f);
+	Cmd_AddCommand ("reconnect", Host_Reconnect_f);
+	Cmd_AddCommand ("name", Host_Name_f);
+	Cmd_AddCommand ("noclip", Cmd_ForwardToServer);
+	Cmd_AddCommand ("version", Host_Version_f);
+	Cmd_AddCommand ("say", Cmd_ForwardToServer);
+	Cmd_AddCommand ("say_team", Cmd_ForwardToServer);
+	Cmd_AddCommand ("tell", Cmd_ForwardToServer);
+	Cmd_AddCommand ("color", Host_Color_f);
+	Cmd_AddCommand ("kill", Cmd_ForwardToServer);
+	Cmd_AddCommand ("pause", Cmd_ForwardToServer);
+	Cmd_AddCommand ("ping", Cmd_ForwardToServer);
+	Cmd_AddCommand ("load", Host_Loadgame_f);
+	Cmd_AddCommand ("save", Host_Savegame_f);
+	Cmd_AddCommand ("give", Cmd_ForwardToServer);
+	Cmd_AddCommand ("startdemos", Host_Startdemos_f);
+	Cmd_AddCommand ("demos", Host_Demos_f);
+	Cmd_AddCommand ("stopdemo", Host_Stopdemo_f);
+	Cmd_AddCommand ("mcache", Mod_Print);
+#elif defined(QOG_SPLIT_SERVER)
+	// QuakeOG: the server half's commands, the client's are on the client
+	Cmd_AddCommand ("status", Host_Status_f);
+	Cmd_AddCommand ("god", Host_God_f);
+	Cmd_AddCommand ("notarget", Host_Notarget_f);
+	Cmd_AddCommand ("fly", Host_Fly_f);
+	Cmd_AddCommand ("map", Host_Map_f);
+	Cmd_AddCommand ("restart", Host_Restart_f);
+	Cmd_AddCommand ("changelevel", Host_Changelevel_f);
+	Cmd_AddCommand ("name", Host_Name_f);
+	Cmd_AddCommand ("noclip", Host_Noclip_f);
+	Cmd_AddCommand ("version", Host_Version_f);
+	Cmd_AddCommand ("say", Host_Say_f);
+	Cmd_AddCommand ("say_team", Host_Say_Team_f);
+	Cmd_AddCommand ("tell", Host_Tell_f);
+	Cmd_AddCommand ("color", Host_Color_f);
+	Cmd_AddCommand ("kill", Host_Kill_f);
+	Cmd_AddCommand ("pause", Host_Pause_f);
+	Cmd_AddCommand ("spawn", Host_Spawn_f);
+	Cmd_AddCommand ("begin", Host_Begin_f);
+	Cmd_AddCommand ("prespawn", Host_PreSpawn_f);
+	Cmd_AddCommand ("kick", Host_Kick_f);
+	Cmd_AddCommand ("ping", Host_Ping_f);
+	Cmd_AddCommand ("load", Host_Loadgame_f);
+	Cmd_AddCommand ("save", Host_Savegame_f);
+	Cmd_AddCommand ("give", Host_Give_f);
+	Cmd_AddCommand ("mcache", Mod_Print);
+#else
 	Cmd_AddCommand ("status", Host_Status_f);
 	Cmd_AddCommand ("quit", Host_Quit_f);
 	Cmd_AddCommand ("god", Host_God_f);
@@ -1986,4 +2173,5 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("viewprev", Host_Viewprev_f);
 
 	Cmd_AddCommand ("mcache", Mod_Print);
+#endif
 }

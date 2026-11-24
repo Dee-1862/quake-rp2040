@@ -211,3 +211,89 @@ target_link_options(quake_display PRIVATE -Wl,--allow-multiple-definition)
 fwog_display_app(quake_display
     VERSION 001
     DESCRIPTION "QuakeOG: Quake on the display RP2040 (does not fit RAM yet; built for measurement)")
+
+# QuakeOG (Agent R): the two-chip split. The server half (SV_*, QuakeC,
+# edicts) runs on the MAIN RP2040 as quake_main, the client half (CL_*,
+# renderer, status bar, input) on the DISPLAY RP2040 as quake_display. They
+# talk over the inter-CPU UART through the link net driver (engine/net_link.c,
+# port/common/qog_link.c, port/rp2040/link_rp2040.c). Each half gets its own
+# engine library from qog_engine's sources and flags, as apps/qogfly does.
+# -DQOG_SPLIT=OFF builds quake_display as the single-chip game again.
+#
+#   cmake --build build --target quake_main   # both halves: main embeds quake_display
+option(QOG_SPLIT "quake_display is the client half and quake_main the server half" ON)
+if(QOG_SPLIT)
+    get_target_property(_split_src qog_engine SOURCES)
+    get_target_property(_split_defs qog_engine COMPILE_DEFINITIONS)
+    set(_split_common
+        ${QOG_ROOT}/port/common/qog_link.c
+        ${QOG_ROOT}/port/common/qog_mem.c
+        ${QOG_ROOT}/port/common/qog_rand.c)
+
+    # client half: no server, QuakeC or edicts
+    set(_cl_src ${_split_src})
+    list(FILTER _cl_src EXCLUDE REGEX "/(sv_[a-z]+|pr_[a-z]+|net_loop|progs_aot|qog_mem|qog_rand)\.c$")
+    add_library(qog_engine_cl STATIC EXCLUDE_FROM_ALL ${_cl_src} ${_split_common})
+    target_compile_definitions(qog_engine_cl PUBLIC ${_split_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
+
+    # server half: no client, renderer, console or sound. Its command buffer
+    # is never used (the client's is the game's), so it gets a small one.
+    set(QOG_SPLIT_SV_ENGINE cmd common crc cvar host host_cmd mathlib model net_link net_main net_none
+        net_vcr pr_cmds pr_edict pr_exec sv_main sv_move sv_phys sv_user world zone)
+    list(TRANSFORM QOG_SPLIT_SV_ENGINE PREPEND ${QOG_ROOT}/engine/)
+    list(TRANSFORM QOG_SPLIT_SV_ENGINE APPEND .c)
+    set(_sv_defs ${_split_defs})
+    list(REMOVE_ITEM _sv_defs QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
+    list(TRANSFORM _sv_defs REPLACE "^QOG_CMDBUF_SIZE=[0-9]+$" "QOG_CMDBUF_SIZE=256")
+    list(APPEND _sv_defs QOG_LOADGAME_STRSIZE=8192)   # a save's biggest block 2,485 B (id 32 KB on the hunk)
+    list(TRANSFORM _sv_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=6")   # server zone peak 1.9 KB
+    add_library(qog_engine_sv STATIC EXCLUDE_FROM_ALL ${QOG_SPLIT_SV_ENGINE} ${QOG_PROGS_AOT}
+        ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common})
+    target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER)
+
+    foreach(_lib qog_engine_cl qog_engine_sv)
+        # both ends of the link use the same frame size: 512-byte frames, 2 KB rings
+        target_compile_definitions(${_lib} PUBLIC QOG_LINK_CHUNK=512 QOG_LINK_TXRING=2048 QOG_LINK_RXRING=2048)
+        target_include_directories(${_lib} PUBLIC
+            ${QOG_ROOT}/engine ${QOG_ROOT}/port/common ${QOG_ROOT}/platform)
+        target_compile_options(${_lib} PRIVATE -w -Wno-implicit-function-declaration -fstack-usage)
+        target_compile_options(${_lib} PUBLIC -fno-short-enums)   # same layout as the PC and the baked image
+        target_link_options(${_lib} INTERFACE -Wl,--no-enum-size-warning)
+        target_link_libraries(${_lib} PUBLIC pico_stdlib)
+    endforeach()
+    target_link_libraries(qog_engine_cl PUBLIC fwog_display_bsp)
+    target_link_libraries(qog_engine_sv PUBLIC fwog_main_bsp)
+
+    # the display app becomes the client half (the same sources, another library)
+    target_sources(quake_display PRIVATE ${QOG_ROOT}/port/rp2040/link_rp2040.c)
+    get_target_property(_disp_libs quake_display LINK_LIBRARIES)
+    list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
+    set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
+    set(QOG_CL_HUNK_KB 115 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl for e3m5 with a fight, a save and a load (E1M1 97)")
+    get_target_property(_disp_defs quake_display COMPILE_DEFINITIONS)
+    list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")
+    set_property(TARGET quake_display PROPERTY COMPILE_DEFINITIONS ${_disp_defs})
+
+    set(QOG_SV_HUNK_KB 172 CACHE STRING "server half hunk in KB, smallest -heapsize of quakeog_sv for e3m5 with a fight, a save and a load (E1M1 130)")
+    set(QOG_SV_STACK_KB 24 CACHE STRING "server half stack array in KB, deepest chain from server_main 17,496 B (tools/stack_chain.py)")
+    add_executable(quake_main EXCLUDE_FROM_ALL
+        ${QOG_ROOT}/port/rp2040/sys_rp2040.c
+        ${QOG_ROOT}/port/rp2040/link_rp2040.c)
+    target_compile_definitions(quake_main PRIVATE
+        QOG_SYS_MAIN QOG_LINK_MAIN QOG_HUNK_KB=${QOG_SV_HUNK_KB} QOG_STACK_KB=${QOG_SV_STACK_KB})
+    target_compile_options(quake_main PRIVATE -fstack-usage)
+    target_link_libraries(quake_main qog_engine_sv fwog_main_bsp)
+    target_link_options(quake_main PRIVATE -Wl,--allow-multiple-definition)
+    # the display image main carries: quake_display, or for measuring main
+    # while quake_display does not link, any display app (qog_display)
+    set(QOG_SPLIT_MAIN_EMBED quake_display CACHE STRING "display app quake_main embeds")
+    fwog_embed_display_image(quake_main ${QOG_SPLIT_MAIN_EMBED})
+    fwog_main_app(quake_main
+        VERSION 001
+        DESCRIPTION "QuakeOG: the Quake server half (QuakeC, physics, edicts) on the main RP2040, with the client half on the display")
+    add_custom_command(TARGET quake_main POST_BUILD
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_app_size.py
+                $<TARGET_FILE_DIR:quake_main>/quake_main.bin
+                ${CMAKE_SOURCE_DIR}/platform/qog_flashmap.h main
+        VERBATIM)
+endif()

@@ -28,15 +28,32 @@ See the GNU General Public License for more details.
  *
  * Hunk size: QOG_HUNK_KB. The engine does not fit in RAM yet; this layer
  * is built to measure code size, static RAM and stack frames on the target
- * (docs/fit-plan.md). */
+ * (docs/fit-plan.md).
+ *
+ * QuakeOG (Agent R): built with QOG_SYS_MAIN it is the main CPU's layer for
+ * the split game's server half (apps/quake/main): the pack and the baked
+ * image are the server's copy in main's own flash (QOG_MAIN_DATA_XIP_ADDR),
+ * main() boots the display CPU first, and every wait kicks the watchdog. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include "quakedef.h"
 #include "pico/stdlib.h"
+#ifdef QOG_SYS_MAIN
+#include "fwog_main.h"
+#else
 #include "fwog_display.h"
-#include "qog_flashmap.h"
 #include "qog_aim.h"
+#endif
+#include "qog_flashmap.h"
+
+#ifdef QOG_SYS_MAIN
+#define QOG_SYS_DATA_ADDR	QOG_MAIN_DATA_XIP_ADDR
+#define QOG_SYS_DATA_MAX	QOG_MAIN_DATA_MAX_SIZE
+#else
+#define QOG_SYS_DATA_ADDR	QOG_DATA_XIP_ADDR
+#define QOG_SYS_DATA_MAX	QOG_DATA_MAX_SIZE
+#endif
 
 #ifndef QOG_HUNK_KB
 #define QOG_HUNK_KB 64
@@ -49,9 +66,15 @@ static byte s_hunk[QOG_HUNK_KB * 1024] __attribute__((aligned(16)));
    QOG_SYS_NO_MAIN). */
 void *qog_rp2040_hunk(int *size) { *size = (int)sizeof s_hunk; return s_hunk; }
 
+#ifdef QOG_SYS_MAIN
+/* BSP contract rule 7: the main loop kicks the watchdog (and so does every
+   wait of the link, port/rp2040/link_rp2040.c). */
+FWOG_WATCHDOG_DEFAULT();
+#else
 /* BSP contract rule 2: red held 6 s powers the board off. The main loop
    calls fwog_power_poll every iteration (and Sys_Error keeps doing so). */
 FWOG_POWER_DEFAULT();
+#endif
 
 /* newlib's remove() wants this; there is no filesystem to delete from. */
 int _unlink(const char *path) { (void)path; return -1; }
@@ -59,13 +82,13 @@ int _unlink(const char *path) { (void)path; return -1; }
 /* ---- the pack in flash ------------------------------------------------ */
 
 #define PAK_HANDLE 1
-static const byte *const s_pak = (const byte *)QOG_DATA_XIP_ADDR;
+static const byte *const s_pak = (const byte *)QOG_SYS_DATA_ADDR;
 static int s_pakpos;
 
 static int pak_length(void) {
     if (memcmp(s_pak, "PACK", 4)) return -1;
     int dirofs = *(const int *)(s_pak + 4), dirlen = *(const int *)(s_pak + 8);
-    if (dirofs < 12 || dirlen < 0 || dirofs + dirlen > (int)QOG_DATA_MAX_SIZE) return -1;
+    if (dirofs < 12 || dirlen < 0 || dirofs + dirlen > (int)QOG_SYS_DATA_MAX) return -1;
     return dirofs + dirlen;
 }
 
@@ -93,10 +116,10 @@ static int bake_length(void) {
     s_bakelen = 0;
     int pak = pak_length();
     if (pak < 0) return 0;
-    for (unsigned ofs = ((unsigned)pak + 0xFFFFu) & ~0xFFFFu; ofs + 64 <= QOG_DATA_MAX_SIZE; ofs += 0x10000u) {
+    for (unsigned ofs = ((unsigned)pak + 0xFFFFu) & ~0xFFFFu; ofs + 64 <= QOG_SYS_DATA_MAX; ofs += 0x10000u) {
         const unsigned *h = (const unsigned *)(s_pak + ofs);
         if (h[0] != 0x42474F51u) continue;          /* "QOGB", QOGB_MAGIC in engine/model.h */
-        if (h[4] < 64 || h[4] > QOG_DATA_MAX_SIZE - ofs) break;
+        if (h[4] < 64 || h[4] > QOG_SYS_DATA_MAX - ofs) break;
         s_bake = s_pak + ofs;
         s_bakelen = (int)h[4];                      /* size, header included */
         break;
@@ -175,6 +198,17 @@ void Sys_Error(char *error, ...) {
     va_start(ap, error);
     vsnprintf(text, sizeof text, error, ap);
     va_end(ap);
+#ifdef QOG_SYS_MAIN
+    /* Report for 20 s, then stop kicking: the watchdog resets main, and
+       main resets the display through GUI_NRESET, a clean restart of both. */
+    for (int k = 0; k < 20; k++) {
+        DIAG("Sys_Error: %s\n", text);
+        board_watchdog_kick();
+        sleep_ms(1000);
+    }
+    for (;;)
+        tight_loop_contents();
+#else
     /* Keep the red-button power-off alive while reporting (BSP rule): the
        display CPU has no watchdog and must stay switch-off-able. */
     for (;;) {
@@ -184,17 +218,59 @@ void Sys_Error(char *error, ...) {
             sleep_ms(2);
         }
     }
+#endif
 }
 
 void Sys_Quit(void) { Sys_Error("quit"); }
 
 double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
 
+#ifdef QOG_SYS_MAIN
+/* QuakeOG (Agent R): the server half on the main CPU. Main is the CPU that
+   boots the display (fwog_display_update_run, which also brings the link up
+   and releases GUI_NRESET), then each Host_Frame waits for the client half's
+   frame on the link, kicking the watchdog while it waits. */
+#ifdef QOG_STACK_KB
+static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
+static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
+    __asm volatile ("mov sp, r0\n\tbx r1\n");
+}
+#endif
+static void __attribute__((noreturn)) server_main(void) {
+    static char *argv[] = { "quake", "-nosound" };
+    quakeparms_t parms;
+
+    memset(&parms, 0, sizeof parms);
+    COM_InitArgv(2, argv);
+    parms.argc = com_argc;
+    parms.argv = com_argv;
+    parms.basedir = ".";
+    parms.membase = s_hunk;
+    parms.memsize = sizeof s_hunk;
+    Host_Init(&parms);          /* waits for the display's HELLO (qog_link_start) */
+    for (;;) {
+        board_watchdog_kick();
+        Host_Frame(0.0f);       /* the client half sets the frame time */
+    }
+}
+
+int main(void) {
+    board_init();
+    fwog_display_result_t d = fwog_display_update_run();
+    DIAG("[quake_main] display: %s\n", fwog_display_result_text(d));
+#ifdef QOG_STACK_KB
+    run_on_stack(s_stack + sizeof s_stack / sizeof s_stack[0], server_main);
+#else
+    server_main();
+#endif
+}
+#endif	/* QOG_SYS_MAIN */
+
 /* Buttons for Sys_SendKeyEvents (vid_rp2040.c): the main loop polls them
    through fwog_power_poll, the only poll allowed (docs/lessons.md L5). */
 uint8_t qog_rp2040_buttons;
 
-#ifndef QOG_SYS_NO_MAIN
+#if !defined(QOG_SYS_NO_MAIN) && !defined(QOG_SYS_MAIN)
 #ifdef QOG_STACK_KB
 /* QuakeOG: the game's stack, in main RAM so the link counts it (the SDK's
    default is 2 KB in a scratch bank). Sized from the deepest call chain
