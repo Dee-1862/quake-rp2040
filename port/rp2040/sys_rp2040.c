@@ -233,6 +233,9 @@ int _unlink(const char *path) { (void)path; return -1; }
 #include <fcntl.h>
 #include <sys/stat.h>
 #include "fs/fwog_fs.h"
+#ifdef QOG_FAT_FORMAT_IF_MISSING
+#include "fs/ff/ff.h"
+#endif
 
 #define FAT_FD  3
 #define FAT_DIR "quake"
@@ -242,6 +245,25 @@ static int s_fat_open;
 static int fat_ready(void) {
     if (!s_fat_state) {
         s_fat_state = fwog_fs_mount() ? 1 : -1;
+#ifdef QOG_FAT_FORMAT_IF_MISSING
+        /* The user agreed to format the save volume when it does not mount
+           (a board that never had one). A volume that mounts is never
+           formatted. The BSP's disk driver kicks the watchdog as it writes. */
+        if (s_fat_state < 0) {
+            /* f_mkfs as fwog_fs_format() does it, but its 4 KB work buffer
+               is on the game stack (19 KB free there) instead of a static
+               main has no RAM for. It writes the boot sector, FAT and root. */
+            BYTE work[FF_MAX_SS];
+            MKFS_PARM parm = {0};
+            parm.fmt = FM_ANY;
+            parm.n_fat = 1;
+            parm.align = 1;
+            DIAG("[quake_main] no FAT volume, formatting it for saves\n");
+            const FRESULT r = f_mkfs("", &parm, work, sizeof work);
+            DIAG("[quake_main] format %s (%d)\n", r == FR_OK ? "done" : "FAILED", (int)r);
+            s_fat_state = (r == FR_OK && fwog_fs_mount()) ? 1 : -1;
+        }
+#endif
         if (s_fat_state > 0 && !fwog_fs_exists(FAT_DIR) && !fwog_fs_mkdir(FAT_DIR))
             DIAG("[quake_main] cannot make the folder %s on the FAT volume\n", FAT_DIR);
         QOG_FLASH_REAPPLY();    /* a flash write runs boot2 again, which resets the divider */
