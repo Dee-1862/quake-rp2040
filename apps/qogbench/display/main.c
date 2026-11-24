@@ -23,6 +23,14 @@
  *               blended at both ends of each run, stepped linearly between.
  *   s16_p2      approximate QOG_LITSPAN16: one float divide per 16 pixels.
  *   s16lin_p2   both approximations.
+ *   rfast_p2    the Fast render mode's drawer (r_fast 1, QOG_RFAST,
+ *               D_LITSPANS_FAST_BODY): divide every 8, 16 or 32 pixels as
+ *               1/z allows, linear light in runs of 16, the reciprocal from
+ *               the integer divider. rfast_short on the game-like spans.
+ *   floor_*     a floor seen level (1/z constant along each row, where Fast
+ *               takes 32-pixel sub-spans): exact drawer and Fast drawer.
+ *   frecip      Fast mode's 0x10000 / x through the integer divider, against
+ *               fdiv above.
  *   *_short     the same on game-like spans: each row cut into spans of 17
  *               to 47 pixels (E1M1's fly-through averages 30 pixels a span,
  *               1,600 spans a frame), so the per-span float work shows.
@@ -187,6 +195,7 @@ static NOINLINE void DrawSpans_lit_fast(espan_t *pspan) { D_LITSPANS8_BODY }
 static NOINLINE void DrawSpans_lit_lin(espan_t *pspan) { D_LITSPANS8LIN_BODY }
 static NOINLINE void DrawSpans_lit_s16(espan_t *pspan) { D_LITSPANS16_BODY }
 static NOINLINE void DrawSpans_lit_s16lin(espan_t *pspan) { D_LITSPANS16LIN_BODY }
+static NOINLINE void DrawSpans_lit_rfast(espan_t *pspan) { D_LITSPANS_FAST_BODY }
 
 /* engine/d_scan.c D_DrawZSpans (16-bit z) with id's double 1/z or with
    QOG_ZSPANS_FAST's D_QogZiFixed (copied from engine/d_scan.c). */
@@ -413,6 +422,7 @@ int main(void) {
     uint32_t r_old_p2 = 0, r_fast_p2 = 0, r_fast_any = 0, chk_p2 = 0, chk_any = 0;
     uint32_t r_lin_p2 = 0, r_s16_p2 = 0, r_s16lin_p2 = 0;
     uint32_t r_old_short = 0, r_fast_short = 0, r_zid_short = 0, r_zfast_short = 0, chk_z = 0;
+    uint32_t r_rfast_p2 = 0, r_rfast_short = 0, r_floor_exact = 0, r_floor_rfast = 0, r_frecip_ns = 0;
     const uint8_t *game_tex = tex_in_flash ? flash_tex : ram_tex;
     const int any_w = tex_in_flash ? W : 64, any_h = tex_in_flash ? H : 48;
     const int p2_w = tex_in_flash ? 256 : 64, p2_h = tex_in_flash ? 128 : 64;
@@ -451,6 +461,16 @@ int main(void) {
                 r_lin_p2 = time_frames(DrawSpans_lit_lin);
                 r_s16_p2 = time_frames(DrawSpans_lit_s16);
                 r_s16lin_p2 = time_frames(DrawSpans_lit_s16lin);
+                r_rfast_p2 = time_frames(DrawSpans_lit_rfast);
+                short_spans();
+                r_rfast_short = time_frames_on(DrawSpans_lit_rfast, s_short);
+                /* a floor seen level: 1/z changes only from row to row */
+                setup_game_scene(game_tex, p2_w, p2_h, 0);
+                d_zistepu = 0.0f;
+                d_sdivzstepu = 0.00110f; d_tdivzstepu = 0.0f;
+                d_sdivzstepv = 0.0f;     d_tdivzstepv = 0.00085f;
+                r_floor_exact = time_frames(DrawSpans_lit_fast);
+                r_floor_rfast = time_frames(DrawSpans_lit_rfast);
             } else {
                 /* game-like span lengths, then the byte checks */
                 setup_game_scene(game_tex, p2_w, p2_h, 0);
@@ -480,6 +500,10 @@ int main(void) {
             uint64_t t0 = time_us_64();
             for (int i = 0; i < 20000; i++) acc = (float)0x10000 / (acc + dv);
             r_fdiv_ns = (uint32_t)((time_us_64() - t0) * 1000u / 20000u);
+            acc = 1.0f;
+            t0 = time_us_64();
+            for (int i = 0; i < 20000; i++) acc = litspan_frecip(acc + dv);
+            r_frecip_ns = (uint32_t)((time_us_64() - t0) * 1000u / 20000u);
 
             /* Flash reads: sequential copy, then scattered single bytes. */
             const uint8_t *flash = (const uint8_t *)0x10400000u;   /* data region */
@@ -520,6 +544,12 @@ int main(void) {
                  (unsigned long)r_lin_p2, (unsigned long)r_s16_p2, (unsigned long)r_s16lin_p2,
                  (unsigned long)r_old_short, (unsigned long)r_fast_short,
                  (unsigned long)r_zid_short, (unsigned long)r_zfast_short, (unsigned long)chk_z);
+            DIAG("[bench] rfast p2 exact=%luus rfast=%luus | short exact=%luus rfast=%luus | "
+                 "floor exact=%luus rfast=%luus | fdiv=%luns frecip=%luns\n",
+                 (unsigned long)r_fast_p2, (unsigned long)r_rfast_p2,
+                 (unsigned long)r_fast_short, (unsigned long)r_rfast_short,
+                 (unsigned long)r_floor_exact, (unsigned long)r_floor_rfast,
+                 (unsigned long)r_fdiv_ns, (unsigned long)r_frecip_ns);
         }
         sleep_ms(1);
     }

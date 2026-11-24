@@ -208,7 +208,7 @@ qboolean R_AliasCheckBBox (void)
 		if (viewpts[i].flags & ALIAS_Z_CLIP)
 			continue;
 
-		zi = 1.0 / viewaux[i].fv[2];
+		zi = QOG_FRECIP (viewaux[i].fv[2]);	// QuakeOG: QOG_FLOAT_EXACT
 
 	// FIXME: do with chop mode in ASM, or convert to float
 		v0 = (viewaux[i].fv[0] * xscale * zi) + xcenter;
@@ -674,8 +674,8 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 	for (i=0 ; i<r_anumverts ; i++, fv++, pverts++, pstverts++)
 	{
 	// transform and project
-		zi = 1.0 / (DotProduct(pverts->v, aliastransform[2]) +
-				aliastransform[2][3]);
+		zi = QOG_FRECIP (DotProduct(pverts->v, aliastransform[2]) +
+				aliastransform[2][3]);	// QuakeOG: QOG_FLOAT_EXACT
 
 	// x, y, and z are scaled down by 1/2**31 in the transform, so 1/z is
 	// scaled up by 1/2**31, and the scaling cancels out for x and y in the
@@ -723,7 +723,7 @@ void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av)
 	float	zi;
 
 // project points
-	zi = 1.0 / av->fv[2];
+	zi = QOG_FRECIP (av->fv[2]);	// QuakeOG: QOG_FLOAT_EXACT
 
 	fv->v[5] = zi * ziscale;
 
@@ -793,7 +793,7 @@ void R_AliasSetupSkin (void)
 		numskins = paliasskingroup->numskins;
 		fullskininterval = pskinintervals[numskins-1];
 	
-		skintime = cl.time + currententity->syncbase;
+		skintime = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG: render.h
 	
 	// when loading in Mod_LoadAliasSkinGroup, we guaranteed all interval
 	// values are positive, so we don't have to worry about division by 0
@@ -883,7 +883,7 @@ void R_AliasSetupFrame (void)
 	numframes = paliasgroup->numframes;
 	fullinterval = pintervals[numframes-1];
 
-	time = cl.time + currententity->syncbase;
+	time = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG: render.h
 
 //
 // when loading in Mod_LoadAliasGroup, we guaranteed all interval values

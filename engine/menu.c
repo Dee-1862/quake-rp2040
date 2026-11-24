@@ -1195,6 +1195,10 @@ void M_Menu_Options_f (void)
 }
 
 
+#if defined(QOG_BOARD_MENU) && defined(QOG_RFAST)
+extern cvar_t	r_fast;	// QuakeOG (Agent AA): render mode (r_main.c)
+#endif
+
 void M_AdjustSliders (int dir)
 {
 	S_LocalSound ("misc/menu3.wav");
@@ -1276,6 +1280,11 @@ void M_AdjustSliders (int dir)
 		Cvar_SetValue ("_windowed_mouse", !_windowed_mouse.value);
 		break;
 #endif
+#if defined(QOG_BOARD_MENU) && defined(QOG_RFAST)
+	case 20:	// QuakeOG (Agent AA): render mode, Exact or Fast
+		Cvar_SetValue ("r_fast", !r_fast.value);
+		break;
+#endif
 	}
 }
 
@@ -1313,6 +1322,7 @@ void M_DrawCheckbox (int x, int y, int on)
 // QuakeOG: the board's options. options_cursor keeps id's numbers, so
 // M_AdjustSliders is id's, but only these lines show: no console (no
 // keyboard), and no mouse, CD music or video modes on the board.
+// Render (Agent AA) is number 20, not one of id's: the r_fast cvar.
 static const struct
 {
 	byte	item;		// id's options_cursor
@@ -1325,6 +1335,9 @@ static const struct
 	{4, "            Brightness"},
 	{7, "          Sound Volume"},
 	{8, "            Always Run"}
+#ifdef QOG_RFAST
+	,{20, "                Render"}
+#endif
 };
 #define	BOARD_OPTIONS	(int)(sizeof(m_board_options)/sizeof(m_board_options[0]))
 
@@ -1365,6 +1378,11 @@ void M_Options_Draw (void)
 		case 8:
 			M_DrawCheckbox (220, y, cl_forwardspeed.value > 200);
 			break;
+#ifdef QOG_RFAST
+		case 20:	// QuakeOG (Agent AA)
+			M_Print (220, y, r_fast.value ? "Fast" : "Exact");
+			break;
+#endif
 		}
 	}
 

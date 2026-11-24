@@ -70,6 +70,21 @@ void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up);
 int BoxOnPlaneSide (vec3_t emins, vec3_t emaxs, struct mplane_s *plane);
 float	anglemod(float a);
 
+// QuakeOG (Agent AA): QOG_FLOAT_EXACT does in single precision what id wrote
+// in double but stores in a float, where the float result is provably the
+// same: 1 / x of a float rounded once in float is the double quotient
+// rounded to float (a double has more than 2 * 24 + 2 bits, so the double
+// rounding is innocuous), and ceil of a float is a float. On the M0+ each
+// saves a float to double and a double to float conversion and does the
+// divide or the ceil in single precision.
+#ifdef QOG_FLOAT_EXACT
+#define QOG_FRECIP(x)	(1.0f / (x))
+#define QOG_CEILF(x)	ceilf (x)
+#else
+#define QOG_FRECIP(x)	(1.0 / (x))
+#define QOG_CEILF(x)	ceil (x)
+#endif
+
 
 
 #define BOX_ON_PLANE_SIDE(emins, emaxs, p)	\

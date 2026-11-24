@@ -62,6 +62,40 @@ void D_QogZSpan (espan_t *pspan, float zi, int izistep);
 #include "d_litspan.h"
 #endif
 
+#ifdef QOG_RFAST_STATS
+// QuakeOG (Agent AA): PC measurement of the Fast drawer's work (d_litspan.h).
+// qog_rfaststats prints the sums since the last call and clears them.
+unsigned	litfast_stats[6];
+static int	litfast_frame0;
+
+void D_QogRfastStats_f (void)
+{
+	int		views = r_framecount - litfast_frame0;
+
+	Con_Printf ("qog_rfaststats: views %d sub8 %u sub16 %u sub32 %u px %u spans %u exactruns %u\n",
+			views, litfast_stats[0], litfast_stats[1], litfast_stats[2],
+			litfast_stats[3], litfast_stats[4], litfast_stats[5]);
+	memset (litfast_stats, 0, sizeof(litfast_stats));
+	litfast_frame0 = r_framecount;
+}
+#endif
+
+#if defined(QOG_RFAST) && defined(QOG_LITSPAN_FAST)
+// QuakeOG (Agent AA): the Fast mode drawer (r_fast 1) is a function of its
+// own, so the exact drawer's code and stack stay as they were
+#if defined(_MSC_VER)
+#define QOG_NOINLINE	__declspec(noinline)
+#else
+#define QOG_NOINLINE	__attribute__((noinline))
+#endif
+#define QOG_LITFAST_FN													\
+static QOG_NOINLINE void D_DrawSpans8LitFast (espan_t *pspan, int step)	\
+{																		\
+	(void)step;															\
+	D_LITSPANS_FAST_BODY												\
+}
+#endif
+
 /*
 ================
 D_SetupLitSurface
@@ -162,6 +196,16 @@ static int D_QogSpanStep (espan_t **pp, int step)
 #undef LITSPAN_NEXT
 #define LITSPAN_NEXT(p)	D_QogSpanStep (&(p), step)
 
+#ifdef QOG_RFAST
+// QuakeOG (Agent AA): Fast mode, every step-th span from pspan. Both cores
+// pick the drawer before they call it, so the two frames never stack.
+QOG_LITFAST_FN
+#define D_LITSTEP(p, step)												\
+	(r_qogfast ? D_DrawSpans8LitFast (p, step) : D_DrawSpans8LitStep (p, step))
+#else
+#define D_LITSTEP(p, step)	D_DrawSpans8LitStep (p, step)
+#endif
+
 // the drawer below, on every step-th span from pspan
 static void D_DrawSpans8LitStep (espan_t *pspan, int step)
 {
@@ -178,7 +222,7 @@ static void D_DrawSpans8LitStep (espan_t *pspan, int step)
 
 static void D_QogSpansCore1 (void *pspan)
 {
-	D_DrawSpans8LitStep ((espan_t *)pspan, 2);
+	D_LITSTEP ((espan_t *)pspan, 2);	// QuakeOG (Agent AA): or the Fast drawer
 }
 
 void D_DrawSpans8Lit (espan_t *pspan)
@@ -188,19 +232,39 @@ void D_DrawSpans8Lit (espan_t *pspan)
 #endif
 	if (pspan->pnext == SPAN_NONE)
 	{
-		D_DrawSpans8LitStep (pspan, 1);
+		D_LITSTEP (pspan, 1);	// QuakeOG (Agent AA): or the Fast drawer
 		return;
 	}
 	Sys_QogCore1Start (D_QogSpansCore1, SPAN_PTR (pspan->pnext));
-	D_DrawSpans8LitStep (pspan, 2);
+	D_LITSTEP (pspan, 2);	// QuakeOG (Agent AA): or the Fast drawer
 	Sys_QogCore1Join ();
 }
 
 #else	// !QOG_SPANS_CORE1
 
+#ifdef QOG_RFAST
+// QuakeOG (Agent AA): Fast mode, a drawer of its own, and the exact drawer
+// below in a function of its own, so the two frames never stack
+QOG_LITFAST_FN
+static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan);
+
 void D_DrawSpans8Lit (espan_t *pspan)
 {
 #ifdef QOG_PHASE_TIME
+	D_QogCountLit (pspan, lit_kind == 4);
+#endif
+	if (r_qogfast)
+		D_DrawSpans8LitFast (pspan, 1);
+	else
+		D_DrawSpans8LitExact (pspan);
+}
+
+static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan)
+#else
+void D_DrawSpans8Lit (espan_t *pspan)
+#endif
+{
+#if defined(QOG_PHASE_TIME) && !defined(QOG_RFAST)
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	{

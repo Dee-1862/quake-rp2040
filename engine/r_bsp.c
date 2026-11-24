@@ -532,7 +532,17 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	msurface_t	*surf;
 	marksurf_t	*mark;	// QuakeOG: a pointer or a 16-bit surface number
 	mleaf_t		*pleaf;
+#ifdef QOG_FLOAT_EXACT
+	// QuakeOG (Agent AA): id's doubles here only ever hold a float expression
+	// or the difference of two floats, and are only compared with 0 or with
+	// BACKFACE_EPSILON. A float difference rounds to the same sign and zero,
+	// and no float lies between 0.01 and (float)0.01, so every test is the same.
+	float		d, dot;
+#define QOG_BFEPS	((float)BACKFACE_EPSILON)
+#else
 	double		d, dot;
+#define QOG_BFEPS	BACKFACE_EPSILON
+#endif
 #ifdef QOG_WORLDNODE_FAST
 	int			facing;	// QuakeOG (Agent Z): -1 back, 1 front, 0 neither
 #endif
@@ -692,7 +702,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 #ifdef QOG_WORLDNODE_FAST
 			if (facing < 0)
 #else
-			if (dot < -BACKFACE_EPSILON)
+			if (dot < -QOG_BFEPS)
 #endif
 			{
 				do
@@ -729,7 +739,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 #ifdef QOG_WORLDNODE_FAST
 			else if (facing > 0)
 #else
-			else if (dot > BACKFACE_EPSILON)
+			else if (dot > QOG_BFEPS)
 #endif
 			{
 				do

@@ -22,6 +22,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+
+// QuakeOG (Agent AA): for a float x, x < 0.01 (a double) is x <= (float)0.01,
+// the largest float below 0.01, so QOG_FLOAT_EXACT compares in single precision
+#ifdef QOG_FLOAT_EXACT
+#define QOG_NEARCLIPPED(x)	((x) <= (float)NEAR_CLIP)
+#else
+#define QOG_NEARCLIPPED(x)	((x) < NEAR_CLIP)
+#endif
 #include "d_local.h"	// FIXME: shouldn't need to include this
 #include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
 
@@ -379,10 +387,10 @@ static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int
 	VectorSubtract (world, modelorg, local);
 	TransformVector (local, transformed);
 
-	if (transformed[2] < NEAR_CLIP)
+	if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
 		transformed[2] = NEAR_CLIP;
 
-	lzi = 1.0 / transformed[2];
+	lzi = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
 
 // FIXME: build x/yscale into transform?
 	scale = xscale * lzi;
@@ -399,7 +407,7 @@ static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int
 	if (v > r_refdef.fvrectbottom_adj)
 		v = r_refdef.fvrectbottom_adj;
 
-	ceilv = (int) ceil(v);
+	ceilv = (int) QOG_CEILF(v);	// QuakeOG: QOG_FLOAT_EXACT
 
 	if (e)
 	{
@@ -463,10 +471,10 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		VectorSubtract (world, modelorg, local);
 		TransformVector (local, transformed);
 	
-		if (transformed[2] < NEAR_CLIP)
+		if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
 			transformed[2] = NEAR_CLIP;
 	
-		lzi0 = 1.0 / transformed[2];
+		lzi0 = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
 	
 	// FIXME: build x/yscale into transform?
 		scale = xscale * lzi0;
@@ -483,7 +491,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		if (v0 > r_refdef.fvrectbottom_adj)
 			v0 = r_refdef.fvrectbottom_adj;
 	
-		ceilv0 = (int) ceil(v0);
+		ceilv0 = (int) QOG_CEILF(v0);	// QuakeOG: QOG_FLOAT_EXACT
 	}
 
 	QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
@@ -493,10 +501,10 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	VectorSubtract (world, modelorg, local);
 	TransformVector (local, transformed);
 
-	if (transformed[2] < NEAR_CLIP)
+	if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
 		transformed[2] = NEAR_CLIP;
 
-	r_lzi1 = 1.0 / transformed[2];
+	r_lzi1 = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
 
 	scale = xscale * r_lzi1;
 	r_u1 = (xcenter + scale*transformed[0]);
@@ -528,7 +536,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 #ifdef QOG_VERTCACHE
 	r_ceilv1 = ceilv1;	// QuakeOG (Agent Z): ceil(r_v1), from R_QogProject
 #else
-	r_ceilv1 = (int) ceil(r_v1);
+	r_ceilv1 = (int) QOG_CEILF(r_v1);	// QuakeOG: QOG_FLOAT_EXACT
 #endif
 
 
@@ -948,7 +956,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
-	distinv = 1.0 / (pplane->dist - DotProduct (modelorg, pplane->normal));
+	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));	// QuakeOG: QOG_FLOAT_EXACT
 
 	surface_p->d_zistepu = p_normal[0] * xscaleinv * distinv;
 	surface_p->d_zistepv = -p_normal[1] * yscaleinv * distinv;
@@ -1073,7 +1081,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
-	distinv = 1.0 / (pplane->dist - DotProduct (modelorg, pplane->normal));
+	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));	// QuakeOG: QOG_FLOAT_EXACT
 
 	surface_p->d_zistepu = p_normal[0] * xscaleinv * distinv;
 	surface_p->d_zistepv = -p_normal[1] * yscaleinv * distinv;
@@ -1227,10 +1235,10 @@ void R_RenderPoly (msurface_t *fa, int clipflags)
 		VectorSubtract (verts[vertpage][i].position, modelorg, local);
 		TransformVector (local, transformed);
 
-		if (transformed[2] < NEAR_CLIP)
+		if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
 			transformed[2] = NEAR_CLIP;
 
-		lzi = 1.0 / transformed[2];
+		lzi = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
 
 		if (lzi > r_nearzi)	// for mipmap finding
 			r_nearzi = lzi;

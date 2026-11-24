@@ -2,6 +2,190 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Fast render mode and single precision front end math (Agent AA, PC and ARM build, registered data)
+
+The user asked for a picture that loses a little, like MG24Quake's, but where the loss is hard to see. The board client now has a render mode switch, the `r_fast` cvar (archived), shown in the board Options menu as `Render  Exact / Fast` (engine/menu.c, item 20, left, right or gray toggles it). It is 1 by default on the board client (`QOG_BOARD_FAST`, on, adds `QOG_RFAST QOG_RFAST_ON` to the client's flags) and 0 in every other build. `r_fast 0` draws exactly what main draws. Nothing ran on hardware. The board savings below are estimates from the generated Thumb code and the PC's work counts, the lead measures them.
+
+| Item | Where | Kind | Pixels changed (121 shots, view rows) | Estimated board saving per view at 250 MHz |
+| --- | --- | --- | ---: | --- |
+| a. Perspective divide every 8, 16 or 32 pixels: before each sub-span the drawer takes the longest one over which 1/z changes by at most 8% (`LITSPAN_FAST_ZREL`). Floors and ceilings (1/z constant along a row) and walls seen straight on take 32, walls at a steep angle close by keep 8 | engine/d_litspan.h `D_LITSPANS_FAST_BODY` | approximate | 1.49% alone (fixed 32 as MG24Quake: 14.3%, worst frame 38%. Fixed 16: 6.1%) | E1M1 fly-through: 3,866 sub-spans a view instead of 6,815 runs of 8, about 560 cycles each, less 140 cycles a span for the last sub-span's multiply. About 1.4 M cycles |
+| b. Light blended exactly at both ends of each run of 8 and stepped linearly between (`QOG_LITSPAN_LINLIGHT`'s one-pass run). Textures of other sizes keep the exact light | same | approximate | 1.28% alone (runs of 16: 4.2% together with a and d) | pixel loop 21 instructions (objdump) against the exact two passes of 37 + 14, about 25 cycles a pixel with the blends, about 1.2 M cycles |
+| c. `QOG_FLOAT_EXACT`: single precision where id wrote double but the float result is provably the same. R_EmitEdge's near clip compare (`x < 0.01` is `x <= (float)0.01`) and ceil (ceilf), R_RecursiveWorldNode's plane distances (only signs and compares with 0 or `(float)BACKFACE_EPSILON`), D_PolysetCalcGradients' ceil, FloorDivMod on the ints themselves in D_PolysetSetUpForLineScan, `1.0 / x` stored in a float in r_draw.c, r_alias.c and d_part.c (GCC already emitted a float divide there, MSVC did not) | engine/mathlib.h (QOG_FRECIP, QOG_CEILF), r_draw.c, r_bsp.c, r_alias.c, d_polyse.c, d_part.c | exact, both modes | 0, hashes identical | objdump: R_EmitEdge and R_RecursiveWorldNode now call no double routine (they called 4 f2d, 2 d2iz, 2 dcmp, 2 ceil, and 7 f2d, 2 dsub, 5 dcmp). Per fly-through view 588 ceils, 722 near clip compares, 1,112 frustum plane tests, 180 node sides: about 0.17 M cycles, 0.7 ms world. Alias: about 25 FloorDivMod calls a view at about 800 cycles, 0.1 ms vmodel |
+| d. 0x10000 / zi from the integer divider: the mantissa's top 16 bits into 2^32 - 1, the exponent set directly, about 16 good bits (`litspan_frecip`). Zero, negative, tiny and huge values take the float divide | engine/d_litspan.h | approximate | 0.06% alone | a float divide (about 100 cycles) becomes about 50, at every sub-span and span start, about 0.3 M cycles |
+| All of a, b, d (the shipped Fast mode) | | | **2.76%**, worst frame d_demo3_15 9.2% | about 2.9 M cycles a view of span work on the two cores: 11.6 ms of CPU, so spans 30.7 ms falls by about 6 ms (compute only) to about 9.5 ms (if the memory stalls shrink with the work), to roughly 21 to 25 ms |
+
+Frame estimate with Fast on: 95.9 ms becomes about 85 to 89 ms, 11.2 to 11.8 fps. The picture loss: the changed pixels are texels moved by one at sub-span joins and light steps of one colormap row, the largest colour step 248 is one texel shifted on a high contrast edge. Side by side the frames look the same (`fast` folder below).
+
+Variants measured on the PC (each its own build, `-DQOG_PC_EXTRA_DEFS`, 113 qogtest_d_shots frames and the 8 qogtest_f_hash shots against main):
+
+| Build | Pixels changed | Worst frame |
+| --- | ---: | --- |
+| linear light runs of 8 only | 1.28% | d_spawn_e3m3 5.2% |
+| integer reciprocal only | 0.06% | f_e4m3 0.38% |
+| adaptive 8/16/32, ZREL 0.08, only | 1.49% | d_demo1_12 9.0% |
+| fixed 16 | 6.14% | d_demo3_06 21% |
+| fixed 32 (MG24Quake) | 14.27% | d_demo3_06 38% |
+| shipped: adaptive 0.08, light runs of 8, reciprocal | 2.76% | d_demo3_15 9.2% |
+| ZREL 0.04 (4,505 sub-spans a view, not 3,866) | 1.84% | d_demo3_19 7.3% |
+| ZREL 0.15 (3,166 sub-spans a view) | 6.51% | d_demo3_15 24% |
+| light runs of 16 | 4.17% | d_demo3_15 12.6% |
+| light runs of 32 | 6.59% | d_demo3_19 19.6% |
+
+`LITSPAN_FAST_ZREL`, `LITSPAN_FAST_LRUN` (0 keeps the exact light), `LITSPAN_FAST_SUB` and `LITSPAN_FAST_RECIP` are compile-time knobs in d_litspan.h.
+
+Exact mode proof (hidden, `-nosound`, `+_cl_color 0`, own folders `build-aa-pc` and `build-aa-ref`, own git-ignored `data\id1`): against an untouched build of 876d2fe, `qogtest_hash` gives `ce86f894f9de` (MD5 of its two lines), `qogtest_f_hash` 32 hashes with MD5 `e92bc9e9650d`, and the 113 `qogtest_d_shots` frames and the 8 fhash frames are byte identical. The Fast runs keep the same `qogtest_f_hash` (rendering does not touch game state). A PC build with `QOG_SPANS_CORE1` draws the same Fast frames as one without, so the second core's half is right.
+
+Code and RAM:
+- d_scanlit.c: `D_DrawSpans8LitFast` is a function of its own. Both cores pick the drawer before the call (`D_LITSTEP`), so the Fast frame (376 B) never stacks on the exact one (432 B, unchanged). Core 1's chain grows by nothing.
+- r_main.c: `r_fast` and `r_qogfast`, an int set once per view in R_RenderView_, so both cores and every surface of a view use one mode. r_local.h: two externs.
+- quake_display after merging main (c5fa930): `end` 0x2003ee74, 20 B above main's 0x2003ee60 (the cvar 24 B and the int, less padding). text 362,836 B, the Fast drawer 3.3 KB. quake_main `end` 0x2003f564, unchanged (the server half gets neither flag's code).
+- qogbench (apps/qogbench) prints a third line every 2 s for the lead: `[bench] rfast p2 exact=<us> rfast=<us> | short exact=<us> rfast=<us> | floor exact=<us> rfast=<us> | fdiv=<ns> frecip=<ns>`: the shipped exact drawer and the Fast drawer on the slanted plane, on game-like spans, on a floor seen level (where Fast takes 32), and one float divide against `litspan_frecip`.
+- `QOG_RFAST_STATS` (PC measurement only) and `qog_rfaststats` print the Fast drawer's sub-spans by length, pixels, spans and the exact drawer's runs of 8 for the same spans. `data\id1\qogtest_aa_stats.cfg` in the branch's own data folder runs it over 400 fly-through views of E1M1.
+
+Files both Agent AA and Agent Z may touch: engine/r_bsp.c (one declaration block, two compares), engine/r_draw.c (a macro after the includes and one-line edits at each reciprocal, ceil and near clip), engine/r_main.c (the cvar and one line in R_RenderView_), engine/r_local.h (two externs), engine/d_scanlit.c (the drawer choice). Each edit is a few lines.
+
+Looked at and left, or for the user to decide (ideas to get nearer 27 fps, none done):
+- A coarser mip level (id's `d_mipscale` above 1, for example 1.5 in Fast) reads fewer texture bytes from flash, which is likely where the spans' memory stalls are. Blurrier distant walls, more visible than the items above.
+- Fast mode's last sub-span of a span multiplies the gradients by its length (an int to float and three multiplies, about 140 cycles a span more than the exact drawer's cached products). A 32-entry cache costs 384 B of stack.
+- The front end (world 26.3 ms) has no cheap approximation that stays hard to see: it is the BSP walk and edge setup, whose cost is mostly memory and exact float work. That is Agent Z's field.
+- The view model (4.9 ms): an affine alias drawer is already affine. Skipping its per-vertex light or drawing it in fewer rows would show.
+- 27 fps is a frame of 37 ms. The view alone is 75.7 ms today and Fast takes about 6 to 10 ms of it. Getting there needs the front end halved as well, or a smaller picture, which the user has not approved.
+## 2026-11-24: Episode 1 in the split client's RAM, the display image without sounds, whole-game numbers (Agent Y, PC and ARM build, registered data)
+
+The split client now runs start and all of episode 1 in its hunk: QOG_CL_HUNK_KB goes from 68 to 73 KB, from four exact cuts that free 10.6 KB of static RAM and hunk. `tools/mkboard.py --display-no-sounds --display-no-progs` leaves 2.86 MB of files the client never opens out of the display image, but episode 1 still needs 13.19 MB of the 11.94 MB region, and main's image with episode 1's sounds needs 5.75 MB of its 5 MB. Both fit if the data offsets move (proposed below, not applied). Main frees 4 KB and its server hunk goes from 156 to 160 KB, still short of e1m3 (165 KB without sound). Nothing ran on hardware.
+
+Cuts (`QOG_ENTITY_TIGHT` and `QOG_CON_DEBUGLOG_DIRECT` in both flag lists, the other two on the board client list only):
+
+| Cut | Flag | Saved |
+| --- | --- | ---: |
+| entity_t 104 to 88 bytes. frame is a short, effects, skin and trivial_accept are bytes, the ST_RAND start is kept as the 15-bit number id draws and turned into id's float where it is read (`ENT_SYNCBASE`). The network state goes last, so a static entity is only the first 52 bytes, its baseline is read into a scratch entity | `QOG_ENTITY_TIGHT` (engine/render.h, cl_main.c, cl_parse.c, r_alias.c, r_sprite.c) | 16 B a client entity, 52 B a static entity, about 4.5 KB of hunk on e1m3 |
+| MSG_ReadString returns a string that ends in a 0 within 2047 characters in place in the message (every string a server writes). Any other ending (a 0xFF byte, the end of the message, 2047 characters) is copied the way id copies it, into 2 KB of the z-buffer after the status bar rows | `QOG_MSG_STRING_INPLACE` (engine/common.c) | 2,048 B static |
+| The link's receive buffer (a reliable message and a datagram, 7,536 B) lives in the z-buffer after that, not on the hunk. It holds messages only from their delivery until CL_ReadFromServer has read them all, and no view is drawn in between. The server half sends messages only in its frame's answer and in a console line's answer, both read after any pipelined view and before the frame's own, and sound answers carry none. R_RenderView stops with an error if bytes still wait (`Link_RxCheckIdle`), so a break of that rule can never draw over a message | `QOG_LINK_RX_ZTEMP` (engine/net_link.c, r_main.c) | 7,536 B of hunk |
+| Con_DebugLog writes its text directly (both callers pass "%s" and the text) | `QOG_CON_DEBUGLOG_DIRECT` (engine/console.c) | 1,024 B static |
+| main only. The BSP frame sender wrapped as on the display, the same bytes in three writes | `QOG_LINK_STREAM_SEND` on quake_main | 4,168 B static on main |
+
+The z-buffer between views now holds, after the 15,360 status bar bytes, MSG_ReadString's fallback (2,048 B), the receive buffer (7,536 B), and at its end the precache names of CL_ParseServerInfo (at most one message). Link_RxBuffer checks the room.
+
+Client hunk per level (split PC pair, board client flags plus `QOG_CL_PEAKS`, from the episode 1 board images, KB). Script is the smallest `-heapsize` that runs `qogtest_y_mem_<map>.cfg` (Agent R's fight, save and load on that map, deterministic). Tour is the hunk low at the end of each level of a `qog_tour_fight` of start to e1m8 (it varies by a block of entities between runs).
+
+| Map | Script before | Script after | Tour before | Tour after |
+| --- | ---: | ---: | ---: | ---: |
+| start | 66 | 55 | 63.5 | 53.1 |
+| e1m1 | 66 | 57 | 63.9 | 55.0 |
+| e1m2 | 72 | 62 | 70.0 | 59.7 |
+| e1m3 | 82 | 69 | 84.3 | 69.8 |
+| e1m4 | 80 | 68 | 82.8 | 70.4 |
+| e1m5 | 75 | 64 | 74.9 | 63.8 |
+| e1m6 | 75 | 64 | 77.8 | 66.5 |
+| e1m7 | 58 | 49 | 59.0 | 50.0 |
+| e1m8 | 65 | 55 | 66.6 | 56.8 |
+
+At `-heapsize 73` all nine scripts and the whole fight tour of start to e1m8 run.
+
+Exactness (hidden, `-nosound`, `+_cl_color 0`, against untouched builds of f75051b in the same worktree, and again after merging main c5fa930): `qogtest_hash` ce86f894f9de and `qogtest_f_hash` e92bc9e9650d (md5 of the statehash lines) on quakeog_pc, on the default split pair and on the split pair with the board client flags. `qogtest_r_fhash` 32 hashes on both pairs. 121 frames (113 of `qogtest_d_shots` after `qogtest_k_quiet` and the 8 fhash frames) byte identical, quakeog_pc against its base and the board-flag client against its base (one run showed a notify line in rows 1 to 23 of f_e1m3 at another moment, the rerun was identical). `qogtest_j_ep1.cfg` (9 hashes), `qogtest_j_menu.cfg` and the e1m3 script give the same hashes from the image with sounds and progs.dat and from the image without them. The receive buffer check never fired.
+
+Board links (`cmake -B build-y/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`, merged with main c5fa930):
+
+| | main c5fa930 | this branch |
+| --- | --- | --- |
+| quake_display `end` | 0x2003ee60, 2,464 B free | 0x2003f63c with a 73 KB hunk, 452 B free |
+| quake_main `end` | 0x2003f564, 668 B free | 0x2003f51c with a 160 KB hunk, 740 B free |
+| quake_display.bin | | 359,816 B |
+| quake_main.bin | | 1,296,636 B, 41.2% of the slot |
+
+Server hunk (smallest `-heapsize` of the server half for the same scripts, QOG_AOT, the board's server flags, run with `-nosound`, so the board needs 4 to 8 KB more for sound, Agent W measured 116 to 120 on e1m1): start 90, e1m1 112, e1m2 139, e1m3 165, e1m4 155, e1m5 154, e1m6 140, e1m7 88, e1m8 115. With 160 KB start, e1m1, e1m2, e1m6, e1m7 and e1m8 fit with sound, e1m4 and e1m5 only without it, e1m3 needs about 170. Hunk low after the script on other levels: e2m6 154.8, e4m5 167.2, e4m8 152.0, end 101.2.
+
+Display data (`mkboard.py --stub-maps --display-no-sounds --display-no-progs`, start plus the episode, manifests of every level recorded in the branch's `build-y/manifests`):
+
+| Set | Display image | Main image (with its sounds) |
+| --- | ---: | ---: |
+| episode 1, sounds kept | 16,845,808 B (16.07 MB) | 6,029,312 B |
+| episode 1, no sounds | 14,224,368 B (13.57 MB) | 6,029,312 B |
+| episode 1, no sounds or progs.dat | 13,831,152 B (13.19 MB) | 6,029,312 B (5.75 MB) |
+| episode 2 | 14,654,720 B (13.98 MB) | 6,262,784 B (5.97 MB) |
+| episode 3 | 13,812,656 B (13.17 MB) | 6,246,400 B (5.96 MB) |
+| episode 4 and end | 16,237,888 B (15.49 MB) | 6,967,296 B (6.64 MB) |
+| whole game | 39,819,120 B (37.97 MB) | 15,261,696 B (14.55 MB) |
+
+Proposed offsets (not applied. `platform/qog_flashmap.h`, `tools/mkdata.py` and mkboard's constants change together, the bootloader's 128 KB stays):
+- Display data at 0x100000. The app slot becomes 913,408 B (the app is 359,816 B), the data region 15,663,104 B (14.94 MB). Episodes 1, 2 and 3 fit one at a time (1.75, 0.96 and 1.77 MB spare), episode 4 is 574,784 B over. At 0x200000 (13.94 MB) episodes 1 and 3 fit, episode 2 is 40,192 B over.
+- Main data at 0x200000. The main slot becomes 2 MB (the app is 1.30 MB), the region 6 MB up to the FAT volume. Episodes 1, 2 and 3 fit (256, 28 and 44 KB spare), episode 4 is 675,840 B over. Today main's 5 MB do not hold episode 1 with its sounds (786,432 B over).
+
+Client hunk per episode after the cuts (worst level, tour or script): episode 1 70.4 KB (e1m4), episode 2 80.4 (e2m6), episode 3 73.9 (e3m4), episode 4 76.1 (e4m6, e4m5 and e4m8 stop the tour with a QuakeC teleport error, their scripts 73.4 and 69.0). With about 1.5 KB of margin episode 1 needs 73 KB, episode 3 76, episode 4 78, episode 2 and the whole game 82, 9 KB more than the board has.
+
+Not approved, for the user (sizes on the board client):
+- particles 512 to 256, 9,216 B (closes the whole game alone)
+- console text 4 KB to 2 KB, 2,048 B, and the command buffer 4 KB to 2 KB, 2,048 B
+- edge-drawing surfaces 600 to 500, 3,200 B of stack (the e1m8 tour peaks at 509)
+- zone 8 to 6 KB, 2,048 B (Agent S saw 6 KB fail at level loads)
+
+Level swap (estimates, nothing built). A level is about 1.1 MB of display data on average and 1.6 MB at most (start), plus 0.2 to 0.5 MB on main. Main cannot hold the whole game (14.55 MB of server data alone against its 5 MB region and the FAT volume's 8 MB), so the next level comes from the PC companion over USB, or one episode is written at a time. The display must stop running from flash while it erases and programs, and with 452 B of RAM spare it takes 4 KB sectors one at a time from main over the link. For 1.6 MB the link at 12.5 Mbaud takes about 1.4 s (1.1 MB/s after framing, wire to stream 93% on the PC), 64 KB block erases 25 x 150 ms typical 3.8 s (up to 50 s worst case by the datasheet), page programs at about 0.5 MB/s 3.2 s, and USB full speed CDC at about 1 MB/s 1.6 s overlapping the link. About 6 to 9 s per level typical, an episode at a time (14 MB) about 70 to 90 s.
+
+Not done, or to watch:
+- The one-byte z-buffer's edge fallback ran 4 times in an episode 1 fight tour on the PC (3, 3 and 1 in episodes 2, 3 and 4, at most 341 edges). On the board each stops the game (`QOG_ZEDGE_STACK_GUARD`). Open before, not changed here.
+- The server hunk was measured without sound because PC tests run with `-nosound`.
+- The receive buffer and the in-place strings are on the board client list only, the single-process PC game keeps id's buffers.
+- Test scripts (`qogtest_y_mem_<map>.cfg`, `qogtest_y_manifest*.cfg`) are in the branch's git-ignored `data/id1`.
+
+Episode 1 images for the board once the offsets move (today the display image is 1.31 MB too big and main's 0.75 MB):
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
+    --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --exe build-pc-dev\Release\quakeog_pc.exe `
+    --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
+```
+
+## 2026-11-24: 250 MHz and 125 MHz flash for the Quake apps (Agent AB, ARM build, not run on hardware)
+
+The user approved both clock options of Agent V's table below: clk_sys 200 to 250 MHz and the QSPI flash divider 4 to 2, on both chips. They are set at run time by the two Quake apps only (port/rp2040/clock_rp2040.c, called from sys_rp2040.c right after `board_init()`). The BSP is not changed: its 200 MHz, 1.15 V and flash CLKDIV 4 stay the defaults of every other app and of the display bootloader, which must keep working at its settings because the display CPU has no BOOTSEL button. A per-target `FWOG_SYS_CLK_KHZ` would not reach `board_init()` (it is compiled once into the fwog_display_bsp and fwog_main_bsp libraries), so the apps change the clock after it.
+
+| Step (in order) | What and why |
+| --- | --- |
+| Voltage | 1.20 V (`QOG_SYS_MV=1200`), set before the clock with the BSP's 10 ms settle. The BSP's `fwog_vreg_mv_for_khz` clamps at 1.15 V on purpose (200 MHz at 1.15 V is the rated point). 1.20 V is the lowest step widely reported stable at 250 MHz on RP2040 boards (many run 250 MHz at the default 1.10 V, 1.25 V and 1.30 V are what 270 to 300 MHz overclocks use). One step above the BSP keeps the extra power on a battery board small. `-DQOG_SYS_MV=1250` if a board proves unstable |
+| Clock | `set_sys_clock_pll` with the VCO 1500 MHz, post dividers 6 and 1 that `check_sys_clock_khz(250000)` finds. clk_peri follows (board header), clk_ref and the 1 MHz timer tick do not change |
+| Re-derived after it | display: the backlight PWM divider (board.c's 10 kHz, wrap 255) and the I2C1 rate (`i2c_set_baudrate`, charger, RTC, accelerometer, expander). main: the FPGA clock on GPOUT1. Its divider is raised for 250 MHz before the switch (20 MHz at 200 MHz, never above the gateware's 25 MHz) and set again after (250 / 10 = 25 MHz) |
+| Flash divider | clk_sys / 2 = 125 MHz, from RAM, interrupts off, before core 1 starts, the same way on both chips. The part is the W25Q128JVPIQ (bsp/main_cpu/fs/fs_geom.h), rated 133 MHz for the quad I/O fast read 0xEB that boot2_w25q080 sets up (continuous mode 0xA0, 8 address and mode nibbles, 4 dummy clocks). Div 2 is tried only when clk_sys / 2 is at most 133 MHz |
+| RX sample delay | 1 system clock, what the SDK's boot2_w25q080.S writes for every divider including 2 (its comment: with CLKDIV 2 data is captured as the next SCLK edge launches). That is also what runs on overclocked Picos at 125 to 133 MHz flash. If 1 fails the check, 2 is tried |
+| Check and fallback | the first 128 KB of the app's own image are hashed (FNV-1a over words) through the uncached alias 0x13000000 at the old divider with interrupts on, then twice at the new one with interrupts off. Any difference writes the old divider and delay back before one instruction is fetched from flash again, and the DIAG line says fallback |
+| Main's saves | the SDK's flash erase and program end by running boot2 again, which writes CLKDIV 4 back. `_open`, `_write` and `_close` of the FAT volume call `qog_flash_fast_reapply()`, which puts the checked divider back (a register read when nothing changed) |
+
+The routine that switches the divider was disassembled in both ELFs (`flash_hash`, `ssi_set`, `flash_try.constprop.0`, all at 0x200000c0 to 0x2000017a on the display, 0x20000120 on main, in RAM). Between `cpsid i` and `msr PRIMASK` there are only `bl` to the other two RAM functions, stores to the SSI at 0x18000000 (SSIENR +8, BAUDR +0x14, RX_SAMPLE_DLY +0xF0) and loads from the 0x13xxxxxx alias that is being checked. No literal load or branch reaches 0x10xxxxxx. The flash veneers the linker made (`__flash_try.constprop.0_veneer`, `__ssi_set_veneer`) are only taken from flash code before the SSI is touched, and `ssi_set` returns to its flash caller after SSIENR is 1 again.
+
+Everything derived from a clock, checked at 250 MHz:
+
+| Item | At 250 MHz |
+| --- | --- |
+| Link UART, display app | `fwog_link_uart_init` at Host_Init, after the boost: 250 MHz / 16 / 12.5 Mbaud = 1.25, IBRD 1 FBRD 16, exactly 12.5 Mbaud |
+| Link UART, main and the display bootloader at boot | main boosts before `fwog_display_update_run` (the display is still held in reset, the link is down), so display_update brings the link up at 250 MHz with IBRD 1 FBRD 16. The bootloader stays at 200 MHz, IBRD 1 FBRD 0. Both are exactly 12.5 Mbaud from their own clocks |
+| LCD SPI | `st7789_init_begin` at VID_Init: `st7789_actual_spi_hz(250 MHz, FWOG_LCD_MAX_HZ)` = prescale 2, postdiv 2 = 62.5 MHz, the panel's limit. Scanout about 18.3 ms instead of 22.4 (estimate) |
+| Core 1 scanout | DMA paced by the SPI, no cycle counts. Core 1 starts in VID_Init, after the switch |
+| Speaker I2S PIO | `(clk * 4 / 11025) >> 8` = 354, 250 MHz / (64 x 354) = 11,035 Hz (0.09% fast, was 11,042 Hz). The play position rate is derived from the same numbers |
+| WS2812 PIO | `ws2812_init` in game_main, after the switch, divider from clock_get_hz |
+| I2C, backlight PWM | re-derived (above) |
+| Timers, sleeps, the hang detector, QOG_PHASE_TIME | the 1 MHz tick from clk_ref (unchanged), `timer_hw->timerawl` |
+| FPGA clock | 25 MHz (above) |
+| USB, ADC | PLL_USB, unchanged |
+| Hardcoded 200 MHz in port/, platform/, engine qog files | none found (grep for 200000, MHz, clock_get_hz, busy_wait, cycle counts). The only 200 MHz figure was a comment in snd_rp2040.c, updated |
+
+Build options (apps/quake/CMakeLists.txt, both on by default, nothing else changes):
+
+| Option | Default | Off |
+| --- | --- | --- |
+| `QOG_SYS_KHZ` | 250000 | `-DQOG_SYS_KHZ=0` keeps the BSP's 200 MHz and 1.15 V |
+| `QOG_SYS_MV` | 1200 | 1150 to 1300 |
+| `QOG_FLASH_FAST` | ON | `-DQOG_FLASH_FAST=OFF` keeps the divider the bootloader or boot2 set (4) |
+
+RAM (`-DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`, arm-none-eabi-nm): quake_display `end` 0x2003ee60, 228 B above main's 0x2003ed7c (196 B of RAM code, 36 B of state), so about 2.4 KB stay spare beside the 2 KB heap reserve. quake_main `end` 0x2003f564 (the same 232 B object). With both options off the display's `end` is 0x2003ed84. The PC build does not compile these files, and its `qogtest_hash` still gives `ce86f894f9de` (build-pcab, hidden, `-nosound`).
+
+What the board log should say (COM8 display, COM7 main, each printed at the switch, usually before USB is up, and once more about 6 s after boot):
+
+```
+[quake] clock 250000 kHz at 1200 mV (BSP 200000 kHz), clk_peri 250000 kHz
+[quake] flash 125.0 MHz ok (div 2 from 4, rx delay 1, 128 KB checked, reapplied 0)
+```
+
+and further on `[lcd] spi 62500000 Hz (clk_peri 250000000 Hz)`, `[link] uart0 12500000 baud (requested 12500000), clk_peri 250000000` and on main `[fpga] clk 25000000 Hz (clk_sys 250000000 / 10)`. Main's `reapplied` count grows after a save. A failed flash check prints `[quake] flash 62.5 MHz fallback (div 4, rx delay 1): read check FAILED at div 2` and the game runs on at 62.5 MHz. An unstable core at 1.20 V would show as hard faults, `Sys_Error`s or hangs that do not happen with `-DQOG_SYS_KHZ=0`, then try `-DQOG_SYS_MV=1250`.
+
 ## 2026-11-24: Menus for five buttons and no keyboard (Agent X, PC and ARM build, registered data)
 
 id's menus expect a keyboard and a network. The board client now builds them with `QOG_BOARD_MENU` (engine/menu.c), set only for the display chip's engine (`_cl_defs` in apps/quake/CMakeLists.txt). Off, menu.c preprocesses to the same tokens as before (checked with the ARM compiler's `-E`, plain and split client), and the default PC build's `qogtest_hash` still gives `ce86f894f9de` (MD5 of its two `qog_statehash` lines). Nothing ran on hardware.

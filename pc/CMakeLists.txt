@@ -236,6 +236,16 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LITSPAN_TAILMUL             # the last run of a span reuses the surface's float products for its length
     QOG_ZSPANS_FAST                 # z span start without double arithmetic (exact integer form of zi * 2^31)
     QOG_LITSPAN_ZFUSE)              # lit spans write their z from the 1/z they compute anyway, no second span walk
+# Fast render mode (Agent AA): the r_fast cvar, default 0 on the PC, so every
+# test runs the exact picture unless a script sets r_fast 1 (d_litspan.h).
+# QOG_FLOAT_EXACT is exact and applies in both modes.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_RFAST                       # r_fast 1 draws approximate lit spans, r_fast 0 exactly as before
+    QOG_FLOAT_EXACT)                # front end divides and ceils in single precision where the float result is the same (mathlib.h)
+# Episode 1 client RAM, exact (Agent Y)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)
+    QOG_CON_DEBUGLOG_DIRECT)        # -condebug writes the console text as it is, no 1 KB static copy
 # Render phase times for profiling (Agent P), off by default: `qog_phase` in
 # the console and the end of `-qogfly` print where render time goes.
 #   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON

@@ -72,7 +72,7 @@ void D_DrawParticle (particle_t *pparticle)
 
 // project the point
 // FIXME: preadjust xcenter and ycenter
-	zi = 1.0 / transformed[2];
+	zi = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
 	u = (int)(xcenter + zi * transformed[0] + 0.5);
 	v = (int)(ycenter - zi * transformed[1] + 0.5);
 

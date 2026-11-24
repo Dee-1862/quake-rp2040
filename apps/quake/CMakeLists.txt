@@ -134,7 +134,12 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_LITSPAN_FAST
     QOG_LITSPAN_TAILMUL
     QOG_ZSPANS_FAST
-    QOG_LITSPAN_ZFUSE)
+    QOG_LITSPAN_ZFUSE
+    QOG_FLOAT_EXACT)                # Agent AA, exact: single precision where id's double gives the same float (mathlib.h)
+# Episode 1 client RAM, exact (Agent Y), same as pc/CMakeLists.txt.
+list(APPEND QOG_ENGINE_DEFS
+    QOG_ENTITY_TIGHT
+    QOG_CON_DEBUGLOG_DIRECT)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -281,7 +286,9 @@ if(QOG_SPLIT)
         QOG_KEYNAMES_CONST              # the key name table in flash
         QOG_CL_PRECACHE_SV              # model and sound precache tables of the server half's sizes (208 and 176)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
-        QOG_CMD_ARGV_ARENA=640)         # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+        QOG_CMD_ARGV_ARENA=640          # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
+        QOG_MSG_STRING_INPLACE          # Agent Y: message strings read in place, no 2 KB static copy (exact, common.c)
+        QOG_LINK_RX_ZTEMP)              # Agent Y: the link's 7.5 KB receive buffer in the z-buffer between views, not the hunk (net_link.c)
     # QuakeOG (Agent X): menus for five buttons and no keyboard (engine/menu.c).
     # No Multiplayer or console entry, a Controls page that shows the buttons,
     # a Levels page of the maps in the data image, yes/no answered with gray
@@ -350,6 +357,13 @@ if(QOG_SPLIT)
                 COMMENT "QOG_BOARD_FPCOUNT: engine helper calls go through the counting stubs")
         endif()
     endif()
+    # QuakeOG (Agent AA): the Fast render mode, approximate and hard to see,
+    # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
+    # On by default on the board. r_fast 0 draws exactly as before.
+    option(QOG_BOARD_FAST "the r_fast cvar and the Fast render mode, on by default (d_litspan.h)" ON)
+    if(QOG_BOARD_FAST)
+        list(APPEND _cl_defs QOG_RFAST QOG_RFAST_ON)
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer
@@ -411,7 +425,7 @@ if(QOG_SPLIT)
     get_target_property(_disp_libs quake_display LINK_LIBRARIES)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
-    set(QOG_CL_HUNK_KB 68 CACHE STRING "client half hunk in KB, smallest -heapsize of quakeog_cl with the board client flags for E1M1 with a fight, a save and a load (e3m5 79, Agent S)")
+    set(QOG_CL_HUNK_KB 73 CACHE STRING "client half hunk in KB. Agent Y: start and all of episode 1, the worst a fight tour of e1m4 at 70.4 KB and a fight, save and load on e1m3 at 69 KB (docs/changes.md)")
     # Agent W: with sound the client gives 2 KB of its stack to the speaker's ring
     # (the board's watermark had 5.4 KB spare, the sound exchange adds about 1.1 KB)
     if(QOG_SOUND)
@@ -441,7 +455,7 @@ if(QOG_SPLIT)
     endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
-    set(QOG_SV_HUNK_KB 156 CACHE STRING "server half hunk in KB. 156 covers start and e1m1, the levels the first board image carries (both run in 152). e1m3 with a fight, a save and a load needs 167, so raise it with the levels")
+    set(QOG_SV_HUNK_KB 160 CACHE STRING "server half hunk in KB. Agent Y, without sound (add 4 to 8 KB with it), a fight, a save and a load need start 90, e1m1 112, e1m2 139, e1m3 165, e1m4 155, e1m5 154, e1m6 140, e1m7 88, e1m8 115")
     set(QOG_SV_STACK_KB 35 CACHE STRING "server half stack array in KB. The static deepest chain is 17,496 B but recursion (hull traces, nested QuakeC) is not counted, and 24 KB hung the board after two minutes of play")
     add_executable(quake_main EXCLUDE_FROM_ALL
         ${QOG_ROOT}/port/rp2040/sys_rp2040.c
@@ -457,6 +471,9 @@ if(QOG_SPLIT)
     # saves on main's FAT volume through the BSP's FatFs (Agent T, sys_rp2040.c)
     target_link_libraries(quake_main qog_engine_sv fwog_main_bsp fwog_main_fs)
     target_link_options(quake_main PRIVATE -Wl,--allow-multiple-definition)
+    # Agent Y: the BSP's frame sender without its 4 KB frame buffer, as on the display (port/rp2040/link_rp2040.c)
+    target_compile_definitions(quake_main PRIVATE QOG_LINK_STREAM_SEND)
+    target_link_options(quake_main PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
     # the display image main carries: quake_display, or for measuring main
     # while quake_display does not link, any display app (qog_display)
     set(QOG_SPLIT_MAIN_EMBED quake_display CACHE STRING "display app quake_main embeds")
@@ -464,6 +481,24 @@ if(QOG_SPLIT)
     fwog_main_app(quake_main
         VERSION 001
         DESCRIPTION "QuakeOG: the Quake server half (QuakeC, physics, edicts) on the main RP2040, with the client half on the display")
+    # QuakeOG (Agent AB): faster clocks for both Quake apps only, set at run
+    # time right after board_init() (port/rp2040/clock_rp2040.c). The BSP, its
+    # display bootloader and every other app keep 200 MHz and flash CLKDIV 4.
+    # QOG_SYS_KHZ=0 keeps the BSP's clock, QOG_FLASH_FAST=OFF the flash divider.
+    set(QOG_SYS_KHZ 250000 CACHE STRING "clk_sys of the Quake apps in kHz, 0 keeps the BSP's 200 MHz")
+    set(QOG_SYS_MV 1200 CACHE STRING "core voltage in mV for QOG_SYS_KHZ (1150 to 1300), set before the clock")
+    option(QOG_FLASH_FAST "Quake apps switch the QSPI flash to clk_sys / 2 at run time, checked, falling back to 4" ON)
+    if(QOG_FLASH_FAST)
+        set(_flash_fast 1)
+    else()
+        set(_flash_fast 0)
+    endif()
+    foreach(_app quake_display quake_main)
+        target_sources(${_app} PRIVATE ${QOG_ROOT}/port/rp2040/clock_rp2040.c)
+        target_compile_definitions(${_app} PRIVATE QOG_CLOCK_BOOST
+            QOG_SYS_KHZ=${QOG_SYS_KHZ} QOG_SYS_MV=${QOG_SYS_MV} QOG_FLASH_FAST=${_flash_fast})
+    endforeach()
+
     add_custom_command(TARGET quake_main POST_BUILD
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_app_size.py
                 $<TARGET_FILE_DIR:quake_main>/quake_main.bin

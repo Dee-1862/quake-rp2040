@@ -209,6 +209,21 @@ static entity_t	*cl_statics_next;
 
 entity_t *CL_AllocStatic (void)
 {
+#ifdef QOG_ENTITY_TIGHT
+	entity_t	*ent;
+
+	// QuakeOG (Agent Y): a static entity is the part of entity_t before the
+	// network state (render.h), which nothing reads for one
+	if (!cl_statics_left)
+	{
+		cl_statics_next = Hunk_AllocName (STATICS_BLOCK * ENT_STATIC_SIZE, "statics");
+		cl_statics_left = STATICS_BLOCK;
+	}
+	cl_statics_left--;
+	ent = cl_statics_next;
+	cl_statics_next = (entity_t *)((byte *)cl_statics_next + ENT_STATIC_SIZE);
+	return ent;
+#else
 	if (!cl_statics_left)
 	{
 		cl_statics_next = Hunk_AllocName (STATICS_BLOCK * sizeof(entity_t), "statics");
@@ -216,6 +231,7 @@ entity_t *CL_AllocStatic (void)
 	}
 	cl_statics_left--;
 	return cl_statics_next++;
+#endif
 }
 
 static int CL_FreeEfrags (void)

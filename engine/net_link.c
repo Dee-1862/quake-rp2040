@@ -268,8 +268,43 @@ static void Link_Deliver (int type, int len)
 	link_sock->receiveMessageLength = IntAlign (link_sock->receiveMessageLength + len + 4);
 }
 
+#ifdef QOG_LINK_RX_ZTEMP
+/*
+QuakeOG (Agent Y): the client's receive buffer (7.5 KB, a reliable message
+and a datagram) in the z-buffer, not the hunk. It holds messages only from
+the item that delivers them until CL_ReadFromServer has read them all, and
+no view is drawn in between: the server half sends messages only in its
+frame's answer and in the answer to a console line, both read after any
+pipelined view and before the frame's own, and sound answers carry none.
+R_RenderView checks that nothing is left (Link_RxCheckIdle), so a break of
+that rule stops with an error instead of drawing over a message. The
+buffer goes after the status bar rows and MSG_ReadString's 2 KB (common.c),
+the precache names of CL_ParseServerInfo after it at the end (r_shared.h).
+*/
+#define LINK_RX_ZOFS	(320 * 48 + 2048)
+extern byte	*r_ztemp_base;
+extern int	r_ztemp_bytes;
+
+static byte *Link_RxBuffer (void)
+{
+	if (!r_ztemp_base || r_ztemp_bytes < LINK_RX_ZOFS + 2 * (link_rxsize + 4))
+		Sys_Error ("link: no room for the receive buffer in the z-buffer");
+	return r_ztemp_base + LINK_RX_ZOFS;
+}
+
+void Link_RxCheckIdle (void)
+{
+	if (link_sock && link_sock->receiveMessage && link_sock->receiveMessageLength > link_pending)
+		Sys_Error ("link: %d bytes of messages wait while the view is drawn",
+			link_sock->receiveMessageLength - link_pending);
+}
+#endif
+
 static void Link_SetupSocket (qsocket_t *sock)
 {
+#ifdef QOG_LINK_RX_ZTEMP
+	link_rx = Link_RxBuffer ();
+#endif
 	sock->receiveMessage = link_rx;
 	sock->receiveMessageSize = link_rxsize;
 	sock->receiveMessageLength = 0;
@@ -1085,7 +1120,9 @@ static void Link_ServerSide (const uint8_t *p, int len)
 int Link_Init (void)
 {
 	link_rxsize = LINK_RXSIZE;
+#ifndef QOG_LINK_RX_ZTEMP
 	link_rx = Hunk_AllocName (link_rxsize + 4, "link_rx");	// 4 spare bytes, as net_loop.c
+#endif
 	Cmd_AddCommand ("qog_link", Link_Stats_f);
 #ifdef QOG_SPLIT_CLIENT
 	Cmd_AddCommand ("qog_sv", Link_Sv_f);
@@ -1121,6 +1158,9 @@ byte *Loop_DemoBuffer (void)
 {
 	if (link_sock)
 		Sys_Error ("Loop_DemoBuffer: demo played while connected");
+#ifdef QOG_LINK_RX_ZTEMP
+	link_rx = Link_RxBuffer ();	// QuakeOG (Agent Y)
+#endif
 	return link_rx;
 }
 
