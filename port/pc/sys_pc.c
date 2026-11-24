@@ -181,6 +181,10 @@ void Sys_MakeCodeWriteable(unsigned long startaddr, unsigned long length) { (voi
 void Sys_LowFPPrecision(void) {}
 void Sys_HighFPPrecision(void) {}
 void Sys_SetFPCW(void) {}
+/* QuakeOG: the board's benchmark result names the clocks (engine/menu.c),
+   which the PC does not know */
+unsigned Sys_QogClockKHz(void) { return 0; }
+unsigned Sys_QogFlashKHz(void) { return 0; }
 void Sys_Sleep(void) { Sleep(1); }
 char *Sys_ConsoleInput(void) { return NULL; }
 

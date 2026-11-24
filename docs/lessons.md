@@ -175,6 +175,14 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L80. `git fetch` in a worktree can wait for credentials with no prompt.** To take main's latest, merge the local `main` branch, which every worktree shares, with `GIT_TERMINAL_PROMPT=0`.
 
+**L81. `sed -i` in the agents' bash rewrites a CRLF file with LF endings.** A one-line `sed -i` on engine/menu.c turned all 4,005 of its CRLF line ends into LF, so the diff became the whole file. The engine files are `-text` and keep id's CRLF bytes (.gitattributes). Edit them with the Edit tool or a script that reads and writes bytes, and check `git ls-files --eol <file>` before committing.
+
+**L82. A timedemo on the PC measures the PC's pacing, not its speed.** sys_pc.c's main loop runs at most 72 frames a second and sleeps in steps of a millisecond, so `timedemo demo3` gave 54 to 57 fps on quakeog_pc and the split pair alike, Exact or Fast. Only the board's number says how fast the code is.
+
+**L83. To run a script's lines after the text a menu queues, bind a key and press it after the menu key.** The menu's `Cbuf_AddText` goes behind the rest of the script (L52), and `exec` inserts in front. A key binding pressed with `qog_key` in the game appends its text behind the menu's, so `bind f12 "exec after.cfg"` then `qog_key enter f12` runs the menu's `timedemo` first and the script's waits and shots during and after it.
+
+**L84. Check a demo exists before anything that ends the game for it.** id's `timedemo` disconnects in `CL_PlayDemo_f` before it opens the file, and sets `cls.timedemo` even when the file is missing, so a missing demo ends the game and leaves a timedemo flag no demo will clear. The board's Benchmark checks `COM_HasFile` before its prompt. mkboard leaves `demo*.dem` out of the images unless `--demos` is given.
+
 **L90. A sed that reads and writes the same file empties it.** A loop that made each episode's `qogtest_y_mem_<map>.cfg` from the e2m6 one (`sed ... e2m6.cfg > e<n>m<m>.cfg`) emptied e2m6 when it reached it, and every script made after it. An empty script runs nothing, the client plays the attract demos and the server half spins at full speed waiting, which looked like a hang of the game. Check `wc -c` of generated scripts before a long run, and make them from a copy outside the folder.
 
 **L91. Stopping a background runner leaves its test processes running.** TaskStop ended the bash loop, but its pctest, quakeog_cl and quakeog_sv went on, and the next run of the loop had already started. List the worktree's own processes by command line (`Get-CimInstance Win32_Process` with the worktree path in `CommandLine`) and stop each, never by name alone.

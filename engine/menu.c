@@ -29,11 +29,12 @@ void (*vid_menukeyfn)(int key);
 // QuakeOG: QOG_BOARD_MENU is the menus of a board with five buttons and no
 // keyboard or network (the FREE-WILi OG display). No Multiplayer and no
 // console entry, a Controls page that shows the buttons in place of key
-// binding, a Levels page that lists the maps the packs hold, and yes/no
+// binding, a Levels page that lists the maps the packs hold, a Benchmark
+// line that runs id's "timedemo demo3" and shows the result, and yes/no
 // prompts answered with enter and escape. Off, id's menus are unchanged.
 enum {m_none, m_main, m_singleplayer, m_load, m_save, m_multiplayer, m_setup, m_net, m_options, m_video, m_keys, m_help, m_quit, m_serialconfig, m_modemconfig, m_lanconfig, m_gameoptions, m_search, m_slist
 #ifdef QOG_BOARD_MENU
-	, m_levels, m_confirm
+	, m_levels, m_confirm, m_bench
 #endif
 	} m_state;
 
@@ -445,10 +446,13 @@ void M_Main_Key (int key)
 
 int	m_singleplayer_cursor;
 #ifdef QOG_BOARD_MENU
-#define	SINGLEPLAYER_ITEMS	4	// QuakeOG: and Levels
+#define	SINGLEPLAYER_ITEMS	5	// QuakeOG: and Levels, Benchmark
+#define	SP_BENCH			4	// the Benchmark line
+#define	BENCH_DEMO			"demo3"	// id's timedemo MG24Quake published (e1m6)
 void M_Menu_Levels_f (void);
 static void M_Confirm (int from);
 static void M_BoardStartMap (const char *map, int len);
+static void M_BoardBench (void);
 #else
 #define	SINGLEPLAYER_ITEMS	3
 #endif
@@ -474,6 +478,7 @@ void M_SinglePlayer_Draw (void)
 #ifdef QOG_BOARD_MENU
 	// QuakeOG: id has no picture for it, so the menu font at twice its size
 	M_PrintBig (74, 32 + 3*20 + 2, "LEVELS");
+	M_PrintBig (74, 32 + SP_BENCH*20 + 2, "BENCHMARK");
 #endif
 
 	f = (int)(host_time * 10)%6;
@@ -538,6 +543,15 @@ void M_SinglePlayer_Key (int key)
 #ifdef QOG_BOARD_MENU
 		case 3:
 			M_Menu_Levels_f ();
+			break;
+
+		case SP_BENCH:
+			// id's timedemo disconnects first, so ask while a game runs,
+			// unless the demo is missing (M_BoardBench says so, the game goes on)
+			if (sv.active && COM_HasFile (BENCH_DEMO ".dem"))
+				M_Confirm (m_singleplayer);
+			else
+				M_BoardBench ();
 			break;
 #endif
 		}
@@ -2970,7 +2984,13 @@ void M_Confirm_Draw (void)
 
 	M_DrawTextBox (56, 76, 24, 4);
 	M_Print (64, 84,  "Are you sure you want to");
-	M_Print (64, 92,  "   start a new game?");
+	if (m_confirm_from == m_singleplayer && m_singleplayer_cursor == SP_BENCH)
+	{
+		M_Print (64, 92,  "end the game and run");
+		M_Print (64, 100, "the timedemo benchmark?");
+	}
+	else
+		M_Print (64, 92,  "   start a new game?");
 	M_PrintWhite (64, 108, " gray yes  green+blue no");
 }
 
@@ -2986,7 +3006,9 @@ void M_Confirm_Key (int key)
 		break;
 
 	case K_ENTER:
-		if (m_confirm_from != m_levels)
+		if (m_confirm_from == m_singleplayer && m_singleplayer_cursor == SP_BENCH)
+			M_BoardBench ();
+		else if (m_confirm_from != m_levels)
 			M_BoardStartMap ("start", 5);
 		else
 		{
@@ -3007,6 +3029,142 @@ static void M_BoardStartMap (const char *map, int len)
 		Cbuf_AddText ("disconnect\n");
 	Cbuf_AddText ("maxplayers 1\ndeathmatch 0\ncoop 0\n");
 	Cbuf_AddText (va ("map %.*s\n", len, map));
+}
+
+//=============================================================================
+/* BENCHMARK */
+
+// QuakeOG: the Benchmark line of the Single Player menu runs id's
+// "timedemo demo3" through the command buffer, as id's console would, the
+// test MG24Quake published its speed with (e1m6). id prints the result on
+// the console, which the board cannot show, so when the demo ends the
+// result page shows it, with the render mode and the clocks, until gray or
+// green + blue, and one "[bench]" line goes to the console, which the board
+// echoes over USB. No new RAM: once a timedemo is over nothing reads its
+// cls.td_ fields, so they hold the result for the page (frames, seconds and
+// how it ended), and the demo's name is in cls.mapstring, which id's map
+// command writes and nothing reads.
+
+enum {bench_missing = -1, bench_stopped, bench_done};	// in cls.td_lastframe
+
+static void M_BoardBench (void)
+{
+	if (!COM_HasFile (BENCH_DEMO ".dem"))
+	{	// a data image without the demos (mkboard.py --demos): say so and keep the game
+		cls.td_lastframe = bench_missing;
+		m_state = m_bench;
+		m_entersound = true;
+		return;
+	}
+	key_dest = key_game;
+	m_state = m_none;
+	Cbuf_AddText ("timedemo " BENCH_DEMO "\n");
+}
+
+// the setup the number was measured with
+static char *M_BenchSetup (void)
+{
+	unsigned	sys = Sys_QogClockKHz (), flash = Sys_QogFlashKHz ();
+	char		*mode = "Exact";
+
+#ifdef QOG_RFAST
+	if (r_fast.value)
+		mode = "Fast";
+#endif
+	if (!sys)	// the PC
+		return va ("render %s, PC, view %i, %ix%i", mode, (int)scr_viewsize.value, (int)vid.width, (int)vid.height);
+	return va ("render %s, clock %u MHz, flash %u MHz, view %i, %ix%i", mode, sys / 1000, flash / 1000,
+		(int)scr_viewsize.value, (int)vid.width, (int)vid.height);
+}
+
+/*
+================
+M_BenchDone
+
+Called by CL_StopPlayback when a timedemo ends, after CL_FinishTimeDemo
+left its frames and seconds in cls.td_startframe and cls.td_starttime.
+whole is false when the demo was stopped before its end.
+================
+*/
+void M_BenchDone (qboolean whole)
+{
+	int		frames = cls.td_startframe;
+	float	time = cls.td_starttime;
+
+	cls.td_lastframe = whole ? bench_done : bench_stopped;
+	if (whole)
+		Con_Printf ("[bench] timedemo %s %i frames %.1f seconds %.1f fps, %s\n",
+			cls.mapstring, frames, time, frames / time, M_BenchSetup ());
+	else
+		Con_Printf ("[bench] timedemo %s stopped after %i frames %.1f seconds, no result\n",
+			cls.mapstring, frames, time);
+	key_dest = key_menu;
+	m_state = m_bench;
+	m_entersound = true;
+}
+
+static void M_PrintCenter (int y, char *str, qboolean white)
+{
+	int		x = (320 - 8 * (int)strlen (str)) / 2;
+
+	if (white)
+		M_PrintWhite (x, y, str);
+	else
+		M_Print (x, y, str);
+}
+
+void M_Bench_Draw (void)
+{
+	qpic_t	*p;
+	char	*s, *t;
+	int		frames = cls.td_startframe;
+	float	time = cls.td_starttime;
+
+	p = Draw_CachePic ("gfx/ttl_sgl.lmp");
+	M_DrawPic ( (320-p->width)/2, 4, p);
+	M_DrawTextBox (8, 40, 36, 11);
+
+	if (cls.td_lastframe == bench_missing)
+	{
+		M_PrintCenter (64, BENCH_DEMO ".dem is not in the game data", true);
+		M_PrintCenter (80, "write the display image with", false);
+		M_PrintCenter (88, "tools/mkboard.py --demos", false);
+	}
+	else
+	{
+		M_PrintCenter (52, va ("timedemo %s", cls.mapstring), true);
+		M_PrintCenter (68, va ("%i frames  %.1f seconds", frames, time), false);
+		if (cls.td_lastframe == bench_done)
+		{
+			s = va ("%.1f FPS", frames / time);
+			M_PrintBig ((320 - 16 * (int)strlen (s)) / 2, 82, s);
+		}
+		else
+			M_PrintCenter (86, "stopped before the end", true);
+		// "render Exact, clock 250 MHz, flash 125 MHz, view 100, 320x240" in two lines
+		s = M_BenchSetup ();
+		t = strstr (s, ", flash");
+		if (t)
+		{
+			*t = 0;
+			M_PrintCenter (108, s, false);
+			M_PrintCenter (116, t + 2, false);
+		}
+		else
+			M_PrintCenter (108, s, false);
+	}
+	M_PrintCenter (136, "gray or green+blue for the menu", true);
+}
+
+void M_Bench_Key (int key)
+{
+	switch (key)
+	{
+	case K_ESCAPE:
+	case K_ENTER:
+		M_Menu_SinglePlayer_f ();
+		break;
+	}
 }
 
 #else	// QOG_BOARD_MENU, the network game menus follow
@@ -3712,6 +3870,10 @@ void M_Draw (void)
 	case m_confirm:
 		M_Confirm_Draw ();
 		break;
+
+	case m_bench:
+		M_Bench_Draw ();
+		break;
 #endif
 	}
 
@@ -3816,6 +3978,10 @@ void M_Keydown (int key)
 
 	case m_confirm:
 		M_Confirm_Key (key);
+		return;
+
+	case m_bench:
+		M_Bench_Key (key);
 		return;
 #endif
 	}

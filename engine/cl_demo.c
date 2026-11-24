@@ -102,12 +102,20 @@ Called when a demo file runs out, or the user starts a game
 */
 void CL_StopPlayback (void)
 {
+#ifdef QOG_BOARD_MENU
+	qboolean	whole = true;	// QuakeOG: the demo ran to its end (the board's benchmark)
+#endif
+
 	if (!cls.demoplayback)
 		return;
 
 #ifdef QOG_DEMO_FLASH
 	if (cl_demoflash)
 	{
+#ifdef QOG_BOARD_MENU
+		// id's demos end with a disconnect, read when nothing follows it
+		whole = cl_demoflashpos >= cl_demoflashlen;
+#endif
 		cl_demoflash = NULL;
 		net_message.data = cl_demosaveddata;
 		net_message.maxsize = cl_demosavedmax;
@@ -121,7 +129,12 @@ void CL_StopPlayback (void)
 	cls.state = ca_disconnected;
 
 	if (cls.timedemo)
+	{
 		CL_FinishTimeDemo ();
+#ifdef QOG_BOARD_MENU
+		M_BenchDone (whole);	// QuakeOG: the board shows the result (menu.c)
+#endif
+	}
 }
 
 /*
@@ -451,6 +464,12 @@ void CL_FinishTimeDemo (void)
 	if (!time)
 		time = 1;
 	Con_Printf ("%i frames %5.1f seconds %5.1f fps\n", frames, time, frames/time);
+#ifdef QOG_BOARD_MENU
+	// QuakeOG: the result for the board's benchmark page (M_BenchDone). Nothing
+	// reads these fields once the timedemo is over, the next one sets them.
+	cls.td_startframe = frames;
+	cls.td_starttime = time;
+#endif
 }
 
 /*
@@ -472,7 +491,13 @@ void CL_TimeDemo_f (void)
 	}
 
 	CL_PlayDemo_f ();
-	
+#ifdef QOG_BOARD_MENU
+	// QuakeOG: the demo's name for the board's result. id's map command writes
+	// cls.mapstring and nothing reads it.
+	Q_strncpy (cls.mapstring, Cmd_Argv(1), sizeof(cls.mapstring) - 1);
+	cls.mapstring[sizeof(cls.mapstring) - 1] = 0;
+#endif
+
 // cls.td_starttime will be grabbed at the second frame of the demo, so
 // all the loading time doesn't get counted
 	

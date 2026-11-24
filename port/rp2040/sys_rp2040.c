@@ -41,6 +41,8 @@ See the GNU General Public License for more details.
 #include <string.h>
 #include "quakedef.h"
 #include "pico/stdlib.h"
+#include "hardware/clocks.h"
+#include "hardware/structs/ssi.h"
 #ifdef QOG_SYS_MAIN
 #include "fwog_main.h"
 #else
@@ -460,6 +462,14 @@ void Sys_MakeCodeWriteable(unsigned long startaddr, unsigned long length) { (voi
 void Sys_LowFPPrecision(void) {}
 void Sys_HighFPPrecision(void) {}
 void Sys_SetFPCW(void) {}
+/* QuakeOG: the clocks the benchmark result names (engine/menu.c), read
+   from the hardware: clk_sys, and the flash clock from the SSI's divider
+   (port/rp2040/clock_rp2040.c sets it) */
+unsigned Sys_QogClockKHz(void) { return clock_get_hz(clk_sys) / 1000u; }
+unsigned Sys_QogFlashKHz(void) {
+    uint32_t div = ssi_hw->baudr;
+    return div ? clock_get_hz(clk_sys) / 1000u / div : 0;
+}
 void Sys_Sleep(void) {}
 char *Sys_ConsoleInput(void) { return NULL; }
 void Sys_DebugLog(char *file, char *fmt, ...) { (void)file; (void)fmt; }
