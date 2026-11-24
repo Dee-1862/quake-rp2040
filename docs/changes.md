@@ -2,6 +2,16 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Board results of the speed round (lead, on hardware)
+
+All four speed agents (AK link and frame, AH spans, AJ front end, AI models) plus episodes 2 and 3 support, flashed with the episode 1 image.
+
+- E1M1 play: 18.0 fps (frame 55.2 ms, link 1.1, view 53.2, race 6.0, hud 0, scanwait 0), was 12.0. main's txstall 0 ms per second.
+- `[bench] timedemo demo3 1090 frames 79.9 seconds 13.6 fps, render Fast, clock 250 MHz, flash 125 MHz`, was 9.3.
+- Phase averages during the demo, ms per view: spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total 72.2. Frame 80.9 average including the demo's loading.
+- lmap is now the second biggest item in the demo (dynamic lights from rockets and explosions rebuild lightmaps every frame), against 2 ms in E1M1.
+- No fault, hang or error line on either chip. Display stack free 6,160 B, main 7,928 B.
+
 ## 2026-11-24: Alias models and particles in integers in Fast mode, an exact faster alias span loop (Agent AI, PC and ARM build, registered data)
 
 The board's timedemo demo3 spends 14.3 ms of a 75.7 ms view on models, 5.2 on the view weapon and 3.4 on particles. Counted on the PC (`QOG_ALIAS_STATS`, timedemo demo3, per view): 9.05 alias bounding box checks, 2.82 models drawn, 299 vertices, 502 triangles of which 123 rasterised with gradients (84 of them 4 pixels or fewer) and 55 by subdivision, 748 span pixels, and the view weapon with 71 vertices, 40 rasterised triangles, 27 clipped ones and 2,772 pixels, plus 205 particles (74 on the screen). Pixels are few, the time is float work: an M0+ has no FPU and every float is a call to the ROM (objdump: 56 helper calls per triangle gradient, about 44 per vertex, 3 double sines and 3 double cosines in every AngleVectors). So Fast mode replaces the float work with integers, the way MG24Quake's rasteriser is fixed point but further (MG24Quake keeps float vertices, it has an FPU). MG24Quake's other alias ideas (per-triangle skin layout and DMA reads from its SPI flash) suit its external flash, not our XIP cache, and need the pak converter and RAM, so they are not taken. Nothing ran on hardware. Savings are estimates.
