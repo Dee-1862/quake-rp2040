@@ -258,6 +258,12 @@ target_compile_definitions(quakeog_pc PRIVATE
 # World and brush model front end, exact (Agent AJ)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BMODEL_ZEROANGLE)           # a brush entity with zero angles skips the double sine, cosine and matrix products (r_bsp.c)
+# Lightmaps and dynamic lights, exact (Agent AL): r_light.c, r_surf.c
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_DLIGHT_AXIAL                # a light's distance to an axial plane with one subtraction, id's float result
+    QOG_DLIGHT_FACING               # the visible-only pass marks only surfaces facing the eye, the lit surface hash stays small
+    QOG_DLIGHT_INT                  # a dynamic light's cells in integers with id's result, float only outside the proven range
+    QOG_DLIGHT_REACHUP)             # a lit surface the full hash lost: its node found and the light tested up the parents, not a tree search
 # One app for every episode's data image (Agent AG): qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE
