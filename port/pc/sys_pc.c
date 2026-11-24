@@ -239,8 +239,15 @@ int main(int argc, char **argv) {
     parms.argc = com_argc;
     parms.argv = com_argv;
 
+    /* QuakeOG (Agent T): -flashbase <address> maps the packs from another
+       address, 0x10300000 for the main chip's server data region
+       (platform/qog_flashmap.h, tools/mkboard.py --main) */
+    int i = COM_CheckParm("-flashbase");
+    if (i && i + 1 < com_argc)
+        s_flash_next = (byte *)(size_t)strtoul(com_argv[i + 1], NULL, 0);
+
     int heap_kb = DEFAULT_HEAP_KB;
-    int i = COM_CheckParm("-heapsize");
+    i = COM_CheckParm("-heapsize");
     if (i && i + 1 < com_argc) heap_kb = Q_atoi(com_argv[i + 1]);
     parms.memsize = heap_kb * 1024;
     /* Fixed address (and a fixed-base exe, see pc/CMakeLists.txt) so every

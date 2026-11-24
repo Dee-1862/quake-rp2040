@@ -249,7 +249,8 @@ if(QOG_SPLIT)
     list(TRANSFORM _sv_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=6")   # server zone peak 1.9 KB
     add_library(qog_engine_sv STATIC EXCLUDE_FROM_ALL ${QOG_SPLIT_SV_ENGINE} ${QOG_PROGS_AOT}
         ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common})
-    target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER)
+    target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER
+        QOG_LINK_SCRATCH)   # the link's 4 KB of rings in SCRATCH_X, unused on main (Agent T)
 
     foreach(_lib qog_engine_cl qog_engine_sv)
         # both ends of the link use the same frame size: 512-byte frames, 2 KB rings
@@ -274,7 +275,7 @@ if(QOG_SPLIT)
     list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${QOG_CL_HUNK_KB}")
     set_property(TARGET quake_display PROPERTY COMPILE_DEFINITIONS ${_disp_defs})
 
-    set(QOG_SV_HUNK_KB 172 CACHE STRING "server half hunk in KB, smallest -heapsize of quakeog_sv for e3m5 with a fight, a save and a load (E1M1 130)")
+    set(QOG_SV_HUNK_KB 167 CACHE STRING "server half hunk in KB, smallest -heapsize of quakeog_sv for e1m3 with a fight, a save and a load, the worst of start and episode 1 (e3m5 152)")
     set(QOG_SV_STACK_KB 24 CACHE STRING "server half stack array in KB, deepest chain from server_main 17,496 B (tools/stack_chain.py)")
     add_executable(quake_main EXCLUDE_FROM_ALL
         ${QOG_ROOT}/port/rp2040/sys_rp2040.c
@@ -282,7 +283,8 @@ if(QOG_SPLIT)
     target_compile_definitions(quake_main PRIVATE
         QOG_SYS_MAIN QOG_LINK_MAIN QOG_HUNK_KB=${QOG_SV_HUNK_KB} QOG_STACK_KB=${QOG_SV_STACK_KB})
     target_compile_options(quake_main PRIVATE -fstack-usage)
-    target_link_libraries(quake_main qog_engine_sv fwog_main_bsp)
+    # saves on main's FAT volume through the BSP's FatFs (Agent T, sys_rp2040.c)
+    target_link_libraries(quake_main qog_engine_sv fwog_main_bsp fwog_main_fs)
     target_link_options(quake_main PRIVATE -Wl,--allow-multiple-definition)
     # the display image main carries: quake_display, or for measuring main
     # while quake_display does not link, any display app (qog_display)

@@ -38,6 +38,25 @@ address in the full pak the bake reads and in the board's pak with stubs,
 and the image goes right after the smaller pak. The full pak is kept as
 <out>/src.pak, which qog_bake check needs (-bakesrc <out>/src.pak).
 
+--main (Agent T) also writes the main chip's server data image for the
+split game from the same pak, in the same run, so the two copies cannot
+drift. The main chip's region (platform/qog_flashmap.h) is 0x10300000 to
+0x107FFFFF, between its app and its FAT volume:
+
+    offset 0          the server's pak: progs.dat, then every map, alias
+                      model and sprite of the display's pak as a stub
+                      (132 bytes for a map, 16 for a model, engine/model.h)
+    next 64 KB        the server's qogbake.bin (qog_bake -bakestubs
+                      -bakeserver): planes, nodes, leafs, clip nodes and
+                      hulls, submodels, entities and visibility of each map,
+                      and each model's model_t, built for that address
+
+Nothing in that image points into a pak, so the PC bakes it from the
+display's full pak for the address -bakebase gives, then writes
+<out>_main/id1/pak0.pak and qogbake.bin (the PC's server half runs them
+with -basedir <out>_main -flashbase 0x10300000), <out>_main.bin and
+<out>_main.uf2, a UF2 of that region only.
+
 Never commit or share the output: it is converted id Software data.
 Standard library only.
 """
@@ -59,6 +78,18 @@ QOGB_ENTRY = "<40s6I"     # name, model, size, fileaddr, filelen, filehash (+ pa
 QOGB_STUB_IDENT = 0x53474F51   # "QOGS", engine/model.h qogbake_stub_t
 BSPVERSION = 29
 LUMP_PLANES = 1
+# the main chip's server data region, platform/qog_flashmap.h (Agent T)
+MAIN_DATA_ADDR = mkdata.XIP_BASE + 0x00300000   # QOG_MAIN_DATA_OFFSET
+MAIN_DATA_MAX = 0x00800000 - 0x00300000          # up to QOG_MAIN_FAT_OFFSET
+# what the server opens besides its models: QuakeC, and gfx/pop.lmp, by
+# which COM_CheckRegistered sets the "registered" cvar that QuakeC reads
+SERVER_FILES = ["progs.dat", "gfx/pop.lmp"]
+QOGB_SERVER_LAYOUT = 0x53525652                  # engine/model.h
+
+
+def is_model(name):
+    """A file qog_bake bakes: maps/*.bsp, progs/*.mdl, progs/*.spr."""
+    return mkpak.is_map(name) or (name.startswith("progs/") and name[-4:] in (".mdl", ".spr"))
 
 
 def align(n, a):
@@ -101,6 +132,12 @@ def make_stub(f):
     return struct.pack("<I", QOGB_STUB_IDENT) + f[4:124] + struct.pack("<II", len(f), file_hash(f))
 
 
+def make_mstub(f):
+    """The qogbake_mstub_t that stands for alias model or sprite f in the
+    server's pak (Bake_Model with -bakeserver writes its hash)."""
+    return struct.pack("<IiII", QOGB_STUB_IDENT, struct.unpack_from("<i", f, 0)[0], len(f), file_hash(f))
+
+
 def pak_entries(pak):
     """[(name, filepos, data)] of a pak, in directory order."""
     _, dofs, dlen = struct.unpack_from("<4sii", pak, 0)
@@ -136,11 +173,13 @@ def bake_header(img):
     return h if h[0] == QOGB_MAGIC else None
 
 
-def run_bake(exe, basedir, base, timeout, stubs=False):
+def run_bake(exe, basedir, base, timeout, stubs=False, extra=""):
     """qog_bake on the PC: hidden, silent, through tools/pctest.ps1."""
     args = "-nosound -nobake -basedir %s" % basedir.replace("\\", "/")
     if stubs:
         args += " -bakestubs"
+    if extra:
+        args += " " + extra
     if base:
         args += " -bakebase 0x%08X" % base
     args += " +qog_bake +qog_quit"
@@ -150,6 +189,80 @@ def run_bake(exe, basedir, base, timeout, stubs=False):
     subprocess.run(cmd, check=True, cwd=ROOT)
     tail = open(log, errors="replace").read().strip().splitlines()[-1:] if os.path.exists(log) else []
     print("bake: %s" % (tail[0] if tail else "(no log)"))
+
+
+def build_main(full, out, exe, timeout, no_bake, layout):
+    """The main chip's server data image (--main) from the display's full
+    pak (every file before stubs): returns 0 when it fits, 2 when not."""
+    mout = out + "_main"
+    if len(mout) > 80:
+        sys.exit("mkboard: use a shorter output path (%s is %d characters, at most 80)" % (mout, len(mout)))
+    gamedir = os.path.join(mout, "id1")
+    os.makedirs(gamedir, exist_ok=True)
+    ents = pak_entries(full)
+    names = [n for n, _, _ in ents]
+    missing = [n for n in SERVER_FILES[:1] if n not in names]   # pop.lmp: registered data only
+    if missing:
+        sys.exit("mkboard: the pak has no %s for the server" % " ".join(missing))
+    # the server's files, then a stub for each model
+    keep = [(n, d) for n, _, d in ents if n in SERVER_FILES] + [(n, d) for n, _, d in ents if is_model(n)]
+    pak = mkpak.build_pak([(n, make_stub(d) if mkpak.is_map(n) else make_mstub(d) if is_model(n) else d)
+                           for n, d in keep])
+    if pc_layout(pak) != len(pak):
+        sys.exit("mkboard: the server's pak is not laid out the way the PC maps it")
+    base = MAIN_DATA_ADDR + align(len(pak), 0x10000)
+
+    # Nothing in the server's image points into a pak (maps detached, models
+    # are a model_t alone), so the PC bakes it from the display's full pak,
+    # which also holds what the PC needs to start, for the address -bakebase
+    # gives. The models are the same files, so their stubs match.
+    pakpath = os.path.join(gamedir, "pak0.pak")
+    bakepath = os.path.join(gamedir, "qogbake.bin")
+    if not no_bake:
+        with open(pakpath, "wb") as f:
+            f.write(full)
+        if os.path.exists(bakepath):
+            os.remove(bakepath)
+        run_bake(exe, mout, base, timeout, True, "-bakeserver")
+    if not os.path.exists(bakepath):
+        sys.exit("mkboard: %s was not written" % bakepath)
+    img = open(bakepath, "rb").read()
+    h = bake_header(img)
+    if not h or h[4] != len(img):
+        sys.exit("mkboard: %s is not a baked image" % bakepath)
+    if h[3] != base:
+        sys.exit("mkboard: the server's image is for 0x%08X, the data image puts it at 0x%08X" % (h[3], base))
+    if h[2] != layout ^ QOGB_SERVER_LAYOUT:
+        sys.exit("mkboard: %s is not the server's image of the build that baked the display's" % bakepath)
+    baked = {n: (addr, ln, hs) for n, addr, ln, hs in bake_dir(img)}
+    for n, _, d in pak_entries(pak):
+        if is_model(n) and baked.get(n) != (0, len(d), fnv(d)):
+            sys.exit("mkboard: %s is not in the server's image as a stub (see %s)" % (n, os.path.join(mout, "bake.txt")))
+    with open(pakpath, "wb") as f:
+        f.write(pak)          # the server's pak, the PC runs it with -basedir <out>_main
+
+    ofs = base - MAIN_DATA_ADDR
+    data = pak + b"\xff" * (ofs - len(pak)) + img
+    data += b"\xff" * (-len(data) % 4096)    # whole 4 KB sectors
+    with open(mout + ".bin", "wb") as f:
+        f.write(data)
+    with open(mout + ".uf2", "wb") as f:
+        f.write(mkdata.to_uf2(data, MAIN_DATA_ADDR))
+    models = sum(1 for n in names if is_model(n))
+    print("main chip server data region at 0x%08X, %.2f MB:" % (MAIN_DATA_ADDR, MAIN_DATA_MAX / 2**20))
+    print("  0x%08X  pak        %9d bytes  %6.2f MB, %s and %d model stubs"
+          % (MAIN_DATA_ADDR, len(pak), len(pak) / 2**20, " ".join(n for n in SERVER_FILES if n in names), models))
+    print("            (the full models took %d bytes)" % sum(len(d) for n, d in keep if is_model(n)))
+    print("  0x%08X  qogbake    %9d bytes  %6.2f MB, %d models, the server's image"
+          % (base, len(img), len(img) / 2**20, h[5]))
+    print("  0x%08X  end        %9d bytes  %6.2f MB, %.1f%% of the region"
+          % (MAIN_DATA_ADDR + len(data), len(data), len(data) / 2**20, 100.0 * len(data) / MAIN_DATA_MAX))
+    if len(data) > MAIN_DATA_MAX:
+        print("THE SERVER IMAGE DOES NOT FIT: %d bytes over." % (len(data) - MAIN_DATA_MAX))
+        return 2
+    print("wrote %s.bin and %s.uf2 (0x%08X to 0x%08X, run on the PC with -basedir %s -flashbase 0x%08X)"
+          % (mout, mout, MAIN_DATA_ADDR, MAIN_DATA_ADDR + len(data) - 1, mout, MAIN_DATA_ADDR))
+    return 0
 
 
 def main(argv=None):
@@ -165,6 +278,8 @@ def main(argv=None):
     ap.add_argument("--timeout", type=int, default=900, help="seconds for the bake run")
     ap.add_argument("--stub-maps", action="store_true",
                     help="move the maps into the baked image, a stub for each in the pak (QOG_BAKE_STUBS)")
+    ap.add_argument("--main", action="store_true",
+                    help="also write the main chip's server data image <out>_main (the split game)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension, also the PC basedir")
     a = ap.parse_args(argv)
 
@@ -187,6 +302,7 @@ def main(argv=None):
     pak = open(pakpath + ".pak", "rb").read()
     if pc_layout(pak) != len(pak):
         sys.exit("mkboard: the pak is not laid out the way the PC maps it")
+    full = pak            # every file whole, for the main chip's image (--main)
     srcpath = os.path.join(out, "src.pak")
     if a.stub_maps:
         # the bake reads the full pak, the board gets the one with stubs
@@ -246,11 +362,20 @@ def main(argv=None):
     print("  0x%08X  qogbake    %9d bytes  %6.2f MB, %d models" % (base, len(img), len(img) / 2**20, h[5]))
     print("  0x%08X  end        %9d bytes  %6.2f MB, %.1f%% of the region"
           % (DATA_ADDR + len(data), len(data), len(data) / 2**20, 100.0 * len(data) / room))
+    rc = 0
     if len(data) > room:
         print("DOES NOT FIT: %d bytes over. Keep fewer maps (--maps)." % (len(data) - room))
-        return 2
-    print("wrote %s.bin and %s.uf2 (run on the PC with -basedir %s)" % (out, out, out))
-    return 0
+        rc = 2
+    else:
+        print("wrote %s.bin and %s.uf2 (run on the PC with -basedir %s)" % (out, out, out))
+
+    # 4. the main chip's server image from the same files (Agent T)
+    if a.main:
+        if not a.exe and not a.no_bake:
+            sys.exit("mkboard: --exe is needed to bake (or --no-bake)")
+        rc = max(rc, build_main(full, out, os.path.abspath(a.exe) if a.exe else None,
+                                a.timeout, a.no_bake, h[2]))
+    return rc
 
 
 if __name__ == "__main__":

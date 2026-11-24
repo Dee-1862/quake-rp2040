@@ -118,6 +118,17 @@ static qboolean	link_started;
 //=============================================================================
 // stream helpers
 
+// QuakeOG (Agent T): the save list of the load and save menus, a side frame
+// pair outside the stream (QOG_LINK_T_SAVES_ASK, QOG_LINK_T_SAVES in
+// port/common/qog_link.h): slot i is a found byte and the comment M_ScanSaves
+// reads from s<i>.sav, 39 bytes padded with zeros
+#define LINK_SAVESLOTS	12		// menu.c MAX_SAVEGAMES
+#define LINK_SAVEENTRY	(1 + SAVEGAME_COMMENT_LENGTH)
+#define LINK_SAVESIZE	(3 + LINK_SAVESLOTS * LINK_SAVEENTRY)
+#if LINK_SAVESIZE > QOG_LINK_CHUNK + 2
+#error the save list does not fit one link frame
+#endif
+
 static void put16 (byte *b, int v) { b[0] = v & 0xff; b[1] = (v >> 8) & 0xff; }
 static void put32 (byte *b, unsigned v) { b[0] = v; b[1] = v >> 8; b[2] = v >> 16; b[3] = v >> 24; }
 static unsigned get32 (const byte *b) { return b[0] | (b[1] << 8) | (b[2] << 16) | ((unsigned)b[3] << 24); }
@@ -540,6 +551,80 @@ static void Link_Sv_f (void)
 	Link_ForwardCommand (Cmd_Args ());
 }
 
+// QuakeOG (Agent T): the save list (see LINK_SAVESLOTS). The client asks
+// between exchanges, while the server waits for its frame, and asks again
+// every 250 ms until the answer with its number arrives (5 s at most).
+static byte		link_saves[LINK_SAVESIZE];
+static qboolean	link_saves_got;
+static byte		link_saves_seq;
+
+static void Link_ClientSide (const uint8_t *p, int len)
+{
+	if (p[0] == QOG_LINK_T_SAVES && len == LINK_SAVESIZE && p[1] == link_saves_seq)
+	{
+		memcpy (link_saves, p, len);
+		link_saves_got = true;
+	}
+}
+
+void Link_ScanSaves (char names[][SAVEGAME_COMMENT_LENGTH+1], int *found, int count)
+{
+	byte		ask[2];
+	unsigned	start, last, now;
+	byte		*e;
+	int			i;
+
+	for (i=0 ; i<count ; i++)
+	{
+		names[i][0] = 0;
+		found[i] = false;
+	}
+	if (!link_started || link_waiting)
+		return;
+	link_saves_got = false;
+	ask[0] = QOG_LINK_T_SAVES_ASK;
+	ask[1] = ++link_saves_seq;
+	start = last = qog_link_hw_ms ();
+	qog_link_send_side (ask, 2);
+	while (!link_saves_got)
+	{
+		now = qog_link_hw_ms ();
+		if (now - start > 5000)
+		{
+			Con_Printf ("link: no save list from the server\n");
+			return;
+		}
+		if (now - last > 250)
+		{
+			qog_link_send_side (ask, 2);
+			last = now;
+		}
+		qog_link_pump ();
+		if (!link_saves_got)
+			qog_link_hw_idle ();
+	}
+	for (i=0 ; i<count && i<link_saves[2] ; i++)
+	{
+		e = link_saves + 3 + i * LINK_SAVEENTRY;
+		found[i] = e[0];
+		memcpy (names[i], e + 1, SAVEGAME_COMMENT_LENGTH);
+		names[i][SAVEGAME_COMMENT_LENGTH] = 0;
+	}
+}
+
+// `qog_saves`: the save list the load and save menus show, for tests
+static void Link_Saves_f (void)
+{
+	extern char	m_filenames[][SAVEGAME_COMMENT_LENGTH+1];
+	extern int	loadable[];
+	void		M_ScanSaves (void);
+	int			i;
+
+	M_ScanSaves ();
+	for (i=0 ; i<LINK_SAVESLOTS ; i++)
+		Con_Printf ("s%i: %i %s\n", i, loadable[i], m_filenames[i]);
+}
+
 #endif	// QOG_SPLIT_CLIENT
 
 //=============================================================================
@@ -731,6 +816,39 @@ void Link_ServerAbort (void)
 		Link_ServerFrameDone ();
 }
 
+// QuakeOG (Agent T): the client's load and save menus ask for the save list
+// (see LINK_SAVESLOTS). The saves are this half's files: main's FAT volume
+// on the board (port/rp2040/sys_rp2040.c), the gamedir on the PC. Each
+// slot is read as M_ScanSaves reads it. Runs from the link's pump, while
+// the server waits for the client's frame.
+static void Link_ServerSide (const uint8_t *p, int len)
+{
+	byte	out[LINK_SAVESIZE];
+	char	name[MAX_OSPATH];
+	FILE	*f;
+	int		i, version;
+
+	if (p[0] != QOG_LINK_T_SAVES_ASK || len < 2)
+		return;
+	memset (out, 0, sizeof(out));
+	out[0] = QOG_LINK_T_SAVES;
+	out[1] = p[1];
+	out[2] = LINK_SAVESLOTS;
+	for (i=0 ; i<LINK_SAVESLOTS ; i++)
+	{
+		sprintf (name, "%s/s%i.sav", com_gamedir, i);
+		f = fopen (name, "r");
+		if (!f)
+			continue;
+		fscanf (f, "%i\n", &version);
+		fscanf (f, "%79s\n", name);
+		fclose (f);
+		out[3 + i * LINK_SAVEENTRY] = 1;
+		strncpy ((char *)out + 4 + i * LINK_SAVEENTRY, name, SAVEGAME_COMMENT_LENGTH);
+	}
+	qog_link_send_side (out, sizeof(out));
+}
+
 #endif	// QOG_SPLIT_SERVER
 
 //=============================================================================
@@ -743,7 +861,11 @@ int Link_Init (void)
 	Cmd_AddCommand ("qog_link", Link_Stats_f);
 #ifdef QOG_SPLIT_CLIENT
 	Cmd_AddCommand ("qog_sv", Link_Sv_f);
+	Cmd_AddCommand ("qog_saves", Link_Saves_f);	// QuakeOG (Agent T)
 	Cvar_RegisterVariable (&sv_gravity);
+	qog_link_side = Link_ClientSide;
+#else
+	qog_link_side = Link_ServerSide;	// QuakeOG (Agent T): the save list
 #endif
 	if (!COM_CheckParm ("-nolink"))
 	{

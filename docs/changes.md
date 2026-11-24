@@ -2,6 +2,52 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: The main chip's server data and saves for the split game (Agent T, PC and ARM build, registered data)
+
+The main RP2040 now has its own data image, written by the same `tools/mkboard.py` run as the display's, and the split game saves and loads on main's FAT volume. On the PC the split pair runs from the two images (the server image for the server process, the display image for the client) with the same state hashes, frames and save files as the single-process game on the full paks. `quake_main` links with 1,796 bytes of RAM to spare. Nothing ran on hardware.
+
+Server data image (`mkboard.py --main`, details in docs/game-data.md):
+
+| Maps | Region 0x10300000 to 0x107FFFFF (5 MB) |
+| --- | --- |
+| `start` to `e1m4` (the display image that fits, 12,471,904 B at 0x10400000, unchanged) | pak 420,880 B at 0x10300000 (`progs.dat`, `gfx/pop.lmp`, 68 model stubs), server image 1,955,424 B at 0x10370000, end 0x1054E000, 2,416,640 B (46.1%) |
+| `start` and all of episode 1 | pak 422,432 B, server image 2,948,000 B (81 models), 3,407,872 B (65.0%) |
+
+- `qog_bake -bakestubs -bakeserver` (writer only, engine/model.c) keeps each map's planes, nodes, leafs, clip nodes and hulls, submodels, entities and visibility, and an alias model's or sprite's `model_t`. Textures, texinfo, surfaces, edges, vertexes, mark surfaces and light are left out. The image's layout word is the build's XOR `QOGB_SERVER_LAYOUT`, which only `QOG_SPLIT_SERVER` takes. Each model file in the server's pak is a stub (132 bytes for a map, 16 for a model, `qogbake_mstub_t`). Nothing in the image points into a pak, so the PC bakes it from the display's full pak for the address `-bakebase` gives.
+- The server also opens `gfx/pop.lmp`: without it the game is the shareware version, stops with "You must have the registered version to use modified games", and QuakeC would read another `registered` cvar.
+- The PC maps its packs at another address with `-flashbase <address>` (port/pc/sys_pc.c), so the server process runs main's layout with `-basedir <out>_main -flashbase 0x10300000`.
+- Flash layout check: the BSP puts main's FAT volume at flash offset 8 MB for 8 MB (`fs/fs_geom.h` `FWOG_FS_FLASH_OFFSET`) and links main apps at the start of flash (`fwog_main_app` adds no offset), as `platform/qog_flashmap.h` has it. A UF2 copy writes only its own sectors, so the app (at most 3 MB, checked post-build) and the server data UF2 (whole 4 KB sectors from 0x10300000) leave each other and the FAT volume alone. No change was needed.
+
+Saves (`QOG_SYS_MAIN` in port/rp2040/sys_rp2040.c, `QOG_SPLIT_CLIENT` in engine/menu.c, engine/net_link.c, port/common/qog_link.c):
+
+- Save and load already run on the server with id's stdio (`fopen`, `fprintf`, `fscanf`, `fgetc`). On main, newlib's system calls `_open`, `_close`, `_read`, `_write`, `_lseek` and `_fstat` now reach the BSP's FAT API (`fwog_fs_*`, library `fwog_main_fs`), so the engine's save code is unchanged. `./id1/s0.sav` is `quake/s0.sav` on the volume. One file at a time, as the BSP allows. The volume is mounted at the first open and never formatted by the game: a board without a volume says so on main's console and cannot save (the BSP's `bench` app has `fs format`).
+- Flash write hazards: nothing in `quake_main` starts core1, and the BSP's disk driver writes one 4 KB sector per FatFs write with interrupts off and kicks the watchdog after each chunk of at most 8 sectors.
+- The client's load and save menus get the list over the link: side frames 0x44 SAVES_ASK `[type][seq]` and 0x45 SAVES `[type][seq][12][12 x (found byte, 39-byte comment)]` (483 bytes) outside the stream (port/common/qog_link.h). The client asks between exchanges and again every 250 ms until the answer with its sequence number arrives (5 s at most). The server reads each slot as `M_ScanSaves` does, from its own files. `qog_saves` prints the list on the split client.
+- The single-process game is unchanged: everything is behind `QOG_SPLIT_SERVER`, `QOG_SPLIT_CLIENT`, `QOG_SYS_MAIN`, `QOG_LINK_SCRATCH` or the bake writer's `-bakeserver`.
+
+Server RAM:
+
+- A server half gives a map none of the renderer's per-frame arrays (surface, node and leaf stamps, dlight bits, efrag heads and leaf keys, also for each item box map). The smallest server `-heapsize` for e3m5 with a fight, a save and a load went from 172 KB (Agent R's number, reproduced) to 152 KB.
+- Agent R's 172 KB was not enough for every map: e1m3 with a fight, a save and a load needs 185 KB on the untouched build (the load's 8 KB line buffer fails). With the cut e1m3 needs 167 KB with the full paks and 165 KB with the server image, e1m4 157 (155), e1m5 156. `start`, e1m1, e1m2, e1m6, e1m7 and e1m8 run in 152 KB. Measured with new `qogtest_t_mem_<map>.cfg` scripts (copies of `qogtest_r_mem_e3m5.cfg`) on a QOG_AOT PC build with the board's server flags. `QOG_SV_HUNK_KB` is now 167, the worst of `start` and episode 1. Episodes 2 to 4 were not measured beyond e3m5.
+- The link's two 2 KB rings move to the RP2040's SCRATCH_X bank on main (`QOG_LINK_SCRATCH`, set only on `qog_engine_sv`): core1 never starts there, so no core1 stack is linked in it.
+- `quake_main` (`-DQOG_AOT=ON`, stand-in display image `qog_display` while `quake_display` does not link): .data 8,144 + .bss 249,964 + heap 2,048 B, 1,796 B of RAM left, SCRATCH_X 4,096 B, app 960,828 B (30.5% of the 3 MB slot). The FAT library adds about 8.9 KB of static RAM (FatFs volume and file sector buffers, its long file name buffer). Before the hunk and ring changes it overflowed RAM by 7,420 B.
+- Stack: the deepest chain from `server_main` is 18,544 B of the 24 KB array (`tools/stack_chain.py --app quake_main --lib apps/quake/libqog_engine_sv.a --root server_main`). The save path from `Host_Savegame_f` is 5,072 B plus newlib's `fprintf`, which has no `.su` line.
+
+PC verification (hidden, silent, `-nosound`, `+_cl_color 0`, against an untouched build of f6ce8fd, `build-pc-base`, on the full registered paks):
+
+| Test | Base, single process | Split pair from the two images (`build-board\qb`, `build-board\qb_main`) |
+| --- | --- | --- |
+| `qogtest_hash.cfg` | 2 hashes, rand calls 539 and 1990 | identical, on the interpreted build and on QOG_AOT with the board's flags and a 167 KB server hunk |
+| `qogtest_t_fhash.cfg` (`qogtest_r_fhash` on `start` to `e1m4`, save name `t_f1`, fight, save, load) | 20 hashes, 5 frames | 20 hashes identical (also on QOG_AOT with a 167 KB server hunk), 5 frames byte identical, the save file byte identical to base's |
+| `qogtest_t_saves.cfg` (save `s0` on e1m1 and `s5` on e1m2 after a fight, `qog_saves`, the load menu) | load menu frame | the list came over the link, the load menu frame byte identical, the saves only in the server's folder |
+
+The single-process build of this commit (`quakeog_pc`) gives the same `qogtest_hash` (2 hashes), `qogtest_f_hash` (32 hashes, 8 frames) and `qogtest_d_shots` after `qogtest_k_quiet` (113 frames) as base, all byte identical.
+
+Flash order (one CPU in BOOTSEL at a time, nothing was flashed here): the display data UF2 through the display's BOOTSEL drive, the server data UF2 through main's, then the app with `fw flash`, which pushes the display image and sends RUN.
+
+- Edits outside new code: engine/model.c and model.h (bake writer and loader), engine/menu.c (`M_ScanSaves` in the split client, the only client-side file touched), engine/net_link.c, port/common/qog_link.c and .h, port/pc/sys_pc.c, port/rp2040/sys_rp2040.c, tools/mkboard.py, and in apps/quake/CMakeLists.txt only `qog_engine_sv`'s definitions and `quake_main`'s hunk and libraries.
+- Not done: the board's FAT path was built, not run. The client opens no QuakeC, so `progs.dat` (0.39 MB) could leave the display's pak, which is not changed here. The `qogtest_t_*.cfg` scripts are in the worktree's git-ignored `build-board\full\id1`, not in the shared `data\id1`.
+
 ## 2026-11-23: The game split across both RP2040s, server on main, client on the display (Agent R, PC and ARM build, registered data)
 
 The server half (SV_*, QuakeC, physics, edicts) and the client half (CL_*, renderer, status bar, input) are now separate builds joined by a new net driver over the inter-chip link. On the PC the two halves run as two processes over TCP at the UART's speed and give the same state hashes and frames as the single-process game. On the board `quake_main` (server) links with 1,712 bytes of RAM to spare. `quake_display` (client) still overflows RAM by 118,024 bytes with the E1M1 hunk (136,456 with e3m5's). Nothing ran on hardware.
