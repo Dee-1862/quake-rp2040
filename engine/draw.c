@@ -49,9 +49,16 @@ qpic_t		*draw_backtile;
 #define	CACHEPIC_NAME		MAX_QPATH
 #endif
 
+#if defined(QOG_CACHEPIC_NAMEPTR) && !defined(QOG_CACHEPIC_FLASH)
+#error QOG_CACHEPIC_NAMEPTR needs QOG_CACHEPIC_FLASH
+#endif
 typedef struct cachepic_s
 {
+#ifdef QOG_CACHEPIC_NAMEPTR
+	const char	*name;		// QuakeOG (Agent AD): the name in the mapped pack's directory
+#else
 	char		name[CACHEPIC_NAME];
+#endif
 	cache_user_t	cache;
 #ifdef QOG_CACHEPIC_FLASH
 	qpic_t		*flash;		// QuakeOG: the pic in a mapped pack, or NULL
@@ -93,8 +100,20 @@ qpic_t	*Draw_CachePic (char *path)
 			Sys_Error ("menu_numcachepics == MAX_CACHED_PICS");
 		if (strlen (path) >= CACHEPIC_NAME)	// QuakeOG: names are shorter than MAX_QPATH
 			Sys_Error ("Draw_CachePic: %s is too long", path);
+#ifdef QOG_CACHEPIC_NAMEPTR
+		// QuakeOG (Agent AD): the name lasts as long as the game in the
+		// mapped pack's directory (as the mixer keeps sound names), so a
+		// slot holds a pointer, 12 bytes, not a copy, 32. Every pic the
+		// engine names is in the pack, a pic that is not stops as id's
+		// Draw_CachePic does when it fails to load one.
+		pic->name = COM_FlashName (path);
+		if (!pic->name)
+			Sys_Error ("Draw_CachePic: failed to load %s", path);
+		menu_numcachepics++;
+#else
 		menu_numcachepics++;
 		strcpy (pic->name, path);
+#endif
 #ifdef QOG_CACHEPIC_FLASH
 		// QuakeOG: menu, intermission, finale and plaque pics are only ever
 		// read, so a pic in a mapped pack is used in place instead of being

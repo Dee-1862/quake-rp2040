@@ -1936,7 +1936,7 @@ byte *COM_FlashFile (char *path, int *length)
 	return NULL;
 }
 
-#ifdef QOG_SFX_NAMEPTR
+#if defined(QOG_SFX_NAMEPTR) || defined(QOG_CACHEPIC_NAMEPTR)
 /*
 ============
 COM_FlashName

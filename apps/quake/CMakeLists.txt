@@ -288,7 +288,14 @@ if(QOG_SPLIT)
         QOG_TEMPENT_BLOCK=8             # beam segments from the level's hunk in blocks of 8 as used (id's 64 kept), none on a level without beams
         QOG_CMD_ARGV_ARENA=640          # command tokens in a 640-byte buffer, not the zone (it fragmented a small zone)
         QOG_MSG_STRING_INPLACE          # Agent Y: message strings read in place, no 2 KB static copy (exact, common.c)
-        QOG_LINK_RX_ZTEMP)              # Agent Y: the link's 7.5 KB receive buffer in the z-buffer between views, not the hunk (net_link.c)
+        QOG_LINK_RX_ZTEMP               # Agent Y: the link's 7.5 KB receive buffer in the z-buffer between views, not the hunk (net_link.c)
+        QOG_TEMPENT_SMALL               # Agent AD: beam segments are only the drawn part of entity_t, 40 bytes not 88 (exact, cl_tent.c)
+        QOG_HUNK_HDR8                   # Agent AD: 8-byte hunk block headers and 8-byte rounding, not 16 (exact, zone.c)
+        QOG_ITEMBOX_PACKED              # Agent AD: item box frame bits share packed hunk blocks (exact, model.c)
+        QOG_ENTITY_NOEFRAG              # Agent AD: efrag and visframe of statics share the client entity's network part (exact, render.h)
+        QOG_ENTITY_NOTOPNODE            # Agent AD: the drawn bmodel's top node in one variable, entities 76 bytes (exact, render.h)
+        QOG_CACHEPIC_NAMEPTR            # Agent AD: menu pic names point into the mapped pack's directory, 672 B not 1,792 (exact, draw.c)
+        QOG_LIGHTSTYLE_SHORT)           # Agent AD: light style values as shorts, 512 B (exact, r_shared.h)
     # QuakeOG (Agent X): menus for five buttons and no keyboard (engine/menu.c).
     # No Multiplayer or console entry, a Controls page that shows the buttons,
     # a Levels page of the maps in the data image, yes/no answered with gray
@@ -387,6 +394,7 @@ if(QOG_SPLIT)
     list(REMOVE_ITEM _sv_defs QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
     list(TRANSFORM _sv_defs REPLACE "^QOG_CMDBUF_SIZE=[0-9]+$" "QOG_CMDBUF_SIZE=256")
     list(APPEND _sv_defs QOG_LOADGAME_STRSIZE=8192)   # a save's biggest block 2,485 B (id 32 KB on the hunk)
+    list(APPEND _sv_defs QOG_RECONNECT_FIRST)         # Agent AD: the client's reconnect before its message, else every changelevel stopped the client (sv_main.c)
     list(TRANSFORM _sv_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=6")   # server zone peak 1.9 KB
     set(_sv_sound "")
     if(QOG_SOUND)
@@ -436,7 +444,7 @@ if(QOG_SPLIT)
     get_target_property(_disp_libs quake_display LINK_LIBRARIES)
     list(TRANSFORM _disp_libs REPLACE "^qog_engine$" "qog_engine_cl")
     set_property(TARGET quake_display PROPERTY LINK_LIBRARIES ${_disp_libs})
-    set(QOG_CL_HUNK_KB 73 CACHE STRING "client half hunk in KB. Agent Y: start and all of episode 1, the worst a fight tour of e1m4 at 70.4 KB and a fight, save and load on e1m3 at 69 KB (docs/changes.md)")
+    set(QOG_CL_HUNK_KB 75 CACHE STRING "client half hunk in KB. Agent AD: every episode, the worst fight tours on the board images e2m6 and e4m5, see docs/changes.md (Agent Y had 73 for episode 1)")
     # Agent W: with sound the client gives 2 KB of its stack to the speaker's ring
     # (the board's watermark had 5.4 KB spare, the sound exchange adds about 1.1 KB)
     if(QOG_SOUND)

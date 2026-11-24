@@ -23,6 +23,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_local.h"
 
 mnode_t	*r_pefragtopnode;
+#ifdef QOG_ENTITY_NOTOPNODE
+mnode_t	*r_entitytopnode;	// QuakeOG (Agent AD): the top node of the bmodel being drawn (render.h)
+#endif
 
 
 //===========================================================================
@@ -228,7 +231,9 @@ void R_AddEfrags (entity_t *ent)
 
 	R_SplitEntityOnNode (cl.worldmodel->nodes);
 
+#ifndef QOG_ENTITY_NOTOPNODE	// QuakeOG (Agent AD): never read, see ENT_TOPNODE in render.h
 	ent->topnode = r_pefragtopnode;
+#endif
 }
 
 

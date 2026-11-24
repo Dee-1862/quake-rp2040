@@ -27,6 +27,23 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //=============================================================================
 
+#if defined(QOG_ENTITY_NOTOPNODE) && !defined(QOG_ENTITY_NOEFRAG)
+#error QOG_ENTITY_NOTOPNODE needs the QOG_ENTITY_NOEFRAG layout
+#endif
+#ifdef QOG_ENTITY_NOTOPNODE
+/*
+QuakeOG (Agent AD): a bmodel's top node is set by R_DrawBEntitiesOnList just
+before its faces are drawn, read only while they are (r_bsp.c) and set back
+to NULL after, so one variable for the entity being drawn holds it (r_efrag.c)
+and every entity is 4 bytes smaller. R_AddEfrags's top node of a static
+entity was never read, the draw sets it first.
+*/
+extern struct mnode_s	*r_entitytopnode;
+#define ENT_TOPNODE(e)		(r_entitytopnode)
+#else
+#define ENT_TOPNODE(e)		((e)->topnode)
+#endif
+
 typedef struct efrag_s
 {
 	struct mleaf_s		*leaf;
@@ -76,6 +93,54 @@ id computed it (ENT_SYNCBASE). The network state comes last, so a static
 entity, which never gets an update, is only the first ENT_STATIC_SIZE bytes
 (cl_main.c, CL_ParseStatic reads its baseline into a scratch entity).
 */
+#ifdef QOG_ENTITY_NOEFRAG
+/*
+QuakeOG (Agent AD): 80 bytes (76 with QOG_ENTITY_NOTOPNODE). Only a static entity ever has efrags
+(R_AddEfrags is called for statics alone) and only R_StoreEfrags, through
+those efrags, reads visframe, so both share their 8 bytes with the network
+state, which only client entities have. A static entity is the first
+ENT_STATIC_SIZE bytes (52 or 48), a beam segment of a temp entity the
+first ENT_RENDER_SIZE (44 or 40, QOG_TEMPENT_SMALL). The client's
+R_RemoveEfrags of a client entity is left out (cl_main.c): its efrag was
+always NULL, so id's call did nothing.
+*/
+typedef struct entity_s
+{
+	vec3_t					origin;
+	vec3_t					angles;
+	struct model_s			*model;			// NULL = no model
+	byte					*colormap;
+#ifndef QOG_ENTITY_NOTOPNODE	// QuakeOG (Agent AD): see ENT_TOPNODE above
+	struct mnode_s			*topnode;		// for bmodels, first world node
+											//  that splits bmodel, or NULL if
+											//  not split
+#endif
+	short					frame;
+	unsigned short			syncrand;		// rand()&0x7fff for ST_RAND models, else 0
+	byte					effects;		// light, particals, etc
+	byte					skinnum;		// for Alias models
+	byte					trivial_accept;
+	byte					forcelink;		// model changed
+	union
+	{
+		struct
+		{	// static entities only
+			struct efrag_s	*efrag;			// linked list of efrags
+			int				visframe;		// last frame this entity was
+											//  found in an active leaf
+		};
+		struct
+		{	// client entities only
+			float			msgtime;		// time of last update
+			entcoord_t		msg_origins[2][3];	// last two updates (0 is newest)
+			entbaseline_t	baseline;		// to fill in defaults in updates
+			entangle_t		msg_angles[2][3];	// last two updates (0 is newest)
+		};
+	};
+} entity_t;
+#define ENT_RENDER_SIZE		((int)(size_t)&((entity_t *)0)->efrag)
+#define ENT_STATIC_SIZE		((int)(size_t)(&((entity_t *)0)->visframe + 1))
+#else
 typedef struct entity_s
 {
 	vec3_t					origin;
@@ -101,6 +166,8 @@ typedef struct entity_s
 	entangle_t				msg_angles[2][3];	// last two updates (0 is newest)
 } entity_t;
 #define ENT_STATIC_SIZE		((int)(size_t)&((entity_t *)0)->msgtime)
+#define ENT_RENDER_SIZE		ENT_STATIC_SIZE
+#endif
 #define ENT_SYNCBASE(e)		((float)((float)(e)->syncrand / 0x7fff))
 #define ENT_SETSYNC(e,r)	((e)->syncrand = (r))
 #else

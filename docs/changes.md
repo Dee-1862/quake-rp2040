@@ -73,6 +73,60 @@ Fast mode cut 2.9 M cycles of arithmetic and the spans moved by 0.9 ms, which po
 
 - Edge u stepping in 16.16 fixed point instead of float in R_EmitEdge: edge positions move by a sub-pixel, maybe 1 to 2 ms of world.
 - Node culling with integer box tests against quantised planes: rare one-node differences, about 1 ms.
+## 2026-11-24: Every episode in the split client's RAM, and level exits on the board client (Agent AD, PC and ARM build, registered data)
+
+The board client's hunk goes from 73 to 75 KB and now holds every level of the game with at least 3.8 KB to spare on a fight tour: seven exact cuts take 7.4 KB off the worst level (e2m6, 78.4 to 71.2 KB) and free 1,656 B of static RAM for the hunk. Before them, a bug of the z-buffer receive buffer stopped the board client at every level exit. Nothing ran on hardware.
+
+Bug found and fixed (`QOG_RECONNECT_FIRST`, both server halves, engine/sv_main.c): with Agent Y's `QOG_LINK_RX_ZTEMP` every `changelevel` stopped the board-flag client with "link: 16 bytes of messages wait while the view is drawn". SV_SendReconnect sent the reconnect message and then had the client run `reconnect` in the same exchange. The client's reconnect draws the loading plaque over the old level's view while that message waited in the z-buffer. The server now has the client run `reconnect` first. Nothing the reconnect runs reads the receive buffer and a delivery runs no client code, so the client does the same work. `qogtest_ad_chg.cfg` (map e1m1, changelevel e1m2) gives the single process's state hash on the board-flag pair, and stopped before. Every level exit in play is a changelevel, while the test scripts changed levels with `map`, which disconnects first (L70).
+
+Cuts (all on the board client list in apps/quake/CMakeLists.txt, each behind a flag of its own):
+
+| Cut | Flag | Saved on e2m6 |
+| --- | --- | ---: |
+| Beam segments of temp entities are only the drawn part of entity_t (40 bytes, not 88), they never get a network update or efrags | `QOG_TEMPENT_SMALL` (cl_tent.c) | 3,136 B of hunk with 64 segments |
+| entity_t 88 to 76 bytes. Only statics have efrags and only R_StoreEfrags reads visframe, through them, so both share 8 bytes with the network state in a union. The bmodel being drawn keeps its top node in one variable (`ENT_TOPNODE`, set before its faces are drawn, read only then). A static entity is 48 bytes. R_RemoveEfrags of an emptied client entity is left out, its efrag was always NULL | `QOG_ENTITY_NOEFRAG`, `QOG_ENTITY_NOTOPNODE` (render.h, cl_main.c, r_efrag.c, one or two lines in r_main.c and r_bsp.c) | 2,600 B (13 blocks of 16 entities) and 440 B of statics |
+| Hunk blocks get an 8-byte header (size and four letters of the name, no sentinel) and 8-byte rounding, not 16 and 16 | `QOG_HUNK_HDR8` (zone.c) | about 1 KB over about 110 blocks |
+| An item box's four frame bit arrays share packed blocks instead of four 32-byte blocks | `QOG_ITEMBOX_PACKED` (model.c) | 960 B with 11 item boxes |
+| Menu pic names point into the mapped pack's directory (as the mixer's sound names do), 12 bytes a slot, not 32. A pic not in the pack stops with id's "failed to load" | `QOG_CACHEPIC_NAMEPTR` (draw.c, common.c, common.h) | 1,120 B static |
+| Light style values are shorts ((char - 'a') * 22 or 256 fits) | `QOG_LIGHTSTYLE_SHORT` (r_shared.h, r_main.c) | 512 B static |
+
+Client hunk per level (hunk low at the end of each level of a `qog_tour_fight`, PC split pair with the board client flags, on that episode's board image `mkboard.py --stub-maps --main --display-no-sounds --display-no-progs`, KB). Before is main 9192bc9's client with the fixed server. The tour now takes out level exits and the two dead teleporters first (L72). Tour numbers move by a block of entities from run to run (L64).
+
+| Map | Before | After | | Map | Before | After | | Map | Before | After |
+| --- | ---: | ---: | --- | --- | ---: | ---: | --- | --- | ---: | ---: |
+| e2m1 | 65.0 | 60.5 | | e3m1 | 63.9 | 60.4 | | e4m1 | 60.2 | 57.4 |
+| e2m2 | 61.8 | 58.5 | | e3m2 | 63.5 | 59.4 | | e4m2 | 65.4 | 61.8 |
+| e2m3 | 67.5 | 63.8 | | e3m3 | 58.5 | 55.8 | | e4m3 | 72.2 | 69.1 |
+| e2m4 | 70.7 | 66.3 | | e3m4 | 71.9 | 64.7 | | e4m4 | 71.6 | 66.9 |
+| e2m5 | 70.1 | 63.4 | | e3m5 | 69.8 | 64.1 | | e4m5 | 78.4 | 71.0 |
+| e2m6 | 78.4 | 71.2 | | e3m6 | 71.1 | 67.2 | | e4m6 | 74.0 | 67.2 |
+| e2m7 | 72.9 | 69.0 | | e3m7 | 60.2 | 58.7 | | e4m7 | 70.1 | 66.3 |
+| start | 53.1 | 52.2 | | | | | | e4m8 | 74.0 | 65.8 |
+| | | | | | | | | end | 58.6 | 53.5 |
+
+Episode 1 after (its own image, the same tour): start 52.2, e1m1 53.0, e1m2 58.6, e1m3 66.3, e1m4 67.0, e1m5 60.8, e1m6 62.6, e1m7 46.8, e1m8 53.8 (Agent Y's before, e1m4 70.4). Worst per episode after: 1 67.0, 2 71.2, 3 67.2, 4 71.0. Agent Y's whole-game figure (80.4 on e2m6) was taken on data/id1, where the PC keeps a 1,744-byte `packpos` block the board never has (L71). e4m5 and e4m8 were never toured before because of the teleport error, and e4m5 is as big as e2m6.
+
+e2m6 by block, before and after (bytes): entities 18,512 to 15,912, temp entities 5,760 to 2,624, statics 4,752 to 4,312, item boxes 1,408 into the packed blocks (1,520 to 1,968), the rest only the smaller headers. Total 80,288 to 72,920.
+
+Exactness (hidden, `-nosound`, `+_cl_color 0`, own data folder and link ports): on the board-flag split pair `qogtest_hash` md5 ce86f894f9de and `qogtest_f_hash` e92bc9e9650d, and the 121 frames (113 of `qogtest_d_shots` after `qogtest_k_quiet` and the 8 fhash frames) byte identical with the same pair built from main. `qogtest_ad_beam.cfg` (lightning gun on e1m1 and e2m6, 21 beam segments a frame, 14 frames) byte identical with the same state hash. The default pair and quakeog_pc give ce86f894f9de and e92bc9e9650d.
+
+Board links (`cmake -B build-ad/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=160`, free is beside the 2 KB heap reserve):
+
+| | main 9192bc9, 73 KB | cuts, 73 KB | cuts, 75 KB (the new default) |
+| --- | --- | --- | --- |
+| quake_display `end` | 0x2003f650, 432 B free | 0x2003efd8, 2,088 B free | 0x2003f7d8, 40 B free |
+| quake_main `end` | 0x2003f51c | 0x2003f51c | 0x2003f51c |
+
+quake_display.bin 363,320 B. The client stack stays 32 KB, no frame on the deep path grew.
+
+The e4m5 and e4m8 teleport error is a game data bug, not the port and not the script. In each map a `trigger_teleport` (e4m5 entity 508, model *95, at 816 2208 256, and e4m8 entity 400, model *75, at -456 808 32) targets `t178` and `t273`, which name only an `info_null`. QuakeC's `info_null` removes itself at spawn, so `teleport_touch` finds no target and calls objerror, a Host_Error ("Program error"). id's interpreter in one process (quakeog_pc without compiled QuakeC) stops the same way when the player is put on them (`qog_tour_spot 824 2216 296` on e4m5, `qog_tour_spot -448 816 64` on e4m8). The tour reached them by noclip, whether a player can reach them in normal play is not known. `start` has one more (to `t11`), never touched.
+
+Not done, or to watch:
+- Once a full episode 4 tour stopped the server half at `end` with "MOVETYPE_PUSH with a non bsp model" (world.c). Three tours of `end` alone (two with the cuts, one before) did not. The server half's code is main's apart from the reconnect order and the PC tour.
+- Not approved, sizes on the board client: particles 512 to 256 9,216 B, console text 4 to 2 KB 2,048 B, command buffer 4 to 2 KB 2,048 B, edge-drawing surfaces 600 to 500 3,200 B of stack, zone 8 to 6 KB 2,048 B. None is needed now.
+- Further exact candidates, not done: efrag_t as 8 bytes of 16-bit indices (1.3 KB on e2m6), the model table as parallel arrays (576 B static), the entity colormap as a byte (entities 72 bytes, about 1 KB on e4m5).
+- Files shared with Agent Z: engine/r_main.c (the light style array type and two `ENT_TOPNODE` lines), engine/r_bsp.c (two `ENT_TOPNODE` reads). With Agent AC: engine/sv_main.c (SV_SendReconnect) and apps/quake/CMakeLists.txt.
+- Test scripts (`qogtest_ad_chg.cfg`, `qogtest_ad_beam.cfg`, `qogtest_ad_tele5.cfg`, `qogtest_ad_tele8.cfg`) are in the branch's git-ignored data/id1, the tour runs in build-ad/tours.sh.
 
 ## 2026-11-24: Fast render mode and single precision front end math (Agent AA, PC and ARM build, registered data)
 

@@ -65,6 +65,50 @@ static void Tour_AddSpot (vec3_t p)
 	}
 }
 
+/* QuakeOG (Agent AD): edict fields by QuakeC field number, either layout */
+static int Tour_GetInt (edict_t *ent, int ofs)
+{
+#ifdef QOG_EDICT_SPARSE
+	return ED_FieldGet (ent, ofs);
+#else
+	return ((int *)&ent->v)[ofs];
+#endif
+}
+
+static void Tour_SetFloat (edict_t *ent, int ofs, float f)
+{
+#ifdef QOG_EDICT_SPARSE
+	ED_FieldSet (ent, ofs, *(int *)&f);
+#else
+	((float *)&ent->v)[ofs] = f;
+#endif
+}
+
+/* A level exit, or a teleporter whose target no edict names. e4m5 and e4m8
+   each have one aimed at an info_null, which QuakeC removes at spawn, so
+   touching it is "couldn't find target" and a Host_Error in id's game too. */
+static qboolean Tour_Disarm (edict_t *ent)
+{
+	char	*cls = pr_strings + Tour_GetInt (ent, EV_OFS(classname));
+	char	*target;
+	int		i;
+	edict_t	*e;
+
+	if (!Q_strcmp (cls, "trigger_changelevel"))
+		return true;
+	if (Q_strcmp (cls, "trigger_teleport"))
+		return false;
+	target = pr_strings + Tour_GetInt (ent, EV_OFS(target));
+	for (i = 1 ; i < sv.num_edicts ; i++)
+	{
+		e = EDICT_NUM (i);
+		if (!e->free && !Q_strcmp (pr_strings + Tour_GetInt (e, EV_OFS(targetname)), target))
+			return false;
+	}
+	Con_Printf ("qog_tour: %s has a teleporter to %s, which is gone, taken out\n", sv.name, target);
+	return true;
+}
+
 static void Tour_FindSpots (void)
 {
 	int		i;
@@ -78,6 +122,14 @@ static void Tour_FindSpots (void)
 		ent = EDICT_NUM (i);
 		if (ent->free || ent == sv_player)
 			continue;
+		// QuakeOG (Agent AD): a spot inside a level exit changed the level
+		// in the middle of a tour, and a teleporter whose target is gone
+		// stops the game, so the tour takes both out first
+		if (Tour_Disarm (ent))
+		{
+			Tour_SetFloat (ent, EV_OFS(solid), SOLID_NOT);
+			SV_LinkEdict (ent, false);
+		}
 		// brush entities have their origin at 0 0 0, so use the box centre
 		VectorAdd (ent->v.absmin, ent->v.absmax, p);
 		VectorScale (p, 0.5, p);
@@ -164,8 +216,25 @@ void qog_tour_frame (void)
 	}
 }
 
+/* QuakeOG (Agent AD): `qog_tour_spot x y z` puts the player there and links
+   it, touching what is there, as a tour spot does (for one trigger) */
+static void cmd_qog_tour_spot (void)
+{
+	int		i;
+
+	if (!sv.active || Cmd_Argc () < 4)
+	{
+		Con_Printf ("qog_tour_spot <x> <y> <z> : move the player there\n");
+		return;
+	}
+	for (i = 0 ; i < 3 ; i++)
+		sv_player->v.origin[i] = Q_atof (Cmd_Argv (1 + i));
+	SV_LinkEdict (sv_player, true);
+}
+
 void qog_tour_register (void)
 {
+	Cmd_AddCommand ("qog_tour_spot", cmd_qog_tour_spot);
 	Cmd_AddCommand ("qog_tour", cmd_qog_tour);
 	Cmd_AddCommand ("qog_tour_fight", cmd_qog_tour);
 }

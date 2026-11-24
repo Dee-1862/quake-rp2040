@@ -1583,6 +1583,14 @@ static framebits_t *Mod_AllocFrameBits (int count)
 	int		*head, bytes;
 
 	bytes = (count + 7) >> 3;
+#if defined(QOG_ITEMBOX_PACKED) && defined(QOG_HUNK_PACKED)
+	// QuakeOG (Agent AD): an item box's four arrays are a few bytes each,
+	// so they share packed blocks (zeroed, freed with the level) instead of
+	// taking a block with its header and rounding each, 1.4 KB on e2m6
+	if (Mod_IsItemBox (loadmodel->name))
+		head = Hunk_AllocPacked (2 * sizeof(int) + bytes, sizeof(int));
+	else
+#endif
 	head = Hunk_AllocName (2 * sizeof(int) + bytes, loadname);
 	head[0] = bytes;	// FB_BYTES
 	head[1] = 0;		// FB_TAG
