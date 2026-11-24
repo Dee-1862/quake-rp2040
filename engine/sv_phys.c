@@ -430,10 +430,30 @@ trace_t SV_PushEntity (edict_t *ent, vec3_t push)
 }					
 
 
+#ifdef QOG_PUSHMOVE_ALLOCA
+#if defined(__GNUC__)
+#define QOG_SV_ALLOCA(n)	__builtin_alloca (n)
+#elif defined(_MSC_VER)
+#include <malloc.h>
+#define QOG_SV_ALLOCA(n)	_alloca (n)
+#else
+#error "QOG_PUSHMOVE_ALLOCA needs alloca"
+#endif
+#ifdef QOG_SV_STACKPROBE
+void qog_stackprobe_alloca (int bytes);	// port/pc/stackprobe_pc.c, PC measurement build only
+#endif
+#endif
+
 /*
 ============
 SV_PushMove
 
+QuakeOG (Agent AC): QOG_PUSHMOVE_ALLOCA takes the lists of moved entities
+from the stack for sv.max_edicts entries, not MAX_EDICTS (9,600 B on the
+board's server stack, the deepest frame of the server half). The loop
+visits each edict below sv.num_edicts once and adds at most one entry for
+it, and sv.num_edicts never passes sv.max_edicts, also when QuakeC spawns
+during the loop. Same moves, 6,656 B on e1m3, the most of episode 1.
 ============
 */
 void SV_PushMove (edict_t *pusher, float movetime)
@@ -443,14 +463,26 @@ void SV_PushMove (edict_t *pusher, float movetime)
 	vec3_t		mins, maxs, move;
 	vec3_t		entorig, pushorig;
 	int			num_moved;
+#ifdef QOG_PUSHMOVE_ALLOCA
+	edict_t		**moved_edict;
+	vec3_t		*moved_from;
+#else
 	edict_t		*moved_edict[MAX_EDICTS];
 	vec3_t		moved_from[MAX_EDICTS];
+#endif
 
 	if (!pusher->v.velocity[0] && !pusher->v.velocity[1] && !pusher->v.velocity[2])
 	{
 		EV_SETFLOAT(pusher, ltime, EV_FLOAT(pusher, ltime) + (movetime));
 		return;
 	}
+#ifdef QOG_PUSHMOVE_ALLOCA
+	moved_edict = (edict_t **)QOG_SV_ALLOCA (sv.max_edicts * sizeof(edict_t *));
+	moved_from = (vec3_t *)QOG_SV_ALLOCA (sv.max_edicts * sizeof(vec3_t));
+#ifdef QOG_SV_STACKPROBE
+	qog_stackprobe_alloca (sv.max_edicts * (sizeof(edict_t *) + sizeof(vec3_t)));
+#endif
+#endif
 
 	for (i=0 ; i<3 ; i++)
 	{

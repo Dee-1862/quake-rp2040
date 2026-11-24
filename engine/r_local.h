@@ -346,7 +346,7 @@ extern	edge_t	*r_edgesentinels;
 #define ZEDGE_BYTES(n)		((EDGE_SENTINELS + (n)) * (int)sizeof(edge_t))
 extern	byte	*r_spanpool_end;
 // measurements for the PC qog_rpeaks command (r_edge.c)
-extern	int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;
+extern	int		r_qog_zstack;	// QuakeOG: the others are PC measurements (r_edge.c)
 #elif defined(QOG_SPANS_IN_EDGES)
 // QuakeOG: R_ScanEdges puts its spans in the edge table after the last edge
 // of the frame, up to r_spanpool_end. The table has room for QOG_SPAN_MIN

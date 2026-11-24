@@ -236,6 +236,21 @@ void VID_Update(vrect_t *rects) {
     s_lk_pending = true;
 #endif
     if (s_framehash) framehash_print();
+#ifdef QOG_EDGES_IN_ZBUFFER
+    {   /* QuakeOG (Agent AC): -zedgeshots saves every frame in which the edge
+           fallback ran (engine/r_edge.c, R_QogEdgesToStack) as zedge_<frame> */
+        extern int r_qog_zstack;
+        static int s_zstack_seen;
+        if (r_qog_zstack < s_zstack_seen) s_zstack_seen = r_qog_zstack;   /* qog_rpeaks reset */
+        if (r_qog_zstack > s_zstack_seen) {
+            s_zstack_seen = r_qog_zstack;
+            if (COM_CheckParm("-zedgeshots")) {
+                Sys_Printf("zedge frame %d\n", host_framecount);
+                write_shot(va("zedge_%06d", host_framecount));
+            }
+        }
+    }
+#endif
     qog_mem_sample();   /* peaks need every frame, not just title updates */
     HDC dc = GetDC(s_wnd);
     RECT r;
@@ -292,6 +307,21 @@ static void cmd_qog_key(void) {
 }
 #endif
 
+#ifdef QOG_ZEDGE_COMPARE
+/* Agent AC: a view that reached the edge fallback, drawn exactly (exact) and
+   again with the board's graceful path (in the frame now), engine/view.c */
+void qog_zedge_compare_shots(byte *exact) {
+    static byte noz[QOG_PC_W * QOG_PC_H];
+    int i, n = 0;
+    memcpy(noz, vid_buffer, sizeof noz);
+    for (i = 0; i < QOG_PC_W * QOG_PC_H; i++) n += noz[i] != exact[i];
+    Sys_Printf("zedge compare frame %d: %d pixels differ\n", host_framecount, n);
+    memcpy(vid_buffer, exact, sizeof noz);
+    write_shot(va("zcmp_%06d_exact", host_framecount));
+    memcpy(vid_buffer, noz, sizeof noz);
+    write_shot(va("zcmp_%06d_noz", host_framecount));
+}
+#endif
 static void cmd_qog_shot(void) {
     write_shot(Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot");
 }
@@ -532,6 +562,12 @@ void VID_Shutdown(void) {
         {   /* QuakeOG (Agent S) */
             extern int r_qog_zstackedges;
             Sys_Printf("z edges at exit: most edges in one stack fallback %d\n", r_qog_zstackedges);
+        }
+#endif
+#if defined(QOG_ZEDGE_STACK_GUARD) || defined(QOG_ZEDGE_FORCE_NOZ)
+        {   /* QuakeOG (Agent AC): the graceful fallback, R_QogFlushNoZ */
+            extern int r_qog_znoz, r_qog_znozrows;
+            Sys_Printf("z edges at exit: flushes without z %d, rows drawn without z %d\n", r_qog_znoz, r_qog_znozrows);
         }
 #endif
     }

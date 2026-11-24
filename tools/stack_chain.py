@@ -23,6 +23,16 @@ assembly) count --unknown bytes each and are listed.
     python tools/stack_chain.py --build build --app quake_display
     python tools/stack_chain.py --root R_RenderView --top 3
 
+--su-table OUT (Agent AC) writes "name bytes" for every function of the
+--su-dir folders (default --build) and the known library frames, the table
+the PC's server stack probe weighs its calls with (port/pc/stackprobe_pc.c).
+A GCC clone (name.constprop.N, name.isra.N) counts for name when bigger,
+a split-off part (name.part.N, name.cold) is added to name.
+
+    python tools/stack_chain.py --su-table build/sv_frames.txt \
+        --su-dir build/apps/quake/CMakeFiles/qog_engine_sv.dir \
+        --su-dir build/apps/quake/CMakeFiles/quake_main.dir
+
 Standard library only.
 """
 import argparse
@@ -84,6 +94,28 @@ def frames_from_su(build):
             if name not in fr or fr[name][0] < n:
                 fr[name] = (n, parts[2])
     return fr
+
+
+def write_su_table(dirs, out):
+    """Agent AC: name -> frame for the PC's server stack probe."""
+    fr = {}
+    for d in dirs:
+        for name, (n, _) in frames_from_su(d).items():
+            if name not in fr or fr[name] < n:
+                fr[name] = n
+    base, part = {}, {}
+    for name, n in fr.items():
+        root = name.split(".")[0]
+        if ".part." in name or name.endswith(".cold"):
+            part[root] = max(part.get(root, 0), n)
+        else:
+            base[root] = max(base.get(root, 0), n)
+    for name, n in KNOWN_LIB.items():
+        base.setdefault(name, n)
+    with open(out, "w") as f:
+        for name in sorted(base):
+            f.write("%s %d\n" % (name, base[name] + part.get(name, 0)))
+    print("wrote %d frames to %s" % (len(base), out))
 
 
 def objdump(obj, flag):
@@ -151,7 +183,12 @@ def main(argv=None):
     ap.add_argument("--qc-depth", type=int, default=1,
                     help="QuakeC calls nested on the C stack (compiled QuakeC), the chain holds one")
     ap.add_argument("--top", type=int, default=1, help="print the deepest chain under this many children of the root")
+    ap.add_argument("--su-table", help="write the frame table of the --su-dir folders and stop (Agent AC)")
+    ap.add_argument("--su-dir", action="append", default=[], help="folder of .su files for --su-table, repeat")
     a = ap.parse_args(argv)
+    if a.su_table:
+        write_su_table(a.su_dir or [a.build], a.su_table)
+        return 0
 
     objs = [os.path.join(a.build, a.lib)]
     objs += glob.glob(os.path.join(a.build, "**", a.app + ".dir", "**", "*.obj"), recursive=True)

@@ -2,6 +2,109 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: Episode 1 on the board, the new flash map, the server stack and the edge fallback (Agent AC, PC and ARM build, registered data)
+
+Start and all of episode 1 now fit both chips, with sound. The display's data moved from 0x10400000 to 0x10100000 and main's from 0x10300000 to 0x10200000 (Agent Y's proposal), the server's stack went from 35 to 21 KB after measuring its deepest chain in board bytes, which gives the server hunk 174 KB (160 before), and the one-byte z-buffer's edge fallback draws one view without z instead of stopping the game. Nothing ran on hardware. Merged with main 34e03d2 (Agents Z and AD) before the final numbers, and with c42be89 (the save volume format, the full view) for the last board link and hashes.
+
+Flash map (platform/qog_flashmap.h, the one source: tools/mkdata.py reads it, mkboard and mkpak use mkdata's values, check_app_size.py reads it, the PC maps its packs at `QOG_DATA_XIP_ADDR`):
+
+| Chip | Region | Before | Now |
+| --- | --- | --- | --- |
+| display | BSP bootloader, app metadata | 0x000000 to 0x020FFF | unchanged |
+| display | app slot | 0x021000 to 0x3FFFFF (3.9 MB) | 0x021000 to 0x0FFFFF, 913,408 B. quake_display is 364,448 B (39.9%) |
+| display | data | 0x400000 to 0xFEFFFF (11.94 MB) | 0x100000 to 0xFEFFFF, 15,663,104 B (14.94 MB) |
+| display | save slots | 0xFF0000, 64 KB | unchanged |
+| main | app slot | 0x000000 to 0x2FFFFF (3 MB) | 0x000000 to 0x1FFFFF, 2 MB. quake_main is 1,301,356 B (62.1%) |
+| main | server data | 0x300000 to 0x7FFFFF (5 MB) | 0x200000 to 0x7FFFFF, 6,291,456 B |
+| main | FAT volume | 0x800000, 8 MB | unchanged, never touched |
+
+- Preprocessor checks in the header stop the build if regions overlap or lose their 64 KB alignment, and quake_main checks at compile time that its data ends at the BSP's `FWOG_FS_FLASH_OFFSET` (sys_rp2040.c).
+- quake_display now has the post-build size check too (`qog_check_app_size`), so a display app that outgrows 913,408 B fails its build like an oversize quake_main. The display update of main writes the app at 0x21000 and erases only the sectors it needs (bl_receiver.c), so it never reaches 0x100000.
+- mkboard passes `-flashbase` to both bakes, so the PC maps the packs at the board's address whatever its default. The PC's default is now 0x10100000, so a `data\id1\qogbake.bin` baked before is skipped with "is for address 10400000" until `qog_bake` runs again. The main image runs on the PC with `-basedir <out>_main -flashbase 0x10200000`.
+- tools/tests/test_mkdata.py checks the offsets and that no region overlaps.
+
+Episode 1 images (`mkboard.py ... --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --stub-maps --main --display-no-sounds --display-no-progs`, from the merged build):
+
+| Image | Bytes | Region | Spare |
+| --- | ---: | --- | ---: |
+| display `qb_ep1.uf2` (pak 3,562,912 B, image 10,226,672 B at 0x10470000, ends 0x10E30BF0) | 13,831,152 (13.19 MB) | 88.3% of 14.94 MB | 1,831,952 B |
+| main `qb_ep1_main.uf2` (pak with 184 sounds and progs.dat 3,023,856 B, image 2,948,000 B at 0x104F0000, ends 0x107C0000) | 6,029,312 (5.75 MB) | 95.8% of 6 MB | 262,144 B |
+
+Server stack (`QOG_SV_STACK_KB` 35 to 21):
+
+The static chain (tools/stack_chain.py) cuts recursion, so the PC now measures the server in board bytes. A measurement build of quakeog_sv (`-DQOG_SV_STACKPROBE=ON`, port/pc/stackprobe_pc.c) is compiled with /Gh /GH /Ob0: every function enters and leaves through hooks that keep a shadow call stack, and each call weighs its function's frame in the ARM build (`tools/stack_chain.py --su-table`, from the .su files of qog_engine_sv and quake_main). Functions the board build inlined weigh nothing (the caller's frame holds them). It also tracks the deepest chain that runs the mixer.
+
+| Run (split pair, episode 1 images, sound on, both halves silent, server flags of the board) | Deepest, board bytes, before | After `QOG_PUSHMOVE_ALLOCA` |
+| --- | ---: | ---: |
+| `qogtest_y_mem_<map>` fight, save, load, start and e1m1 to e1m8 | 10,696 to 11,592 (`Host_Loadgame_f` > `SV_SpawnServer` > `SV_Physics_Pusher` > `SV_PushMove` 9,768) | 6,920 to 9,936 (e1m3, the lists 6,656 B and the hull recursion under them) |
+| `qog_tour_fight start e1m1 ... e1m8` | 14,400 (`SV_PushMove` > `SV_Move` > 43 levels of `SV_RecursiveHullCheck`, 104 B each) | 10,984 |
+| deepest that runs the mixer | 1,816 (`S_Update_` > `S_PaintChannels` > `S_LoadSound` 1,368) | 1,816 |
+
+- `SV_PushMove` held two lists of 600 entries on its frame, 9,768 B. `QOG_PUSHMOVE_ALLOCA` (engine/sv_phys.c, both flag lists, exact) takes them from the stack for `sv.max_edicts` entries: the loop adds at most one entry per edict below `sv.num_edicts`, which never passes `sv.max_edicts` even when QuakeC spawns during the loop. The most in episode 1 is e1m3, 416 edicts, 6,656 B. Same moves: the state hashes below are unchanged.
+- The recursion the measurement found is bounded by the map: `tools/hull_depth.py` reads the depth of each hull's tree. Episode 1's deepest is hull 0 (points) of e1m3, 85 levels, then e1m4 71. The worst chain I can construct is a point entity (a grenade) pushed by a plat on e1m3's deepest leaf: 752 B down to the clip, the lists 6,656 B, 86 levels at 104 B, about 16.4 KB, and an error path through a QuakeC runtime error in a blocked function (`PR_RunError` > `Host_Error` > `Con_Printf` 4,120 B) about 16.1 KB. Neither ran in any test.
+- The lead's format of a missing save volume (main c42be89) puts a 4 KB work buffer on this stack in `fat_ready` (4,128 B frame), reached from a save at about 2 KB deep, so about 6.5 KB plus FatFs, far below the deepest chain.
+- 21 KB is 21,504 B: 10.3 KB above the measured worst (10,984 B plus up to 0.5 KB of newlib that the PC does not see), and 5.1 KB above the constructed bound, so at least 4 KB of margin either way. The mixer needs 1,816 B above its 6,144 B of paint buffer and ring at the bottom of the stack (7,960 B). Main's `stack free` on COM7 shows what the board uses.
+
+Server hunk (`QOG_SV_HUNK_KB` 160 to 174, the 14 KB the stack gave). Smallest `-heapsize` of the server half that runs `qogtest_y_mem_<map>.cfg` from the episode 1 images, sound on for both halves (the split pair never opens an audio device, the client's output is snd_link_pc.c's counter), against Agent Y's numbers without sound:
+
+| Map | Without sound (Agent Y) | With sound | Spare at 174 KB |
+| --- | ---: | ---: | ---: |
+| start | 90 | 96 | 78 |
+| e1m1 | 112 | 117 | 57 |
+| e1m2 | 139 | 144 | 30 |
+| e1m3 | 165 | 171 | 3 |
+| e1m4 | 155 | 161 | 13 |
+| e1m5 | 154 | 160 | 14 |
+| e1m6 | 140 | 146 | 28 |
+| e1m7 | 88 | 93 | 81 |
+| e1m8 | 115 | 121 | 53 |
+
+Sound adds 5 to 6 KB on every level (channels, the name pool and the sound headers that stay). e1m3 is the most at 171 KB, 3 KB below the new hunk.
+
+At 174 KB for the server and 75 KB for the client, with sound: all nine scripts, the changelevel script (`qogtest_ad_chg.cfg`, e1m1 then `changelevel e1m2`), and the whole fight tour of start to e1m8 run.
+
+The edge fallback (engine/r_edge.c, `R_QogEdgesToStack`):
+
+On the board the one-byte z-buffer leaves the edge table so little room that a few views fill the span buffer with spans that wait for edges still needed. Agent K's exact fallback moves those edges to a table on the stack. The board has no stack reserved for it, so Agent S's guard stopped the game with an error. Now, when the stack cannot hold the table, `R_QogFlushNoZ` draws the waiting spans at once, every pixel exactly as id draws it, but with `d_zwidth` 0 and `d_pzbuffer` at the frame buffer's last view row, which no span of this view has drawn yet and the last flush draws over: their z lands there and the edge table stays intact. The rows are noted, and once every edge is done `R_QogClearNoZ` sets their z to the farthest value. So the world is exact and only models, sprites and particles in those rows of that one view are drawn in front of the world. The stack fallback is unchanged when the stack holds it. No static RAM: the PC measurement counters the board never reads make room for the three ints (quake_display `end` stays 0x2003f7e8). The display's diag line ends with `zedge <n> noz <m>`.
+
+| | |
+| --- | --- |
+| Views that reach the fallback | the episode 1 fight tour (split pair with the board client flags, full paks or the images): frames 1500, 1501, 8348, 8349 (4, Agent Y saw 4). Another run of the same tour with sound and the board hunk sizes: 937, 1491, 1492, 8344, 8345 (the split tour does not repeat exactly) |
+| Before and after, same state | `QOG_ZEDGE_COMPARE` (PC test builds) draws each such view a second time with the graceful path after putting the particles and dynamic lights back: 193, 183, 164 and 145 pixels differ (0.30, 0.29, 0.26, 0.23% of the frame), in rows 87 to 136, all models and particles behind a ledge showing through |
+| Views that never reach it | byte identical: the 113 `qogtest_d_shots` frames and the 8 `qogtest_f_hash` frames of the merged build against an untouched build of main 34e03d2 |
+
+Screenshots (`frame_<n>_before_exact.png`, `frame_<n>_after_noz.png`, `frame_<n>_diff_marked.png` with the changed pixels in red, 2x) are in the session's scratchpad `zedge` folder.
+
+Tests (hidden, `+_cl_color 0`, own build folders `build-ac`, own git-ignored `data\id1` with a new `qogbake.bin`, link ports 27641 to 27650, one run at a time):
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc and split pair, `-nosound` | ce86f894f9de, ce86f894f9de |
+| `qogtest_f_hash` (md5 of 32 statehash lines), quakeog_pc | e92bc9e9650d |
+| `qogtest_r_fhash`, default split pair and board-flag split pair | e92bc9e9650d, e92bc9e9650d |
+| 121 shot frames against main 34e03d2 | 121 of 121 byte identical |
+| `qogtest_j_ep1.cfg` board-flag pair, full paks and the episode 1 images | 9 hashes d4361b206cac, the same |
+| `qogtest_j_menu.cfg`, full paks and images | runs to the end, no error |
+| `qogtest_ad_chg.cfg` from the images, sound on, 174 and 75 KB | runs, 1 hash |
+| `qogtest_y_mem_<map>` start to e1m8, images, sound, 174 and 75 KB | all 9 run |
+| fight tour start to e1m8, images, sound, 174 and 75 KB | runs to the end, 5 fallback views, none stops |
+| tools/tests (`python -m unittest discover -s tests` in tools) | 15 tests pass, 2 of them new |
+
+Board link (`cmake --preset target -B build-ac/arm` with the configure line in docs/handoff.md):
+
+| | `end` | Free beside the 2 KB heap reserve |
+| --- | --- | ---: |
+| quake_display | 0x2003f7e8, the same as main 34e03d2 | 24 B |
+| quake_main (hunk 174 KB, stack 21 KB) | 0x2003f520 after merging main c42be89, 0x2003f51c before it, the same as with 160 and 35 | 736 B |
+
+Files: platform/qog_flashmap.h, tools/mkdata.py, tools/mkboard.py, tools/check_app_size.py, tools/stack_chain.py (`--su-table`), tools/hull_depth.py (new), tools/tests/test_mkdata.py, port/pc/sys_pc.c, port/pc/stackprobe_pc.c (new), port/pc/vid_pc.c (`-zedgeshots`, compare shots, exit counts), port/rp2040/sys_rp2040.c (FAT check), port/rp2040/link_rp2040.c (diag), engine/sv_phys.c, engine/r_edge.c, engine/view.c (compare mode only), engine/r_local.h (one extern), pc/CMakeLists.txt, apps/quake/CMakeLists.txt, apps/qogbench/display/main.c (the data address), README.md. Shared with Agent Z: none of r_bsp.c, r_draw.c, r_main.c, d_scanlit.c. r_edge.c and view.c are touched in their own blocks.
+
+For the user:
+- The fallback's picture change: in the few views that reach it on the board, models and particles in some rows show through the world for one frame (shown above). Setting those rows' z to the nearest value instead would hide them there, and hide the weapon too.
+- Server stack margin: 21 KB covers the measured worst by 10 KB and a constructed worst case by about 5 KB. 22 KB (hunk 173) would add a KB of stack margin, e1m3 with sound would then have 2 KB of hunk to spare instead of 3.
+- Episodes 2 and 3 fit the display's new region one at a time (13.98 and 13.17 MB) and main's (5.97 and 5.96 MB, Agent Y's sizes). Episode 4 does not fit either. Their server hunk with sound is not measured.
+- 4 KB of the server stack is `Con_Printf`'s message buffer, and `Con_DPrintf` takes another 4 KB frame even when `developer` is 0. A smaller server message buffer would change long prints (not done).
+
 ## 2026-11-24: Board measurements of the split game (lead, on hardware)
 
 Read from the board's USB logs (display COM8, main COM7) with QOG_PHASE_TIME and QOG_LINK_DIAG, standing in E1M1 at the spawn point, each line an average over about 2 s.

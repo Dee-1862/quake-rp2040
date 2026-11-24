@@ -140,6 +140,10 @@ list(APPEND QOG_ENGINE_DEFS
 list(APPEND QOG_ENGINE_DEFS
     QOG_ENTITY_TIGHT
     QOG_CON_DEBUGLOG_DIRECT)
+# Server stack, exact (Agent AC), same as pc/CMakeLists.txt. SV_PushMove's
+# lists for sv.max_edicts entries, not 600 (sv_phys.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_PUSHMOVE_ALLOCA)
 
 file(GLOB QOG_ENGINE_SRC ${QOG_ROOT}/engine/*.c)
 list(REMOVE_ITEM QOG_ENGINE_SRC ${QOG_ROOT}/engine/snd_null.c)
@@ -222,6 +226,9 @@ target_link_options(quake_display PRIVATE -Wl,--allow-multiple-definition)
 fwog_display_app(quake_display
     VERSION 001
     DESCRIPTION "QuakeOG: Quake on the display RP2040 (does not fit RAM yet; built for measurement)")
+# Agent AC: the display app's slot ends at the data region (913,408 B with
+# the data at 0x100000), so a display app that outgrows it fails the build
+qog_check_app_size(quake_display)
 
 # QuakeOG (Agent R): the two-chip split. The server half (SV_*, QuakeC,
 # edicts) runs on the MAIN RP2040 as quake_main, the client half (CL_*,
@@ -274,7 +281,7 @@ if(QOG_SPLIT)
         QOG_CON_PRINTTEXT               # the renderer's bmodel warning prints without a 4 KB stack buffer (exact)
         QOG_DLIGHT_SURFS=256            # lit surface hash of 256 as the demo player (game 1024), overflow falls back to id's tree walk (exact, slower)
         QOG_VID_NO_8TO16                # the unused 16-bit palette table in flash (vid.h)
-        QOG_ZEDGE_STACK_GUARD=1024      # Agent K's edge fallback stops with an error when the stack cannot hold it
+        QOG_ZEDGE_STACK_GUARD=1024      # Agent K's edge fallback, when the stack cannot hold it Agent AC's draws those spans without z (r_edge.c)
         QOG_CVAR_LITERAL                # cvar values stay at their initial strings in flash until changed, not in the zone
         QOG_LINK_SCRATCH                # the link's two 1 KB rings in scratch X below core 1's stack
         QOG_KEYLINES_SCRATCH            # the console's 2 KB command history in scratch Y below the boot stack
@@ -474,8 +481,8 @@ if(QOG_SPLIT)
     endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
-    set(QOG_SV_HUNK_KB 160 CACHE STRING "server half hunk in KB. Agent Y, without sound (add 4 to 8 KB with it), a fight, a save and a load need start 90, e1m1 112, e1m2 139, e1m3 165, e1m4 155, e1m5 154, e1m6 140, e1m7 88, e1m8 115")
-    set(QOG_SV_STACK_KB 35 CACHE STRING "server half stack array in KB. The static deepest chain is 17,496 B but recursion (hull traces, nested QuakeC) is not counted, and 24 KB hung the board after two minutes of play")
+    set(QOG_SV_HUNK_KB 174 CACHE STRING "server half hunk in KB. Agent AC, with sound, a fight, a save and a load need start 96, e1m1 117, e1m2 144, e1m3 171, e1m4 161, e1m5 160, e1m6 146, e1m7 93, e1m8 121")
+    set(QOG_SV_STACK_KB 21 CACHE STRING "server half stack array in KB. Agent AC, measured in board bytes on the PC (QOG_SV_STACKPROBE) the deepest episode 1 chain is 10,984 B, a constructed worst case (a pushed grenade on e1m3's deepest hull 0 leaf) about 16.4 KB. The mixer needs 1,816 B above its 6 KB at the bottom")
     add_executable(quake_main EXCLUDE_FROM_ALL
         ${QOG_ROOT}/port/rp2040/sys_rp2040.c
         ${QOG_ROOT}/port/rp2040/link_rp2040.c)

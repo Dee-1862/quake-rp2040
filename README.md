@@ -54,24 +54,28 @@ If the board has never had the BSP's display bootloader, install it once from th
 
 These are the steps of [docs/handoff.md](docs/handoff.md). Run them from the repo root, and put only one CPU in BOOTSEL at a time (both chips show the same USB serial).
 
-1. Build the PC version of the engine and record the asset manifests with it ([docs/game-data.md](docs/game-data.md)). Then build both data images in one run: `qb.uf2` for the display, `qb_main.uf2` for the server. Start with `--maps start e1m1`:
+1. Build the PC version of the engine and record the asset manifests with it ([docs/game-data.md](docs/game-data.md)). Then build both data images in one run: `qb.uf2` for the display (written at 0x10100000), `qb_main.uf2` for the server (0x10200000). Start and all of episode 1 fit both chips:
 
    ```powershell
    python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
-       --maps start e1m1 --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps --main -o build-board\qb
+       --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --exe build-pc-dev\Release\quakeog_pc.exe `
+       --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
    ```
 
-2. Write the display's data: `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display`, then copy `build-board\qb.uf2` to the RPI-RP2 drive.
-3. Write the server's data: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build-board\qb_main.uf2`
-4. Build and flash the game (the main app carries the display app inside it):
+2. Build the game with every option given, since the build folder keeps old values (the main app carries the display app inside it):
 
    ```bash
-   cmake --preset target -DQOG_AOT=ON -DQOG_AOT_PAK=<path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display
+   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=250000 -DQOG_SYS_MV=1200 -DQOG_FLASH_FAST=ON -DQOG_FAT_FORMAT_IF_MISSING=ON
    cmake --build build --target quake_main
-   python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2
    ```
 
-5. Never flash the stand-in display image as the game. Read the consoles on the two chips' USB serial ports (main COM7 and display COM8 on the development PC), DTR on. Every 2 s they print frame timing lines (`[time cl]`, `[time sv]`).
+3. With the game running as it is, write the display's data: `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display`, then copy `build-board\qb.uf2` to the RPI-RP2 drive. The display then waits in its bootloader.
+4. Flash the game: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2`. Main reports a missing server data image until the next step.
+5. Write the server's data: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build-board\qb_main.uf2`
+
+The order and why are in [docs/handoff.md](docs/handoff.md).
+
+Never flash the stand-in display image as the game. Read the consoles on the two chips' USB serial ports (main COM7 and display COM8 on the development PC), DTR on. Every 2 s they print frame timing lines (`[time cl]`, `[time sv]`).
 
 Never UF2-copy a display *application* by hand (lessons L4). Read [docs/lessons.md](docs/lessons.md) before flashing.
 

@@ -103,11 +103,11 @@ After the header, one 16-byte aligned block per model, its `model_t` first. With
 
 **Pointers are absolute.** Pointers into the block are resolved for `base`. Pointers into the packs (texture pixels, light, visibility, entities, vertexes, edges, surface edges, clip nodes, mark surfaces) are kept as they are, so an image only fits the packs it was baked against, mapped at the same addresses. The image goes at the first 64 KB boundary after the last pack (`Sys_FlashNext`): `0x13620000` on the PC with registered `pak0` and `pak1`. The engine maps it there (`Sys_FlashMap`) and refuses it if it lands anywhere else.
 
-**On the board** the same rule holds with the board's own pack. `tools/mkboard.py` does it in one go: it builds the trimmed pak from the manifests (`tools/mkpak.py`, several `--pak` allowed, later ones win as in Quake, so `gfx/pop.lmp` comes from registered `pak1`), runs `qog_bake` on the PC hidden and silent with that pak as the only pak (the PC maps it at `0x10400000` exactly as mkpak lays it out, so the addresses are the board's), and writes the data region image:
+**On the board** the same rule holds with the board's own pack. `tools/mkboard.py` does it in one go: it builds the trimmed pak from the manifests (`tools/mkpak.py`, several `--pak` allowed, later ones win as in Quake, so `gfx/pop.lmp` comes from registered `pak1`), runs `qog_bake` on the PC hidden and silent with that pak as the only pak (the PC maps it at `0x10100000` (`QOG_DATA_XIP_ADDR`, Agent AC, 0x10400000 before) exactly as mkpak lays it out, so the addresses are the board's), and writes the data region image:
 
 | Address | Content |
 | --- | --- |
-| `0x10400000` | trimmed pak, files 16-byte aligned |
+| `0x10100000` | trimmed pak, files 16-byte aligned |
 | next 64 KB boundary (or `--bake-base`) | `qogbake.bin`, built for that address |
 
 ```powershell
@@ -170,11 +170,11 @@ All five together give 4,255,641 B with the 0x180000 offset or 3,731,353 B with 
 
 ### The main chip's server image (`--main`, Agent T)
 
-In the split game the server runs on the main RP2040, which reads its own copy of what the server needs from main's flash: the region 0x10300000 to 0x107FFFFF (`platform/qog_flashmap.h`), between main's app and its FAT volume. `mkboard.py --main` writes it in the same run as the display image, from the same files, so the two cannot drift:
+In the split game the server runs on the main RP2040, which reads its own copy of what the server needs from main's flash: the region 0x10200000 to 0x107FFFFF (`platform/qog_flashmap.h`, 0x10300000 before Agent AC), between main's app and its FAT volume. `mkboard.py --main` writes it in the same run as the display image, from the same files, so the two cannot drift:
 
 | Address | Content |
 | --- | --- |
-| `0x10300000` | the server's pak: `progs.dat`, `gfx/pop.lmp` (the `registered` cvar QuakeC reads), and a stub for every map (132 bytes) and every alias model and sprite (16 bytes, `qogbake_mstub_t` in `engine/model.h`) of the display's pak |
+| `0x10200000` | the server's pak: `progs.dat`, `gfx/pop.lmp` (the `registered` cvar QuakeC reads), and a stub for every map (132 bytes) and every alias model and sprite (16 bytes, `qogbake_mstub_t` in `engine/model.h`) of the display's pak |
 | next 64 KB boundary | the server's `qogbake.bin`, built for that address by `qog_bake -bakestubs -bakeserver` |
 
 The server's image keeps, for each map, the planes, nodes, leafs, clip nodes and hulls, submodels, entities and visibility, and leaves out textures, texinfo, surfaces, edges, vertexes, mark surfaces and light. An alias model or sprite is its `model_t` alone (type, bounds, frame count, flags). Nothing in it points into a pak, so the PC bakes it from the display's full pak for the address `-bakebase` gives. Its layout word is the build's layout XOR `QOGB_SERVER_LAYOUT`, so only a server half (`QOG_SPLIT_SERVER`) takes it. It writes `<out>_main\id1\pak0.pak`, `<out>_main\id1\qogbake.bin`, `<out>_main.bin` and `<out>_main.uf2` (a UF2 of the region only, padded to whole 4 KB sectors).
@@ -185,7 +185,7 @@ python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak `
     --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps --main -o build-board\qb
 ```
 
-The PC runs the pair from the two images: the server with `-basedir build-board\qb_main -flashbase 0x10300000` (the PC maps its packs at that address), the client with `-basedir build-board\qb`. The server's saves go to its gamedir, which stands for main's FAT volume.
+The PC runs the pair from the two images: the server with `-basedir build-board\qb_main -flashbase 0x10200000` (the PC maps its packs at that address), the client with `-basedir build-board\qb`. The server's saves go to its gamedir, which stands for main's FAT volume.
 
 | Maps | Server pak | Server image | Region use |
 | --- | ---: | ---: | ---: |

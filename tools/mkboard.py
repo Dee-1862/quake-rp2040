@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the board's game-data image: a trimmed pak plus a baked model image.
 
-The display CPU's data region (platform/qog_flashmap.h, 0x10400000) holds
+The display CPU's data region (platform/qog_flashmap.h, 0x10100000) holds
 
     offset 0          the trimmed pak (tools/mkpak.py), files 16-byte aligned
     next 64 KB        qogbake.bin, the baked maps, alias models and sprites
@@ -10,7 +10,7 @@ The display CPU's data region (platform/qog_flashmap.h, 0x10400000) holds
 port/rp2040/sys_rp2040.c serves the first as id1/pak0.pak and finds the
 second at the first 64 KB boundary after the pak that holds "QOGB".
 
-The PC build maps a pak at 0x10400000 too and lays it out exactly the way
+The PC build maps a pak at 0x10100000 too and lays it out exactly the way
 mkpak writes it, so running qog_bake on the PC with the trimmed pak as its
 only pak builds the image for the board's address. This tool does the three
 steps:
@@ -40,7 +40,7 @@ and the image goes right after the smaller pak. The full pak is kept as
 
 --main (Agent T) also writes the main chip's server data image for the
 split game from the same pak, in the same run, so the two copies cannot
-drift. The main chip's region (platform/qog_flashmap.h) is 0x10300000 to
+drift. The main chip's region (platform/qog_flashmap.h) is 0x10200000 to
 0x107FFFFF, between its app and its FAT volume:
 
     offset 0          the server's pak: progs.dat, every sound of the
@@ -56,7 +56,7 @@ drift. The main chip's region (platform/qog_flashmap.h) is 0x10300000 to
 Nothing in that image points into a pak, so the PC bakes it from the
 display's full pak for the address -bakebase gives, then writes
 <out>_main/id1/pak0.pak and qogbake.bin (the PC's server half runs them
-with -basedir <out>_main -flashbase 0x10300000), <out>_main.bin and
+with -basedir <out>_main -flashbase 0x10200000), <out>_main.bin and
 <out>_main.uf2, a UF2 of that region only.
 
 --display-no-sounds (Agent Y) leaves every sound out of the display's image:
@@ -87,9 +87,10 @@ QOGB_ENTRY = "<40s6I"     # name, model, size, fileaddr, filelen, filehash (+ pa
 QOGB_STUB_IDENT = 0x53474F51   # "QOGS", engine/model.h qogbake_stub_t
 BSPVERSION = 29
 LUMP_PLANES = 1
-# the main chip's server data region, platform/qog_flashmap.h (Agent T)
-MAIN_DATA_ADDR = mkdata.XIP_BASE + 0x00300000   # QOG_MAIN_DATA_OFFSET
-MAIN_DATA_MAX = 0x00800000 - 0x00300000          # up to QOG_MAIN_FAT_OFFSET
+# the main chip's server data region, platform/qog_flashmap.h (Agent T),
+# read from the header by mkdata (Agent AC)
+MAIN_DATA_ADDR = mkdata.XIP_BASE + mkdata.MAIN_DATA_OFFSET   # QOG_MAIN_DATA_OFFSET
+MAIN_DATA_MAX = mkdata.MAIN_DATA_MAX                          # up to QOG_MAIN_FAT_OFFSET
 # what the server opens besides its models: QuakeC, and gfx/pop.lmp, by
 # which COM_CheckRegistered sets the "registered" cvar that QuakeC reads
 SERVER_FILES = ["progs.dat", "gfx/pop.lmp"]
@@ -200,9 +201,12 @@ def bake_header(img):
     return h if h[0] == QOGB_MAGIC else None
 
 
-def run_bake(exe, basedir, base, timeout, stubs=False, extra=""):
-    """qog_bake on the PC: hidden, silent, through tools/pctest.ps1."""
-    args = "-nosound -nobake -basedir %s" % basedir.replace("\\", "/")
+def run_bake(exe, basedir, base, timeout, stubs=False, extra="", flashbase=DATA_ADDR):
+    """qog_bake on the PC: hidden, silent, through tools/pctest.ps1. The PC
+    maps the packs at flashbase, the region's address on the board (Agent
+    AC: given every time, so a PC build with another default still bakes
+    for the board's flash map)."""
+    args = "-nosound -nobake -flashbase 0x%08X -basedir %s" % (flashbase, basedir.replace("\\", "/"))
     if stubs:
         args += " -bakestubs"
     if extra:
@@ -263,7 +267,7 @@ def build_main(full, out, exe, timeout, no_bake, layout, sounds=True):
             f.write(full)
         if os.path.exists(bakepath):
             os.remove(bakepath)
-        run_bake(exe, mout, base, timeout, True, "-bakeserver")
+        run_bake(exe, mout, base, timeout, True, "-bakeserver", MAIN_DATA_ADDR)
     if not os.path.exists(bakepath):
         sys.exit("mkboard: %s was not written" % bakepath)
     img = open(bakepath, "rb").read()

@@ -56,6 +56,7 @@
 #include "hardware/clocks.h"
 #include "pico/stdlib.h"
 #include "qog_data.h"
+#include "qog_flashmap.h"
 #include "qog_video.h"
 
 FWOG_POWER_DEFAULT();
@@ -506,7 +507,7 @@ int main(void) {
             r_frecip_ns = (uint32_t)((time_us_64() - t0) * 1000u / 20000u);
 
             /* Flash reads: sequential copy, then scattered single bytes. */
-            const uint8_t *flash = (const uint8_t *)0x10400000u;   /* data region */
+            const uint8_t *flash = (const uint8_t *)QOG_DATA_XIP_ADDR;   /* data region */
             static uint8_t xbuf[4096];
             t0 = time_us_64();
             volatile uint32_t sum = 0;

@@ -233,6 +233,11 @@ int _unlink(const char *path) { (void)path; return -1; }
 #include <fcntl.h>
 #include <sys/stat.h>
 #include "fs/fwog_fs.h"
+#include "fs/fs_geom.h"
+
+/* Agent AC: the server data region ends where the BSP's FAT volume starts */
+_Static_assert(QOG_MAIN_FAT_OFFSET == FWOG_FS_FLASH_OFFSET, "qog_flashmap.h: QOG_MAIN_FAT_OFFSET is not the BSP's FAT volume");
+_Static_assert(QOG_MAIN_DATA_OFFSET + QOG_MAIN_DATA_MAX_SIZE <= FWOG_FS_FLASH_OFFSET, "qog_flashmap.h: main's data reaches the FAT volume");
 #ifdef QOG_FAT_FORMAT_IF_MISSING
 #include "fs/ff/ff.h"
 #endif
