@@ -2,6 +2,57 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-24: 250 MHz and 125 MHz flash for the Quake apps (Agent AB, ARM build, not run on hardware)
+
+The user approved both clock options of Agent V's table below: clk_sys 200 to 250 MHz and the QSPI flash divider 4 to 2, on both chips. They are set at run time by the two Quake apps only (port/rp2040/clock_rp2040.c, called from sys_rp2040.c right after `board_init()`). The BSP is not changed: its 200 MHz, 1.15 V and flash CLKDIV 4 stay the defaults of every other app and of the display bootloader, which must keep working at its settings because the display CPU has no BOOTSEL button. A per-target `FWOG_SYS_CLK_KHZ` would not reach `board_init()` (it is compiled once into the fwog_display_bsp and fwog_main_bsp libraries), so the apps change the clock after it.
+
+| Step (in order) | What and why |
+| --- | --- |
+| Voltage | 1.20 V (`QOG_SYS_MV=1200`), set before the clock with the BSP's 10 ms settle. The BSP's `fwog_vreg_mv_for_khz` clamps at 1.15 V on purpose (200 MHz at 1.15 V is the rated point). 1.20 V is the lowest step widely reported stable at 250 MHz on RP2040 boards (many run 250 MHz at the default 1.10 V, 1.25 V and 1.30 V are what 270 to 300 MHz overclocks use). One step above the BSP keeps the extra power on a battery board small. `-DQOG_SYS_MV=1250` if a board proves unstable |
+| Clock | `set_sys_clock_pll` with the VCO 1500 MHz, post dividers 6 and 1 that `check_sys_clock_khz(250000)` finds. clk_peri follows (board header), clk_ref and the 1 MHz timer tick do not change |
+| Re-derived after it | display: the backlight PWM divider (board.c's 10 kHz, wrap 255) and the I2C1 rate (`i2c_set_baudrate`, charger, RTC, accelerometer, expander). main: the FPGA clock on GPOUT1. Its divider is raised for 250 MHz before the switch (20 MHz at 200 MHz, never above the gateware's 25 MHz) and set again after (250 / 10 = 25 MHz) |
+| Flash divider | clk_sys / 2 = 125 MHz, from RAM, interrupts off, before core 1 starts, the same way on both chips. The part is the W25Q128JVPIQ (bsp/main_cpu/fs/fs_geom.h), rated 133 MHz for the quad I/O fast read 0xEB that boot2_w25q080 sets up (continuous mode 0xA0, 8 address and mode nibbles, 4 dummy clocks). Div 2 is tried only when clk_sys / 2 is at most 133 MHz |
+| RX sample delay | 1 system clock, what the SDK's boot2_w25q080.S writes for every divider including 2 (its comment: with CLKDIV 2 data is captured as the next SCLK edge launches). That is also what runs on overclocked Picos at 125 to 133 MHz flash. If 1 fails the check, 2 is tried |
+| Check and fallback | the first 128 KB of the app's own image are hashed (FNV-1a over words) through the uncached alias 0x13000000 at the old divider with interrupts on, then twice at the new one with interrupts off. Any difference writes the old divider and delay back before one instruction is fetched from flash again, and the DIAG line says fallback |
+| Main's saves | the SDK's flash erase and program end by running boot2 again, which writes CLKDIV 4 back. `_open`, `_write` and `_close` of the FAT volume call `qog_flash_fast_reapply()`, which puts the checked divider back (a register read when nothing changed) |
+
+The routine that switches the divider was disassembled in both ELFs (`flash_hash`, `ssi_set`, `flash_try.constprop.0`, all at 0x200000c0 to 0x2000017a on the display, 0x20000120 on main, in RAM). Between `cpsid i` and `msr PRIMASK` there are only `bl` to the other two RAM functions, stores to the SSI at 0x18000000 (SSIENR +8, BAUDR +0x14, RX_SAMPLE_DLY +0xF0) and loads from the 0x13xxxxxx alias that is being checked. No literal load or branch reaches 0x10xxxxxx. The flash veneers the linker made (`__flash_try.constprop.0_veneer`, `__ssi_set_veneer`) are only taken from flash code before the SSI is touched, and `ssi_set` returns to its flash caller after SSIENR is 1 again.
+
+Everything derived from a clock, checked at 250 MHz:
+
+| Item | At 250 MHz |
+| --- | --- |
+| Link UART, display app | `fwog_link_uart_init` at Host_Init, after the boost: 250 MHz / 16 / 12.5 Mbaud = 1.25, IBRD 1 FBRD 16, exactly 12.5 Mbaud |
+| Link UART, main and the display bootloader at boot | main boosts before `fwog_display_update_run` (the display is still held in reset, the link is down), so display_update brings the link up at 250 MHz with IBRD 1 FBRD 16. The bootloader stays at 200 MHz, IBRD 1 FBRD 0. Both are exactly 12.5 Mbaud from their own clocks |
+| LCD SPI | `st7789_init_begin` at VID_Init: `st7789_actual_spi_hz(250 MHz, FWOG_LCD_MAX_HZ)` = prescale 2, postdiv 2 = 62.5 MHz, the panel's limit. Scanout about 18.3 ms instead of 22.4 (estimate) |
+| Core 1 scanout | DMA paced by the SPI, no cycle counts. Core 1 starts in VID_Init, after the switch |
+| Speaker I2S PIO | `(clk * 4 / 11025) >> 8` = 354, 250 MHz / (64 x 354) = 11,035 Hz (0.09% fast, was 11,042 Hz). The play position rate is derived from the same numbers |
+| WS2812 PIO | `ws2812_init` in game_main, after the switch, divider from clock_get_hz |
+| I2C, backlight PWM | re-derived (above) |
+| Timers, sleeps, the hang detector, QOG_PHASE_TIME | the 1 MHz tick from clk_ref (unchanged), `timer_hw->timerawl` |
+| FPGA clock | 25 MHz (above) |
+| USB, ADC | PLL_USB, unchanged |
+| Hardcoded 200 MHz in port/, platform/, engine qog files | none found (grep for 200000, MHz, clock_get_hz, busy_wait, cycle counts). The only 200 MHz figure was a comment in snd_rp2040.c, updated |
+
+Build options (apps/quake/CMakeLists.txt, both on by default, nothing else changes):
+
+| Option | Default | Off |
+| --- | --- | --- |
+| `QOG_SYS_KHZ` | 250000 | `-DQOG_SYS_KHZ=0` keeps the BSP's 200 MHz and 1.15 V |
+| `QOG_SYS_MV` | 1200 | 1150 to 1300 |
+| `QOG_FLASH_FAST` | ON | `-DQOG_FLASH_FAST=OFF` keeps the divider the bootloader or boot2 set (4) |
+
+RAM (`-DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`, arm-none-eabi-nm): quake_display `end` 0x2003ee60, 228 B above main's 0x2003ed7c (196 B of RAM code, 36 B of state), so about 2.4 KB stay spare beside the 2 KB heap reserve. quake_main `end` 0x2003f564 (the same 232 B object). With both options off the display's `end` is 0x2003ed84. The PC build does not compile these files, and its `qogtest_hash` still gives `ce86f894f9de` (build-pcab, hidden, `-nosound`).
+
+What the board log should say (COM8 display, COM7 main, each printed at the switch, usually before USB is up, and once more about 6 s after boot):
+
+```
+[quake] clock 250000 kHz at 1200 mV (BSP 200000 kHz), clk_peri 250000 kHz
+[quake] flash 125.0 MHz ok (div 2 from 4, rx delay 1, 128 KB checked, reapplied 0)
+```
+
+and further on `[lcd] spi 62500000 Hz (clk_peri 250000000 Hz)`, `[link] uart0 12500000 baud (requested 12500000), clk_peri 250000000` and on main `[fpga] clk 25000000 Hz (clk_sys 250000000 / 10)`. Main's `reapplied` count grows after a save. A failed flash check prints `[quake] flash 62.5 MHz fallback (div 4, rx delay 1): read check FAILED at div 2` and the game runs on at 62.5 MHz. An unstable core at 1.20 V would show as hard faults, `Sys_Error`s or hangs that do not happen with `-DQOG_SYS_KHZ=0`, then try `-DQOG_SYS_MV=1250`.
+
 ## 2026-11-24: Menus for five buttons and no keyboard (Agent X, PC and ARM build, registered data)
 
 id's menus expect a keyboard and a network. The board client now builds them with `QOG_BOARD_MENU` (engine/menu.c), set only for the display chip's engine (`_cl_defs` in apps/quake/CMakeLists.txt). Off, menu.c preprocesses to the same tokens as before (checked with the ARM compiler's `-E`, plain and split client), and the default PC build's `qogtest_hash` still gives `ce86f894f9de` (MD5 of its two `qog_statehash` lines). Nothing ran on hardware.
