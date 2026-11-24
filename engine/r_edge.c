@@ -720,9 +720,12 @@ static byte		*r_qog_edgeend;		// end of the edge table
 static espan_t	*r_qog_basespan;	// the span buffer
 static int		r_qog_framespans;	// measurement only
 
-#if defined(QOG_ZEDGE_STACK_GUARD) || defined(QOG_ZEDGE_FORCE_NOZ)
+#if defined(QOG_ZEDGE_STACK_GUARD) || defined(QOG_ZEDGE_FORCE_NOZ) || defined(QOG_ZEDGE_COMPARE)
 // QuakeOG (Agent AC): the graceful end of the edge fallback, see R_QogFlushNoZ
 #define QOG_ZEDGE_NOZ
+#ifdef QOG_ZEDGE_COMPARE
+int				r_qog_zforcenoz;	// PC test: V_RenderView draws a fallback view both ways
+#endif
 int				r_qog_znoz;			// flushes without z so far
 #ifndef QOG_ZEDGE_STACK_GUARD
 int				r_qog_znozrows;		// PC measurement: their rows
@@ -1087,9 +1090,13 @@ static QOG_NOINLINE qboolean R_QogEdgesToStack (int iv, int bottom)
 		}
 	}
 #endif
-#ifdef QOG_ZEDGE_FORCE_NOZ
+#if defined(QOG_ZEDGE_FORCE_NOZ) || defined(QOG_ZEDGE_COMPARE)
 	// PC test builds only: every fallback takes the board's graceful path
+#ifdef QOG_ZEDGE_COMPARE
+	if (!auxedges && r_qog_zforcenoz)
+#else
 	if (!auxedges)
+#endif
 	{
 		R_QogFlushNoZ (iv, bottom);
 		return false;

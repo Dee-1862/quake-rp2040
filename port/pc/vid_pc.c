@@ -307,6 +307,21 @@ static void cmd_qog_key(void) {
 }
 #endif
 
+#ifdef QOG_ZEDGE_COMPARE
+/* Agent AC: a view that reached the edge fallback, drawn exactly (exact) and
+   again with the board's graceful path (in the frame now), engine/view.c */
+void qog_zedge_compare_shots(byte *exact) {
+    static byte noz[QOG_PC_W * QOG_PC_H];
+    int i, n = 0;
+    memcpy(noz, vid_buffer, sizeof noz);
+    for (i = 0; i < QOG_PC_W * QOG_PC_H; i++) n += noz[i] != exact[i];
+    Sys_Printf("zedge compare frame %d: %d pixels differ\n", host_framecount, n);
+    memcpy(vid_buffer, exact, sizeof noz);
+    write_shot(va("zcmp_%06d_exact", host_framecount));
+    memcpy(vid_buffer, noz, sizeof noz);
+    write_shot(va("zcmp_%06d_noz", host_framecount));
+}
+#endif
 static void cmd_qog_shot(void) {
     write_shot(Cmd_Argc() > 1 ? Cmd_Argv(1) : "shot");
 }

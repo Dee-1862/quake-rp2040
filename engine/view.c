@@ -1057,7 +1057,40 @@ void V_RenderView (void)
 	}
 	else
 	{
+#ifdef QOG_ZEDGE_COMPARE
+		// QuakeOG (Agent AC), PC test builds only: a view that reached the
+		// edge fallback is drawn again from the same state with the board's
+		// graceful path (r_edge.c, R_QogFlushNoZ), both pictures are saved,
+		// and the exact one stays on the screen
+		extern int		r_qog_zstack, r_qog_zforcenoz;
+		extern particle_t	*particles, *active_particles, *free_particles;
+		extern int		r_numparticles;
+		void			qog_zedge_compare_shots (byte *exact);
+		static particle_t	*saved;
+		particle_t		*act = active_particles, *fre = free_particles;
+		int				before = r_qog_zstack;
+		static byte		exact[320 * 200];
+
+		if (!saved)
+			saved = malloc (r_numparticles * sizeof(particle_t));
+		memcpy (saved, particles, r_numparticles * sizeof(particle_t));
 		R_RenderView ();
+		if (r_qog_zstack != before && vid.rowbytes * vid.height <= sizeof(exact))
+		{
+			memcpy (exact, vid.buffer, vid.rowbytes * vid.height);
+			memcpy (particles, saved, r_numparticles * sizeof(particle_t));
+			active_particles = act;
+			free_particles = fre;
+			R_PushDlights ();
+			r_qog_zforcenoz = 1;
+			R_RenderView ();
+			r_qog_zforcenoz = 0;
+			qog_zedge_compare_shots (exact);
+			memcpy (vid.buffer, exact, vid.rowbytes * vid.height);
+		}
+#else
+		R_RenderView ();
+#endif
 	}
 
 #ifndef GLQUAKE
