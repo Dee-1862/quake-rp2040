@@ -176,6 +176,12 @@ target_compile_options(qog_engine PRIVATE -w -Wno-implicit-function-declaration 
 # One random sequence on every port (port/common/qog_rand.c).
 set_source_files_properties(${QOG_ENGINE_SRC} ${QOG_PROGS_AOT}
     PROPERTIES COMPILE_DEFINITIONS "rand=qog_rand")
+# The compiled QuakeC reads a global as a float (G) and writes it back as an int
+# (I) in one loop, like anglemod's while (v < 0) v += 360. With strict aliasing GCC
+# may keep the float in a register, never see the store and spin forever: the
+# board's server hung on exactly that loop. The PC compiler does not do it.
+set_source_files_properties(${QOG_PROGS_AOT} ${QOG_ENGINE_SRC}
+    PROPERTIES COMPILE_OPTIONS "-fno-strict-aliasing")
 target_link_libraries(qog_engine PUBLIC pico_stdlib)
 # The ARM bare-metal ABI makes enums as small as their values (qboolean is
 # one byte), while the PC build and the baked flash image use 4-byte enums.
@@ -229,6 +235,14 @@ if(QOG_SPLIT)
         ${QOG_ROOT}/port/common/qog_link.c
         ${QOG_ROOT}/port/common/qog_mem.c
         ${QOG_ROOT}/port/common/qog_rand.c)
+    # QuakeOG (Agent V): both halves print where the frame time goes over USB
+    # every 2 s (engine/qog_phase.h, port/rp2040/sys_rp2040.c). The client
+    # prints "[time cl]" lines, the server "[time sv]". About 2,000 timer
+    # reads and three span list walks a frame, 160 bytes of RAM per half.
+    option(QOG_BOARD_TIMING "both halves print frame phase times over USB every 2 s" ON)
+    if(QOG_BOARD_TIMING)
+        list(APPEND _split_common ${QOG_ROOT}/port/common/qog_phase.c)
+    endif()
 
     # client half: no server, QuakeC or edicts
     set(_cl_src ${_split_src})
@@ -277,6 +291,22 @@ if(QOG_SPLIT)
     if(QOG_SOUND)
         list(APPEND _cl_defs QOG_SND_REMOTE)
     endif()
+    # QuakeOG (Agent V): speed, board client only (docs/changes.md)
+    option(QOG_BOARD_LOCKWAIT "the next frame's input, link and parsing run during the LCD scanout (exact)" ON)
+    option(QOG_BOARD_CORE1 "the display chip's second core draws half of the lit spans (exact)" ON)
+    option(QOG_BOARD_PIPELINE "the client draws a frame while the server half runs the next one" ON)
+    if(QOG_BOARD_LOCKWAIT)
+        list(APPEND _cl_defs QOG_VID_LOCKWAIT)     # VID_Update does not wait, VID_LockBuffer does (vid_rp2040.c)
+    endif()
+    if(QOG_BOARD_CORE1)
+        list(APPEND _cl_defs QOG_SPANS_CORE1)      # every second span of a lit surface on core 1 (d_scanlit.c)
+    endif()
+    if(QOG_BOARD_PIPELINE)
+        list(APPEND _cl_defs QOG_LINK_PIPELINE)    # a frame's screen update runs while the server half runs the next frame (host.c)
+    endif()
+    if(QOG_BOARD_TIMING)
+        list(APPEND _cl_defs QOG_PHASE_TIME)
+    endif()
     target_compile_definitions(qog_engine_cl PUBLIC ${_cl_defs} QOG_NET_LINK QOG_SPLIT_CLIENT)
 
     # server half: no client, renderer, console or sound. Its command buffer
@@ -306,6 +336,9 @@ if(QOG_SPLIT)
         ${QOG_ROOT}/port/common/qog_split_sv.c ${_split_common} ${_sv_sound})
     target_compile_definitions(qog_engine_sv PUBLIC ${_sv_defs} QOG_NET_LINK QOG_SPLIT_SERVER
         QOG_LINK_SCRATCH)   # the link's 4 KB of rings in SCRATCH_X, unused on main (Agent T)
+    if(QOG_BOARD_TIMING)
+        target_compile_definitions(qog_engine_sv PUBLIC QOG_PHASE_TIME)   # Agent V
+    endif()
 
     foreach(_lib qog_engine_cl qog_engine_sv)
         # both ends of the link use the same frame size: 512-byte frames
@@ -353,8 +386,8 @@ if(QOG_SPLIT)
     endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
-    set(QOG_SV_HUNK_KB 167 CACHE STRING "server half hunk in KB, smallest -heapsize of quakeog_sv for e1m3 with a fight, a save and a load, the worst of start and episode 1 (e3m5 152)")
-    set(QOG_SV_STACK_KB 24 CACHE STRING "server half stack array in KB, deepest chain from server_main 17,496 B (tools/stack_chain.py)")
+    set(QOG_SV_HUNK_KB 156 CACHE STRING "server half hunk in KB. 156 covers start and e1m1, the levels the first board image carries (both run in 152). e1m3 with a fight, a save and a load needs 167, so raise it with the levels")
+    set(QOG_SV_STACK_KB 35 CACHE STRING "server half stack array in KB. The static deepest chain is 17,496 B but recursion (hull traces, nested QuakeC) is not counted, and 24 KB hung the board after two minutes of play")
     add_executable(quake_main EXCLUDE_FROM_ALL
         ${QOG_ROOT}/port/rp2040/sys_rp2040.c
         ${QOG_ROOT}/port/rp2040/link_rp2040.c)
@@ -362,8 +395,10 @@ if(QOG_SPLIT)
         QOG_SYS_MAIN QOG_LINK_MAIN QOG_HUNK_KB=${QOG_SV_HUNK_KB} QOG_STACK_KB=${QOG_SV_STACK_KB})
     target_compile_options(quake_main PRIVATE -fstack-usage)
     if(QOG_LINK_DIAG)
-        target_compile_definitions(quake_main PRIVATE QOG_LINK_DIAG)
+        target_compile_definitions(quake_main PRIVATE QOG_LINK_DIAG QOG_STACK_WATERMARK QOG_FAULT_RECORD)
     endif()
+    # the server on the process stack, interrupts on the SDK's main stack (sys_rp2040.c)
+    target_compile_definitions(quake_main PRIVATE QOG_GAME_PSP)
     # saves on main's FAT volume through the BSP's FatFs (Agent T, sys_rp2040.c)
     target_link_libraries(quake_main qog_engine_sv fwog_main_bsp fwog_main_fs)
     target_link_options(quake_main PRIVATE -Wl,--allow-multiple-definition)

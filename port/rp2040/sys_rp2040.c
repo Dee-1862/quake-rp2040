@@ -55,6 +55,27 @@ See the GNU General Public License for more details.
 #else
 #define QOG_SYS_SOUNDARG "-nosound",
 #endif
+#include "qog_phase.h"
+
+#ifdef QOG_PHASE_TIME
+/* QuakeOG (Agent V): where the frame time goes, over USB every 2 s
+   (engine/qog_phase.h, apps/quake QOG_BOARD_TIMING). Called from the main
+   loop, between frames, where the stack is nearly empty. */
+static void board_print(char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);      /* DIAG is printf to USB CDC */
+    va_end(ap);
+}
+
+static void board_timing(const char *who) {
+    static uint32_t last;
+    uint32_t now = time_us_32();
+    if (now - last < 2000000u) return;
+    qog_phase_board_report(board_print, who, now - last);
+    last = now;
+}
+#endif
 
 #ifdef QOG_SYS_MAIN
 #define QOG_SYS_DATA_ADDR	QOG_MAIN_DATA_XIP_ADDR
@@ -79,6 +100,92 @@ void *qog_rp2040_hunk(int *size) { *size = (int)sizeof s_hunk; return s_hunk; }
 /* BSP contract rule 7: the main loop kicks the watchdog (and so does every
    wait of the link, port/rp2040/link_rp2040.c). */
 FWOG_WATCHDOG_DEFAULT();
+
+#ifdef QOG_FAULT_RECORD
+/* QuakeOG: a hard fault on the main chip used to hang it silently until the
+   watchdog reset the board 8.3 s later, leaving no trace. The handler saves
+   the faulting PC, LR and xPSR in RAM that a reset does not clear, then
+   reboots at once; the link's diagnostic line prints them after the reboot
+   (port/rp2040/link_rp2040.c), and arm-none-eabi-addr2line maps them. */
+#include "hardware/watchdog.h"
+#define QOG_FAULT_MAGIC 0x51464C54u     /* "QFLT" */
+#define QOG_HANG_MAGIC  0x51484E47u     /* "QHNG" */
+static uint32_t __uninitialized_ram(s_fault)[24];   /* magic, pc, lr, xpsr, sp, 16 stack words, aux */
+
+void __attribute__((used, noreturn)) qog_fault_save(const uint32_t *frame) {
+    s_fault[0] = QOG_FAULT_MAGIC;
+    s_fault[1] = frame[6];          /* stacked PC */
+    s_fault[2] = frame[5];          /* stacked LR */
+    s_fault[3] = frame[7];          /* stacked xPSR */
+    s_fault[4] = (uint32_t)frame;   /* the stack pointer at the fault */
+    watchdog_reboot(0, 0, 1);
+    for (;;) {}
+}
+
+/* replaces the SDK's weak isr_hardfault: pick the stack the fault used
+   (EXC_RETURN bit 2: 1 = process stack, the game's) */
+void __attribute__((naked)) isr_hardfault(void) {
+    __asm volatile (
+        "movs r0, #4\n\t"
+        "mov  r1, lr\n\t"
+        "tst  r0, r1\n\t"
+        "beq  1f\n\t"
+        "mrs  r0, psp\n\t"
+        "b    2f\n"
+        "1:\n\t"
+        "mrs  r0, msp\n"
+        "2:\n\t"
+        "ldr  r1, =qog_fault_save\n\t"
+        "bx   r1\n");
+}
+
+/* the last fault, or 0 when the last reset was not one */
+/* once: the record is handed out one time and then cleared, so a report on the console
+   always belongs to the reset just before it */
+const uint32_t *qog_fault_last(void) {
+    static uint32_t copy[24];
+    if (s_fault[0] != QOG_FAULT_MAGIC && s_fault[0] != QOG_HANG_MAGIC) return 0;
+    for (int i = 0; i < 24; i++) copy[i] = s_fault[i];
+    s_fault[0] = 0;
+    return copy;
+}
+
+/* QuakeOG: a hang detector. The server loop and every link wait bump
+   qog_progress. A timer interrupt checks it twice a second; when it has not
+   moved for 6 s (the watchdog fires at 8.3 s) it records where the game was
+   stuck, from the exception frame the interrupt pushed on the game's process
+   stack, and reboots. */
+volatile uint32_t qog_progress;
+static struct repeating_timer s_hang_timer;
+static bool hang_check(struct repeating_timer *t) {
+    static uint32_t last, still;
+    (void)t;
+    if (qog_progress != last) { last = qog_progress; still = 0; return true; }
+    if (++still < 12) return true;
+    {
+        const uint32_t *frame;
+        __asm volatile ("mrs %0, psp" : "=r" (frame));
+        s_fault[0] = QOG_HANG_MAGIC;
+        s_fault[1] = frame[6];          /* PC the game was at */
+        s_fault[2] = frame[5];          /* its LR */
+        s_fault[3] = frame[7];
+        s_fault[4] = (uint32_t)frame;
+        /* the words above the exception frame: the stuck function's frame
+           and its callers' saved return addresses */
+        for (int i = 0; i < 16; i++) s_fault[5 + i] = frame[8 + i];
+        {   /* debugging: QuakeC's first parameter, the value anglemod spun on */
+            extern float *pr_globals;
+            s_fault[21] = pr_globals ? ((const uint32_t *)pr_globals)[4] : 0;
+            s_fault[22] = pr_globals ? ((const uint32_t *)pr_globals)[178] : 0;   /* anglemod's v in this build's packed globals */
+        }
+    }
+    watchdog_reboot(0, 0, 1);
+    for (;;) {}
+}
+void qog_hang_watch_start(void) {
+    add_repeating_timer_ms(500, hang_check, NULL, &s_hang_timer);
+}
+#endif
 #else
 /* BSP contract rule 2: red held 6 s powers the board off. The main loop
    calls fwog_power_poll every iteration (and Sys_Error keeps doing so). */
@@ -339,13 +446,39 @@ double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
    frame on the link, kicking the watchdog while it waits. */
 #ifdef QOG_STACK_KB
 static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
+#ifdef QOG_GAME_PSP
+/* QuakeOG: the server on the process stack, interrupts on the SDK's main
+   stack, as on the display chip (see the client's run_on_stack below) */
+static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
+    __asm volatile ("msr psp, r0\n\tmovs r2, #2\n\tmsr control, r2\n\tisb\n\tbx r1\n");
+}
+#else
 static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
     __asm volatile ("mov sp, r0\n\tbx r1\n");
 }
 #endif
+#ifdef QOG_STACK_WATERMARK
+/* QuakeOG: the deepest stack use so far, from a marker filled at start */
+#define STACK_MARK 0xA5A5A5A5u
+static void stack_fill(void) {
+    uint32_t *sp;
+    __asm volatile ("mov %0, sp" : "=r" (sp));
+    for (uint32_t *p = s_stack; p < sp - 16; p++) *p = STACK_MARK;
+}
+uint32_t qog_stack_free(void) {
+    const uint32_t *p = s_stack;
+    while (p < s_stack + sizeof s_stack / sizeof s_stack[0] && *p == STACK_MARK) p++;
+    return (uint32_t)((const uint8_t *)p - (const uint8_t *)s_stack);
+}
+#endif
+#endif
 static void __attribute__((noreturn)) server_main(void) {
     static char *argv[] = { "quake", QOG_SYS_SOUNDARG };
     quakeparms_t parms;
+
+#if defined(QOG_STACK_KB) && defined(QOG_STACK_WATERMARK)
+    stack_fill();
+#endif
 
     memset(&parms, 0, sizeof parms);
     COM_InitArgv((int)(sizeof argv / sizeof argv[0]), argv);
@@ -355,9 +488,18 @@ static void __attribute__((noreturn)) server_main(void) {
     parms.membase = s_hunk;
     parms.memsize = sizeof s_hunk;
     Host_Init(&parms);          /* waits for the display's HELLO (qog_link_start) */
+#ifdef QOG_FAULT_RECORD
+    qog_hang_watch_start();
+#endif
     for (;;) {
         board_watchdog_kick();
+#ifdef QOG_FAULT_RECORD
+        qog_progress++;
+#endif
         Host_Frame(0.0f);       /* the client half sets the frame time */
+#ifdef QOG_PHASE_TIME
+        board_timing("sv");
+#endif
     }
 }
 
@@ -463,6 +605,9 @@ int main(void) {
         if (dt < 1.0 / 72.0) continue;   /* see port/pc/sys_pc.c: id calls rand() per call */
         qog_aim_update(newtime);
         Host_Frame((float)dt);
+#ifdef QOG_PHASE_TIME
+        board_timing("cl");
+#endif
         if (!frame && host_framecount >= 1) { frame = 1; qog_aim_apply_defaults(); }
         oldtime = newtime;
     }

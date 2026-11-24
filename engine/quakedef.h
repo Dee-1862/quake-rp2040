@@ -54,6 +54,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 void	VID_LockBuffer (void);
 void	VID_UnlockBuffer (void);
 
+#elif defined(QOG_VID_LOCKWAIT)
+
+// QuakeOG (Agent V): VID_Update hands the frame to the LCD and returns at
+// once, and the port's VID_LockBuffer, which id's code calls before it
+// draws into the frame (D_EnableBackBufferAccess and the others), waits
+// for that scanout to end. The next frame's input, link exchange and
+// parsing run during the scanout.
+void	VID_LockBuffer (void);
+#define	VID_UnlockBuffer()
+
 #else
 
 #define	VID_LockBuffer()

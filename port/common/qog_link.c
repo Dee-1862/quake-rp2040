@@ -356,3 +356,13 @@ void qog_link_drain(void) {
         qog_link_hw_idle();
     }
 }
+
+#ifdef QOG_LINK_PIPELINE
+void qog_link_push(void) {
+    for (;;) {
+        qog_link_pump();
+        if (s_tx_head - s_tx_acked <= (uint32_t)s_tx_inflight) return;   /* all sent at least once */
+        qog_link_hw_idle();
+    }
+}
+#endif

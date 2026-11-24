@@ -154,10 +154,86 @@ static void framehash_print(void) {
     s_fh_index++;
 }
 
+#ifdef QOG_VID_LOCKWAIT
+/* QuakeOG (Agent V): the board's VID_Update leaves the LCD scanout running
+   and its VID_LockBuffer waits for it (port/rp2040/vid_rp2040.c). The PC
+   checks the rule that makes this safe: from VID_Update to the next
+   VID_LockBuffer nothing may change the 320x200 bytes the scanout reads
+   (the 3D rows and the status bar rows at the start of the z-buffer).
+   `qog_lockcheck` prints the counts. */
+static unsigned s_lk_hash, s_lk_frames, s_lk_bad;
+static qboolean s_lk_pending;
+
+static unsigned lockcheck_hash(void) {
+    unsigned h = 2166136261u;
+    for (int i = 0; i < QOG_PC_W * QOG_PC_H; i++) h = (h ^ vid_buffer[i]) * 16777619u;
+    return h;
+}
+
+void VID_LockBuffer(void) {
+    if (!s_lk_pending) return;
+    s_lk_pending = false;
+    s_lk_frames++;
+    if (lockcheck_hash() != s_lk_hash && !s_lk_bad++)
+        Con_Printf("qog_lockcheck: the frame changed during its scanout (frame %d)\n", host_framecount);
+}
+
+static void cmd_qog_lockcheck(void) {
+    Con_Printf("qog_lockcheck: %u scanouts checked, %u changed while scanned\n", s_lk_frames, s_lk_bad);
+}
+#endif
+
+#ifdef QOG_SPANS_CORE1
+/* QuakeOG (Agent V): the board draws half of each lit surface's spans on its
+   second core (engine/d_scanlit.c). The PC runs that half on a second
+   thread at the same time (default), or on the game's thread before
+   (-core1first) or after (-core1last) the first half. */
+static HANDLE s_c1_go, s_c1_done;
+static void (*volatile s_c1_fn)(void *);
+static void *volatile s_c1_arg;
+static int s_c1_mode = -1;     /* 0 thread, 1 first, 2 last */
+
+static DWORD WINAPI core1_thread(LPVOID unused) {
+    (void)unused;
+    for (;;) {
+        WaitForSingleObject(s_c1_go, INFINITE);
+        s_c1_fn(s_c1_arg);
+        SetEvent(s_c1_done);
+    }
+}
+
+void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
+    if (s_c1_mode < 0) {
+        s_c1_mode = COM_CheckParm("-core1first") ? 1 : COM_CheckParm("-core1last") ? 2 : 0;
+        if (!s_c1_mode) {
+            s_c1_go = CreateEventA(NULL, FALSE, FALSE, NULL);
+            s_c1_done = CreateEventA(NULL, FALSE, FALSE, NULL);
+            CreateThread(NULL, 0, core1_thread, NULL, 0, NULL);
+        }
+        Con_Printf("QOG_SPANS_CORE1: the second core's spans %s\n",
+                   s_c1_mode == 1 ? "first, same thread" : s_c1_mode == 2 ? "last, same thread" : "on a second thread");
+    }
+    s_c1_fn = fn;
+    s_c1_arg = arg;
+    if (s_c1_mode == 1) { fn(arg); s_c1_fn = NULL; }
+    else if (s_c1_mode == 0) SetEvent(s_c1_go);
+}
+
+void Sys_QogCore1Join(void) {
+    if (s_c1_mode == 0) WaitForSingleObject(s_c1_done, INFINITE);
+    else if (s_c1_mode == 2 && s_c1_fn) s_c1_fn(s_c1_arg);
+    s_c1_fn = NULL;
+}
+#endif
+
 void VID_Update(vrect_t *rects) {
     (void)rects;
 #ifdef QOG_HUD_IN_ZBUFFER
     R_HudFrameEnd();
+#endif
+#ifdef QOG_VID_LOCKWAIT
+    s_lk_hash = lockcheck_hash();   /* QuakeOG (Agent V): the board's scanout starts here */
+    s_lk_pending = true;
 #endif
     if (s_framehash) framehash_print();
     qog_mem_sample();   /* peaks need every frame, not just title updates */
@@ -390,6 +466,9 @@ void VID_Init(unsigned char *palette) {
     qog_mem_register();   /* Cmd_AddCommand is refused once Host_Init finishes */
     qog_aim_register();
     Cmd_AddCommand("qog_shot", cmd_qog_shot);
+#ifdef QOG_VID_LOCKWAIT
+    Cmd_AddCommand("qog_lockcheck", cmd_qog_lockcheck);   /* QuakeOG (Agent V) */
+#endif
     Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
     Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
     {
@@ -421,6 +500,9 @@ void VID_Init(unsigned char *palette) {
 }
 
 void VID_Shutdown(void) {
+#ifdef QOG_VID_LOCKWAIT
+    Sys_Printf("qog_lockcheck: %u scanouts checked, %u changed while scanned\n", s_lk_frames, s_lk_bad);
+#endif
 #ifdef QOG_EDGES_IN_ZBUFFER
     {   /* QuakeOG: the whole run's figures for the edges in the z-buffer */
         extern int r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans,

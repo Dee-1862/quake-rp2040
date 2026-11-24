@@ -2,6 +2,75 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-23: Board speed, timing, both chips and both cores at work (Agent V, PC and ARM build, registered data)
+
+Four board-only changes to the split game, all options in apps/quake/CMakeLists.txt and all on by default. Three are exact by construction and one keeps id's order of everything the halves exchange. Nothing ran on hardware: the gains below are reasoning until the coordinating session flashes the board and reads the new timing lines.
+
+| Change | Flag (CMake option) | Exact | What it hides or splits | RAM |
+| --- | --- | --- | --- | --- |
+| Frame phase times over USB every 2 s on both chips | `QOG_PHASE_TIME` (`QOG_BOARD_TIMING`) | measurement only | | 160 B per half |
+| The next frame's input, link exchange and parsing run during the 22.4 ms LCD scanout | `QOG_VID_LOCKWAIT` (`QOG_BOARD_LOCKWAIT`) | yes, same pixels | up to 22.4 ms a frame | 1 B |
+| Core 1 of the display chip draws every second span of each lit surface | `QOG_SPANS_CORE1` (`QOG_BOARD_CORE1`) | yes, same pixels | about half of the lit span time | 12 B (job slot in platform/qog_video.c), core 1 chain about 520 B of its 2 KB stack |
+| The client draws frame k while the server half runs frame k+1 | `QOG_LINK_PIPELINE` (`QOG_BOARD_PIPELINE`) | state hashes and frames identical on the PC | the server's frame and the link round trip | about 48 B |
+
+RAM (`arm-none-eabi-nm`, `__HeapLimit - __end__` less the 2 KB heap reserve, QOG_AOT): quake_display 552 B free with the four options off, 344 B with them on. quake_main 1,776 B free off, 1,616 B on (the timing). Sizes unchanged: client hunk 68 KB, stack 34 KB, server hunk 167 KB, server stack 24 KB. Deepest client chain (`tools/stack_chain.py --build build --lib apps/quake/libqog_engine_cl.a --root game_main`, an upper bound) 45,480 B off, 45,520 B on. D_DrawSpans8Lit gains a 40 B wrapper frame above the 432 B drawer. Flash +3.6 KB on the display.
+
+How each works:
+- Lock wait. id's code calls VID_LockBuffer before it draws into the frame (D_EnableBackBufferAccess at the top of SCR_UpdateScreen, draw.c, menu.c). With the flag, quakedef.h makes it a port function: vid_rp2040.c's VID_Update hands the frame to core 1 and returns, and the next VID_LockBuffer waits for the scanout. The z-buffer temporaries that parsing uses (`QOG_PRECACHE_ZTEMP`, `QOG_LOADGAME_ZTEMP`) already stay clear of the status bar rows. The PC build with the flag hashes the 64,000 scanned bytes at VID_Update and again at the next lock (`qog_lockcheck`, printed at quit): 0 changes in 3,549 scanouts of qogtest_d_shots and 3,512 of qogtest_r_fhash.
+- Core 1 spans. D_DrawSurfaces sets a lit surface up on core 0 as before, then core 1 draws spans 2, 4, 6 and core 0 spans 1, 3, 5, and core 0 waits for core 1 before the next surface. A span writes only its own pixels and z, and the drawer reads only the surface's state, which nothing changes until both are done. platform/qog_video.c runs the job in core 1's idle loop between scanouts (spans are drawn only after the lock wait). A future core 1 hook (sound) must return quickly or each surface waits for it. On the PC the half runs on a real second thread (default), or on the game's thread before (`-core1first`) or after (`-core1last`) core 0's half: 113 qogtest_d_shots frames byte identical in each mode, three thread runs in a row.
+- Pipeline. A frame of play (signed on, not a demo, key_game, no intermission, pause or loading plaque) leaves SCR_UpdateScreen, S_Update and CL_DecayLights pending. The next frame takes its input, sends its tick and pushes it onto the wire (Link_ClientTick, qog_link_push), runs the pending update while the main chip runs its server frame, then waits for the answer (Link_ClientDone). The update runs with the realtime, host_frametime, host_framecount, cl.viewangles and key_dest of its own frame. V_DriftPitch, the only part of the update that changes what the next input sends, runs at the frame's end (V_CalcRefdef skips it in the update). A console line other than `wait` runs the pending update first (Cbuf_QogIdle), so qog_shot, server commands and level changes keep id's order. The render calls no rand(). Key presses on the board are read before the update, but key_dest is restored for it, so a menu appears in the same frame as before. While the client draws, the server's answer waits in the UART flow control, and a short answer may be resent once or twice by the link's timeout (harmless duplicates).
+
+PC verification (hidden, `-nosound`, own basedir, against a build of bbcb5ff in `build-pc-base`):
+
+| Run | Result |
+| --- | --- |
+| This commit, all new flags off: quakeog_pc qogtest_hash, qogtest_f_hash, qogtest_k_quiet + qogtest_d_shots | 2 + 32 hashes identical, 8 + 113 frames byte identical |
+| Same build, split pair: qogtest_hash, qogtest_r_fhash, qogtest_d_shots | identical to base |
+| Split client with `QOG_LINK_PIPELINE`, `QOG_VID_LOCKWAIT`, `QOG_SPANS_CORE1` and `QOG_PHASE_TIME`, server with `QOG_PHASE_TIME` | qogtest_hash 2 hashes (rand calls 539 and 1990), qogtest_r_fhash 32 hashes and 8 frames, qogtest_d_shots 113 frames, all identical. 397 of 400 and 3,392 of about 3,500 frames were pipelined, the rest flushed for console lines |
+| quakeog_pc with `QOG_VID_LOCKWAIT` and `QOG_SPANS_CORE1` | qogtest_hash, qogtest_f_hash and qogtest_d_shots identical in all three core 1 modes |
+
+On the PC the server's frame is far below a millisecond, so the pipeline shows only in the link wait: the client waited 8.52 s in lockstep and 3.02 s pipelined over the qogtest_r_fhash run (2.4 to 0.9 ms a frame at the PC link's 300 KB/s).
+
+Expected on the board (estimates, the timing lines will replace them):
+- Lock wait: saves the part of the 22.4 ms scanout that the next frame's input, link wait and parsing cover, all of it in lockstep when the server and link take 20 ms or more. With the pipeline on, the link wait mostly moves under the render, and the lock wait then covers only parsing and input (a few ms).
+- Pipeline: saves the server's frame plus the link round trip per frame (`[time sv] svframe` and `[time cl] link` show both). Lock wait and pipeline compete for the same slack: together they hide about max(scanout, server frame), not the sum.
+- Core 1: agent P estimated the E1M1 lit spans at about 25 ms a frame (48,400 pixels at about 65 cycles plus 6,800 runs of float work). Half on core 1 saves up to about 12 ms. Texture and colormap reads that miss the shared 16 KB XIP cache are served one core at a time by the QSPI, so 6 to 10 ms is the likely range.
+
+Console format (display chip COM8 `[time cl]`, main chip COM7 `[time sv]`, every 2 s, mean ms per frame with one decimal):
+
+```
+[time cl] frames <n> fps <x.y> ms frame <ms> input <ms> link <ms> read <ms> screen <ms> view <ms> hud <ms> present <ms> scanwait <ms> sound <ms>
+[time cl] views <n> ms setup <ms> world <ms> bmodels <ms> lmap <ms> grad <ms> spans <ms> zspans <ms> sky <ms> turb <ms> models <ms> vmodel <ms> parts <ms> total <ms> edgescan <ms>
+[time cl] per view litsurfs <n> lmcells <n> litspans <n> litpx <n> runs <n> zpx <n> skypx <n> turbpx <n>
+[time sv] frames <n> fps <x.y> ms wait <ms> svframe <ms> phys <ms> send <ms>
+```
+
+frame is a whole Host_Frame. link is the wait for the server half (Link_ClientWait only). screen is SCR_UpdateScreen and includes view (V_RenderView: total, the status bar repaint hud and the crosshair) and scanwait (the lock wait). The rest of screen is the 2D overlay. present is VID_Update. With the pipeline, frame k's screen is counted in frame k+1. The view line is agent P's: world is the BSP walk and edge emission, edgescan the edge sorting and span making, models the alias models, spans the lit spans with their z (QOG_LITSPAN_ZFUSE). svframe is Host_ServerFrame, phys its SV_RunClients and SV_Physics, send SV_SendClientMessages, wait the time main waits for the client's tick.
+
+Build and flash (the coordinating session):
+
+```powershell
+cmake --preset target -DQOG_AOT=ON -DQOG_AOT_PAK=<path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display
+cmake --build build --target quake_main
+python third_party\wiliOGbsp\tools\fw.py flash quake --uf2 build\apps\quake\quake_main.uf2
+```
+
+For an A/B measurement add `-DQOG_BOARD_PIPELINE=OFF`, `-DQOG_BOARD_LOCKWAIT=OFF` or `-DQOG_BOARD_CORE1=OFF` to the configure line and rebuild. `-DQOG_BOARD_TIMING=OFF` removes the report.
+
+Looked at and left:
+- DMA memset and memcpy of frame-sized buffers. The only per-frame ones are the edge cache memset (about 15 KB on E1M1, tens of microseconds) and the status bar tile repaint, which reads a pic from flash that DMA would not read faster. The `hud` phase now shows the repaint's cost.
+- Hot loops in RAM. The benchmark found no gain for the span loop, and the display chip has 344 B left.
+- Faster scanout without a clock change: chaining the line DMA across two channels would remove the gaps between lines, at most about 1.9 ms of the 22.4 ms (the wire alone is 20.5 ms at 50 MHz).
+- The RP2040 interpolator could compute the texel address in the lit span loop (masked shift and add), exact, not tried.
+- Unrelated finding: on the PC without `id1/qogbake.bin` in the basedir, quakeog_pc of bbcb5ff crashes in Cache_Free while loading e1m1's sprites.
+
+Clock options (report only, nothing enabled):
+
+| Option | What changes | Gain | Risks |
+| --- | --- | --- | --- |
+| clk_sys 200 to 250 MHz (`FWOG_SYS_CLK_KHZ` in bsp/common/clocks.h, both chips) | clk_peri follows clk_sys (`PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK`). The link UART divisor becomes 1.25 (IBRD 1, FBRD 16), still exactly 12.5 Mbaud. The LCD SPI becomes 250/4 = 62.5 MHz, the panel's `FWOG_LCD_MAX_HZ`, a scanout of about 18.3 ms instead of 22.4. Flash at CLKDIV 4 becomes 62.5 MHz. Everything derived from clock_get_hz moves with it (backlight PWM, WS2812 PIO, I2C, PDM, main's FPGA clock divider, which rounds up to stay at or under 25 MHz) | about 25% on CPU and flash bound work, 4 ms of scanout | an overclock (200 MHz at 1.15 V is the rated point), and `fwog_vreg_mv_for_khz` deliberately clamps at 1.15 V, so 250 MHz needs a voltage policy change (1.2 to 1.3 V is usual) on a battery board. Both chips must change together. 260 to 266 MHz is worse for the LCD (the SPI drops to clk/6, 44 MHz). The display bootloader brings the clock up first with its own build of the value |
+| QSPI flash CLKDIV 4 to 2 (100 MHz at 200 MHz sys, `PICO_FLASH_SPI_CLKDIV` in bsp/boards/freewili_og.h, even values only) | XIP misses (538 ns per random byte today, 8.5 MB/s sequential) roughly halve. Textures, the colormap, the baked BSP and code are read through it. The W25Q128 is rated 133 MHz | likely 10 to 25%, the largest of the options for the renderer, also on main (traces through clip nodes in flash) | the bootloader's XIP setup stays in force for the app (the app's boot2 is skipped), so on the display chip the divider only changes with a rebuilt and reflashed display bootloader. A bootloader whose XIP fails at 100 MHz leaves the display CPU with no way back, since it has no BOOTSEL button. A safer route is for the app to switch the divider at run time from RAM code and check a known flash region, falling back to 4. The RX sample delay may need tuning at 100 MHz |
+
 ## 2026-11-23: The client half links on the display chip for E1M1 (Agent S, PC and ARM build, registered data)
 ## 2026-11-23: The main chip's server data and saves for the split game (Agent T, PC and ARM build, registered data)
 

@@ -129,12 +129,28 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
    board, docs/lessons.md L14). */
 static const uint8_t *volatile s_next_fb;
 
+/* QuakeOG (Agent V): one job core 0 hands to core 1 (qog_video_core1_start),
+   run between scanouts. */
+static void (*volatile s_job_fn)(void *);
+static void *volatile s_job_arg;
+static volatile bool s_job_done = true;
+
 static void core1_main(void) {
     /* Lets core 0 pause us safely while it erases/programs flash (saves). */
     multicore_lockout_victim_init();
     for (;;) {
         const uint8_t *fb;
         while ((fb = s_next_fb) == NULL) {
+            void (*job)(void *) = s_job_fn;
+            if (job) {
+                __dmb();
+                s_job_fn = NULL;
+                job(s_job_arg);
+                __dmb();
+                s_job_done = true;
+                __sev();
+                continue;
+            }
             void (*hook)(void) = s_hook;
             if (hook) hook();
             else __wfe();
@@ -219,6 +235,19 @@ void qog_video_present(const uint8_t *fb) {
 }
 
 void qog_video_set_core1_hook(void (*fn)(void)) { s_hook = fn; }
+
+void qog_video_core1_start(void (*fn)(void *), void *arg) {
+    s_job_arg = arg;
+    s_job_done = false;
+    __dmb();
+    s_job_fn = fn;
+    __sev();
+}
+
+void qog_video_core1_join(void) {
+    while (!s_job_done) __wfe();
+    __dmb();
+}
 
 qog_video_stats_t qog_video_stats(void) {
     qog_video_stats_t st = { s_frames, s_last_scan_us, s_last_wait_us };

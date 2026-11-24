@@ -89,7 +89,27 @@ void qog_link_hw_idle(void) {
         uint32_t t = qog_link_hw_ms();
         if (t - last_diag >= 1000u) {
             last_diag = t;
-#ifdef QOG_LINK_MAIN
+#if defined(QOG_LINK_MAIN) && defined(QOG_FAULT_RECORD)
+            {
+                extern const uint32_t *qog_fault_last(void);
+                const uint32_t *f = qog_fault_last();
+                if (f)
+                    DIAG("[quake_main] LAST %s pc=%08lx lr=%08lx xpsr=%08lx sp=%08lx\n",
+                         f[0] == 0x51484E47u ? "HANG" : "FAULT",
+                         (unsigned long)f[1], (unsigned long)f[2], (unsigned long)f[3], (unsigned long)f[4]);
+                if (f) {
+                    DIAG("[quake_main] stack");
+                    for (int i = 5; i < 21; i++) DIAG(" %08lx", (unsigned long)f[i]);
+                    DIAG(" parm0=%08lx v=%08lx\n", (unsigned long)f[21], (unsigned long)f[22]);
+                }
+            }
+#endif
+#if defined(QOG_LINK_MAIN) && defined(QOG_STACK_WATERMARK)
+            extern uint32_t qog_stack_free(void);
+            DIAG("[quake_main] link wait t=%lu ms tx=%lu rx=%lu stack free %lu\n",
+                 (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx,
+                 (unsigned long)qog_stack_free());
+#elif defined(QOG_LINK_MAIN)
             DIAG("[quake_main] link wait t=%lu ms tx=%lu rx=%lu\n",
                  (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx);
 #elif defined(QOG_STACK_WATERMARK)
@@ -106,6 +126,12 @@ void qog_link_hw_idle(void) {
 #endif
 #ifdef QOG_LINK_MAIN
     board_watchdog_kick();
+#ifdef QOG_FAULT_RECORD
+    {
+        extern volatile uint32_t qog_progress;   /* sys_rp2040.c hang detector */
+        qog_progress++;
+    }
+#endif
 #else
     static uint32_t last;
     uint32_t now = qog_link_hw_ms();
