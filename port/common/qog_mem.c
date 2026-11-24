@@ -144,6 +144,16 @@ void qog_mem_reset_peaks(void) {
 #if QOG_MEM_RENDER
     r_qog_peakedges = r_qog_peaksurfs = r_qog_peakbverts = r_qog_peakbedges = 0;
 #endif
+#ifdef QOG_CL_PEAKS
+    {   /* QuakeOG (Agent S): client entity and temp entity peaks (cl_main.c, cl_tent.c) */
+        extern int cl_qog_peaktemp, cl_qog_tempdrops, cl_qog_peakbeams;
+        cl_qog_peaktemp = cl_qog_tempdrops = cl_qog_peakbeams = 0;
+#ifdef QOG_CL_ENTSLOTS
+        extern int cl_qog_peakslots, cl_qog_peaknum;
+        cl_qog_peakslots = cl_qog_peaknum = 0;
+#endif
+    }
+#endif
 }
 
 static void kb_line(const char *what, int now, int peak) {
@@ -187,6 +197,18 @@ static void cmd_qog_mem(void) {
         extern int r_qog_peakbverts, r_qog_peakbedges;
         Con_Printf("  render peaks: edges %d, surfaces %d, bmodel verts %d, bmodel edges %d\n",
                    r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges);
+#endif
+#ifdef QOG_CL_PEAKS
+        {   /* QuakeOG (Agent S): client entity and temp entity peaks (cl_main.c, cl_tent.c) */
+            extern int cl_qog_peaktemp, cl_qog_tempdrops, cl_qog_peakbeams;
+#ifdef QOG_CL_ENTSLOTS
+            extern int cl_qog_peakslots, cl_qog_peaknum;
+            Con_Printf("  client peaks: entity slots %d of %d, highest number %d of %d\n",
+                       cl_qog_peakslots, QOG_CL_ENTSLOTS, cl_qog_peaknum, cl_max_edicts);
+#endif
+            Con_Printf("  client peaks: temp entities %d of %d, dropped %d, beams %d of %d\n",
+                       cl_qog_peaktemp, MAX_TEMP_ENTITIES, cl_qog_tempdrops, cl_qog_peakbeams, MAX_BEAMS);
+        }
 #endif
 #if QOG_MEM_SERVER
         if (sv.active)

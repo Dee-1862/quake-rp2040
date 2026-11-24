@@ -277,6 +277,7 @@ add_executable(quakeog_sv
     ${ROOT}/port/common/qog_link.c
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_rand.c
+    ${ROOT}/port/pc/tour_pc.c          # the level tour runs on the server half (Agent S, QOG_SPLIT_TOUR)
     ${QOG_BSP_LINK})
 set(QOG_SPLIT_SV_DEFS ${QOG_SPLIT_DEFS})
 list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
@@ -284,7 +285,7 @@ list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
 # a half with the board's own (apps/quake/CMakeLists.txt)
 set(QOG_SPLIT_SV_EXTRA "" CACHE STRING "extra engine flags for quakeog_sv")
 set(QOG_SPLIT_CL_EXTRA "" CACHE STRING "extra engine flags for quakeog_cl")
-target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER ${QOG_SPLIT_SV_EXTRA})
+target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER QOG_SPLIT_TOUR ${QOG_SPLIT_SV_EXTRA})
 
 add_executable(quakeog_cl
     ${QOG_SPLIT_CL_ENGINE}
