@@ -696,8 +696,10 @@ void CL_RelinkEntities (void)
 #endif
 		if (!ent->model)
 		{	// empty slot
+#ifndef QOG_ENTITY_NOEFRAG	// QuakeOG (Agent AD): a client entity's efrag is always NULL, the call did nothing (render.h)
 			if (ent->forcelink)
 				R_RemoveEfrags (ent);	// just became empty
+#endif
 			continue;
 		}
 

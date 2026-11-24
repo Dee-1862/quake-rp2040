@@ -408,7 +408,7 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 
 				pbedge[j-1].pnext = NULL;	// mark end of edges
 
-				R_RecursiveClipBPoly (pbedge, currententity->topnode, psurf);
+				R_RecursiveClipBPoly (pbedge, ENT_TOPNODE (currententity), psurf);
 
 				// QuakeOG: high-water marks, to size bverts and bedges from measurements
 				if (numbverts > r_qog_peakbverts)
@@ -454,7 +454,7 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
 		{
-			r_currentkey = LEAF_KEY (cl.worldmodel, (mleaf_t *)currententity->topnode);
+			r_currentkey = LEAF_KEY (cl.worldmodel, (mleaf_t *)ENT_TOPNODE (currententity));
 
 		// FIXME: use bounding-box-based frustum clipping info?
 			R_RenderFace (psurf, clipflags);
