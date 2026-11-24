@@ -94,15 +94,50 @@ static int dec_byte(uint8_t b) {
     }
 }
 
+/* QuakeOG: while a frame is being written, hardware flow control can hold us
+   until the peer reads, and the peer may be holding on us the same way. So
+   the port keeps decoding what arrives (qog_link_rx_drain) while it waits,
+   and any reply that decoding asks for is remembered here and sent once the
+   current frame is complete, so two frames never interleave on the wire. */
+static int s_in_write;
+static int s_pend_ack = -1;     /* sequence to acknowledge, -1 for none */
+static int s_pend_hellok;
+
+static void send_small(uint8_t type, uint8_t a);
+static void send_hello(uint8_t type);
+
 /* [SOF][len16][payload][crc16], fwog_link_encode's bytes */
 static void send_payload(const uint8_t *payload, int len) {
     uint8_t h[3] = { FWOG_LINK_SOF, (uint8_t)len, (uint8_t)(len >> 8) };
     uint16_t crc = fwog_crc16_xmodem_span(h + 1, 2, payload, (size_t)len);
     uint8_t c[2] = { (uint8_t)crc, (uint8_t)(crc >> 8) };
+    s_in_write++;
     qog_link_hw_write(h, 3);
     qog_link_hw_write(payload, len);
     qog_link_hw_write(c, 2);
+    s_in_write--;
     qog_link_stats.wire_tx += (uint32_t)len + FWOG_LINK_OVERHEAD;
+    if (!s_in_write) {
+        if (s_pend_hellok) {
+            s_pend_hellok = 0;
+            send_hello(QOG_LINK_T_HELLOK);
+        }
+        if (s_pend_ack >= 0) {
+            uint8_t a = (uint8_t)s_pend_ack;
+            s_pend_ack = -1;
+            send_small(QOG_LINK_T_ACK, a);
+        }
+    }
+}
+
+static void reply_ack(uint8_t seq) {
+    if (s_in_write) s_pend_ack = seq;
+    else send_small(QOG_LINK_T_ACK, seq);
+}
+
+static void reply_hellok(void) {
+    if (s_in_write) s_pend_hellok = 1;
+    else send_hello(QOG_LINK_T_HELLOK);
 }
 
 /* QuakeOG (Agent T): a side frame, sent at once (see qog_link.h) */
@@ -162,10 +197,10 @@ static void handle_payload(const uint8_t *p, int len) {
             s_rx_expect++;
             qog_link_stats.data_rx += (uint32_t)n;
             qog_link_stats.frames_rx++;
-            send_small(QOG_LINK_T_ACK, p[1]);
+            reply_ack(p[1]);
         } else if ((uint8_t)(p[1] + 1) == s_rx_expect) {
             qog_link_stats.dups++;             /* our ack was lost: say it again */
-            send_small(QOG_LINK_T_ACK, p[1]);
+            reply_ack(p[1]);
         }
         return;
     }
@@ -180,7 +215,7 @@ static void handle_payload(const uint8_t *p, int len) {
     case QOG_LINK_T_HELLO:
         if (len >= 6) {
             peer_session((uint32_t)p[2] | (uint32_t)p[3] << 8 | (uint32_t)p[4] << 16 | (uint32_t)p[5] << 24);
-            send_hello(QOG_LINK_T_HELLOK);
+            reply_hellok();
         }
         return;
     case QOG_LINK_T_HELLOK:
@@ -189,6 +224,8 @@ static void handle_payload(const uint8_t *p, int len) {
         return;
     default:
         qog_link_stats.other_rx++;
+        if (s_in_write)
+            return;     /* their handlers may send at once: dropped, both are resent */
         if (p[0] >= QOG_LINK_T_SAVES_ASK && p[0] <= QOG_LINK_T_SIDE_LAST) {
             if (qog_link_side) qog_link_side(p, len);   /* QuakeOG (Agent T): side frames */
             return;
@@ -242,6 +279,12 @@ static void pump_tx(void) {
 void qog_link_pump(void) {
     poll_rx();
     pump_tx();
+}
+
+void qog_link_rx_drain(void) {
+    s_in_write++;
+    poll_rx();
+    s_in_write--;
 }
 
 void qog_link_start(int role) {

@@ -377,9 +377,36 @@ static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
 /* QuakeOG (Agent S): the stack's lowest byte, for QOG_ZEDGE_STACK_GUARD (engine/r_edge.c) */
 unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
 
+#ifdef QOG_GAME_PSP
+/* QuakeOG: the game runs on the process stack (PSP = s_stack) and interrupt
+   handlers keep the main stack (MSP), the SDK's 2 KB in a scratch bank that
+   nothing else uses once the game has its own. Before, the USB and timer
+   interrupts ran on top of the game's deepest call chain in s_stack, and the
+   first board run of the split client overflowed it into r_refdef. */
+static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
+    __asm volatile ("msr psp, r0\n\tmovs r2, #2\n\tmsr control, r2\n\tisb\n\tbx r1\n");
+}
+#else
 static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
     __asm volatile ("mov sp, r0\n\tbx r1\n");
 }
+#endif
+
+#ifdef QOG_STACK_WATERMARK
+/* QuakeOG: the stack is filled with a marker below the point where the game
+   starts, so the deepest use so far is where the marker ends. */
+#define STACK_MARK 0xA5A5A5A5u
+static void stack_fill(void) {
+    uint32_t *sp;
+    __asm volatile ("mov %0, sp" : "=r" (sp));
+    for (uint32_t *p = s_stack; p < sp - 16; p++) *p = STACK_MARK;
+}
+uint32_t qog_stack_free(void) {
+    const uint32_t *p = s_stack;
+    while (p < s_stack + sizeof s_stack / sizeof s_stack[0] && *p == STACK_MARK) p++;
+    return (uint32_t)((const uint8_t *)p - (const uint8_t *)s_stack);
+}
+#endif
 
 static void __attribute__((noreturn)) game_main(void);
 
@@ -392,14 +419,23 @@ static void __attribute__((noreturn)) game_main(void) {
 #else
 int main(void) {
 #endif
+#ifdef QOG_BOARD_MAP
+    /* QuakeOG: the board has no keyboard to type "map" at the console, so a
+       board build can name the level to start in (apps/quake QOG_BOARD_MAP). */
+    static char *argv[] = { "quake", "-nosound", "+map", QOG_BOARD_MAP };
+#else
     static char *argv[] = { "quake", "-nosound" };
+#endif
     quakeparms_t parms;
 
+#if defined(QOG_STACK_KB) && defined(QOG_STACK_WATERMARK)
+    stack_fill();
+#endif
 #ifndef QOG_STACK_KB
     board_init();
 #endif
     memset(&parms, 0, sizeof parms);
-    COM_InitArgv(2, argv);
+    COM_InitArgv((int)(sizeof argv / sizeof argv[0]), argv);
     parms.argc = com_argc;
     parms.argv = com_argv;
     parms.basedir = ".";

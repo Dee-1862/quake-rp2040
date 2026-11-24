@@ -238,6 +238,13 @@ if(QOG_SPLIT)
     # the PC game list (a PC client gets them with -DQOG_SPLIT_CL_EXTRA)
     set(_cl_defs ${_split_defs})
     list(TRANSFORM _cl_defs REPLACE "^QOG_NUMSTACKEDGES=[0-9]+$" "QOG_NUMSTACKEDGES=1800")   # the edge table fits the one-byte z-buffer (full game peak 1,730)
+    # The edge-drawing surface table lives on the client's stack (32 B each).
+    # 800 covers the whole game (e3m6 peak 670). The board's data image holds
+    # episode 1 (peak 488, e1m8), and the first board run overflowed the 34 KB
+    # stack under R_EdgeDrawing's BSP recursion, so the board client sizes it
+    # for the episode it carries. A view past it drops surfaces, never crashes.
+    set(QOG_CL_SURFACES 600 CACHE STRING "client half edge-drawing surfaces (episode 1 peak 488, whole game 670)")
+    list(TRANSFORM _cl_defs REPLACE "^QOG_NUMSTACKSURFACES=[0-9]+$" "QOG_NUMSTACKSURFACES=${QOG_CL_SURFACES}")
     list(TRANSFORM _cl_defs REPLACE "^QOG_ZONE_BOARD_KB=[0-9]+$" "QOG_ZONE_BOARD_KB=8")       # client zone (was 16), see docs/changes.md
     list(APPEND _cl_defs
         QOG_ZBUFFER8                    # one-byte z-buffer, approved by the user (changes about 0.07% of view pixels)
@@ -310,6 +317,19 @@ if(QOG_SPLIT)
     set_property(TARGET quake_display PROPERTY COMPILE_DEFINITIONS ${_disp_defs})
     # Agent S: the BSP's frame sender without its 4 KB frame buffer (port/rp2040/link_rp2040.c)
     target_compile_definitions(quake_display PRIVATE QOG_LINK_STREAM_SEND QOG_VID_SURFCACHE_MIN)   # and a 64-byte surface cache header (vid_rp2040.c)
+    # the level the board client starts in, since the board has no keyboard
+    # for the console (empty: id's start, quake.rc and the demo loop)
+    set(QOG_BOARD_MAP "e1m1" CACHE STRING "level the board client starts in, empty for none")
+    # bring-up: both halves print link wait counters once a second over USB (port/rp2040/link_rp2040.c)
+    option(QOG_LINK_DIAG "print link wait counters while the link waits" ON)
+    if(QOG_LINK_DIAG)
+        target_compile_definitions(quake_display PRIVATE QOG_LINK_DIAG QOG_STACK_WATERMARK)
+    endif()
+    # the game on the process stack, interrupts on the SDK's main stack (sys_rp2040.c)
+    target_compile_definitions(quake_display PRIVATE QOG_GAME_PSP)
+    if(QOG_BOARD_MAP)
+        target_compile_definitions(quake_display PRIVATE QOG_BOARD_MAP="${QOG_BOARD_MAP}")
+    endif()
     target_link_options(quake_display PRIVATE -Wl,--wrap=fwog_link_uart_send_frame)
 
     set(QOG_SV_HUNK_KB 167 CACHE STRING "server half hunk in KB, smallest -heapsize of quakeog_sv for e1m3 with a fight, a save and a load, the worst of start and episode 1 (e3m5 152)")
@@ -320,6 +340,9 @@ if(QOG_SPLIT)
     target_compile_definitions(quake_main PRIVATE
         QOG_SYS_MAIN QOG_LINK_MAIN QOG_HUNK_KB=${QOG_SV_HUNK_KB} QOG_STACK_KB=${QOG_SV_STACK_KB})
     target_compile_options(quake_main PRIVATE -fstack-usage)
+    if(QOG_LINK_DIAG)
+        target_compile_definitions(quake_main PRIVATE QOG_LINK_DIAG)
+    endif()
     # saves on main's FAT volume through the BSP's FatFs (Agent T, sys_rp2040.c)
     target_link_libraries(quake_main qog_engine_sv fwog_main_bsp fwog_main_fs)
     target_link_options(quake_main PRIVATE -Wl,--allow-multiple-definition)

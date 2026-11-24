@@ -42,14 +42,36 @@ void qog_link_hw_open(int role) {
 #endif
 }
 
+#ifdef QOG_LINK_DIAG
+/* QuakeOG: bring-up counters, printed once a second while the link waits */
+static uint32_t s_diag_tx, s_diag_rx;
+#endif
+
 void qog_link_hw_write(const void *data, int len) {
-    fwog_link_uart_write(data, (size_t)len);
+    /* QuakeOG: byte by byte, and while the FIFO is full (the peer's RTS holds
+       us) keep reading what the peer sends. With both ends blocked in
+       uart_write_blocking and both receive FIFOs full, neither would ever
+       read again: the first board run hung exactly so. */
+    const uint8_t *p = data;
+#ifdef QOG_LINK_DIAG
+    s_diag_tx += (uint32_t)len;
+#endif
+    for (int i = 0; i < len; i++) {
+        while (!uart_is_writable(FWOG_LINK_UART)) {
+            qog_link_rx_drain();
+            qog_link_hw_idle();
+        }
+        uart_putc_raw(FWOG_LINK_UART, p[i]);
+    }
 }
 
 int qog_link_hw_read(void *dst, int max) {
     uint8_t *p = dst;
     int n = 0;
     while (n < max && fwog_link_uart_read(p + n)) n++;
+#ifdef QOG_LINK_DIAG
+    s_diag_rx += (uint32_t)n;
+#endif
     return n;
 }
 
@@ -58,6 +80,27 @@ uint32_t qog_link_hw_ms(void) { return to_ms_since_boot(get_absolute_time()); }
 uint32_t qog_link_hw_rate(void) { return FWOG_LINK_BAUD / 10u; }
 
 void qog_link_hw_idle(void) {
+#ifdef QOG_LINK_DIAG
+    {
+        static uint32_t last_diag;
+        uint32_t t = qog_link_hw_ms();
+        if (t - last_diag >= 1000u) {
+            last_diag = t;
+#ifdef QOG_LINK_MAIN
+            DIAG("[quake_main] link wait t=%lu ms tx=%lu rx=%lu\n",
+                 (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx);
+#elif defined(QOG_STACK_WATERMARK)
+            extern uint32_t qog_stack_free(void);
+            DIAG("[quake_display] link wait t=%lu ms tx=%lu rx=%lu stack free %lu\n",
+                 (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx,
+                 (unsigned long)qog_stack_free());
+#else
+            DIAG("[quake_display] link wait t=%lu ms tx=%lu rx=%lu\n",
+                 (unsigned long)t, (unsigned long)s_diag_tx, (unsigned long)s_diag_rx);
+#endif
+        }
+    }
+#endif
 #ifdef QOG_LINK_MAIN
     board_watchdog_kick();
 #else

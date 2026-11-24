@@ -1050,8 +1050,11 @@ void R_ScanEdges (void)
 		numspans = QOG_ZEDGE_TEST_SPANS;
 #endif
 	if (numspans < r_refdef.vrect.width + 1)
-		Sys_Error ("R_ScanEdges: room for %d spans, a scan line needs %d", numspans,
-			r_refdef.vrect.width + 1);
+		Sys_Error ("R_ScanEdges: room for %d spans, a scan line needs %d (vrect %d %d %d %d, refdef %p, sentinels %p, edge_p %p, ztemp %p+%d, surfaces %p, surface_p %p, spanend %p)",
+			numspans, r_refdef.vrect.width + 1,
+			r_refdef.vrect.x, r_refdef.vrect.y, r_refdef.vrect.width, r_refdef.vrect.height,
+			(void *)&r_refdef, (void *)r_edgesentinels, (void *)edge_p,
+			(void *)r_ztemp_base, r_ztemp_bytes, (void *)surfaces, (void *)surface_p, (void *)r_spanpool_end);
 	if (numspans > r_qog_peakspanroom)
 		r_qog_peakspanroom = numspans;
 	if (!r_qog_minspanroom || numspans < r_qog_minspanroom)
@@ -1121,8 +1124,11 @@ void R_ScanEdges (void)
 	if (numspans > 0x10000 / sizeof(espan_t) - 1)
 		numspans = 0x10000 / sizeof(espan_t) - 1;
 	if (numspans < r_refdef.vrect.width + 1)
-		Sys_Error ("R_ScanEdges: room for %d spans, a scan line needs %d", numspans,
-			r_refdef.vrect.width + 1);
+		Sys_Error ("R_ScanEdges: room for %d spans, a scan line needs %d (vrect %d %d %d %d, refdef %p, sentinels %p, edge_p %p, ztemp %p+%d, surfaces %p, surface_p %p, spanend %p)",
+			numspans, r_refdef.vrect.width + 1,
+			r_refdef.vrect.x, r_refdef.vrect.y, r_refdef.vrect.width, r_refdef.vrect.height,
+			(void *)&r_refdef, (void *)r_edgesentinels, (void *)edge_p,
+			(void *)r_ztemp_base, r_ztemp_bytes, (void *)surfaces, (void *)surface_p, (void *)r_spanpool_end);
 	if (numspans > r_qog_peakspanroom)
 		r_qog_peakspanroom = numspans;
 	if (!r_qog_minspanroom || numspans < r_qog_minspanroom)

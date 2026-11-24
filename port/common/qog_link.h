@@ -94,8 +94,13 @@ extern void (*qog_link_side)(const uint8_t *payload, int len);
 /* ---- supplied by the port (port/pc/link_pc.c, port/rp2040/link_rp2040.c) ---- */
 /* Bring the transport up. */
 void     qog_link_hw_open(int role);
-/* Write all bytes (blocks while the peer's flow control holds us). */
+/* Write all bytes (blocks while the peer's flow control holds us). While it
+   waits it must call qog_link_rx_drain(), or both ends can block writing to
+   each other with their receive FIFOs full (hardware RTS/CTS). */
 void     qog_link_hw_write(const void *data, int len);
+/* Supplied by qog_link.c: decode what has arrived without sending anything.
+   Replies it would send are queued and go out after the current frame. */
+void     qog_link_rx_drain(void);
 /* Read what is there, up to max bytes. Returns 0 when nothing is waiting. */
 int      qog_link_hw_read(void *dst, int max);
 /* A millisecond clock. */
