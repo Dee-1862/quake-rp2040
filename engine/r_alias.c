@@ -745,6 +745,51 @@ per player is built here for this draw, in a stack frame of its own that
 sits beside R_EdgeDrawing's larger one, not under it.
 ================
 */
+#ifdef QOG_TRANSLATE_INLINE
+/*
+QuakeOG (Agent S): id's translated colour map is the colour map with the
+two player colour ranges of each row taken from other columns
+(CL_BuildTranslation), so table[row*256 + texel] is
+colormap[row*256 + map[texel]] for a 256-byte map, which the polyset
+drawers apply to each texel (d_atranslate, d_polyse.c). Before the first
+colour update the table was all zeros: every texel then maps to a column
+that is 0 in every row (colour 0, checked).
+*/
+extern byte	*d_atranslate;
+
+static QOG_NOINLINE void R_AliasDrawTranslated (int slot)
+{
+	byte	map[256];
+	int		i, j, top, bottom;
+
+	if (!cl.scores[slot].translated)
+	{
+		for (j=0 ; j<VID_GRADES ; j++)
+			if (vid.colormap[j*256])
+				Sys_Error ("R_AliasDrawTranslated: colour map column 0 is not black");
+		memset (map, 0, sizeof(map));
+	}
+	else
+	{
+		for (i=0 ; i<256 ; i++)
+			map[i] = i;
+		top = cl.scores[slot].colors & 0xf0;
+		bottom = (cl.scores[slot].colors &15)<<4;
+		for (j=0 ; j<16 ; j++)
+		{
+			map[TOP_RANGE+j] = top < 128 ? top+j : top+15-j;
+			map[BOTTOM_RANGE+j] = bottom < 128 ? bottom+j : bottom+15-j;
+		}
+	}
+	acolormap = vid.colormap;
+	d_atranslate = map;
+	if (currententity->trivial_accept)
+		R_AliasPrepareUnclippedPoints ();
+	else
+		R_AliasPreparePoints ();
+	d_atranslate = NULL;
+}
+#else
 static QOG_NOINLINE void R_AliasDrawTranslated (int slot)
 {
 	byte	table[VID_GRADES*256];
@@ -756,6 +801,7 @@ static QOG_NOINLINE void R_AliasDrawTranslated (int slot)
 	else
 		R_AliasPreparePoints ();
 }
+#endif
 #endif
 
 /*

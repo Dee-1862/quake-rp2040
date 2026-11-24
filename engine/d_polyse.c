@@ -53,6 +53,15 @@ typedef struct {
 int	r_p0[6], r_p1[6], r_p2[6];
 
 byte		*d_pcolormap;
+#ifdef QOG_TRANSLATE_INLINE
+// QuakeOG (Agent S): while an entity in player colours is drawn, its skin
+// texels go through this 256-byte map before the colour map (r_alias.c),
+// in place of id's 16 KB translated colour map
+byte		*d_atranslate;
+#define D_ATEX(t)	(d_atranslate ? d_atranslate[t] : (t))
+#else
+#define D_ATEX(t)	(t)
+#endif
 
 int			d_aflatcolor;
 int			d_xdenom;
@@ -177,7 +186,7 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 				
 				*zbuf = z;
 				pix = D_SKINROW(fv->v[3]>>16)[fv->v[2]>>16];
-				pix = ((byte *)acolormap)[pix + (fv->v[4] & 0xFF00) ];
+				pix = ((byte *)acolormap)[D_ATEX (pix) + (fv->v[4] & 0xFF00) ];	// QuakeOG: D_ATEX
 				d_viewbuffer[D_SCANTABLE(fv->v[1]) + fv->v[0]] = pix;
 			}
 		}
@@ -387,7 +396,7 @@ split:
 		int		pix;
 		
 		*zbuf = z;
-		pix = d_pcolormap[D_SKINROW(new[3]>>16)[new[2]>>16]];
+		pix = d_pcolormap[D_ATEX (D_SKINROW(new[3]>>16)[new[2]>>16])];	// QuakeOG: D_ATEX
 		d_viewbuffer[D_SCANTABLE(new[1]) + new[0]] = pix;
 	}
 
@@ -624,6 +633,91 @@ void InitGel (byte *palette)
 D_PolysetDrawSpans8
 ================
 */
+#ifdef QOG_TRANSLATE_INLINE
+/*
+================
+D_PolysetDrawSpans8Translated
+
+QuakeOG (Agent S): D_PolysetDrawSpans8 with each texel through
+d_atranslate, a copy so id's loop stays as it is
+================
+*/
+static void D_PolysetDrawSpans8Translated (spanpackage_t *pspanpackage)
+{
+	int		lcount;
+	byte	*lpdest;
+	byte	*lptex;
+	int		lsfrac, ltfrac;
+	int		llight;
+	int		lzi;
+	d_zval_t	*lpz;
+	byte	*tr = d_atranslate;
+
+	do
+	{
+		lcount = d_aspancount - pspanpackage->count;
+
+		errorterm += erroradjustup;
+		if (errorterm >= 0)
+		{
+			d_aspancount += d_countextrastep;
+			errorterm -= erroradjustdown;
+		}
+		else
+		{
+			d_aspancount += ubasestep;
+		}
+
+		if (lcount)
+		{
+			lpdest = pspanpackage->pdest;
+			lptex = pspanpackage->ptex;
+			lpz = pspanpackage->pz;
+			lsfrac = pspanpackage->sfrac;
+			ltfrac = pspanpackage->tfrac;
+			llight = pspanpackage->light;
+			lzi = pspanpackage->zi;
+
+			do
+			{
+#ifdef QOG_ZBUFFER8
+				int	lz = lzi >> 16;
+
+				lz = D_ZQ(lz);
+				if (lz >= *lpz)
+				{
+					*lpdest = ((byte *)acolormap)[tr[*lptex] + (llight & 0xFF00)];
+					*lpz = lz;
+				}
+#else
+				if ((lzi >> 16) >= *lpz)
+				{
+					*lpdest = ((byte *)acolormap)[tr[*lptex] + (llight & 0xFF00)];
+					*lpz = lzi >> 16;
+				}
+#endif
+				lpdest++;
+				lzi += r_zistepx;
+				lpz++;
+				llight += r_lstepx;
+				lptex += a_ststepxwhole;
+				lsfrac += a_sstepxfrac;
+				lptex += lsfrac >> 16;
+				lsfrac &= 0xFFFF;
+				ltfrac += a_tstepxfrac;
+				if (ltfrac & 0x10000)
+				{
+					lptex += r_affinetridesc.skinwidth;
+					ltfrac &= 0xFFFF;
+				}
+			} while (--lcount);
+		}
+
+		pspanpackage++;
+	} while (pspanpackage->count != -999999);
+}
+#endif
+
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 {
 	int		lcount;
@@ -634,6 +728,13 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 	int		lzi;
 	d_zval_t	*lpz;
 
+#ifdef QOG_TRANSLATE_INLINE
+	if (d_atranslate)
+	{
+		D_PolysetDrawSpans8Translated (pspanpackage);
+		return;
+	}
+#endif
 	do
 	{
 		lcount = d_aspancount - pspanpackage->count;

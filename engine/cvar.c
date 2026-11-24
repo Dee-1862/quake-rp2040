@@ -26,6 +26,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 cvar_t	*cvar_vars;
 char	*cvar_null_string = "";
+#ifdef QOG_CVAR_LITERAL
+extern byte	*hunk_base;		// zone.c, the zone is inside the hunk
+extern int	hunk_size;
+#endif
 
 /*
 ============
@@ -118,10 +122,30 @@ void Cvar_Set (char *var_name, char *value)
 
 	changed = Q_strcmp(var->string, value);
 	
+#ifdef QOG_CVAR_LITERAL
+	// QuakeOG (Agent S): a value still at the C code's initial string (not
+	// in the hunk, where the zone is) is never freed, and a set to the same
+	// text keeps it. Every other set is id's.
+	if ((byte *)var->string < hunk_base || (byte *)var->string >= hunk_base + hunk_size)
+	{
+		if (changed)
+		{
+			var->string = Z_Malloc (Q_strlen(value)+1);
+			Q_strcpy (var->string, value);
+		}
+	}
+	else
+	{
+		Z_Free (var->string);	// free the old value string
+		var->string = Z_Malloc (Q_strlen(value)+1);
+		Q_strcpy (var->string, value);
+	}
+#else
 	Z_Free (var->string);	// free the old value string
 	
 	var->string = Z_Malloc (Q_strlen(value)+1);
 	Q_strcpy (var->string, value);
+#endif
 	var->value = Q_atof (var->string);
 #ifndef QOG_SPLIT_CLIENT	// QuakeOG: the server half announces it when it sets its copy
 	if (var->server && changed)
@@ -175,9 +199,15 @@ void Cvar_RegisterVariable (cvar_t *variable)
 	}
 		
 // copy the value off, because future sets will Z_Free it
+#ifdef QOG_CVAR_LITERAL
+	// QuakeOG (Agent S): no copy, the initial string stays where it is until
+	// a set changes it (Cvar_Set)
+	(void)oldstr;
+#else
 	oldstr = variable->string;
 	variable->string = Z_Malloc (Q_strlen(variable->string)+1);	
 	Q_strcpy (variable->string, oldstr);
+#endif
 	variable->value = Q_atof (variable->string);
 	
 // link the variable in

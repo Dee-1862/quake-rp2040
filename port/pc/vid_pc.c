@@ -429,6 +429,12 @@ void VID_Shutdown(void) {
                    "most waiting spans %d, least span room %d, most spans in a frame %d\n",
                    r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans,
                    r_qog_minspanroom, r_qog_peakframespans);
+#ifdef QOG_CL_PEAKS
+        {   /* QuakeOG (Agent S) */
+            extern int r_qog_zstackedges;
+            Sys_Printf("z edges at exit: most edges in one stack fallback %d\n", r_qog_zstackedges);
+        }
+#endif
     }
 #endif
     if (s_wnd) DestroyWindow(s_wnd);

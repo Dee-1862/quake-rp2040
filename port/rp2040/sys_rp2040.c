@@ -374,6 +374,8 @@ uint8_t qog_rp2040_buttons;
    that tools/stack_chain.py finds (apps/quake/CMakeLists.txt). Thread mode
    runs on MSP, so interrupts use this stack too, as in apps/qogfly. */
 static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
+/* QuakeOG (Agent S): the stack's lowest byte, for QOG_ZEDGE_STACK_GUARD (engine/r_edge.c) */
+unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
 
 static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
     __asm volatile ("mov sp, r0\n\tbx r1\n");

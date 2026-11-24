@@ -270,8 +270,13 @@ int main(int argc, char **argv) {
     /* The split game's server half (engine/net_link.c): each Host_Frame waits
        for the client half's frame, so it runs as fast as the client asks. */
     Host_Init(&parms);
-    for (;;)
+    for (;;) {
         Host_Frame(0.0f);
+#ifdef QOG_SPLIT_TOUR
+        extern void qog_tour_frame(void);
+        qog_tour_frame();   /* PC test tool (Agent S), idle unless qog_tour runs */
+#endif
+    }
 #else
     if (COM_CheckParm("-qogfly")) {   /* renderer-only fly-through (port/pc/fly_pc.c), never returns */
         extern void qog_fly_pc_main(quakeparms_t *parms);

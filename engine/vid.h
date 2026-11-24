@@ -54,7 +54,13 @@ typedef struct
 } viddef_t;
 
 extern	viddef_t	vid;				// global video state
+#ifdef QOG_VID_NO_8TO16
+// QuakeOG (Agent S): the board never fills or needs it (r_pixbytes 1), so
+// its zeros stay in flash (port/rp2040/vid_rp2040.c)
+extern	const unsigned short	d_8to16table[256];
+#else
 extern	unsigned short	d_8to16table[256];
+#endif
 extern	unsigned	d_8to24table[256];
 extern void (*vid_menudrawfn)(void);
 extern void (*vid_menukeyfn)(int key);

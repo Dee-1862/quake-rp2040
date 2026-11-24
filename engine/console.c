@@ -430,6 +430,45 @@ Con_DPrintf
 A Con_Printf that only shows up if the "developer" cvar is set
 ================
 */
+#ifdef QOG_CON_PRINTTEXT
+/*
+================
+Con_PrintText
+
+QuakeOG (Agent S): Con_Printf of a text with no format, without the 4 KB
+message buffer on the stack, for prints deep in the renderer. The same
+steps as Con_Printf, which formats into msg first.
+================
+*/
+void Con_PrintText (char *text)
+{
+	static qboolean	inupdate;
+
+	Sys_Printf ("%s", text);	// also echo to debugging console
+
+	if (con_debuglog)
+		Con_DebugLog(va("%s/qconsole.log",com_gamedir), "%s", text);
+
+	if (!con_initialized)
+		return;
+
+	if (cls.state == ca_dedicated)
+		return;		// no graphics mode
+
+	Con_Print (text);
+
+	if (cls.signon != SIGNONS && !scr_disabled_for_loading )
+	{
+		if (!inupdate)
+		{
+			inupdate = true;
+			SCR_UpdateScreen ();
+			inupdate = false;
+		}
+	}
+}
+#endif
+
 void Con_DPrintf (char *fmt, ...)
 {
 	va_list		argptr;

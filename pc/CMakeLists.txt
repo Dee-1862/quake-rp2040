@@ -200,6 +200,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LOADGAME_ZTEMP              # the load game line buffer at the end of the z-buffer, not 32 KB of high hunk
     QOG_PRECACHE_ZTEMP              # the client's precache names at the end of the z-buffer while server info is read, not high hunk
     QOG_KEYS_BYTES)                 # key down, console and menu key flags as bytes (2.3 KB static)
+
 # Demo playback host (Agent O): the board app apps/qogdemo runs the same host.
 # -qogdemo plays demos with no server, QuakeC, console or sound.
 target_sources(quakeog_pc PRIVATE
@@ -228,6 +229,7 @@ if(QOG_PC_DEMO_BOARD)
     endif()
     set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_pcdemo_defs}")
 endif()
+
 # Renderer speed, exact (Agent P). Same pixels as id's code, less work.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_LITSPAN_FAST                # lit spans without modulo, texture origin folded into the light pointer, a loop per mip
@@ -275,6 +277,7 @@ add_executable(quakeog_sv
     ${ROOT}/port/common/qog_link.c
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_rand.c
+    ${ROOT}/port/pc/tour_pc.c          # the level tour runs on the server half (Agent S, QOG_SPLIT_TOUR)
     ${QOG_BSP_LINK})
 set(QOG_SPLIT_SV_DEFS ${QOG_SPLIT_DEFS})
 list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
@@ -282,7 +285,7 @@ list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
 # a half with the board's own (apps/quake/CMakeLists.txt)
 set(QOG_SPLIT_SV_EXTRA "" CACHE STRING "extra engine flags for quakeog_sv")
 set(QOG_SPLIT_CL_EXTRA "" CACHE STRING "extra engine flags for quakeog_cl")
-target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER ${QOG_SPLIT_SV_EXTRA})
+target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER QOG_SPLIT_TOUR ${QOG_SPLIT_SV_EXTRA})
 
 add_executable(quakeog_cl
     ${QOG_SPLIT_CL_ENGINE}

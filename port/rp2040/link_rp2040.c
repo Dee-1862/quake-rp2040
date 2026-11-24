@@ -71,6 +71,32 @@ void qog_link_hw_idle(void) {
 #endif
 }
 
+#ifdef QOG_LINK_STREAM_SEND
+/* QuakeOG (Agent S): the BSP's fwog_link_uart_send_frame encodes into a
+   4,165-byte static frame buffer. Linked with
+   -Wl,--wrap=fwog_link_uart_send_frame, its callers (the breakout I/O acks
+   of ioexp_link.c) get this one instead, which writes the same bytes
+   (fwog_link_encode's SOF, length, payload and CRC) in three pieces, as
+   qog_link.c's send_payload does, and needs no buffer. */
+#include "common/link/link_frame.h"
+#include "common/crc.h"
+bool __wrap_fwog_link_uart_send_frame(const void *payload, size_t len) {
+    uint8_t h[3], c[2];
+    uint16_t crc;
+    if (len > FWOG_LINK_MAX_PAYLOAD) return false;
+    h[0] = FWOG_LINK_SOF;
+    h[1] = (uint8_t)(len & 0xFFu);
+    h[2] = (uint8_t)(len >> 8);
+    crc = fwog_crc16_xmodem_span(h + 1, 2, payload, len);
+    c[0] = (uint8_t)(crc & 0xFFu);
+    c[1] = (uint8_t)(crc >> 8);
+    fwog_link_uart_write(h, 3);
+    fwog_link_uart_write(payload, len);
+    fwog_link_uart_write(c, 2);
+    return true;
+}
+#endif
+
 void qog_link_hw_other(const void *payload, int len) {
 #ifdef QOG_LINK_MAIN
     (void)payload; (void)len;

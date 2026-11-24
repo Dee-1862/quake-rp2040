@@ -313,7 +313,13 @@ Mod_DecompressVis
 */
 byte *Mod_DecompressVis (byte *in, model_t *model)
 {
+#if defined(QOG_PVS_LEAFS) && defined(QOG_PVS_ROW_SMALL)
+	// QuakeOG (Agent S): Mod_FinishBrushModel stops a map with more than
+	// QOG_PVS_LEAFS leafs, so a row is at most QOG_PVS_LEAFS/8 bytes
+	static byte	decompressed[QOG_PVS_LEAFS/8];
+#else
 	static byte	decompressed[MAX_MAP_LEAFS/8];
+#endif
 	int		c;
 	byte	*out;
 	int		row;

@@ -32,7 +32,11 @@
 #define ZBUFFER_BYTES   (ZW * ZH * (int)sizeof(d_zval_t))
 
 viddef_t vid;
+#ifdef QOG_VID_NO_8TO16
+const unsigned short d_8to16table[256];   /* QuakeOG (Agent S): see vid.h */
+#else
 unsigned short d_8to16table[256];
+#endif
 unsigned d_8to24table[256];
 
 #ifdef QOG_HUD_IN_ZBUFFER
@@ -55,7 +59,13 @@ static byte  vid_buffer[W * H] __attribute__((aligned(4)));
 static d_zval_t zbuffer[ZW * ZH];
 #define VIDEO_BYTES     ((int)(sizeof vid_buffer + sizeof zbuffer))
 #endif
+#ifdef QOG_VID_SURFCACHE_MIN
+/* QuakeOG (Agent S): nothing allocates from it without QOG_SURFCACHE, so
+   only D_InitCaches' header and guard (D_InitCaches prints 0k) */
+static byte  surfcache[64] __attribute__((aligned(4)));
+#else
 static byte  surfcache[1024];   /* no surface cache (engine/d_scanlit.c); D_InitCaches still writes a header */
+#endif
 
 static void vid_menu_draw(void) { Draw_String(8 * 8, 6 * 8, "Video mode is fixed: 320x200"); }
 void M_Menu_Options_f(void);

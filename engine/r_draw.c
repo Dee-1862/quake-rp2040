@@ -661,12 +661,22 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 
 	r_polycount++;
 
+#ifdef QOG_SURF_T_TINY
+	// QuakeOG (Agent S): the face as an index into the entity model's surfaces
+	if (r_currentkey > SURF_KEY_MAX)
+		Sys_Error ("R_RenderFace: surface key %d, 16-bit keys allow %d", r_currentkey, SURF_KEY_MAX);
+	surface_p->dataref = fa - currententity->model->surfaces;
+	surface_p->entref = r_qog_visedict;
+#else
 	surface_p->data = (void *)fa;
+#endif
 	surface_p->nearzi = r_nearzi;
 	surface_p->flags = fa->flags;
 	surface_p->insubmodel = insubmodel;
 	surface_p->spanstate = 0;
+#ifndef QOG_SURF_T_TINY
 	surface_p->entity = currententity;
+#endif
 	surface_p->key = r_currentkey++;
 	surface_p->spans = SPAN_NONE;	// QuakeOG
 
@@ -776,12 +786,22 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 
 	r_polycount++;
 
+#ifdef QOG_SURF_T_TINY
+	// QuakeOG (Agent S): the face as an index into the entity model's surfaces
+	if (r_currentbkey > SURF_KEY_MAX)
+		Sys_Error ("R_RenderBmodelFace: surface key %d, 16-bit keys allow %d", r_currentbkey, SURF_KEY_MAX);
+	surface_p->dataref = psurf - currententity->model->surfaces;
+	surface_p->entref = r_qog_visedict;
+#else
 	surface_p->data = (void *)psurf;
+#endif
 	surface_p->nearzi = r_nearzi;
 	surface_p->flags = psurf->flags;
 	surface_p->insubmodel = true;
 	surface_p->spanstate = 0;
+#ifndef QOG_SURF_T_TINY
 	surface_p->entity = currententity;
+#endif
 	surface_p->key = r_currentbkey;
 	surface_p->spans = SPAN_NONE;	// QuakeOG
 

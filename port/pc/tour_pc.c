@@ -113,8 +113,16 @@ void qog_tour_frame (void)
 
 	if (tour_state == TOUR_LOADING)
 	{
+#ifdef QOG_SPLIT_SERVER
+		// QuakeOG (Agent S): the split game's server half runs the tour, its
+		// client is in the game once it has spawned. Text added here joins
+		// the client's command buffer (engine/net_link.c).
+		if (!sv.active || !svs.clients[0].spawned || Q_strcmp (sv.name, tour_maps[tour_map]))
+			return;
+#else
 		if (!sv.active || cls.signon != SIGNONS || Q_strcmp (sv.name, tour_maps[tour_map]))
 			return;
+#endif
 		sv_player->v.movetype = MOVETYPE_NOCLIP;
 		sv_player->v.flags = (int)sv_player->v.flags | FL_GODMODE | (tour_fight ? 0 : FL_NOTARGET);
 		if (tour_fight)
@@ -126,6 +134,9 @@ void qog_tour_frame (void)
 
 	if (tour_spot >= tour_numspots)
 	{
+#ifdef QOG_SPLIT_SERVER
+		Cbuf_AddText ("qog_mem hunk\n");	// QuakeOG (Agent S): the client's hunk blocks of this level
+#endif
 		Cbuf_AddText (tour_fight ? "-attack\nqog_mem\nqog_mem reset\n" : "qog_mem\nqog_mem reset\n");
 		if (++tour_map < tour_nummaps)
 			Tour_StartMap ();

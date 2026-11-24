@@ -214,7 +214,7 @@ void D_DrawSurfaces (void)
 			d_zistepv = s->d_zistepv;
 			d_ziorigin = s->d_ziorigin;
 
-			D_DrawSolidSurface (s, (int)s->data & 0xFF);
+			D_DrawSolidSurface (s, (int)SURF_DATA (s) & 0xFF);	// QuakeOG: SURF_DATA
 			D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 		}
 	}
@@ -259,17 +259,17 @@ void D_DrawSurfaces (void)
 			}
 			else if (s->flags & SURF_DRAWTURB)
 			{
-				pface = s->data;
+				pface = SURF_DATA (s);	// QuakeOG: SURF_DATA, SURF_ENTITY
 				miplevel = 0;
 				cacheblock = (pixel_t *)
-						SURF_TEXINFO (s->entity->model, pface)->texture->mips[0];	// QuakeOG
+						SURF_TEXINFO (SURF_ENTITY (s)->model, pface)->texture->mips[0];	// QuakeOG
 				cachewidth = 64;
 
 				if (s->insubmodel)
 				{
 				// FIXME: we don't want to do all this for every polygon!
 				// TODO: store once at start of frame
-					currententity = s->entity;	//FIXME: make this passed in to
+					currententity = SURF_ENTITY (s);	//FIXME: make this passed in to
 												// R_RotateBmodel ()
 					VectorSubtract (r_origin, currententity->origin,
 							local_modelorg);
@@ -311,7 +311,7 @@ void D_DrawSurfaces (void)
 				{
 				// FIXME: we don't want to do all this for every polygon!
 				// TODO: store once at start of frame
-					currententity = s->entity;	//FIXME: make this passed in to
+					currententity = SURF_ENTITY (s);	//FIXME: make this passed in to
 												// R_RotateBmodel ()
 					VectorSubtract (r_origin, currententity->origin, local_modelorg);
 					TransformVector (local_modelorg, transformed_modelorg);
@@ -320,11 +320,11 @@ void D_DrawSurfaces (void)
 										// make entity passed in
 				}
 
-				pface = s->data;
+				pface = SURF_DATA (s);	// QuakeOG: SURF_DATA, SURF_ENTITY
 				miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
-				* SURF_TEXINFO (s->entity->model, pface)->mipadjust);	// QuakeOG
+				* SURF_TEXINFO (SURF_ENTITY (s)->model, pface)->mipadjust);	// QuakeOG
 
-				r_drawsurf.model = s->entity->model;	// QuakeOG: owner of pface's state arrays
+				r_drawsurf.model = SURF_ENTITY (s)->model;	// QuakeOG: owner of pface's state arrays
 #ifdef QOG_SURFCACHE
 			// FIXME: make this passed in to D_CacheSurface
 				pcurrentcache = D_CacheSurface (pface, miplevel);

@@ -511,13 +511,30 @@ Cmd_TokenizeString
 Parses the given string into command line tokens.
 ============
 */
+#ifdef QOG_CMD_ARGV_ARENA
+// QuakeOG (Agent S): the tokens of one command line go one after another
+// into this buffer, and only those that do not fit into the zone. id put
+// every token in the zone and freed it at the next line, the churn that
+// fragments a small zone.
+static char	cmd_arena[QOG_CMD_ARGV_ARENA];
+static int		cmd_arenaused;
+#define CMD_IN_ARENA(p)	((p) >= cmd_arena && (p) < cmd_arena + QOG_CMD_ARGV_ARENA)
+#endif
+
 void Cmd_TokenizeString (char *text)
 {
 	int		i;
 	
 // clear the args from the last string
+#ifdef QOG_CMD_ARGV_ARENA
+	for (i=0 ; i<cmd_argc ; i++)
+		if (!CMD_IN_ARENA (cmd_argv[i]))
+			Z_Free (cmd_argv[i]);
+	cmd_arenaused = 0;
+#else
 	for (i=0 ; i<cmd_argc ; i++)
 		Z_Free (cmd_argv[i]);
+#endif
 		
 	cmd_argc = 0;
 	cmd_args = NULL;
@@ -548,6 +565,14 @@ void Cmd_TokenizeString (char *text)
 
 		if (cmd_argc < MAX_ARGS)
 		{
+#ifdef QOG_CMD_ARGV_ARENA
+			if (cmd_arenaused + Q_strlen(com_token) + 1 <= QOG_CMD_ARGV_ARENA)
+			{
+				cmd_argv[cmd_argc] = cmd_arena + cmd_arenaused;
+				cmd_arenaused += Q_strlen(com_token) + 1;
+			}
+			else
+#endif
 			cmd_argv[cmd_argc] = Z_Malloc (Q_strlen(com_token)+1);
 			Q_strcpy (cmd_argv[cmd_argc], com_token);
 			cmd_argc++;

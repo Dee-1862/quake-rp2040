@@ -103,6 +103,12 @@ void Sys_QogRegister (void)
 	Cvar_RegisterVariable (&cl_rollangle);
 	Cvar_RegisterVariable (&cl_name);
 	qog_mem_register ();
+#ifdef QOG_SPLIT_TOUR
+	{	// QuakeOG (Agent S): the PC level tour runs on the server half (port/pc/tour_pc.c)
+		extern void qog_tour_register (void);
+		qog_tour_register ();
+	}
+#endif
 }
 
 // renderer state and calls the shared loaders touch (model.c, common.c)

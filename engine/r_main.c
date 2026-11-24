@@ -962,6 +962,9 @@ void R_DrawBEntitiesOnList (void)
 	for (i=0 ; i<cl_numvisedicts ; i++)
 	{
 		currententity = cl_visedicts[i];
+#ifdef QOG_SURF_T_TINY
+		r_qog_visedict = i;		// QuakeOG (Agent S): the surfaces' entity (SURF_ENTITY)
+#endif
 
 		switch (currententity->model->type)
 		{
@@ -1078,6 +1081,9 @@ R_EdgeDrawing
 ================
 */
 int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG: see the end of R_EdgeDrawing
+#ifdef QOG_SURF_T_TINY
+int		r_qog_visedict;						// QuakeOG (Agent S): see r_shared.h
+#endif
 int		r_qog_peakedgesurfbytes;			// QuakeOG: most edge plus surface bytes in one frame
 
 void R_EdgeDrawing (void)

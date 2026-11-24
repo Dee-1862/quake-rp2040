@@ -50,8 +50,17 @@ efrag_t			cl_efrags[MAX_EFRAGS];
 entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level in CL_ClearState
 int				cl_max_edicts;
 #ifdef QOG_CL_ENTSLOTS
-byte			*cl_entslot;
+cl_slot_t		*cl_entslot;
 static int		cl_numslots;
+#ifdef QOG_CL_ENTBLOCK
+entity_t		*cl_entblocks[(QOG_CL_ENTSLOTS + QOG_CL_ENTBLOCK - 1) / QOG_CL_ENTBLOCK];
+#define CL_MAXSLOTS		65535
+#else
+#define CL_MAXSLOTS		255
+#endif
+#ifdef QOG_CL_PEAKS
+int				cl_qog_peakslots, cl_qog_peaknum;	// QuakeOG (Agent S): measurement only, qog_mem prints them
+#endif
 #endif
 #ifndef QOG_STATICS_ON_HUNK
 entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
@@ -95,16 +104,31 @@ void CL_ClearState (void)
 	cl_max_edicts = sv.active ? sv.max_edicts : MAX_EDICTS;
 #ifdef QOG_CL_ENTSLOTS
 	// QuakeOG: slots for the entity numbers in use, see CL_EntitySlot
+#ifdef QOG_CL_ENTBLOCK
+	// QuakeOG (Agent S): the world's block now, the others as numbers are used
+	memset (cl_entblocks, 0, sizeof(cl_entblocks));
+	cl_entblocks[0] = cl_entities = Hunk_AllocName (QOG_CL_ENTBLOCK * sizeof(entity_t), "cl_ents");
+#else
 	cl_entities = Hunk_AllocName (QOG_CL_ENTSLOTS * sizeof(entity_t), "cl_ents");
-	cl_entslot = Hunk_AllocName (cl_max_edicts, "cl_slots");
+#endif
+	cl_entslot = Hunk_AllocName (cl_max_edicts * sizeof(cl_slot_t), "cl_slots");
 	cl_entslot[0] = 1;
 	cl_numslots = 1;
 #else
 	cl_entities = Hunk_AllocName (cl_max_edicts * sizeof(entity_t), "cl_ents");
 #endif
 	memset (cl_dlights, 0, sizeof(cl_dlights));
+#ifdef QOG_LIGHTSTYLE_ZONE
+	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)	// QuakeOG (Agent S): the texts are in the zone
+		if (cl_lightstyle[i].map)
+			Z_Free (cl_lightstyle[i].map);
+#endif
 	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
+#ifdef QOG_TEMPENT_BLOCK
+	memset (cl_tempblocks, 0, sizeof(cl_tempblocks));	// QuakeOG: the last level's hunk is gone
+#else
 	memset (cl_temp_entities, 0, sizeof(cl_temp_entities));
+#endif
 	memset (cl_beams, 0, sizeof(cl_beams));
 
 //
@@ -142,11 +166,23 @@ entity_t *CL_EntitySlot (int num)
 	if (num < 0 || num >= cl_max_edicts)
 		Host_Error ("CL_EntitySlot: %i is an invalid number", num);
 	if (cl_entslot[num])
-		return &cl_entities[cl_entslot[num] - 1];
-	if (cl_numslots >= QOG_CL_ENTSLOTS || cl_numslots >= 255)
+		return CL_SLOTENT (cl_entslot[num] - 1);
+	if (cl_numslots >= QOG_CL_ENTSLOTS || cl_numslots >= CL_MAXSLOTS)
 		Host_Error ("CL_EntitySlot: more than %i entities in use", cl_numslots);
-	ent = &cl_entities[cl_numslots++];		// zeroed by the hunk
+#ifdef QOG_CL_ENTBLOCK
+	if (!(cl_numslots % QOG_CL_ENTBLOCK))	// QuakeOG (Agent S): a new block, zeroed by the hunk
+		cl_entblocks[cl_numslots / QOG_CL_ENTBLOCK] =
+			Hunk_AllocName (QOG_CL_ENTBLOCK * sizeof(entity_t), "cl_ents");
+#endif
+	ent = CL_SLOTENT (cl_numslots);			// zeroed by the hunk
+	cl_numslots++;
 	cl_entslot[num] = cl_numslots;
+#ifdef QOG_CL_PEAKS
+	if (cl_numslots > cl_qog_peakslots)
+		cl_qog_peakslots = cl_numslots;
+	if (num > cl_qog_peaknum)
+		cl_qog_peaknum = num;
+#endif
 	if (num < cl.num_entities)
 		ent->colormap = vid.colormap;		// as CL_EntityNum set it
 	return ent;
@@ -358,7 +394,14 @@ Called to play the next demo in the demo loop
 */
 void CL_NextDemo (void)
 {
+#ifdef QOG_NEXTDEMO_STR
+	// QuakeOG (Agent S): "playdemo " and a name of at most MAX_DEMONAME - 1
+	// characters (Host_Startdemos_f) need 26 bytes, the 1 KB was under the
+	// loading plaque's whole render on the stack
+	char	str[16 + MAX_DEMONAME];
+#else
 	char	str[1024];
+#endif
 
 	if (cls.demonum == -1)
 		return;		// don't play demos

@@ -113,7 +113,7 @@ void R_DrawCulledPolys (void)
 
 			if (!(s->flags & SURF_DRAWBACKGROUND))
 			{
-				pface = (msurface_t *)s->data;
+				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG: SURF_DATA
 				R_RenderPoly (pface, 15);
 			}
 		}
@@ -127,7 +127,7 @@ void R_DrawCulledPolys (void)
 
 			if (!(s->flags & SURF_DRAWBACKGROUND))
 			{
-				pface = (msurface_t *)s->data;
+				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG: SURF_DATA
 				R_RenderPoly (pface, 15);
 			}
 		}
@@ -162,7 +162,7 @@ void R_BeginEdgeFrame (void)
 	else
 	{
 		pdrawfunc = R_GenerateSpans;
-		surfaces[1].key = 0x7FFFFFFF;
+		surfaces[1].key = SURF_KEY_BACK;	// QuakeOG: 0x7FFFFFFF, or 0xFFFF for 16-bit keys
 		r_currentkey = 0;
 	}
 
@@ -703,6 +703,9 @@ z-buffer: the last flush writes every z row while it still reads them.
 #endif
 
 int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;	// measurements
+#ifdef QOG_CL_PEAKS
+int		r_qog_zstackedges;	// QuakeOG (Agent S): measurement, R_QogEdgesToStack
+#endif
 
 static byte		*r_qog_edgeend;		// end of the edge table
 static espan_t	*r_qog_basespan;	// the span buffer
@@ -973,6 +976,28 @@ static QOG_NOINLINE void R_QogEdgesToStack (int iv, int bottom)
 
 	r_qog_zstack++;
 	n = R_QogMarkEdges (iv, bottom);
+#ifdef QOG_CL_PEAKS
+	{	// QuakeOG (Agent S): measurement only, the most edges a fallback moved
+		extern int	r_qog_zstackedges;
+		if (n > r_qog_zstackedges)
+			r_qog_zstackedges = n;
+	}
+#endif
+#ifdef QOG_ZEDGE_STACK_GUARD
+	// QuakeOG (Agent S): a board stack is not sized for this table (the
+	// port's qog_stack_bottom is its lowest byte), so stop with an error
+	// rather than write past the stack
+	if (!auxedges)
+	{
+		extern byte	*qog_stack_bottom;
+		byte		here;
+		int			left = &here - qog_stack_bottom;
+
+		if (n * (int)sizeof(edge_t) + QOG_ZEDGE_STACK_GUARD > left)
+			Sys_Error ("R_QogEdgesToStack: %d edges need %d bytes, the stack has %d",
+				n, n * (int)sizeof(edge_t), left);
+	}
+#endif
 	if (auxedges)
 		dst = auxedges;
 	else
