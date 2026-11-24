@@ -4,7 +4,7 @@ Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
 ## 2026-11-24: Episode 1 on the board, the new flash map, the server stack and the edge fallback (Agent AC, PC and ARM build, registered data)
 
-Start and all of episode 1 now fit both chips, with sound. The display's data moved from 0x10400000 to 0x10100000 and main's from 0x10300000 to 0x10200000 (Agent Y's proposal), the server's stack went from 35 to 21 KB after measuring its deepest chain in board bytes, which gives the server hunk 174 KB (160 before), and the one-byte z-buffer's edge fallback draws one view without z instead of stopping the game. Nothing ran on hardware. Merged with main 34e03d2 (Agents Z and AD) before the final numbers.
+Start and all of episode 1 now fit both chips, with sound. The display's data moved from 0x10400000 to 0x10100000 and main's from 0x10300000 to 0x10200000 (Agent Y's proposal), the server's stack went from 35 to 21 KB after measuring its deepest chain in board bytes, which gives the server hunk 174 KB (160 before), and the one-byte z-buffer's edge fallback draws one view without z instead of stopping the game. Nothing ran on hardware. Merged with main 34e03d2 (Agents Z and AD) before the final numbers, and with c42be89 (the save volume format, the full view) for the last board link and hashes.
 
 Flash map (platform/qog_flashmap.h, the one source: tools/mkdata.py reads it, mkboard and mkpak use mkdata's values, check_app_size.py reads it, the PC maps its packs at `QOG_DATA_XIP_ADDR`):
 
@@ -42,6 +42,7 @@ The static chain (tools/stack_chain.py) cuts recursion, so the PC now measures t
 
 - `SV_PushMove` held two lists of 600 entries on its frame, 9,768 B. `QOG_PUSHMOVE_ALLOCA` (engine/sv_phys.c, both flag lists, exact) takes them from the stack for `sv.max_edicts` entries: the loop adds at most one entry per edict below `sv.num_edicts`, which never passes `sv.max_edicts` even when QuakeC spawns during the loop. The most in episode 1 is e1m3, 416 edicts, 6,656 B. Same moves: the state hashes below are unchanged.
 - The recursion the measurement found is bounded by the map: `tools/hull_depth.py` reads the depth of each hull's tree. Episode 1's deepest is hull 0 (points) of e1m3, 85 levels, then e1m4 71. The worst chain I can construct is a point entity (a grenade) pushed by a plat on e1m3's deepest leaf: 752 B down to the clip, the lists 6,656 B, 86 levels at 104 B, about 16.4 KB, and an error path through a QuakeC runtime error in a blocked function (`PR_RunError` > `Host_Error` > `Con_Printf` 4,120 B) about 16.1 KB. Neither ran in any test.
+- The lead's format of a missing save volume (main c42be89) puts a 4 KB work buffer on this stack in `fat_ready` (4,128 B frame), reached from a save at about 2 KB deep, so about 6.5 KB plus FatFs, far below the deepest chain.
 - 21 KB is 21,504 B: 10.3 KB above the measured worst (10,984 B plus up to 0.5 KB of newlib that the PC does not see), and 5.1 KB above the constructed bound, so at least 4 KB of margin either way. The mixer needs 1,816 B above its 6,144 B of paint buffer and ring at the bottom of the stack (7,960 B). Main's `stack free` on COM7 shows what the board uses.
 
 Server hunk (`QOG_SV_HUNK_KB` 160 to 174, the 14 KB the stack gave). Smallest `-heapsize` of the server half that runs `qogtest_y_mem_<map>.cfg` from the episode 1 images, sound on for both halves (the split pair never opens an audio device, the client's output is snd_link_pc.c's counter), against Agent Y's numbers without sound:
@@ -94,7 +95,7 @@ Board link (`cmake --preset target -B build-ac/arm` with the configure line in d
 | | `end` | Free beside the 2 KB heap reserve |
 | --- | --- | ---: |
 | quake_display | 0x2003f7e8, the same as main 34e03d2 | 24 B |
-| quake_main (hunk 174 KB, stack 21 KB) | 0x2003f51c, the same as with 160 and 35 | 740 B |
+| quake_main (hunk 174 KB, stack 21 KB) | 0x2003f520 after merging main c42be89, 0x2003f51c before it, the same as with 160 and 35 | 736 B |
 
 Files: platform/qog_flashmap.h, tools/mkdata.py, tools/mkboard.py, tools/check_app_size.py, tools/stack_chain.py (`--su-table`), tools/hull_depth.py (new), tools/tests/test_mkdata.py, port/pc/sys_pc.c, port/pc/stackprobe_pc.c (new), port/pc/vid_pc.c (`-zedgeshots`, compare shots, exit counts), port/rp2040/sys_rp2040.c (FAT check), port/rp2040/link_rp2040.c (diag), engine/sv_phys.c, engine/r_edge.c, engine/view.c (compare mode only), engine/r_local.h (one extern), pc/CMakeLists.txt, apps/quake/CMakeLists.txt, apps/qogbench/display/main.c (the data address), README.md. Shared with Agent Z: none of r_bsp.c, r_draw.c, r_main.c, d_scanlit.c. r_edge.c and view.c are touched in their own blocks.
 
