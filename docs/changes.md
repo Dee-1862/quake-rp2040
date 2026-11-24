@@ -80,6 +80,96 @@ Not done, for later:
 - D_CalcGradients (grad 2.4 ms, shared with Agent AH) can take the same three rows as the face gradients in Fast mode, about 26 float operations a surface instead of about 70. Its two `+ 0.5` in double can be made exact in float (below 2^23 the float add is exact, above it the value is an integer and only the sign decides).
 - D_DrawSurfaces rotates and restores a brush entity's frame for each of its surfaces, two R_TransformFrustum calls each, which consecutive surfaces of one entity could share (Agent AH's file).
 - The world's vertex positions converted once per frame into the cache entries would save the three conversions of each repeated distance.
+## 2026-11-24: Episodes 2 and 3 on the board, the boot level from the data image, missing levels, the load buffer off the server hunk (Agent AG, PC and ARM build, registered data)
+
+One board app now runs any episode's data image: mkboard writes the level to start in into the image and the board client starts there. Episodes 2 and 3 with start fit both chips, a level exit or a save of a level the image does not hold no longer stops the game, and every level of episodes 1 to 3 runs in the server's 174 KB hunk with sound after one exact cut (the load's line buffer moved from the hunk to the stack). Nothing ran on hardware. Merged with main f484aef before the last builds and hashes.
+
+Boot level (`QOG_BOOT_ENTRY`, engine/common.c COM_BootMap, engine/host_cmd.c `qog_boot`, port/rp2040/sys_rp2040.c):
+- `mkboard.py --boot-map NAME` writes `qogboot.txt` (the name and a newline) into the display's pak and main's, just before the maps. The default is start when `--maps` has it, else the first of `--maps`.
+- With `QOG_BOARD_BOOT` (on by default) the board client's command line is `+qog_boot` instead of `+map e1m1`, at the same place in quake.rc's `stuffcmds`. `qog_boot` reads qogboot.txt and runs `map <name>`. Without the file, or when it names a level the packs do not hold, e1m1, then the first level in the packs. An image written before (episode 1 today) has no file and still starts in e1m1. `QOG_BOARD_MAP` is used only with `QOG_BOARD_BOOT` off.
+- `qog_boot` gives the same state hash as `map start` on the episode 2 image (7eb8d446d9d4), as `map e2m1` on an episode 2 image without start (4e4a5499b252), and as `map e1m1` on the full paks, split pair and single process (d7cea7e1b394).
+
+Missing levels (`QOG_MISSING_MAPS`, engine/host_cmd.c):
+- Every episode exits to start: e1m7, e2m6 and e3m6 (`tools/level_exits.py`, new). e2m7 and e3m7 are the secret levels and lead back to e2m4 and e3m5. start's gates lead to e1m1, e2m1, e3m1, e4m1 and end.
+- A changelevel to a level the image does not hold used to stop the game: SV_SpawnServer sends the reconnect, then finds no level, and the client waits under the loading plaque. Host_Changelevel_f now checks first. If the level is missing it goes to the boot level with a new player's parms (SetNewParms, what id's start does to a player who finished an episode), keeping serverflags. A level that exists changes nothing (`qogtest_ad_chg.cfg` 7195dbe28396 on the full paks and on the episode 1 image).
+- Tested: on an episode 2 image without start, e2m6 then `changelevel start` goes to e2m1, and its globals hashes equal a fresh `map e2m1` after the same frames (4631f97e, c609267c). On the episode 2 image, start then `changelevel e1m1` goes back to start.
+- A save of a level the image does not hold (main's save volume outlives the episode image) is not loaded: Host_Loadgame_f checks the level before anything is stopped, the skill stays, the client takes the loading plaque down (`qog_loadfailed`, a new client command) and shows "That save's level is not in this data image". The state hash equals the same run without the load (35177481434b).
+
+Server hunk, the cut (`QOG_LOADGAME_STACKBUF`, board server list only, exact):
+Host_Loadgame_f took its 8 KB line buffer (`QOG_LOADGAME_STRSIZE`) from the high hunk after the level had loaded, so every load needed the level plus 8 KB, and that was the server's peak on every level. The buffer now lives on the stack in a frame of its own (Host_LoadgameStack, 8,224 B), taken after SV_SpawnServer and its physics frames have returned. The parsing is id's code moved into Host_LoadgameEdicts, every other build keeps its buffer. Smallest `-heapsize` of the server half for `qogtest_y_mem_<map>.cfg` (fight, save, load) from the images with start, sound on for both halves (the split pair never opens an audio device), KB:
+
+| Map | Before | After | | Map | Before | After | | Map | Before (AC) | After |
+| --- | ---: | ---: | --- | --- | ---: | ---: | --- | --- | ---: | ---: |
+| e2m1 | 146 | 138 | | e3m1 | 146 | 138 | | e1m1 | 117 | 111 |
+| e2m2 | 125 | 118 | | e3m2 | 130 | 122 | | e1m2 | 144 | 137 |
+| e2m3 | 137 | 129 | | e3m3 | 135 | 127 | | e1m3 | 171 | 163 |
+| e2m4 | 156 | 148 | | e3m4 | 162 | 154 | | e1m4 | 161 | 153 |
+| e2m5 | 145 | 137 | | e3m5 | 155 | 147 | | e1m5 | 160 | 152 |
+| e2m6 | 167 | 159 | | e3m6 | 167 | 159 | | e1m6 | 146 | 138 |
+| e2m7 | 179 | 172 | | e3m7 | 127 | 119 | | e1m7 | 93 | 90 |
+| start | 96 | 92 | | | | | | e1m8 | 121 | 113 |
+
+e2m7 (the secret level, 438 edicts of 208 bytes, 91 KB) is the worst at 172 KB, 2 KB below 174. At 174 KB for the server and 75 KB for the client, with sound, every script of episodes 1, 2 and 3 runs, and the whole fight tours of start to e2m7 and of start to e3m7 run to the end.
+
+Server stack (QOG_SV_STACKPROBE, frames from this build's .su files, board bytes):
+
+| Run | Deepest | Chain |
+| --- | ---: | --- |
+| scripts before the cut, episodes 2 and 3 | 6,920 to 10,216 (e2m2) | the pusher lists and the hull recursion |
+| scripts after the cut, episodes 1 to 3 | 9,504 to 10,600 (e3m5) | Host_LoadgameStack 8,224 B, then SV_LinkEdict and 52 levels of SV_FindTouchedLeafs |
+| fight tour start to e2m7 | 12,752 | SV_PushMove with e2m7's lists (7,008 B), 48 levels of SV_RecursiveHullCheck |
+| fight tour start to e3m7 | 13,280 | SV_SetIdealPitch's trace, 111 levels of SV_RecursiveHullCheck (e3m5) |
+| deepest that runs the mixer | 1,816 | unchanged |
+
+21 KB is 21,504 B, 8.2 KB above the measured worst. Hull depths (`tools/hull_depth.py`): e3m5's hull 0 is 110 levels deep (e1m3 85, e2m2 87). AC's constructed worst, a point entity pushed by a plat on the deepest leaf, is 752 + 16 x max_edicts + (depth + 1) x 104 B: e3m5 (361 edicts) 18,072 B, 3.4 KB below 21 KB (e1m3 16,352, e2m7 14,520). The load chain's own bound, with FindTouchedLeafs as deep as the tree, is about 12.5 KB on e3m5. Neither construct ran in a test.
+
+Images (`mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests <manifests of every level> --maps start e<N>m1 ... e<N>m7 --stub-maps --main --display-no-sounds --display-no-progs`, start included, boot level start):
+
+| Image | Display | Region | Main | Region |
+| --- | ---: | --- | ---: | --- |
+| episode 2 with start | 14,654,720 B (13.98 MB) | 93.6% of 14.94 MB | 6,262,784 B (5.97 MB) | 99.5% of 6 MB, 28 KB spare |
+| episode 2 without start | 13,411,632 B (12.79 MB) | 85.6% | 5,914,624 B (5.64 MB) | 94.0% |
+| episode 3 with start | 13,812,656 B (13.17 MB) | 88.2% | 6,246,400 B (5.96 MB) | 99.3%, 44 KB spare |
+| episode 3 without start | 12,534,208 B (11.95 MB) | 80.0% | 5,902,336 B (5.63 MB) | 93.8% |
+
+start costs 1.19 MB of display data and 0.33 MB of main data and fits both, so both images keep it: the player picks the skill in start's hall and walks into the episode's gate. start's other gates lead to levels the image does not hold and bring the player back to start. The 6-byte qogboot.txt moved nothing across a 64 KB boundary (Agent Y's sizes are the same to the byte).
+
+Demos and the Benchmark (Agent AF's menu line runs `timedemo demo3`): demo1, demo2 and demo3 play e1m3, e1m4 and e1m6. With `--demos` the images still fit (episode 2 display 15,179,008 B, 14.48 MB, 96.9%, episode 3 14,336,944 B, 13.67 MB, 91.5%, main unchanged), but on the PC pair the Benchmark on such an image loads demo3, finds no e1m6 ("Model maps/e1m6.bsp not found") and the game ends. Without the demos the menu says "demo3.dem is not in the game data" and the game goes on, so the images for the board leave them out. e1m6 does not fit either image as well (main has 28 and 44 KB to spare).
+
+Agent AI's stop at e2m3 (its L113): the board-flag split pair's server half crashes loading e2m3 when the data folder has no qogbake.bin. e2m3's texture 46 is missing from the BSP, id points such a texinfo at r_notexture_mip, and the server half's r_notexture_mip is a NULL stub (port/common/qog_split_sv.c), so Mod_LoadFaces reads `texture->name` through NULL (Q_strncmp, found with a /MAP build). With a baked image the server never parses faces: every pair run from the images or from a data folder with qogbake.bin loads e2m3 (Agent AI's own reference build gives all 113 qogtest_d_shots frames on this branch's data folder). The board always runs from its baked image, so the board is not affected. Bake the data folder (`qog_bake`) before running the pair, or give the server half a texture to point at (not done).
+
+Tests (hidden, `+_cl_color 0`, own build folders `build-ag`, own git-ignored data folder, link ports 27661 to 27670, one run at a time):
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc, default pair, board-flag pair, `-nosound` | ce86f894f9de, ce86f894f9de, ce86f894f9de |
+| `qogtest_f_hash` quakeog_pc, `qogtest_r_fhash` default and board-flag pairs | e92bc9e9650d, e92bc9e9650d, e92bc9e9650d |
+| 121 shot frames (113 of `qogtest_d_shots` after `qogtest_k_quiet`, 8 of `qogtest_f_hash`) against an untouched build of main f484aef | 121 of 121 byte identical |
+| `qogtest_j_ep1.cfg` board-flag pair, full paks and the episode 1 image | 9 hashes d4361b206cac, the same |
+| `qogtest_ag_j_ep2.cfg` (start, e2m1 to e2m7, a hash and shots per level), full paks and the episode 2 image | 8 hashes 202904569395, the same |
+| `qogtest_ag_j_ep3.cfg`, full paks and the episode 3 image | 8 hashes 7b5ac000f4fe, the same |
+| `qogtest_y_mem_<map>` start, e1m1 to e1m8, e2m1 to e2m7, e3m1 to e3m7, images, sound, 174 and 75 KB | all run |
+| fight tours start to e2m7 and start to e3m7, images, sound, 174 and 75 KB | both run to the end (built before the last merge with main, which did not touch the server half) |
+| boot level, episode end, gate, missing save | above |
+| tools/tests | 15 tests pass |
+
+Board link (`cmake -B build-ag/arm --preset target` with the full configure line of docs/handoff.md):
+
+| | at main 4a787a9 plus this branch | after merging main f484aef |
+| --- | --- | --- |
+| quake_display `end` | 0x2003f7f0, unchanged | 0x2003ea84 (main's own changes) |
+| quake_main `end` | 0x2003f520, unchanged | 0x2003f544 |
+
+quake_display.bin 375,360 B, quake_main.bin 1,317,732 B after the merge. The two client commands take 24 bytes of the client hunk, no static RAM.
+
+Install: `tools/install_episode.ps1 -Episode 2` (new, never run here) does the lead's three steps for one episode with retries, and stops whenever two RPI-RP2 drives are mounted (docs/handoff.md).
+
+Files: engine/common.c, engine/common.h, engine/host_cmd.c, port/rp2040/sys_rp2040.c (the argv), apps/quake/CMakeLists.txt, pc/CMakeLists.txt, tools/mkboard.py, tools/install_episode.ps1 (new), tools/level_exits.py (new). Not menu.c.
+
+For the user:
+- e2m7 has 2 KB of server hunk to spare at 174 KB. More would need either fewer spare edicts (`QOG_EDICT_MARGIN_BOARD` 64, 208 B each, a behaviour change) or edicts taken in blocks as the level uses them (exact, e2m7 never uses 85 of its 438, about 17 KB, not done). Moving a KB from the stack to the hunk would leave e3m5's constructed bound 2.4 KB of margin.
+- The episode end without start: the player goes to the episode's first level with a new player's items (as id's start resets them). Keeping the items is a one-line change.
+- Both images start in start. `--boot-map e2m1` makes an image start in the episode's first level instead.
 
 ## 2026-11-24: Fast spans without float work per span, interpolator pixels, a smaller console, and what the XIP cache really misses (Agent AH, PC and ARM build, registered data)
 

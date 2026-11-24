@@ -192,6 +192,10 @@ int COM_ForEachMap (void (*fn) (const char *name, int len, int n, void *ctx), vo
 #endif
 // QuakeOG: true if the search path holds path, nothing opened or printed
 qboolean COM_HasFile (char *path);
+#if defined(QOG_BOOT_ENTRY) || defined(QOG_MISSING_MAPS)
+// QuakeOG (Agent AG): the data image's start level (qogboot.txt, else e1m1)
+void COM_BootMap (char *out);
+#endif
 // QuakeOG: called with every file found in a pack when set (asset manifests)
 extern void (*com_fileopened) (char *path);
 void COM_LoadCacheFile (char *path, struct cache_user_s *cu);

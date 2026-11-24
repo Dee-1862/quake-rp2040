@@ -2095,6 +2095,73 @@ qboolean COM_HasFile (char *path)
 	return false;
 }
 
+#if defined(QOG_BOOT_ENTRY) || defined(QOG_MISSING_MAPS)
+/*
+============
+COM_BootMap
+
+QuakeOG (Agent AG): the level the data image starts in. tools/mkboard.py
+writes its name into the pack as qogboot.txt (the episode's first level,
+or start when the image holds it), so one board app runs any episode's
+image. Without that file, or when it names a level the packs do not hold,
+e1m1, and failing that the first level in the packs. out gets at most
+MAX_QPATH bytes, and stays empty only when the packs hold no level.
+============
+*/
+static qboolean COM_BootMapOk (char *name)
+{
+	int		len = Q_strlen (name);
+
+	return len > 0 && len < MAX_QPATH - 10 && COM_HasFile (va ("maps/%s.bsp", name));
+}
+
+void COM_BootMap (char *out)
+{
+	char			text[32];
+	int				h, len, i;
+	searchpath_t	*search;
+	char			*name;
+
+	out[0] = 0;
+	len = COM_OpenFile ("qogboot.txt", &h);
+	if (h != -1)
+	{
+		if (len > (int)sizeof(text) - 1)
+			len = sizeof(text) - 1;
+		Sys_FileRead (h, text, len);
+		COM_CloseFile (h);
+		text[len] = 0;
+		COM_Parse (text);
+		if (COM_BootMapOk (com_token))
+		{
+			Q_strcpy (out, com_token);
+			return;
+		}
+	}
+	if (COM_BootMapOk ("e1m1"))
+	{
+		Q_strcpy (out, "e1m1");
+		return;
+	}
+	for (search = com_searchpaths ; search ; search = search->next)
+	{
+		if (!search->pack)
+			continue;
+		for (i=0 ; i<search->pack->numfiles ; i++)
+		{
+			name = Pak_Name (search->pack, i);
+			len = Q_strlen (name);
+			if (Q_strncmp (name, "maps/", 5) || !Q_strncmp (name + 5, "b_", 2)
+				|| len <= 9 || len - 9 >= MAX_QPATH - 10 || Q_strcmp (name + len - 4, ".bsp"))
+				continue;
+			Q_memcpy (out, name + 5, len - 9);
+			out[len - 9] = 0;
+			return;
+		}
+	}
+}
+#endif
+
 
 /*
 ================

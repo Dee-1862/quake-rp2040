@@ -673,7 +673,12 @@ static void __attribute__((noreturn)) game_main(void) {
 #else
 int main(void) {
 #endif
-#ifdef QOG_BOARD_MAP
+#if defined(QOG_BOARD_BOOT)
+    /* QuakeOG (Agent AG): the level to start in comes from the data image
+       (qog_boot, engine/host_cmd.c: the qogboot.txt mkboard writes, else
+       e1m1), so one app starts any episode's image. */
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG "+qog_boot" };
+#elif defined(QOG_BOARD_MAP)
     /* QuakeOG: the board has no keyboard to type "map" at the console, so a
        board build can name the level to start in (apps/quake QOG_BOARD_MAP). */
     static char *argv[] = { "quake", QOG_SYS_SOUNDARG "+map", QOG_BOARD_MAP };

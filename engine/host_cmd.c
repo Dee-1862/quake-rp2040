@@ -340,6 +340,101 @@ void Host_Map_f (void)
 #endif	// QOG_SPLIT_CLIENT
 }
 
+#if defined(QOG_BOOT_ENTRY) && !defined(QOG_SPLIT_SERVER)
+/*
+==================
+Host_QogBoot_f
+
+QuakeOG (Agent AG): "qog_boot" starts the level the data image names
+(COM_BootMap: qogboot.txt, else e1m1), so one board app starts any
+episode's image. The board's command line runs it where it ran "map e1m1".
+==================
+*/
+void Host_QogBoot_f (void)
+{
+	char	name[MAX_QPATH];
+
+	COM_BootMap (name);
+	if (!name[0])
+	{
+		Con_Printf ("qog_boot: the data image holds no level\n");
+		return;
+	}
+	Cbuf_InsertText (va ("map %s\n", name));
+}
+#endif
+
+#if defined(QOG_MISSING_MAPS) && defined(QOG_SPLIT_CLIENT)
+/*
+==================
+Host_QogLoadFailed_f
+
+QuakeOG (Agent AG): the server half did not load a save, its level is not
+in the data image. The menu put up the loading plaque before "load", so
+take it down now (id would wait 60 s) and say why. The level goes on.
+==================
+*/
+void Host_QogLoadFailed_f (void)
+{
+	SCR_EndLoadingPlaque ();
+	SCR_CenterPrint ("That save's level is not\nin this data image\n");
+}
+#endif
+
+#if defined(QOG_MISSING_MAPS) && !defined(QOG_SPLIT_CLIENT)
+/*
+==================
+Host_QogNewSpawnparms
+
+QuakeOG (Agent AG): SV_SaveSpawnparms with the parms of a new player
+(SetNewParms), what id's start gives a player who finished an episode.
+==================
+*/
+static void Host_QogNewSpawnparms (void)
+{
+	int		i, j;
+
+	svs.serverflags = pr_global_struct->serverflags;
+	for (i=0, host_client = svs.clients ; i<svs.maxclients ; i++, host_client++)
+	{
+		if (!host_client->active)
+			continue;
+		pr_global_struct->self = EDICT_TO_PROG(host_client->edict);
+		PR_ExecuteProgram (pr_global_struct->SetNewParms);
+		for (j=0 ; j<NUM_SPAWN_PARMS ; j++)
+			host_client->spawn_parms[j] = (&pr_global_struct->parm1)[j];
+	}
+}
+
+/*
+==================
+Host_QogMissingLevel
+
+QuakeOG (Agent AG): a board data image holds one episode. A level exit to
+a level it does not hold (start after the episode's last level, a gate of
+start to another episode, a secret level left out) would leave the server
+without a level and the client waiting. It goes to the image's own start
+level instead (COM_BootMap), with a new player's items, as id's start
+does after an episode. Returns false when name is in the packs: then
+nothing changes.
+==================
+*/
+static qboolean Host_QogMissingLevel (char *name)
+{
+	char	level[MAX_QPATH];
+
+	if (Q_strlen (name) < MAX_QPATH - 10 && COM_HasFile (va ("maps/%s.bsp", name)))
+		return false;
+	COM_BootMap (level);
+	Con_Printf ("changelevel: %s is not in the data image, going to %s\n", name, level[0] ? level : "no level");
+	if (!level[0])
+		return true;
+	Host_QogNewSpawnparms ();
+	SV_SpawnServer (level);
+	return true;
+}
+#endif
+
 /*
 ==================
 Host_Changelevel_f
@@ -390,6 +485,10 @@ void Host_Changelevel_f (void)
 		Con_Printf ("Only the server may changelevel\n");
 		return;
 	}
+#ifdef QOG_MISSING_MAPS
+	if (Host_QogMissingLevel (Cmd_Argv(1)))
+		return;
+#endif
 	SV_SaveSpawnparms ();
 	strcpy (level, Cmd_Argv(1));
 	SV_SpawnServer (level);
@@ -666,103 +765,20 @@ extern int	r_ztemp_bytes;
 #define LOADGAME_ALLOC()	((char *)Hunk_HighAllocName (LOADGAME_STRSIZE, "loadgame"))
 #endif
 
-void Host_Loadgame_f (void)
+/*
+===============
+Host_LoadgameEdicts
+
+QuakeOG: the light styles, the globals and the edicts of a save, read with
+the line buffer str (id's code from Host_Loadgame_f). Returns the edicts.
+===============
+*/
+static int Host_LoadgameEdicts (FILE *f, char *str)
 {
-	char	name[MAX_OSPATH];
-	FILE	*f;
-	char	mapname[MAX_QPATH];
-	float	time, tfloat;
-	char	*str, *start;	// QuakeOG: str was a stack array
-	int		himark;
+	char	*start;
 	int		i, r;
 	edict_t	*ent;
 	int		entnum;
-	int		version;
-	float			spawn_parms[NUM_SPAWN_PARMS];
-
-	if (cmd_source != src_command)
-		return;
-
-	if (Cmd_Argc() != 2)
-	{
-		Con_Printf ("load <savename> : load a game\n");
-		return;
-	}
-
-#ifndef QOG_SPLIT_SERVER
-	cls.demonum = -1;		// stop demo loop in case this fails
-#endif
-
-	sprintf (name, "%s/%s", com_gamedir, Cmd_Argv(1));
-	COM_DefaultExtension (name, ".sav");
-	
-// we can't call SCR_BeginLoadingPlaque, because too much stack space has
-// been used.  The menu calls it before stuffing loadgame command
-//	SCR_BeginLoadingPlaque ();
-
-	Con_Printf ("Loading game from %s...\n", name);
-	f = fopen (name, "r");
-	if (!f)
-	{
-		Con_Printf ("ERROR: couldn't open.\n");
-		return;
-	}
-
-	fscanf (f, "%i\n", &version);
-	if (version != SAVEGAME_VERSION)
-	{
-		fclose (f);
-		Con_Printf ("Savegame is version %i, not %i\n", version, SAVEGAME_VERSION);
-		return;
-	}
-	himark = Hunk_HighMark ();	// QuakeOG: buffer for the comment line
-	str = LOADGAME_ALLOC ();
-	if (!str)
-		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
-	fscanf (f, "%s\n", str);
-	Hunk_FreeToHighMark (himark);	// QuakeOG: free while the map loads
-	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
-		fscanf (f, "%f\n", &spawn_parms[i]);
-// this silliness is so we can load 1.06 save files, which have float skill values
-	fscanf (f, "%f\n", &tfloat);
-	current_skill = (int)(tfloat + 0.1);
-	Cvar_SetValue ("skill", (float)current_skill);
-
-#ifdef QUAKE2
-	Cvar_SetValue ("deathmatch", 0);
-	Cvar_SetValue ("coop", 0);
-	Cvar_SetValue ("teamplay", 0);
-#endif
-
-	fscanf (f, "%s\n",mapname);
-	fscanf (f, "%f\n",&time);
-
-#ifdef QOG_SPLIT_SERVER
-	// QuakeOG: CL_Disconnect_f, the client's part on the client, the
-	// server's part (it closes the connection and stops this server) here
-	Link_ServerClientExec ("disconnect");
-	Link_ServerPeerClosed ();
-#else
-	CL_Disconnect_f ();
-#endif
-	
-#ifdef QUAKE2
-	SV_SpawnServer (mapname, NULL);
-#else
-	SV_SpawnServer (mapname);
-#endif
-	if (!sv.active)
-	{
-		Con_Printf ("Couldn't load map\n");
-		return;
-	}
-	sv.paused = true;		// pause until all clients connect
-	sv.loadgame = true;
-
-	himark = Hunk_HighMark ();	// QuakeOG: buffer for the rest of the file
-	str = LOADGAME_ALLOC ();
-	if (!str)
-		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
 
 // load the light styles
 
@@ -823,11 +839,167 @@ void Host_Loadgame_f (void)
 		entnum++;
 	}
 	
+	return entnum;
+}
+
+#ifdef QOG_LOADGAME_STACKBUF
+/*
+===============
+Host_LoadgameStack
+
+QuakeOG (Agent AG): the line buffer on the stack of a frame of its own,
+taken once the map has spawned, not on the high hunk under the loaded
+level: a load needed the level's hunk plus the 8 KB buffer, which was the
+server's peak (e2m7 with sound 179 KB of the board's 174). The deep chains
+of the load (SV_SpawnServer, its physics frames) have returned by then.
+===============
+*/
+#if defined(_MSC_VER)
+#define QOG_NOINLINE_LG	__declspec(noinline)
+#else
+#define QOG_NOINLINE_LG	__attribute__((noinline))
+#endif
+static QOG_NOINLINE_LG int Host_LoadgameStack (FILE *f)
+{
+	char	str[LOADGAME_STRSIZE];
+
+	return Host_LoadgameEdicts (f, str);
+}
+#endif
+
+void Host_Loadgame_f (void)
+{
+	char	name[MAX_OSPATH];
+	FILE	*f;
+	char	mapname[MAX_QPATH];
+	float	time, tfloat;
+	char	*str, *start;	// QuakeOG: str was a stack array
+	int		himark;
+	int		i, r;
+	edict_t	*ent;
+	int		entnum;
+	int		version;
+	float			spawn_parms[NUM_SPAWN_PARMS];
+
+	if (cmd_source != src_command)
+		return;
+
+	if (Cmd_Argc() != 2)
+	{
+		Con_Printf ("load <savename> : load a game\n");
+		return;
+	}
+
+#ifndef QOG_SPLIT_SERVER
+	cls.demonum = -1;		// stop demo loop in case this fails
+#endif
+
+	sprintf (name, "%s/%s", com_gamedir, Cmd_Argv(1));
+	COM_DefaultExtension (name, ".sav");
+	
+// we can't call SCR_BeginLoadingPlaque, because too much stack space has
+// been used.  The menu calls it before stuffing loadgame command
+//	SCR_BeginLoadingPlaque ();
+
+	Con_Printf ("Loading game from %s...\n", name);
+	f = fopen (name, "r");
+	if (!f)
+	{
+		Con_Printf ("ERROR: couldn't open.\n");
+		return;
+	}
+
+	fscanf (f, "%i\n", &version);
+	if (version != SAVEGAME_VERSION)
+	{
+		fclose (f);
+		Con_Printf ("Savegame is version %i, not %i\n", version, SAVEGAME_VERSION);
+		return;
+	}
+	himark = Hunk_HighMark ();	// QuakeOG: buffer for the comment line
+	str = LOADGAME_ALLOC ();
+	if (!str)
+		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
+	fscanf (f, "%s\n", str);
+	Hunk_FreeToHighMark (himark);	// QuakeOG: free while the map loads
+	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
+		fscanf (f, "%f\n", &spawn_parms[i]);
+// this silliness is so we can load 1.06 save files, which have float skill values
+	fscanf (f, "%f\n", &tfloat);
+#ifndef QOG_MISSING_MAPS	// QuakeOG (Agent AG): set once the level is known to be here
+	current_skill = (int)(tfloat + 0.1);
+	Cvar_SetValue ("skill", (float)current_skill);
+#endif
+
+#ifdef QUAKE2
+	Cvar_SetValue ("deathmatch", 0);
+	Cvar_SetValue ("coop", 0);
+	Cvar_SetValue ("teamplay", 0);
+#endif
+
+	fscanf (f, "%s\n",mapname);
+	fscanf (f, "%f\n",&time);
+
+#ifdef QOG_MISSING_MAPS
+	// QuakeOG (Agent AG): the saves on main's volume outlive the episode
+	// image they were made with. A save of a level this image does not
+	// hold is not loaded and the game goes on as it was, before anything
+	// is stopped (SV_SpawnServer would leave no level and the client
+	// waiting under the loading plaque).
+	if (Q_strlen (mapname) >= MAX_QPATH - 10 || !COM_HasFile (va ("maps/%s.bsp", mapname)))
+	{
+		fclose (f);
+		Con_Printf ("%s is not in the data image, the save is not loaded\n", mapname);
+#ifdef QOG_SPLIT_SERVER
+		Link_ServerClientExec ("qog_loadfailed");
+#else
+		SCR_EndLoadingPlaque ();
+		SCR_CenterPrint ("That save's level is not\nin this data image\n");
+#endif
+		return;
+	}
+	current_skill = (int)(tfloat + 0.1);
+	Cvar_SetValue ("skill", (float)current_skill);
+#endif
+
+#ifdef QOG_SPLIT_SERVER
+	// QuakeOG: CL_Disconnect_f, the client's part on the client, the
+	// server's part (it closes the connection and stops this server) here
+	Link_ServerClientExec ("disconnect");
+	Link_ServerPeerClosed ();
+#else
+	CL_Disconnect_f ();
+#endif
+	
+#ifdef QUAKE2
+	SV_SpawnServer (mapname, NULL);
+#else
+	SV_SpawnServer (mapname);
+#endif
+	if (!sv.active)
+	{
+		Con_Printf ("Couldn't load map\n");
+		return;
+	}
+	sv.paused = true;		// pause until all clients connect
+	sv.loadgame = true;
+
+#ifdef QOG_LOADGAME_STACKBUF
+	entnum = Host_LoadgameStack (f);
+#else
+	himark = Hunk_HighMark ();	// QuakeOG: buffer for the rest of the file
+	str = LOADGAME_ALLOC ();
+	if (!str)
+		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
+	entnum = Host_LoadgameEdicts (f, str);
+#endif
 	sv.num_edicts = entnum;
 	sv.time = time;
 
 	fclose (f);
+#ifndef QOG_LOADGAME_STACKBUF
 	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the line buffer
+#endif
 
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		svs.clients->spawn_parms[i] = spawn_parms[i];
@@ -2101,6 +2273,12 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("demos", Host_Demos_f);
 	Cmd_AddCommand ("stopdemo", Host_Stopdemo_f);
 	Cmd_AddCommand ("mcache", Mod_Print);
+#ifdef QOG_BOOT_ENTRY
+	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG (Agent AG)
+#endif
+#ifdef QOG_MISSING_MAPS
+	Cmd_AddCommand ("qog_loadfailed", Host_QogLoadFailed_f);	// QuakeOG (Agent AG), sent by the server half
+#endif
 #elif defined(QOG_SPLIT_SERVER)
 	// QuakeOG: the server half's commands, the client's are on the client
 	Cmd_AddCommand ("status", Host_Status_f);
@@ -2173,5 +2351,8 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("viewprev", Host_Viewprev_f);
 
 	Cmd_AddCommand ("mcache", Mod_Print);
+#ifdef QOG_BOOT_ENTRY
+	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG (Agent AG)
+#endif
 #endif
 }
