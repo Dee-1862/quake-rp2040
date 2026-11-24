@@ -34,7 +34,11 @@ typedef struct
 
 typedef struct sfx_s
 {
+#ifdef QOG_SFX_NAMEPTR
+	char	*name;			// QuakeOG: the name in the mapped pack's directory, or a small pool (snd_dma.c)
+#else
 	char 	name[MAX_QPATH];
+#endif
 	cache_user_t	cache;
 } sfx_t;
 
@@ -121,6 +125,21 @@ qboolean SNDDMA_Init(void);
 // gets the current DMA position
 int SNDDMA_GetDMAPos(void);
 
+#ifdef QOG_SND_GETSAMPLES
+// QuakeOG: the samples played so far, never wrapping (id's __sun__ path in
+// GetSoundtime), for an output that counts them itself
+int SNDDMA_GetSamples(void);
+#endif
+
+#ifdef QOG_SND_HOST
+// QuakeOG (Agent W): the split game mixes on the server half for the client
+// half (engine/net_link.c). What id's mixer read from the client's state
+// comes with the client's sound calls instead.
+extern int		snd_viewentity;			// cl.viewentity
+extern int		snd_ambientstate;		// 0 no cl.worldmodel, 1 no leaf, 2 the leaf's levels below
+extern byte		snd_ambientlevels[4];	// the listener's leaf's ambient_sound_level
+#endif
+
 // shutdown the DMA xfer.
 void SNDDMA_Shutdown(void);
 
@@ -130,6 +149,12 @@ void SNDDMA_Shutdown(void);
 
 #define	MAX_CHANNELS			128
 #define	MAX_DYNAMIC_CHANNELS	8
+
+#ifdef QOG_SND_HASH
+// QuakeOG (Agent W): a hash of every painted sample pair and every byte or
+// word written to the DMA buffer, in time order (qog_sndhash), to compare mixers
+extern unsigned	qog_snd_painthash, qog_snd_paintcount, qog_snd_outhash, qog_snd_outcount;
+#endif
 
 
 #ifdef QOG_SND_ONINIT

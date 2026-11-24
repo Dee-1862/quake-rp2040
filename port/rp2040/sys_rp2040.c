@@ -48,6 +48,13 @@ See the GNU General Public License for more details.
 #include "qog_aim.h"
 #endif
 #include "qog_flashmap.h"
+#if defined(QOG_SND_REMOTE) || defined(QOG_SND_HOST)
+#include "qog_snd.h"
+/* Agent W: the split game's sound, mixed on main and played by the display */
+#define QOG_SYS_SOUNDARG
+#else
+#define QOG_SYS_SOUNDARG "-nosound",
+#endif
 
 #ifdef QOG_SYS_MAIN
 #define QOG_SYS_DATA_ADDR	QOG_MAIN_DATA_XIP_ADDR
@@ -306,6 +313,9 @@ void Sys_Error(char *error, ...) {
     for (;;)
         tight_loop_contents();
 #else
+#ifdef QOG_SND_REMOTE
+    qog_snd_out_shutdown();   /* Agent W: stop the speaker, or the ring loops forever */
+#endif
     /* Keep the red-button power-off alive while reporting (BSP rule): the
        display CPU has no watchdog and must stay switch-off-able. */
     for (;;) {
@@ -334,11 +344,11 @@ static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, v
 }
 #endif
 static void __attribute__((noreturn)) server_main(void) {
-    static char *argv[] = { "quake", "-nosound" };
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG };
     quakeparms_t parms;
 
     memset(&parms, 0, sizeof parms);
-    COM_InitArgv(2, argv);
+    COM_InitArgv((int)(sizeof argv / sizeof argv[0]), argv);
     parms.argc = com_argc;
     parms.argv = com_argv;
     parms.basedir = ".";
@@ -422,9 +432,9 @@ int main(void) {
 #ifdef QOG_BOARD_MAP
     /* QuakeOG: the board has no keyboard to type "map" at the console, so a
        board build can name the level to start in (apps/quake QOG_BOARD_MAP). */
-    static char *argv[] = { "quake", "-nosound", "+map", QOG_BOARD_MAP };
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG "+map", QOG_BOARD_MAP };
 #else
-    static char *argv[] = { "quake", "-nosound" };
+    static char *argv[] = { "quake", QOG_SYS_SOUNDARG };
 #endif
     quakeparms_t parms;
 

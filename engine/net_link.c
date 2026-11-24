@@ -49,6 +49,9 @@ See the GNU General Public License for more details.
 #include "net_link.h"
 #include "qog_link.h"
 #include "qog_rand.h"
+#if defined(QOG_SND_REMOTE) || defined(QOG_SND_HOST)
+#include "qog_snd.h"
+#endif
 
 #define LINK_TEXTMAX	4096	// console.c MAXPRINTMSG
 #define LINK_CLTEXT	256		// the client's text buffer: console lines it runs, pieces of the rest
@@ -86,7 +89,10 @@ enum {
 	LK_CENTEROFF,	// server: scr_centertime_off = 0
 	LK_HOSTERROR,	// server: Host_Error, the client stops its frame too
 	LK_ENDGAME,		// server: Host_EndGame
-	LK_QUIT			// client: the game quits
+	LK_QUIT,		// client: the game quits
+	LK_SND,			// client: a sound operation (LKS_*, net_link.h), QuakeOG (Agent W)
+	LK_SNDPCM,		// server: mixed samples [time 4][8-bit samples]
+	LK_SNDDONE		// server: the answer to a sound operation [answer 2]
 };
 
 qboolean	link_applying;
@@ -342,6 +348,38 @@ static char		link_errtext[256];
 
 static struct { double realtime, frametime; unsigned rand; int keygame; } cs_sent;
 
+#ifdef QOG_SND_REMOTE
+// QuakeOG (Agent W): the client's sound runs on the server half (snd_link.c)
+static int		link_sndresult;
+unsigned		link_sndasync;		// operations sent without an answer from inside an exchange
+unsigned		link_sndasync_start;	// of them S_StartSound or S_LocalSound
+
+// mixed samples: into the output as they come off the link, no copy of the whole
+static void Link_SoundPcm (int len)
+{
+	byte		buf[64];
+	unsigned	t;
+	int			n;
+
+	if (len < 4)
+	{
+		Link_Skip (len);
+		return;
+	}
+	qog_link_read (buf, 4);
+	t = get32 (buf);
+	len -= 4;
+	while (len > 0)
+	{
+		n = len > (int)sizeof(buf) ? (int)sizeof(buf) : len;
+		qog_link_read (buf, n);
+		qog_snd_out_write (t, buf, n);
+		t += n;
+		len -= n;
+	}
+}
+#endif
+
 static void Link_SyncState (void)
 {
 	byte	b[21];
@@ -452,9 +490,21 @@ static void Link_ClientWait (int endkind)
 			Link_ReadText ((byte *)link_errtext, sizeof(link_errtext), len);
 			link_error = kind;
 			break;
+#ifdef QOG_SND_REMOTE
+		case LK_SNDPCM:		Link_SoundPcm (len); break;
+		case LK_SNDDONE:
+			{	// QuakeOG (Agent W): the answer to a sound operation
+				byte	r[2];
+				qog_link_read (r, 2);
+				Link_Skip (len - 2);
+				link_sndresult = (short)(r[0] | (r[1] << 8));
+			}
+			// fall through
+#endif
 		case LK_DONE:
 		case LK_SYNCDONE:
-			Link_Skip (len);
+			if (kind != LK_SNDDONE)
+				Link_Skip (len);
 			if (kind != endkind)
 				Sys_Error ("link: exchange out of step");
 			link_waiting = false;
@@ -513,6 +563,45 @@ void Link_ClientFrame (void)
 	}
 	ls_signed = cls.signon == SIGNONS;
 }
+
+#ifdef QOG_SND_REMOTE
+// QuakeOG (Agent W): a sound operation. One that wants an answer is an
+// exchange like a console line: the server half runs it at once, inside the
+// client's frame, and the random numbers it draws come back with its state,
+// as in one process. Inside another exchange it is only queued, and the
+// answer is LINK_SNDQUEUED: the server half runs it after that exchange, in
+// the same order with the other sound operations, so it mixes the same
+// samples. Only a random number S_StartSound draws then is not where one
+// process draws it (link_sndasync_start counts those).
+int Link_Sound (const byte *op, int len)
+{
+	byte	h[4];
+
+	if (!link_started)
+		return -1;
+	if (!(op[0] & LKS_REPLY) || link_waiting)
+	{
+		Link_SyncState ();
+		h[0] = LK_SND;
+		put16 (h + 1, len);
+		h[3] = op[0] & ~LKS_REPLY;
+		qog_link_write (h, 4);
+		if (len > 1)
+			qog_link_write (op + 1, len - 1);
+		qog_link_pump ();
+		if (!(op[0] & LKS_REPLY))
+			return -1;
+		link_sndasync++;
+		if ((op[0] & ~LKS_REPLY) == LKS_START || (op[0] & ~LKS_REPLY) == LKS_LOCAL)
+			link_sndasync_start++;
+		return LINK_SNDQUEUED;
+	}
+	Link_Item (LK_SND, op, len);
+	link_sndresult = -1;
+	Link_ClientWait (LK_SNDDONE);
+	return link_sndresult;
+}
+#endif
 
 void Link_ForwardCommand (char *text)
 {
@@ -737,6 +826,113 @@ static void Link_ServerFinish (int kind)
 	link_inexchange = false;
 }
 
+#ifdef QOG_SND_HOST
+// QuakeOG (Agent W): the client half's sound calls run here, with id's mixer.
+// What the mixer read from client state comes with them (sound.h).
+extern sfx_t	*known_sfx;		// snd_dma.c
+extern int		num_sfx;
+#define SNDOP_MAX	(1 + 4 + 64)	// the longest: LKS_LOCAL, a view entity and a name
+
+static float LinkF (const byte *b) { float f; memcpy (&f, b, 4); return f; }
+static void LinkV (vec3_t v, const byte *b) { memcpy (v, b, 12); }
+
+static sfx_t *Link_SoundSfx (int n)
+{
+	return n >= 0 && n < num_sfx ? known_sfx + n : NULL;
+}
+
+static void Link_ServerSound (int len)
+{
+	byte	b[SNDOP_MAX + 1];
+	vec3_t	org, fwd, right, up;
+	sfx_t	*sfx;
+	int		n = len < SNDOP_MAX ? len : SNDOP_MAX;
+	int		result = 0;
+
+	qog_link_read (b, n);
+	Link_Skip (len - n);
+	b[n] = 0;	// names end in the payload, this only bounds a bad one
+	switch (b[0] & ~LKS_REPLY)
+	{
+	case LKS_PRECACHE:	// name
+		sfx = S_PrecacheSound ((char *)b + 1);
+		result = sfx ? sfx - known_sfx : -1;
+		break;
+	case LKS_TOUCH:		// name
+		S_TouchSound ((char *)b + 1);
+		break;
+	case LKS_START:		// entity, channel, sound, origin, volume, attenuation, view entity
+		snd_viewentity = get32 (b + 33);
+		LinkV (org, b + 13);
+		S_StartSound (get32 (b + 1), get32 (b + 5), Link_SoundSfx (get32 (b + 9)), org, LinkF (b + 25), LinkF (b + 29));
+		break;
+	case LKS_LOCAL:		// view entity, name
+		snd_viewentity = get32 (b + 1);
+		S_LocalSound ((char *)b + 5);
+		break;
+	case LKS_STOP:		// entity, channel
+		S_StopSound (get32 (b + 1), get32 (b + 5));
+		break;
+	case LKS_STOPALL:	// clear
+		S_StopAllSounds (b[1]);
+		break;
+	case LKS_CLEAR:
+		S_ClearBuffer ();
+		break;
+	case LKS_STATIC:	// sound, origin, volume, attenuation, view entity
+		snd_viewentity = get32 (b + 25);
+		LinkV (org, b + 5);
+		S_StaticSound (Link_SoundSfx (get32 (b + 1)), org, LinkF (b + 17), LinkF (b + 21));
+		break;
+	case LKS_UPDATE:	// samples played, view entity, ambient state and levels, origin, forward, right, up
+		qog_snd_host_setpos (get32 (b + 1));
+		snd_viewentity = get32 (b + 5);
+		snd_ambientstate = b[9];
+		memcpy (snd_ambientlevels, b + 10, 4);
+		LinkV (org, b + 14);
+		LinkV (fwd, b + 26);
+		LinkV (right, b + 38);
+		LinkV (up, b + 50);
+		qog_snd_host_submitted = 0;
+		S_Update (org, fwd, right, up);
+		result = qog_snd_host_submitted;
+		break;
+	case LKS_EXTRA:		// samples played
+		qog_snd_host_setpos (get32 (b + 1));
+		qog_snd_host_submitted = 0;
+		S_ExtraUpdate ();
+		result = qog_snd_host_submitted;
+		break;
+	case LKS_AMBOFF:	S_AmbientOff (); break;
+	case LKS_AMBON:		S_AmbientOn (); break;
+	}
+	if (b[0] & LKS_REPLY)
+	{
+		byte	r[2];
+		put16 (r, result);
+		Link_Item (LK_SNDDONE, r, 2);
+	}
+}
+
+// mixed samples for the client half's output, from time t (one or two pieces of the ring)
+void Link_ServerSoundPcm (unsigned t, const byte *a, int an, const byte *b, int bn)
+{
+	byte	h[7];
+
+	if (!link_started || an + bn <= 0)
+		return;
+	Link_SyncState ();
+	h[0] = LK_SNDPCM;
+	put16 (h + 1, 4 + an + bn);
+	put32 (h + 3, t);
+	qog_link_write (h, 7);
+	if (an > 0)
+		qog_link_write (a, an);
+	if (bn > 0)
+		qog_link_write (b, bn);
+}
+#endif
+
 // the client's part of the frame: items up to LK_TICK, console lines run as they come
 void Link_ServerWaitTick (void)
 {
@@ -785,6 +981,9 @@ void Link_ServerWaitTick (void)
 		case LK_TICK:
 			Link_Skip (len);
 			return;		// link_inexchange stays on through the server frame
+#ifdef QOG_SND_HOST
+		case LK_SND:		Link_ServerSound (len); break;
+#endif
 		case LK_QUIT:
 			Link_Skip (len);
 			Sys_Printf ("link: the client quit\n");

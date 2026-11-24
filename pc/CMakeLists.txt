@@ -249,6 +249,14 @@ set(QOG_PC_EXTRA_DEFS "" CACHE STRING "extra compile definitions for test builds
 if(QOG_PC_EXTRA_DEFS)
     target_compile_definitions(quakeog_pc PRIVATE ${QOG_PC_EXTRA_DEFS})
 endif()
+# Sound hashes (Agent W), off by default: `qog_sndhash` prints a hash of every
+# sample the mixer painted and wrote, to compare the split game's mixer on
+# the server half (QOG_SND_HOST) with the single-process game's. Also the
+# split builds below.
+option(QOG_SND_HASH "qog_sndhash: hashes of the mixer's output (engine/snd_mix.c)" OFF)
+if(QOG_SND_HASH)
+    target_compile_definitions(quakeog_pc PRIVATE QOG_SND_HASH)
+endif()
 
 # Two-chip split (Agent R): the server half (quakeog_sv) and the client half
 # (quakeog_cl) of the same game, joined by the link net driver
@@ -286,12 +294,20 @@ list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
 set(QOG_SPLIT_SV_EXTRA "" CACHE STRING "extra engine flags for quakeog_sv")
 set(QOG_SPLIT_CL_EXTRA "" CACHE STRING "extra engine flags for quakeog_cl")
 target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER QOG_SPLIT_TOUR ${QOG_SPLIT_SV_EXTRA})
+# Agent W: with QOG_SND_HOST in QOG_SPLIT_SV_EXTRA the server half mixes for
+# the client half (QOG_SND_REMOTE in QOG_SPLIT_CL_EXTRA), as on the board
+if(QOG_SPLIT_SV_EXTRA MATCHES "QOG_SND_HOST")
+    target_sources(quakeog_sv PRIVATE
+        ${ROOT}/engine/snd_dma.c ${ROOT}/engine/snd_mix.c ${ROOT}/engine/snd_mem.c
+        ${ROOT}/port/common/qog_snd_host.c)
+endif()
 
 add_executable(quakeog_cl
     ${QOG_SPLIT_CL_ENGINE}
     ${ROOT}/port/pc/sys_pc.c
     ${ROOT}/port/pc/vid_pc.c
     ${ROOT}/port/pc/snd_pc.c
+    ${ROOT}/port/pc/snd_link_pc.c      # the output with QOG_SND_REMOTE (Agent W)
     ${ROOT}/port/pc/split_cl_pc.c
     ${ROOT}/port/pc/link_pc.c
     ${ROOT}/port/common/qog_link.c

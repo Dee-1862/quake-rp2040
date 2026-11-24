@@ -25,6 +25,8 @@ See the GNU General Public License for more details.
 #include <math.h>
 #include "quakedef.h"
 
+#ifndef QOG_SND_REMOTE   /* QuakeOG (Agent W): a split client's output is snd_link_pc.c */
+
 #define WAV_BUFFERS      64
 #define WAV_MASK         (WAV_BUFFERS - 1)
 #define WAV_BUFFER_SIZE  0x0400
@@ -51,9 +53,10 @@ static void cmd_soundlevel(void) {
     int peak = 0;
     double sum = 0;
     for (int i = 0; i < shm->samples; i++) {
-        int v = b[i] < 0 ? -b[i] : b[i];
+        int s = shm->samplebits == 8 ? (shm->buffer[i] - 128) << 8 : b[i];   /* -sndmono8 */
+        int v = s < 0 ? -s : s;
         if (v > peak) peak = v;
-        sum += (double)b[i] * b[i];
+        sum += (double)s * s;
     }
     Con_Printf("qog_soundlevel: peak %d, rms %.0f of 32767 over the last %.2f s%s\n", peak,
                sqrt(sum / shm->samples), (double)shm->samples / shm->channels / shm->speed,
@@ -73,6 +76,12 @@ qboolean SNDDMA_Init(void) {
     shm->speed = SND_SPEED;
 
     s_silent = COM_CheckParm("-hidden") || COM_CheckParm("-silentsound");
+    /* QuakeOG (Agent W): -sndmono8 mixes 8-bit mono as the split game's
+       server half does (port/common/qog_snd_host.c), silent only, to compare */
+    if (s_silent && COM_CheckParm("-sndmono8")) {
+        shm->channels = 1;
+        shm->samplebits = 8;
+    }
     if (s_silent) {
         s_buffer = calloc(WAV_BUFFERS, WAV_BUFFER_SIZE);
         if (!s_buffer) { shm = NULL; return false; }
@@ -158,3 +167,5 @@ void SNDDMA_Shutdown(void) {
     s_buffer = NULL;
     shm = NULL;
 }
+
+#endif   /* QOG_SND_REMOTE */

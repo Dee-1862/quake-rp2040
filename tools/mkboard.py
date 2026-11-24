@@ -43,9 +43,11 @@ split game from the same pak, in the same run, so the two copies cannot
 drift. The main chip's region (platform/qog_flashmap.h) is 0x10300000 to
 0x107FFFFF, between its app and its FAT volume:
 
-    offset 0          the server's pak: progs.dat, then every map, alias
-                      model and sprite of the display's pak as a stub
-                      (132 bytes for a map, 16 for a model, engine/model.h)
+    offset 0          the server's pak: progs.dat, every sound of the
+                      display's pak for the mixer on main (Agent W, left out
+                      with --main-no-sounds), then every map, alias model and
+                      sprite of the display's pak as a stub (132 bytes for a
+                      map, 16 for a model, engine/model.h)
     next 64 KB        the server's qogbake.bin (qog_bake -bakestubs
                       -bakeserver): planes, nodes, leafs, clip nodes and
                       hulls, submodels, entities and visibility of each map,
@@ -191,9 +193,16 @@ def run_bake(exe, basedir, base, timeout, stubs=False, extra=""):
     print("bake: %s" % (tail[0] if tail else "(no log)"))
 
 
-def build_main(full, out, exe, timeout, no_bake, layout):
+def is_sound(name):
+    return name.startswith("sound/") and name.endswith(".wav")
+
+
+def build_main(full, out, exe, timeout, no_bake, layout, sounds=True):
     """The main chip's server data image (--main) from the display's full
-    pak (every file before stubs): returns 0 when it fits, 2 when not."""
+    pak (every file before stubs): returns 0 when it fits, 2 when not.
+    With sounds (Agent W), every sound of the display's pak too, for the
+    mixer that runs on main (QOG_SND_HOST): the same files, already in the
+    11025 Hz 8-bit mono form mkpak converts to, so they play in place."""
     mout = out + "_main"
     if len(mout) > 80:
         sys.exit("mkboard: use a shorter output path (%s is %d characters, at most 80)" % (mout, len(mout)))
@@ -204,8 +213,14 @@ def build_main(full, out, exe, timeout, no_bake, layout):
     missing = [n for n in SERVER_FILES[:1] if n not in names]   # pop.lmp: registered data only
     if missing:
         sys.exit("mkboard: the pak has no %s for the server" % " ".join(missing))
-    # the server's files, then a stub for each model
-    keep = [(n, d) for n, _, d in ents if n in SERVER_FILES] + [(n, d) for n, _, d in ents if is_model(n)]
+    # the server's files, the sounds (Agent W), then a stub for each model
+    keep = [(n, d) for n, _, d in ents if n in SERVER_FILES]
+    snd = [(n, d) for n, _, d in ents if sounds and is_sound(n)]
+    for n, d in snd:
+        w = mkpak.wav_info(d)
+        if not w or w[:3] != (1, mkpak.MIX_RATE, 8):
+            sys.exit("mkboard: %s is not 11025 Hz 8-bit mono in the display's pak" % n)
+    keep += snd + [(n, d) for n, _, d in ents if is_model(n)]
     pak = mkpak.build_pak([(n, make_stub(d) if mkpak.is_map(n) else make_mstub(d) if is_model(n) else d)
                            for n, d in keep])
     if pc_layout(pak) != len(pak):
@@ -253,6 +268,7 @@ def build_main(full, out, exe, timeout, no_bake, layout):
     print("  0x%08X  pak        %9d bytes  %6.2f MB, %s and %d model stubs"
           % (MAIN_DATA_ADDR, len(pak), len(pak) / 2**20, " ".join(n for n in SERVER_FILES if n in names), models))
     print("            (the full models took %d bytes)" % sum(len(d) for n, d in keep if is_model(n)))
+    print("            %d sounds, %d bytes, for the mixer on main" % (len(snd), sum(len(d) for _, d in snd)))
     print("  0x%08X  qogbake    %9d bytes  %6.2f MB, %d models, the server's image"
           % (base, len(img), len(img) / 2**20, h[5]))
     print("  0x%08X  end        %9d bytes  %6.2f MB, %.1f%% of the region"
@@ -280,6 +296,8 @@ def main(argv=None):
                     help="move the maps into the baked image, a stub for each in the pak (QOG_BAKE_STUBS)")
     ap.add_argument("--main", action="store_true",
                     help="also write the main chip's server data image <out>_main (the split game)")
+    ap.add_argument("--main-no-sounds", action="store_true",
+                    help="leave the sounds out of the main chip's image (a build with QOG_SOUND off)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension, also the PC basedir")
     a = ap.parse_args(argv)
 
@@ -374,7 +392,7 @@ def main(argv=None):
         if not a.exe and not a.no_bake:
             sys.exit("mkboard: --exe is needed to bake (or --no-bake)")
         rc = max(rc, build_main(full, out, os.path.abspath(a.exe) if a.exe else None,
-                                a.timeout, a.no_bake, h[2]))
+                                a.timeout, a.no_bake, h[2], not a.main_no_sounds))
     return rc
 
 
