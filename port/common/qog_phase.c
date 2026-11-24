@@ -233,7 +233,8 @@ static void qog_phase_board_xip (void (*print) (char *fmt, ...), const char *who
    the LCD scanouts, jobs every job core 0 handed it (Agent V's span halves,
    Agent Z's alias vertices, the surface pipeline), busy both less the
    pipeline job's waiting, idle the frame less busy. Per view: pipe is the
-   pipeline job's surface drawing and wait its waiting, surfs the lit world
+   pipeline job's surface drawing and wait its waiting, c0wait core 0's
+   waiting for core 1's last surface at a flush (inside edgescan), surfs the lit world
    surfaces drawn through the pipeline, c1 those core 1 drew, early those
    handed on during the scan. The port gives the scanout and job times
    (vid_rp2040.c), the server half has none. */
@@ -280,6 +281,7 @@ static void qog_phase_board_core1 (void (*print) (char *fmt, ...), const char *w
 		k += snprintf (line + k, sizeof line - k, ", per view");
 		k += ph_put (line + k, (int)sizeof line - k, "pipe", qog_c1_stat[QOG_C1_DRAWT], r);
 		k += ph_put (line + k, (int)sizeof line - k, "wait", qog_c1_stat[QOG_C1_WAITT], r);
+		k += ph_put (line + k, (int)sizeof line - k, "c0wait", qog_c1_stat[QOG_C1_C0WAIT], r);
 		k += snprintf (line + k, sizeof line - k, " surfs %u c1 %u early %u",
 					   qog_c1_stat[QOG_C1_SURFS] / r, qog_c1_stat[QOG_C1_C1SURFS] / r,
 					   qog_c1_stat[QOG_C1_EARLY] / r);

@@ -687,8 +687,17 @@ void D_QogPipeSync (void)
 	{
 		while (D_QogPipePop (0, &s, &sp))
 			D_QogDrawLit (s, sp);
-		while (d_qogc1_drawing)
-			;
+		if (d_qogc1_drawing)
+		{
+#ifdef QOG_PHASE_TIME
+			unsigned	t0 = qog_phase_clock ();
+#endif
+			while (d_qogc1_drawing)
+				;
+#ifdef QOG_PHASE_TIME
+			qog_c1_stat[QOG_C1_C0WAIT] += qog_phase_clock () - t0;
+#endif
+		}
 	}
 	else
 	{

@@ -101,6 +101,7 @@ enum
 	QOG_C1_C1SURFS,		/* core 1: surfaces it drew */
 	QOG_C1_SURFS,		/* core 0: lit world surfaces drawn through the pipeline (either core) */
 	QOG_C1_EARLY,		/* core 0: of which handed on before their flush */
+	QOG_C1_C0WAIT,		/* core 0: time waiting for core 1 to finish a surface (in edgescan) */
 	QOG_C1_PX,			/* PC only: their pixels */
 	QOG_C1_EARLYPX,		/* PC only: the pixels of those handed on early */
 	QOG_C1_N
