@@ -167,3 +167,27 @@ The whole episode still needs a decision by the user (none of these is implement
 | `progs.dat` without its statements when QuakeC is compiled | 167,520 B | no interpreter fallback |
 
 All five together give 4,255,641 B with the 0x180000 offset or 3,731,353 B with 0x200000, both short of the 4,328,432 B needed. With 0x200000 alone, `start` to `e1m5` fits (13.37 MB of 13.94, 597,040 B to spare).
+
+### The main chip's server image (`--main`, Agent T)
+
+In the split game the server runs on the main RP2040, which reads its own copy of what the server needs from main's flash: the region 0x10300000 to 0x107FFFFF (`platform/qog_flashmap.h`), between main's app and its FAT volume. `mkboard.py --main` writes it in the same run as the display image, from the same files, so the two cannot drift:
+
+| Address | Content |
+| --- | --- |
+| `0x10300000` | the server's pak: `progs.dat`, `gfx/pop.lmp` (the `registered` cvar QuakeC reads), and a stub for every map (132 bytes) and every alias model and sprite (16 bytes, `qogbake_mstub_t` in `engine/model.h`) of the display's pak |
+| next 64 KB boundary | the server's `qogbake.bin`, built for that address by `qog_bake -bakestubs -bakeserver` |
+
+The server's image keeps, for each map, the planes, nodes, leafs, clip nodes and hulls, submodels, entities and visibility, and leaves out textures, texinfo, surfaces, edges, vertexes, mark surfaces and light. An alias model or sprite is its `model_t` alone (type, bounds, frame count, flags). Nothing in it points into a pak, so the PC bakes it from the display's full pak for the address `-bakebase` gives. Its layout word is the build's layout XOR `QOGB_SERVER_LAYOUT`, so only a server half (`QOG_SPLIT_SERVER`) takes it. It writes `<out>_main\id1\pak0.pak`, `<out>_main\id1\qogbake.bin`, `<out>_main.bin` and `<out>_main.uf2` (a UF2 of the region only, padded to whole 4 KB sectors).
+
+```powershell
+python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak `
+    --manifests build-pc-dev\manifests --maps start e1m1 e1m2 e1m3 e1m4 `
+    --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps --main -o build-board\qb
+```
+
+The PC runs the pair from the two images: the server with `-basedir build-board\qb_main -flashbase 0x10300000` (the PC maps its packs at that address), the client with `-basedir build-board\qb`. The server's saves go to its gamedir, which stands for main's FAT volume.
+
+| Maps | Server pak | Server image | Region use |
+| --- | ---: | ---: | ---: |
+| `start` to `e1m4` | 420,880 B | 1,955,424 B (68 models) | 2,416,640 B (2.30 MB), 46.1% of 5 MB |
+| `start` and all of episode 1 | 422,432 B | 2,948,000 B (81 models) | 3,407,872 B (3.25 MB), 65.0% of 5 MB |
