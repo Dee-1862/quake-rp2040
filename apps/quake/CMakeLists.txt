@@ -148,6 +148,14 @@ list(APPEND QOG_ENGINE_DEFS
 # World and brush model front end, exact (Agent AJ), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_BMODEL_ZEROANGLE)           # r_bsp.c R_RotateBmodel: zero angles without double trig or matrix products
+# Agent AL: lightmaps and dynamic lights, exact, same as pc/CMakeLists.txt (r_light.c, r_surf.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_DLIGHT_AXIAL
+    QOG_DLIGHT_FACING
+    QOG_DLIGHT_INT
+    QOG_DLIGHT_REACHUP
+    QOG_GRAD_EXACTF
+    QOG_GRAD_FAST)
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)

@@ -24,6 +24,38 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 int	r_dlightframecount;
 
+#ifndef QOG_NOINLINE
+#if defined(__GNUC__)
+#define QOG_NOINLINE	__attribute__((noinline))
+#elif defined(_MSC_VER)
+#define QOG_NOINLINE	__declspec(noinline)
+#else
+#define QOG_NOINLINE
+#endif
+#endif
+
+#ifdef QOG_DLIGHT_AXIAL
+/*
+=============
+R_QogLightDist
+
+QuakeOG (Agent AL): id's DotProduct (origin, normal) - dist. For an axial
+plane the normal is one 1 and two 0, and id's sum of the three products is
+the origin's coordinate itself (a product with 0 is a zero, adding a zero
+to a number gives the number, two zeros add to a zero), so the distance is
+the same float with one subtraction instead of three multiplies and three
+adds. Only the sign of a zero result can differ, and it is only compared
+with the light's radius.
+=============
+*/
+static float R_QogLightDist (const float *o, const mplane_t *plane)
+{
+	if (plane->type < 3)
+		return o[plane->type] - plane->dist;
+	return DotProduct (o, plane->normal) - plane->dist;
+}
+#endif
+
 
 /*
 ==================
@@ -88,6 +120,45 @@ R_MarkLights did, with the same arithmetic, so the result is always id's.
 
 #ifndef QOG_DLIGHT_SURFS
 #define QOG_DLIGHT_SURFS	1024	// a power of two, one entry stays empty
+#endif
+
+#ifdef QOG_DLIGHT_FACING
+/*
+=============
+R_QogNodeFacing
+
+QuakeOG (Agent AL): which of a world node's surfaces R_RecursiveWorldNode
+can draw in this view, from the same float distance of the eye to the
+node's plane with the same tests (r_bsp.c): -1 only those with
+SURF_PLANEBACK, 1 only those without, 0 none. R_RenderWorld runs with
+modelorg equal to r_origin, and this is asked only in the pass that marks
+the surfaces visible in the frame R_RenderWorld has drawn, so a surface
+left out is never drawn in this frame and no light bit of it is asked for.
+Fewer marks keep the lit surface hash from filling, and a full hash sends
+every lost light of every lit surface to R_LightReaches' tree walk.
+=============
+*/
+static QOG_NOINLINE int R_QogNodeFacing (mplane_t *plane)
+{
+	float	fdot;
+
+	switch (plane->type)
+	{
+	case PLANE_X:
+		fdot = r_origin[0] - plane->dist;
+		break;
+	case PLANE_Y:
+		fdot = r_origin[1] - plane->dist;
+		break;
+	case PLANE_Z:
+		fdot = r_origin[2] - plane->dist;
+		break;
+	default:
+		fdot = DotProduct (r_origin, plane->normal) - plane->dist;
+		break;
+	}
+	return fdot < -0.01f ? -1 : (fdot > 0.01f ? 1 : 0);
+}
 #endif
 #define DL_EMPTY			0xFFFF	// surface numbers are below this (model.c)
 #define DL_HASH(n)			(((unsigned)(n) * 40503u) & (QOG_DLIGHT_SURFS - 1))
@@ -173,8 +244,18 @@ static qboolean R_LightReaches (dlight_t *light, mnode_t *node, int n)
 
 	while (node->contents >= 0)
 	{
+#ifdef QOG_LMAP_STATS
+		{
+			extern unsigned	qog_lms[16];
+			qog_lms[15]++;
+		}
+#endif
 		splitplane = node->plane;
+#ifdef QOG_DLIGHT_AXIAL
+		dist = R_QogLightDist (light->origin, splitplane);	// QuakeOG (Agent AL)
+#else
 		dist = DotProduct (light->origin, splitplane->normal) - splitplane->dist;
+#endif
 
 		if (dist > light->radius)
 		{
@@ -194,6 +275,81 @@ static qboolean R_LightReaches (dlight_t *light, mnode_t *node, int n)
 	}
 	return false;
 }
+
+#ifdef QOG_DLIGHT_REACHUP
+/*
+=============
+R_QogLightReachesWorld
+
+QuakeOG (Agent AL): R_LightReaches (light, world's head node, n) without
+the search. The surfaces of a node are a run [firstsurface, +numsurfaces)
+and only one node holds surface n. qbsp writes nodes and their faces in the
+same order, so firstsurface does not decrease along the node array, and a
+binary search finds the node, checked by its run (else the search of id's
+walk). id's walk reaches that node exactly when at every node above it the
+light's distance lets the walk go down to the child on the path (more than
+the radius: only children[0], less than minus the radius: only
+children[1]), and marks its surfaces when at the node itself neither holds.
+So the test walks up the parents, about the tree's depth, where the search
+visits every node the light reaches until it finds n. A node of a brush
+model's own tree never leads up to the world's head node.
+=============
+*/
+static QOG_NOINLINE qboolean R_QogLightReachesWorld (dlight_t *light, int n)
+{
+	model_t		*w = cl.worldmodel;
+	mnode_t		*node, *p;
+	int			lo, hi, mid, steps;
+	float		dist;
+
+	lo = 0;
+	hi = w->numnodes - 1;
+	while (lo < hi)		// the last node with firstsurface <= n
+	{
+		mid = (lo + hi + 1) >> 1;
+		if (w->nodes[mid].firstsurface <= n)
+			lo = mid;
+		else
+			hi = mid - 1;
+	}
+	node = NULL;
+	for (steps = 0 ; steps < 8 && lo - steps >= 0 ; steps++)
+	{
+		p = w->nodes + lo - steps;
+		if (n >= p->firstsurface && n < p->firstsurface + p->numsurfaces)
+		{
+			node = p;
+			break;
+		}
+		if (p->numsurfaces)
+			break;		// a run ending before n: the order is not qbsp's
+	}
+	if (!node)
+		return R_LightReaches (light, w->nodes, n);
+
+	dist = R_QogLightDist (light->origin, node->plane);
+	if (dist > light->radius || dist < -light->radius)
+		return false;
+	for ( ; node != w->nodes ; node = p)
+	{
+		p = node->parent;
+		if (!p)
+			return false;	// not the world's tree
+		dist = R_QogLightDist (light->origin, p->plane);
+		if (dist > light->radius)
+		{
+			if (node != p->children[0])
+				return false;
+		}
+		else if (dist < -light->radius)
+		{
+			if (node != p->children[1])
+				return false;
+		}
+	}
+	return true;
+}
+#endif
 
 /*
 =============
@@ -222,6 +378,23 @@ static void R_DlightRunPending (void)
 	}
 	dl_visonly = false;
 	r_dlightframecount = saved;
+}
+
+/*
+=============
+R_QogDlightSettle
+
+QuakeOG (Agent AL): runs the world's light marking pass now if it waits,
+for a caller that is about to build light grids on two cores (the pass
+writes the lit surface hash and the dlightframe bits, the builders then
+only read them). Call it after R_RenderWorld, which stamps the visible
+surfaces the pass looks at. Building on one core never needs it.
+=============
+*/
+void R_QogDlightSettle (void)
+{
+	if (dl_pending)
+		R_DlightRunPending ();
 }
 
 /*
@@ -270,7 +443,21 @@ int R_DlightBits (model_t *m, msurface_t *surf)
 		{
 			if (!(dl_lost & ~bits & (1<<k)))
 				continue;
+#ifdef QOG_DLIGHT_CHECK
+			{	// QuakeOG (Agent AL): PC check build, both ways
+				static unsigned	qog_rc_n, qog_rc_bad;
+				qog_rc_n++;
+				if (R_QogLightReachesWorld (&cl_dlights[k], n) != R_LightReaches (&cl_dlights[k], cl.worldmodel->nodes, n))
+					qog_rc_bad++;
+				if ((qog_rc_n & 1023) == 0)
+					Sys_Printf ("qog_rccheck %u differ %u\n", qog_rc_n, qog_rc_bad);
+			}
+#endif
+#ifdef QOG_DLIGHT_REACHUP
+			if (R_QogLightReachesWorld (&cl_dlights[k], n)	// QuakeOG (Agent AL)
+#else
 			if (R_LightReaches (&cl_dlights[k], cl.worldmodel->nodes, n)
+#endif
 				|| (m != cl.worldmodel && m->firstmodelsurface != 0
 				&& R_LightReaches (&cl_dlights[k], m->nodes + m->hulls[0].firstclipnode, n)))
 				bits |= 1<<k;
@@ -295,8 +482,18 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 	if (node->contents < 0)
 		return;
 
+#ifdef QOG_LMAP_STATS
+	{
+		extern unsigned	qog_lms[16];
+		qog_lms[13]++;
+	}
+#endif
 	splitplane = node->plane;
+#ifdef QOG_DLIGHT_AXIAL
+	dist = R_QogLightDist (light->origin, splitplane);	// QuakeOG (Agent AL)
+#else
 	dist = DotProduct (light->origin, splitplane->normal) - splitplane->dist;
+#endif
 	
 	if (dist > light->radius)
 	{
@@ -310,7 +507,26 @@ void R_MarkLights (dlight_t *light, int bit, mnode_t *node)
 	}
 		
 // mark the polygons
+#ifdef QOG_LMAP_STATS
+	{
+		extern unsigned	qog_lms[16];
+		qog_lms[14] += node->numsurfaces;
+	}
+#endif
 	surf = cl.worldmodel->surfaces + node->firstsurface;
+#if defined(QOG_DLIGHT_SPARSE) && defined(QOG_DLIGHT_FACING)
+	// QuakeOG (Agent AL): in the visible-only pass, only the surfaces facing
+	// the eye as R_RecursiveWorldNode draws them (R_QogNodeFacing)
+	if (dl_visonly && node->numsurfaces)
+	{
+		int		facing = R_QogNodeFacing (splitplane);
+
+		for (i=0 ; i<node->numsurfaces ; i++, surf++)
+			if (facing < 0 ? (surf->flags & SURF_PLANEBACK) : (facing > 0 && !(surf->flags & SURF_PLANEBACK)))
+				R_DlightMark (surf, bit);
+	}
+	else
+#endif
 	for (i=0 ; i<node->numsurfaces ; i++, surf++)
 	{
 #ifdef QOG_DLIGHT_SPARSE
