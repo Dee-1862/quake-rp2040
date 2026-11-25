@@ -272,6 +272,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DLIGHT_REACHUP              # a lit surface the full hash lost: its node found and the light tested up the parents, not a tree search
     QOG_GRAD_EXACTF                 # D_CalcGradients without double arithmetic, the same values (d_edge.c)
     QOG_GRAD_FAST)                  # r_fast 1: world surface gradients from rows made once a view, in integers
+# Particles, exact (Agent AR): r_part.c
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_PART_DIEBITS)               # a particle's death time against cl.time as an integer compare of float bits, id's result
 # One app for every episode's data image (Agent AG): qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE

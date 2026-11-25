@@ -680,6 +680,46 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 }
 
 
+#ifdef QOG_PART_DIEBITS
+/*
+===============
+R_QogDieBits
+
+QuakeOG (Agent AR): id's "p->die < cl.time" compares a float with a double,
+a float to double conversion and a double compare through the M0+'s soft
+float routines, twice for every particle of every view. For a float die
+and a double t, die < t exactly when die < c, c the smallest float at or
+above t (below c lie only floats at or below t's float floor, which is
+below t when c is not t itself). With c above 0, die < c is a signed
+compare of the floats' bits (a negative die, -0 included, has the sign
+bit and is less). Returns c's bits, or 0 when cl.time is 0 or less and
+id's compare has to run.
+===============
+*/
+static int R_QogDieBits (void)
+{
+	union { float f; int i; } c;
+
+	if (!(cl.time > 0))
+		return 0;
+	c.f = (float)cl.time;
+	if ((double)c.f < cl.time)
+		c.i++;			// the next float up: cl.time's float rounded down
+	return c.i;
+}
+
+static __inline int R_QogDieInt (const particle_t *p)
+{
+	union { float f; int i; } d;
+
+	d.f = p->die;
+	return d.i;
+}
+#define R_QOG_DEAD(p, bits)	((bits) ? R_QogDieInt (p) < (bits) : (p)->die < cl.time)
+#else
+#define R_QOG_DEAD(p, bits)	((p)->die < cl.time)
+#endif
+
 /*
 ===============
 R_DrawParticles
@@ -696,6 +736,7 @@ void R_DrawParticles (void)
 	float			time1;
 	float			dvel;
 	float			frametime;
+	int				diebits = 0;	// QuakeOG (Agent AR): R_QogDieBits
 #ifdef QOG_ALIAS_FAST
 	d_qogpview_t	qogpv;	// QuakeOG (Agent AI): Fast mode particles
 #endif
@@ -731,11 +772,14 @@ void R_DrawParticles (void)
 	time1 = frametime * 5;
 	grav = frametime * sv_gravity.value * 0.05;
 	dvel = 4*frametime;
+#ifdef QOG_PART_DIEBITS
+	diebits = R_QogDieBits ();	// QuakeOG (Agent AR): the kill checks in integers, exact
+#endif
 	
 	for ( ;; ) 
 	{
 		kill = active_particles;
-		if (kill && kill->die < cl.time)
+		if (kill && R_QOG_DEAD (kill, diebits))
 		{
 			active_particles = P_NEXT(kill);
 			P_SETNEXT(kill, free_particles);
@@ -750,7 +794,7 @@ void R_DrawParticles (void)
 		for ( ;; )
 		{
 			kill = P_NEXT(p);
-			if (kill && kill->die < cl.time)
+			if (kill && R_QOG_DEAD (kill, diebits))
 			{
 				P_SETNEXT(p, P_NEXT(kill));
 				P_SETNEXT(kill, free_particles);
