@@ -170,6 +170,7 @@ static void M_DrawTransPicRows (int x, int y, qpic_t *pic, int row, int rows)
 	byte	*source, *dest, tbyte;
 	int		u, v;
 
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view is spread to full width first
 	source = pic->data + row * pic->width;
 	dest = vid.buffer + y * vid.rowbytes + x + ((vid.width - 320)>>1);
 	for (v=0 ; v<rows ; v++)
@@ -196,6 +197,7 @@ static void M_PrintBig (int cx, int cy, char *str)
 	byte	*source, *dest, tbyte;
 	int		num, u, v;
 
+	QOG_TURBO_2D (cy);	// QuakeOG (Agent AO): a Turbo view is spread to full width first
 	for ( ; *str ; str++, cx += 16)
 	{
 		num = (*str + 128) & 255;
@@ -1299,7 +1301,12 @@ void M_AdjustSliders (int dir)
 #endif
 #if defined(QOG_BOARD_MENU) && defined(QOG_RFAST)
 	case 20:	// QuakeOG (Agent AA): render mode, Exact or Fast
+#ifdef QOG_RTURBO
+		// QuakeOG (Agent AO): Exact, Fast and Turbo (r_fast 0, 1, 2) in turn
+		Cvar_SetValue ("r_fast", ((int)r_fast.value + (dir < 0 ? 2 : 1)) % 3);
+#else
 		Cvar_SetValue ("r_fast", !r_fast.value);
+#endif
 		break;
 #endif
 #if defined(QOG_BOARD_MENU) && defined(QOG_SND_REMOTE)
@@ -1412,7 +1419,11 @@ void M_Options_Draw (void)
 			break;
 #ifdef QOG_RFAST
 		case 20:	// QuakeOG (Agent AA)
+#ifdef QOG_RTURBO
+			M_Print (220, y, r_fast.value >= 2 ? "Turbo" : r_fast.value ? "Fast" : "Exact");	// Agent AO
+#else
 			M_Print (220, y, r_fast.value ? "Fast" : "Exact");
+#endif
 			break;
 #endif
 #ifdef QOG_SND_REMOTE
@@ -3070,6 +3081,10 @@ static char *M_BenchSetup (void)
 #ifdef QOG_RFAST
 	if (r_fast.value)
 		mode = "Fast";
+#endif
+#ifdef QOG_RTURBO
+	if (r_fast.value >= 2)
+		mode = "Turbo";	// QuakeOG (Agent AO): the 3D view drawn at half width
 #endif
 	if (!sys)	// the PC
 		return va ("render %s, PC, view %i, %ix%i", mode, (int)scr_viewsize.value, (int)vid.width, (int)vid.height);

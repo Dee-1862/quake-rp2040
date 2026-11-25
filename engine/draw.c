@@ -194,6 +194,7 @@ void Draw_Character (int x, int y, int num)
 	
 	if (y <= -8)
 		return;			// totally off screen
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 
 #ifdef PARANOID
 	if (y > vid.height - 8 || x < 0 || x > vid.width - 8)
@@ -349,6 +350,7 @@ void Draw_Pic (int x, int y, qpic_t *pic)
 	{
 		Sys_Error ("Draw_Pic: bad coordinates");
 	}
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 
 	source = pic->data;
 
@@ -398,6 +400,7 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 	{
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 		
 	source = pic->data;
 
@@ -485,6 +488,7 @@ void Draw_TransPicTranslate (int x, int y, qpic_t *pic, byte *translation)
 	{
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 		
 	source = pic->data;
 
@@ -677,6 +681,7 @@ void Draw_ConsoleBackground (int lines)
 	qpic_t			*conback;
 	char			ver[100];
 
+	QOG_TURBO_2D (0);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 #ifdef QOG_CONBACK_FLASH
 	if (Draw_ConsoleBackgroundFlash (lines))	// QuakeOG: read in place
 		return;
@@ -879,6 +884,7 @@ void Draw_TileClear (int x, int y, int w, int h)
 	byte			*psrc;
 	vrect_t			vr;
 
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 	r_rectdesc.rect.x = x;
 	r_rectdesc.rect.y = y;
 	r_rectdesc.rect.width = w;
@@ -952,6 +958,7 @@ void Draw_Fill (int x, int y, int w, int h, int c)
 	unsigned		uc;
 	int				u, v;
 
+	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 	if (r_pixbytes == 1)
 	{
 		dest = vid.buffer + y*vid.rowbytes + x;
@@ -985,6 +992,7 @@ void Draw_FadeScreen (void)
 	VID_UnlockBuffer ();
 	S_ExtraUpdate ();
 	VID_LockBuffer ();
+	QOG_TURBO_2D (0);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 
 	for (y=0 ; y<vid.height ; y++)
 	{

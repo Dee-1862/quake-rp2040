@@ -140,7 +140,11 @@ void D_SetupFrame (void)
 	else
 		d_viewbuffer = (void *)(byte *)vid.buffer;
 
-	if (r_dowarp)
+	if (r_dowarp
+#ifdef QOG_RTURBO
+		&& !r_qog_turboview	// QuakeOG (Agent AO): the in-place warp keeps a Turbo view's half rows
+#endif
+		)
 		screenwidth = WARP_WIDTH;
 	else
 		screenwidth = vid.rowbytes;

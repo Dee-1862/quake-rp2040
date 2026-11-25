@@ -419,6 +419,13 @@ if(QOG_SPLIT)
     if(QOG_BOARD_FAST)
         list(APPEND _cl_defs QOG_RFAST QOG_RFAST_ON)
     endif()
+    # QuakeOG (Agent AO): Turbo, a third render mode (r_fast 2, Options, Render
+    # Exact / Fast / Turbo), the 3D view drawn at half width with Fast mode's
+    # shortcuts and doubled sideways by the LCD scanout (engine/r_qogturbo.c)
+    option(QOG_BOARD_TURBO "with FAST, the Turbo render mode (r_fast 2), a half width 3D view" ON)
+    if(QOG_BOARD_FAST AND QOG_BOARD_TURBO)
+        list(APPEND _cl_defs QOG_RTURBO)
+    endif()
     # QuakeOG (Agent AI): in Fast mode alias models (monsters, items, the view
     # weapon) and particles are made in integers, r_fast 0 draws as before
     option(QOG_BOARD_ALIASFAST "with FAST, alias vertices, triangle gradients and particles in integers in Fast mode" ON)

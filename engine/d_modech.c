@@ -69,7 +69,11 @@ void D_ViewChanged (void)
 		Sys_Error ("D_ViewChanged: video mode %dx%d is larger than MAXWIDTH x MAXHEIGHT (%dx%d)",
 				   vid.width, vid.height, MAXWIDTH, MAXHEIGHT);
 
-	if (r_dowarp)
+	if (r_dowarp
+#ifdef QOG_RTURBO
+		&& !r_qog_turboview	// QuakeOG (Agent AO): the in-place warp keeps a Turbo view's half rows
+#endif
+		)
 		rowbytes = WARP_WIDTH;
 	else
 		rowbytes = vid.rowbytes;

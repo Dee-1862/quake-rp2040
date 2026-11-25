@@ -248,6 +248,11 @@ target_compile_definitions(quakeog_pc PRIVATE
 # exactly as before (r_alias.c, d_polyse.c, d_part.c)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ALIAS_FAST)
+# Turbo render mode (Agent AO): r_fast 2 draws the 3D view at half width with
+# the Fast shortcuts, doubled sideways as the board's LCD scanout does
+# (engine/r_qogturbo.c). r_fast 0 and 1 draw exactly as before.
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_RTURBO)
 # Episode 1 client RAM, exact (Agent Y)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)
