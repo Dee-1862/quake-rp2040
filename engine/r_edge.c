@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 #include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 #ifdef QOG_EDGES_IN_ZBUFFER
 #include "d_local.h"	// QuakeOG: d_pzbuffer, d_zwidth (R_QogScanRows)
@@ -750,6 +751,7 @@ void R_GenerateSpans (void)
 	surf_t			*surf;
 
 	r_bmodelactive = 0;
+	QOG_BM (QOG_BM_SCANLINES, 1);	// QuakeOG (Agent AS)
 	QOG_AQ (AQ_SCANLINES, 1);
 
 // clear active surfaces to just the background surface
@@ -759,6 +761,7 @@ void R_GenerateSpans (void)
 // generate spans
 	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
+		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG (Agent AS)
 		QOG_AQ (AQ_SCANEDGES, 1);
 		if (edge->surfs[0])
 		{
@@ -798,6 +801,7 @@ void R_GenerateSpansBackward (void)
 // generate spans
 	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
+		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG (Agent AS)
 		if (edge->surfs[0])
 			R_TrailingEdge (&surfaces[edge->surfs[0]], edge);
 

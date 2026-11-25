@@ -128,4 +128,13 @@ See the GNU General Public License for more details.
 #define modelorg				c1_modelorg		// Agent AL's Fast gradient rows read it once a view
 #define TransformVector			c1_TransformVector
 
+#ifdef QOG_BOARDMODEL
+// Agent AS: the board cost model's PC builds keep core 1's work counts apart
+// (port/pc/boardmodel_pc.c adds both cores' sums)
+#define qog_bm_count			c1_qog_bm_count
+#ifdef QOG_C1_TIMED
+#define QOG_C1_PHCOUNT
+#endif
+#endif
+
 #endif

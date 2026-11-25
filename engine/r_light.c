@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 
 int	r_dlightframecount;
 
@@ -312,6 +313,7 @@ static QOG_NOINLINE qboolean R_QogLightReachesWorld (dlight_t *light, int n)
 		else
 			hi = mid - 1;
 	}
+	QOG_BM (QOG_BM_REACHUP, 1);	// QuakeOG (Agent AS)
 	node = NULL;
 	for (steps = 0 ; steps < 8 && lo - steps >= 0 ; steps++)
 	{
@@ -335,6 +337,7 @@ static QOG_NOINLINE qboolean R_QogLightReachesWorld (dlight_t *light, int n)
 		p = node->parent;
 		if (!p)
 			return false;	// not the world's tree
+		QOG_BM (QOG_BM_REACHUP_STEP, 1);	// QuakeOG (Agent AS)
 		dist = R_QogLightDist (light->origin, p->plane);
 		if (dist > light->radius)
 		{

@@ -408,7 +408,7 @@ no modulo and fewer instructions per pixel (d_litspan.h).
 =============
 */
 
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 static void D_QogCountLit (espan_t *pspan, int any)
 {
 	do
@@ -488,7 +488,7 @@ static void D_QogSpansCore1 (void *pspan)
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
@@ -520,7 +520,7 @@ static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan);
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
@@ -540,7 +540,7 @@ static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan)
 void D_DrawSpans8Lit (espan_t *pspan)
 #endif
 {
-#if defined(QOG_PHASE_TIME) && !defined(QOG_RFAST)
+#if (defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)) && !defined(QOG_RFAST)
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	{

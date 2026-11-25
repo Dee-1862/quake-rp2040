@@ -22,9 +22,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "d_local.h"
 #include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 #include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 // QuakeOG: pixels in a span list, for the phase counts
 static int D_QogSpanPixels (espan_t *pspan)
 {
@@ -382,7 +383,15 @@ void D_CalcGradients (msurface_t *pface)
 
 #if defined(QOG_GRAD_FAST) && defined(QOG_RFAST)
 	if (r_qogfast && currententity == &cl_entities[0] && D_QogGradFast (pface))
+	{
+		QOG_BM (QOG_BM_GRAD_FAST, 1);	// QuakeOG (Agent AS)
 		return;	// QuakeOG (Agent AL): Fast mode, world surfaces
+	}
+#endif
+#ifdef QOG_GRAD_EXACTF
+	QOG_BM (QOG_BM_GRAD_IDF, 1);	// QuakeOG (Agent AS)
+#else
+	QOG_BM (QOG_BM_GRAD_IDD, 1);
 #endif
 	pplane = SURF_PLANE (currententity->model, pface);	// QuakeOG
 
@@ -524,6 +533,8 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 	vec3_t			local_modelorg;
 
 	r_drawnpolycount++;
+	QOG_BM (QOG_BM_SURFDRAWN, 1);	// QuakeOG (Agent AS)
+	QOG_BM (QOG_BM_BMSURF, s->insubmodel != 0);
 	QOG_AQ (AQ_DSURF, 1);
 #ifdef QOG_AQ_STATS
 	{

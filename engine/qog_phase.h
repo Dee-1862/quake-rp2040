@@ -147,7 +147,14 @@ void qog_phase_add (int ph, const qog_phmark_t *m);
 #else
 #define QOG_PH_T(v)
 #define QOG_PH_ADD(ph, v)
+#ifdef QOG_C1_PHCOUNT
+/* QuakeOG (Agent AS): the board cost model's builds (QOG_BOARDMODEL) count
+   core 1's drawing too, in core 1's own sums (d_core1.h, boardmodel_pc.c) */
+extern unsigned	c1_qog_ph_count[QOG_PC_N];
+#define QOG_PH_COUNT(c, n)	(c1_qog_ph_count[c] += (unsigned)(n))
+#else
 #define QOG_PH_COUNT(c, n)
+#endif
 #define QOG_HP_ADD(ph, v)
 #define QOG_WC(c)
 #endif
