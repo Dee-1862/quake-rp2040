@@ -440,6 +440,16 @@ if(QOG_SPLIT)
     if(QOG_BOARD_FAST AND QOG_BOARD_TURBO)
         list(APPEND _cl_defs QOG_RTURBO)
     endif()
+    # QuakeOG (Agent AP): the LCD's pixel stream from a PIO state machine at
+    # clk_sys over a whole number of clocks a bit, at most QOG_LCD_PIO_KHZ
+    # (300 MHz gives 60 MHz, 300 / 5, where the PL022 gives 50, 300 / 6, and
+    # no gap between pixels). OFF sends the pixels through the PL022 as before
+    option(QOG_LCD_PIO "LCD pixels through PIO (platform/qog_video.c), OFF for the SPI peripheral" ON)
+    set(QOG_LCD_PIO_KHZ 62500 CACHE STRING "highest LCD bit rate in kHz for QOG_LCD_PIO (the panel's 62.5 MHz)")
+    if(QOG_LCD_PIO)
+        list(APPEND _cl_defs QOG_LCD_PIO QOG_LCD_PIO_KHZ=${QOG_LCD_PIO_KHZ})
+        message(STATUS "qog: LCD pixels through PIO, at most ${QOG_LCD_PIO_KHZ} kHz")
+    endif()
     # QuakeOG (Agent AI): in Fast mode alias models (monsters, items, the view
     # weapon) and particles are made in integers, r_fast 0 draws as before
     option(QOG_BOARD_ALIASFAST "with FAST, alias vertices, triangle gradients and particles in integers in Fast mode" ON)

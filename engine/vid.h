@@ -119,6 +119,28 @@ extern int	r_qog_turboview;	// a Turbo view is being drawn (vid is the half widt
 extern int	r_qog_turbopacked;
 void R_QogTurboUnpack (void);
 void R_QogTurboChar (int x, int y, int num);	// the crosshair into a packed view
+// QuakeOG (Agent AP): a character wholly over a packed Turbo view is not
+// drawn into the frame but listed, and the scanout draws it over the
+// doubled pixels at full width (the same panel picture without spreading
+// the view, so the next view does not wait for the scanout). R_QogTurboText
+// returns 0 when the character must be drawn as usual. The list is runs of
+// characters side by side on one row, in drawing order: each run is
+// x | y << 9 | length << 17 | first << 23, its characters chars[first] on.
+// VID_Update takes the frame's list.
+#ifndef QOG_TURBO_RUNS
+#define QOG_TURBO_RUNS	32
+#endif
+#ifndef QOG_TURBO_CHARS
+#define QOG_TURBO_CHARS	160
+#endif
+typedef struct
+{
+	unsigned	runs[QOG_TURBO_RUNS];
+	byte		chars[QOG_TURBO_CHARS];
+	int			numruns, numchars;
+} r_qogtext_t;
+int R_QogTurboText (int x, int y, int num);
+const r_qogtext_t *R_QogTurboTextTake (void);
 #define QOG_TURBO_2D(y)	do { if (r_qog_turbopacked && (int)(y) < r_qog_turbopacked) R_QogTurboUnpack (); } while (0)
 #else
 #define QOG_TURBO_2D(y)	((void)0)

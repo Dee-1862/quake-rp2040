@@ -77,6 +77,12 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 #ifdef QOG_HUD_SKIP
 static bool s_pal_changed;
 unsigned vid_qog_frames, vid_qog_hudsent;   /* Agent AK: for the diag line (link_rp2040.c) */
+/* Agent AP: the last scanout's time and rows, for the same line */
+void VID_QogScanStats(unsigned *us, unsigned *rows) {
+    const qog_video_stats_t vs = qog_video_stats();
+    *us = (unsigned)vs.last_scan_us;
+    *rows = (unsigned)vs.last_scan_rows;
+}
 #define PAL_CHANGED()   (s_pal_changed = true)
 #else
 #define PAL_CHANGED()
@@ -107,6 +113,11 @@ void VID_Init(unsigned char *palette) {
     r_ztemp_bytes = ZBUFFER_BYTES & ~3;
 #endif
     D_InitCaches(surfcache, sizeof surfcache);
+#ifdef QOG_LCD_PIO
+    /* QuakeOG (Agent AP): the pixels through PIO, the PL022's even
+       prescaler gives only 50 MHz at 300 MHz (apps/quake QOG_LCD_PIO) */
+    qog_video_use_pio(QOG_LCD_PIO_KHZ);
+#endif
     if (!qog_video_init(&vc)) Sys_Error("VID_Init: LCD did not start");
     VID_SetPalette(palette);
     qog_mem_register();
@@ -195,8 +206,15 @@ void VID_QogScanDone(void) {
    W / 2 bytes a row, which the scanout sends twice as wide (r_qogturbo.c) */
 #ifdef QOG_RTURBO
 #define TURBO_PACKED    r_qog_turbopacked
+/* Agent AP: the characters listed over the packed view go with the frame,
+   core 1 draws them over the doubled rows (engine/r_qogturbo.c) */
+extern byte *draw_chars;
+#define TURBO_TEXT()    do { const r_qogtext_t *t_ = R_QogTurboTextTake(); \
+                             qog_video_set_text((const uint32_t *)t_->runs, (uint32_t)t_->numruns, \
+                                                t_->chars, draw_chars); } while (0)
 #else
 #define TURBO_PACKED    0
+#define TURBO_TEXT()    ((void)0)
 #endif
 
 void VID_Update(vrect_t *rects) {
@@ -210,6 +228,7 @@ void VID_Update(vrect_t *rects) {
         if (rows >= H) s_pal_changed = false;
         vid_qog_frames++;
         if (rows >= H) vid_qog_hudsent++;
+        TURBO_TEXT();
         qog_video_present_packed(vid_buffer, (uint32_t)rows, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
         s_scan_rows = (uint8_t)rows;
@@ -221,6 +240,7 @@ void VID_Update(vrect_t *rects) {
 #ifdef QOG_HUD_IN_ZBUFFER
     R_HudFrameEnd();
 #endif
+    TURBO_TEXT();
     qog_video_present_packed(vid_buffer, H, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
     s_scan_rows = H;
