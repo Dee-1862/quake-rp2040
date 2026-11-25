@@ -259,6 +259,86 @@ void D_DrawSubdiv (void)
 }
 
 
+#if defined(QOG_ALIAS_TURBOTINY) && defined(QOG_RTURBO)
+/*
+================
+D_QogTinyTriangle
+
+QuakeOG (Agent AR): Turbo only (r_qog_turboview). A front-facing triangle
+whose corners lie within 3 x 3 pixels (a distant model: 51 of the 85
+triangles a Turbo view of timedemo demo3 rasterises with gradients cover 4
+pixels or fewer, and 16 more cover none) is drawn without gradients, edge
+tables or span packages, which cost about 2,000 cycles a triangle on the
+board even when nothing is drawn. Each of the at most 9 pixels is tested
+against the three edges (on an edge: drawn for top and left edges), and a
+covered pixel takes the first corner's texel, light and depth with id's
+depth test, as D_PolysetDrawFinalVerts draws a corner. Returns 0 when the
+triangle is not that small.
+================
+*/
+#if defined(_MSC_VER)
+#define QOG_TINY_NOINLINE	__declspec(noinline)
+#else
+#define QOG_TINY_NOINLINE	__attribute__((noinline))	// its frame beside the rasterizer's, not under it
+#endif
+static QOG_TINY_NOINLINE int D_QogTinyTriangle (finalvert_t *a, finalvert_t *b, finalvert_t *c, int facesfront)
+{
+	int		x0 = a->v[0], y0 = a->v[1], x1 = b->v[0], y1 = b->v[1], x2 = c->v[0], y2 = c->v[1];
+	int		minx = x0, maxx = x0, miny = y0, maxy = y0, x, y, s, z, col;
+	int		e0x, e0y, e1x, e1y, e2x, e2y, t0, t1, t2;
+	byte	*cmap, *row;
+
+	if (x1 < minx) minx = x1; if (x1 > maxx) maxx = x1;
+	if (x2 < minx) minx = x2; if (x2 > maxx) maxx = x2;
+	if (y1 < miny) miny = y1; if (y1 > maxy) maxy = y1;
+	if (y2 < miny) miny = y2; if (y2 > maxy) maxy = y2;
+	if (maxx - minx > 2 || maxy - miny > 2)
+		return 0;
+
+	// edges in the triangle's winding (d_xdenom < 0 makes the third corner
+	// positive for each edge): a pixel is inside when every edge function is
+	// positive, or zero on a top or left edge
+	e0x = x1 - x0; e0y = y1 - y0;
+	e1x = x2 - x1; e1y = y2 - y1;
+	e2x = x0 - x2; e2y = y0 - y2;
+	t0 = (e0y < 0 || (e0y == 0 && e0x > 0)) ? 0 : 1;
+	t1 = (e1y < 0 || (e1y == 0 && e1x > 0)) ? 0 : 1;
+	t2 = (e2y < 0 || (e2y == 0 && e2x > 0)) ? 0 : 1;
+
+	s = a->v[2];
+	if (!facesfront && (a->flags & ALIAS_ONSEAM))
+		s += r_affinetridesc.seamfixupX16;
+	row = (byte *)r_affinetridesc.pskin + (a->v[3] >> 16) * r_affinetridesc.skinwidth;
+	cmap = (byte *)acolormap + (a->v[4] & 0xFF00);
+	col = cmap[D_ATEX (row[s >> 16])];
+	z = a->v[5] >> 16;
+	z = D_ZQ(z);
+	for (y = miny ; y <= maxy ; y++)
+	{
+		if (y >= r_refdef.vrectbottom)
+			break;
+		for (x = minx ; x <= maxx ; x++)
+		{
+			d_zval_t	*zb;
+
+			if (e0x * (y - y0) - e0y * (x - x0) < t0 ||
+				e1x * (y - y1) - e1y * (x - x1) < t1 ||
+				e2x * (y - y2) - e2y * (x - x2) < t2)
+				continue;		// outside an edge (d_xdenom < 0 makes inside positive)
+			if (x >= r_refdef.vrectright)
+				continue;
+			zb = D_ZSPANTABLE(y) + x;
+			if (z >= *zb)
+			{
+				*zb = z;
+				d_viewbuffer[D_SCANTABLE(y) + x] = col;
+			}
+		}
+	}
+	return 1;
+}
+#endif
+
 /*
 ================
 D_DrawNonSubdiv
@@ -291,6 +371,13 @@ void D_DrawNonSubdiv (void)
 			QOG_AST(QAS_BACK, 1);
 			continue;
 		}
+#if defined(QOG_ALIAS_TURBOTINY) && defined(QOG_RTURBO)
+		if (r_qog_turboview && D_QogTinyTriangle (index0, index1, index2, ptri->facesfront))
+		{
+			QOG_AST(QAS_TINYTRI, 1);	// QuakeOG (Agent AR): Turbo, no gradients
+			continue;
+		}
+#endif
 
 		r_p0[0] = index0->v[0];		// u
 		r_p0[1] = index0->v[1];		// v

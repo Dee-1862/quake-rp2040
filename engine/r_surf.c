@@ -390,6 +390,22 @@ R_BuildLightMap
 Combine and scale multiple lightmaps into the 8.8 format in blocklights
 ===============
 */
+#if defined(QOG_LMAP_FUSE) && defined(QOG_LMAP_FUSE_CHECK)
+static unsigned	*r_qog_lmcheck;
+static int		r_qog_lmchecksize;
+
+static void R_QogLmCheck (const unsigned *bl)
+{
+	static unsigned	n, bad;
+
+	n++;
+	if (memcmp (bl, r_qog_lmcheck, r_qog_lmchecksize * sizeof(unsigned)))
+		bad++;
+	if ((n & 0x3FFF) == 0)
+		Sys_Printf ("qog_lmfusecheck %u grids, %u differ\n", n, bad);
+}
+#endif
+
 void R_BuildLightMap (void)
 {
 	int			smax, tmax;
@@ -413,6 +429,165 @@ void R_BuildLightMap (void)
 			blocklights[i] = 0;
 		return;
 	}
+
+#if defined(QOG_LMAP_FUSE) && defined(QOG_LMAP_FUSE_CHECK)
+	// PC check build: id's passes into a copy, compared with the fused grid
+	if (!SURF_DLIGHTFRAME_IS (r_drawsurf.model, surf, r_framecount))
+	{
+		static unsigned	ref[18*18];
+		byte			*lm = lightmap;
+		int				k;
+
+		for (i=0 ; i<size ; i++)
+			ref[i] = r_refdef.ambientlight<<8;
+		if (lm)
+			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
+			{
+				scale = r_drawsurf.lightadj[maps];
+				for (i=0 ; i<size ; i++)
+					ref[i] += lm[i] * scale;
+				lm += size;
+			}
+		for (i=0 ; i<size ; i++)
+		{
+			k = (255*256 - (int)ref[i]) >> (8 - VID_CBITS);
+			ref[i] = k < (1 << 6) ? (1 << 6) : k;
+		}
+		r_qog_lmcheck = ref;
+		r_qog_lmchecksize = size;
+	}
+	else
+		r_qog_lmcheck = NULL;
+#endif
+#ifdef QOG_LMAP_FUSE
+	/*
+	QuakeOG (Agent AQ): id's passes over the grid (clear to ambient, one
+	per light style, bound and invert after the dynamic lights) in one or
+	two. The cell is an unsigned sum, which wraps the same in any order, so
+	ambient plus each style's sample times its scale in one statement is
+	id's value, and without dynamic lights the bound and invert follow in
+	the same loop. The grid is read and written once instead of three or
+	four times. No new names, so core 1's copy (d_core1.h) needs none.
+	*/
+	{
+		unsigned		amb = r_refdef.ambientlight<<8, s0, s1, v;
+		const byte		*l0, *l1;
+		int				nmaps = 0, dl;
+		unsigned		*bl = blocklights;
+
+		l0 = l1 = lightmap;
+		s0 = s1 = 0;
+		if (lightmap)
+		{
+			for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ; maps++)
+				;
+			nmaps = maps;
+		}
+		dl = SURF_DLIGHTFRAME_IS (r_drawsurf.model, surf, r_framecount);	// QuakeOG
+		if (nmaps <= 2)
+		{
+			if (nmaps >= 1)
+			{
+				s0 = r_drawsurf.lightadj[0];	// 8.8 fraction
+				l1 = l0 + size;
+			}
+			if (nmaps == 2)
+				s1 = r_drawsurf.lightadj[1];
+			// with fewer styles the scale is 0 and the product adds nothing
+			if (nmaps == 0)
+				l0 = l1 = (const byte *)bl;	// any readable bytes, times 0
+			else if (nmaps == 1)
+				l1 = l0;
+			if (!dl && nmaps == 1)
+			{
+				// one style, the common case: one product a cell
+				unsigned	*end = bl + size;
+				unsigned	*p = bl;
+				int			top = 255*256 - (int)amb;
+
+				while (p < end)
+				{
+					t = (top - (int)(*l0++ * s0)) >> (8 - VID_CBITS);
+					if (t < (1 << 6))
+						t = (1 << 6);
+					*p++ = t;
+				}
+			}
+			else if (!dl)
+			{
+				for (i=0 ; i<size ; i++)
+				{
+					v = amb + l0[i] * s0 + l1[i] * s1;
+					t = (255*256 - (int)v) >> (8 - VID_CBITS);
+					if (t < (1 << 6))
+						t = (1 << 6);
+					bl[i] = t;
+				}
+			}
+			else
+			{
+				for (i=0 ; i<size ; i++)
+					bl[i] = amb + l0[i] * s0 + l1[i] * s1;
+			}
+		}
+		else
+		{
+			// three or four styles: id's passes
+			for (i=0 ; i<size ; i++)
+				bl[i] = amb;
+			for (maps = 0 ; maps < nmaps ; maps++)
+			{
+				scale = r_drawsurf.lightadj[maps];	// 8.8 fraction
+				for (i=0 ; i<size ; i++)
+					bl[i] += lightmap[i] * scale;
+				lightmap += size;	// skip to next lightmap
+			}
+			lightmap = surf->samples;
+		}
+		if (lightmap)
+			lightmap += size * nmaps;	// as id's loop leaves it
+
+#ifdef QOG_XIPSIM
+		{	// QuakeOG (Agent AH): PC measurement, the samples read from flash (d_xipsim.c)
+			void XipSim_Range (int kind, const unsigned char *p, int bytes);
+			if (surf->samples)
+				XipSim_Range (2, surf->samples, (int)(lightmap - surf->samples));
+		}
+#endif
+
+#ifdef QOG_LMAP_STATS
+		R_QogLmStatsBuild (surf, size, lightmap ? nmaps : 0);
+#endif
+#ifdef QOG_LMAP_FUSE_CHECK
+		if (r_qog_lmcheck && nmaps <= 2)
+			R_QogLmCheck (bl);
+#endif
+		if (!dl && nmaps <= 2)
+			return;		// bound and inverted above
+
+		if (dl)
+		{
+			LMS (LMS_DLBUILDS, 1);
+			R_AddDynamicLights ();
+		}
+
+	// bound, invert, and shift
+		for (i=0 ; i<size ; i++)
+		{
+			t = (255*256 - (int)bl[i]) >> (8 - VID_CBITS);
+
+			if (t < (1 << 6))
+				t = (1 << 6);
+
+			bl[i] = t;
+		}
+#ifdef QOG_LMAP_FUSE_CHECK
+		if (r_qog_lmcheck)
+			R_QogLmCheck (bl);
+#endif
+		return;
+	}
+#endif
 
 // clear to ambient
 	for (i=0 ; i<size ; i++)

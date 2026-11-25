@@ -156,6 +156,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DLIGHT_REACHUP
     QOG_GRAD_EXACTF
     QOG_GRAD_FAST)
+
+list(APPEND QOG_ENGINE_DEFS
+    QOG_PART_DIEBITS)               # Agent AR, exact: particle kill checks as integer compares (r_part.c)
 # Agent AQ: brush entities and the edge scan with fewer float calls, exact,
 # same as pc/CMakeLists.txt (r_bsp.c, r_edge.c, d_edge.c, r_main.c)
 list(APPEND QOG_ENGINE_DEFS
@@ -164,7 +167,12 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_BMODEL_FACING               # r_bsp.c: brush surface facing tests without double, one subtraction on axial planes
     QOG_BMODEL_BBOXF                # r_main.c R_BmodelCheckBBox: float compares instead of double differences
     QOG_BMODEL_FRUSTUM              # r_main.c R_DrawBEntitiesOnList: view planes of entities that do not turn from the last ones
-    QOG_DSURF_NOFRUSTUM)            # d_edge.c D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
+    QOG_DSURF_NOFRUSTUM             # d_edge.c D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
+    QOG_SCAN_FAST                   # r_edge.c: span generation in one loop with its globals in locals (Agent AQ, round 2)
+    QOG_BPOLY_SIDES                 # r_bsp.c: brush clip sides inline, a point shared with the edge before keeps its side
+    QOG_BMSPLIT_INT                 # r_efrag.c R_SplitEntityOnNode2: axial box tests by integer compares of the float bits
+    QOG_LMAP_FUSE                   # r_surf.c R_BuildLightMap: the grid's passes fused, the same cells
+    QOG_BMODEL_BBOXINT)             # r_main.c R_BmodelCheckBBox: integer plane tests with a margin first (with QOG_WORLDNODE_INT)
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)
@@ -454,6 +462,12 @@ if(QOG_SPLIT)
     option(QOG_BOARD_TURBO "with FAST, the Turbo render mode (r_fast 2), a half width 3D view" ON)
     if(QOG_BOARD_FAST AND QOG_BOARD_TURBO)
         list(APPEND _cl_defs QOG_RTURBO)
+        # Agent AR: in Turbo a model triangle within 3 x 3 pixels is drawn
+        # without gradients, its pixels in the first corner's texel and light
+        option(QOG_BOARD_TURBOTINY "with TURBO, tiny model triangles without gradients in Turbo" ON)
+        if(QOG_BOARD_TURBOTINY)
+            list(APPEND _cl_defs QOG_ALIAS_TURBOTINY)   # d_polyse.c D_QogTinyTriangle
+        endif()
     endif()
     # QuakeOG (Agent AP): the LCD's pixel stream from a PIO state machine at
     # clk_sys over a whole number of clocks a bit, at most QOG_LCD_PIO_KHZ
@@ -497,6 +511,20 @@ if(QOG_SPLIT)
     option(QOG_BOARD_INTERP "Fast lit spans address texels through the interpolators" ON)
     if(QOG_BOARD_FAST AND QOG_BOARD_INTERP)
         list(APPEND _cl_defs QOG_LITSPAN_INTERP)
+    endif()
+    # Agent AR: Fast and Turbo lit spans with 32-bit span starts, the z
+    # written by the pixel loop, and the runs of light and pixels in
+    # hand-written Thumb in RAM (engine/d_lit_q.h, port/rp2040/d_litq_rp2040.S)
+    option(QOG_BOARD_LITQ "with FAST and INTERP, the Q span drawer for Fast and Turbo" ON)
+    if(QOG_BOARD_FAST AND QOG_BOARD_INTERP AND QOG_BOARD_LITQ)
+        list(APPEND _cl_defs QOG_LITSPAN_Q QOG_LITQ_ASM)
+        target_sources(qog_engine_cl PRIVATE ${QOG_ROOT}/port/rp2040/d_litq_rp2040.S)
+        # each light run of 8 pixels ends at the next run's start, one blend a
+        # run instead of two (0.23% of Fast pixels, single colour map rows)
+        option(QOG_BOARD_LITQSHARE "with LITQ, light runs share their ends (Fast and Turbo)" ON)
+        if(QOG_BOARD_LITQSHARE)
+            list(APPEND _cl_defs QOG_LITQ_SHARELIGHT)
+        endif()
     endif()
     option(QOG_BOARD_CONSMALL "client console text 1 KB, its hunk 3 KB smaller" ON)
     if(QOG_BOARD_CONSMALL)

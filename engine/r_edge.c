@@ -245,6 +245,7 @@ void R_RemoveEdges (edge_t *pedge)
 
 #if	!id386
 
+#ifndef QOG_SCAN_FAST	// QuakeOG (Agent AQ): else further down
 /*
 ==============
 R_StepActiveU
@@ -309,6 +310,7 @@ pushback:
 			return;
 	}
 }
+#endif	// QOG_SCAN_FAST
 
 #endif	// !id386
 
@@ -526,23 +528,48 @@ static int R_QogZFrontDouble (surf_t *surf, surf_t *surf2, edge_t *edge)
 	return 0;
 }
 
-static int R_QogZFront (surf_t *surf, surf_t *surf2, edge_t *edge)
+/*
+QuakeOG (Agent AQ, QOG_SCAN_FAST): surf's half of the compare (its fu, its
+float part a, its b, n = a + b and the larger exponent of a and b) depends
+only on surf, the edge and the scan line, and 96% of the compares in demo3
+come from R_LeadingEdge's search loop, which compares the same surf with
+several surfaces of its key. So that half is kept for the edge in a cache
+the caller clears (the same statements, the same bits).
+*/
+typedef struct
+{
+	int				have;
+	float			fu, n;
+	unsigned int	e;
+} r_qogzc_t;
+
+static int R_QogZFrontC (surf_t *surf, surf_t *surf2, edge_t *edge, r_qogzc_t *c)
 {
 	float			fu, a1, b1, a2, b2, n, t, d;
 	unsigned int	e, ea, lim, db;
 
-	fu = (float)(edge->u - 0xFFFFF);
-	if (QOG_FBITS (fu) & 0x7FFFFFFF)
-		QOG_FBITS (fu) -= 20u << 23;		// times 2^-20, exact: id's fu
-	a1 = surf->d_ziorigin + fv*surf->d_zistepv;				// id's float part
-	b1 = fu*surf->d_zistepu;
+	if (!c->have)
+	{
+		fu = (float)(edge->u - 0xFFFFF);
+		if (QOG_FBITS (fu) & 0x7FFFFFFF)
+			QOG_FBITS (fu) -= 20u << 23;		// times 2^-20, exact: id's fu
+		a1 = surf->d_ziorigin + fv*surf->d_zistepv;				// id's float part
+		b1 = fu*surf->d_zistepu;
+		e = QOG_FBITS (a1) & 0x7F800000;
+		ea = QOG_FBITS (b1) & 0x7F800000;
+		if (ea > e) e = ea;
+		c->fu = fu;
+		c->n = a1 + b1;
+		c->e = e;
+		c->have = 1;
+	}
+	fu = c->fu;
+	n = c->n;
+	e = c->e;
 	a2 = surf2->d_ziorigin + fv*surf2->d_zistepv;
 	b2 = fu*surf2->d_zistepu;
 
 	// the largest biased exponent of the four
-	e = QOG_FBITS (a1) & 0x7F800000;
-	ea = QOG_FBITS (b1) & 0x7F800000;
-	if (ea > e) e = ea;
 	ea = QOG_FBITS (a2) & 0x7F800000;
 	if (ea > e) e = ea;
 	ea = QOG_FBITS (b2) & 0x7F800000;
@@ -551,7 +578,6 @@ static int R_QogZFront (surf_t *surf, surf_t *surf2, edge_t *edge)
 		goto ids;		// not finite
 	lim = e > (44u << 23) ? e - (17u << 23) : (27u << 23);	// 2^(e-17), at least 2^-100
 
-	n = a1 + b1;
 	t = a2 + b2;
 	d = n*0.99f - t;
 	db = QOG_FBITS (d) & 0x7FFFFFFF;
@@ -576,6 +602,14 @@ ids:
 	return R_QogZFrontDouble (surf, surf2, edge);
 }
 
+static int R_QogZFront (surf_t *surf, surf_t *surf2, edge_t *edge)
+{
+	r_qogzc_t	c;
+
+	c.have = 0;
+	return R_QogZFrontC (surf, surf2, edge, &c);
+}
+
 #ifdef QOG_LEADZ_CHECK
 // PC check build: both ways on every compare, mismatches counted
 unsigned	r_qog_leadzn, r_qog_leadzbad;
@@ -593,8 +627,23 @@ static int R_QogZFrontCheck (surf_t *surf, surf_t *surf2, edge_t *edge)
 	return b;
 }
 #define R_QOGZFRONT	R_QogZFrontCheck
+
+static int R_QogZFrontCCheck (surf_t *surf, surf_t *surf2, edge_t *edge, r_qogzc_t *c)
+{
+	int	a = R_QogZFrontC (surf, surf2, edge, c);
+	int	b = R_QogZFrontDouble (surf, surf2, edge);
+
+	r_qog_leadzn++;
+	if (a != b)
+		r_qog_leadzbad++;
+	if ((r_qog_leadzn & 0xFFFF) == 0)
+		Sys_Printf ("qog_leadzcheck %u compares, %u differ\n", r_qog_leadzn, r_qog_leadzbad);
+	return b;
+}
+#define R_QOGZFRONTC	R_QogZFrontCCheck
 #else
 #define R_QOGZFRONT	R_QogZFront
+#define R_QOGZFRONTC	R_QogZFrontC
 #endif
 #endif
 
@@ -740,6 +789,267 @@ gotposition:
 }
 
 
+#ifdef QOG_SCAN_FAST
+#ifndef QOG_LEADZ_FLOAT
+#error "QOG_SCAN_FAST needs QOG_LEADZ_FLOAT (R_QOGZFRONT)"
+#endif
+/*
+==============
+R_GenerateSpans
+
+QuakeOG (Agent AQ): id's R_GenerateSpans, R_TrailingEdge and R_LeadingEdge
+as one loop with the same statements in the same order. The engine is
+built with -fno-strict-aliasing, so every store made GCC load again the
+globals behind the links (r_edgebase, surfaces, r_spanbase, span_p,
+current_iv), and the two calls per edge saved and restored registers. Here
+those values are locals for the whole scan line (nothing in the loop
+changes them: the 1/z order reads only the surfaces, the edge and fv), and
+span_p and r_bmodelactive are written back before R_CleanupSpan, which
+reads span_p. r_bmodelactive is only counted, never read, so its final
+value is id's.
+==============
+*/
+void R_GenerateSpans (void)
+{
+	edge_t			*edge, *tail;
+	surf_t			*surfs, *head, *surf, *surf2;
+	espan_t			*span, *sp;
+	int				iu, v, bmact;
+	unsigned		s0, s1;
+	r_qogzc_t		zc;	// surf's half of the 1/z compares of one edge
+#ifdef QOG_EDGE_T_PACKED
+	byte			*ebase = r_edgebase;
+#define QE(r)		((edge_t *)(ebase + (r)))
+#else
+#define QE(r)		(r)
+#endif
+#ifdef QOG_ESPAN_T_PACKED
+	byte			*sbase = r_spanbase;
+#define QSPREF(p)	((espanref_t)((byte *)(p) - sbase))
+#else
+#define QSPREF(p)	(p)
+#endif
+#ifdef QOG_SURF_T_SMALL
+#define QS(r)		(surfs + (r))
+#define QSREF(p)	((surfref_t)((p) - surfs))
+#else
+#define QS(r)		(r)
+#define QSREF(p)	(p)
+#endif
+
+	QOG_BM (QOG_BM_SCANLINES, 1);	// QuakeOG (Agent AS)
+	QOG_AQ (AQ_SCANLINES, 1);
+	surfs = surfaces;
+	head = &surfs[1];
+	sp = span_p;
+	v = current_iv;
+	bmact = 0;
+	tail = &edge_tail;
+
+// clear active surfaces to just the background surface
+	head->next = head->prev = QSREF(head);
+	head->last_u = edge_head_u_shift20;
+
+// generate spans
+	for (edge=QE(edge_head.next) ; edge != tail; edge=QE(edge->next))
+	{
+		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG (Agent AS)
+		QOG_AQ (AQ_SCANEDGES, 1);
+		s0 = edge->surfs[0];
+		s1 = edge->surfs[1];
+		if (s0)
+		{
+		// it has a left surface, so a surface is going away for this span
+		// (id's R_TrailingEdge)
+			surf = &surfs[s0];
+			if (--surf->spanstate == 0)
+			{
+				if (surf->insubmodel)
+					bmact--;
+
+				if (surf == QS(head->next))
+				{
+				// emit a span (current top going away)
+					iu = edge->u >> 20;
+					if (iu > surf->last_u)
+					{
+						span = sp++;
+						span->u = surf->last_u;
+						span->count = iu - span->u;
+						span->v = v;
+						span->pnext = surf->spans;
+						surf->spans = QSPREF(span);
+					}
+
+				// set last_u on the surface below
+					QS(surf->next)->last_u = iu;
+				}
+
+				QS(surf->prev)->next = surf->next;
+				QS(surf->next)->prev = surf->prev;
+			}
+
+			if (!s1)
+				continue;
+		}
+		else if (!s1)
+			continue;	// id's R_LeadingEdge does nothing without a right surface
+
+	// it's adding a new surface in, so find the correct place (id's
+	// R_LeadingEdge)
+		surf = &surfs[s1];
+
+	// don't start a span if this is an inverted span, with the end
+	// edge preceding the start edge (that is, we've already seen the
+	// end edge)
+		if (++surf->spanstate == 1)
+		{
+			if (surf->insubmodel)
+				bmact++;
+
+			zc.have = 0;
+			surf2 = QS(head->next);
+
+			if (surf->key < surf2->key)
+				goto newtop;
+
+		// if it's two surfaces on the same plane, the one that's already
+		// active is in front, so keep going unless it's a bmodel
+			if (surf->insubmodel && (surf->key == surf2->key))
+			{
+			// must be two bmodels in the same leaf; sort on 1/z
+				QOG_AQ (AQ_LEADZ, 1);
+				if (R_QOGZFRONTC (surf, surf2, edge, &zc))
+					goto newtop;
+			}
+
+continue_search:
+
+			do
+			{
+				surf2 = QS(surf2->next);
+			} while (surf->key > surf2->key);
+
+			if (surf->key == surf2->key)
+			{
+			// if it's two surfaces on the same plane, the one that's already
+			// active is in front, so keep going unless it's a bmodel
+				if (!surf->insubmodel)
+					goto continue_search;
+
+			// must be two bmodels in the same leaf; sort on 1/z
+				QOG_AQ (AQ_LEADZ, 1);
+				QOG_AQ (AQ_LEADZ2, 1);
+				QOG_AQ (AQ_LEADZHIT, zc.have);
+				if (R_QOGZFRONTC (surf, surf2, edge, &zc))
+					goto gotposition;
+
+				goto continue_search;
+			}
+
+			goto gotposition;
+
+newtop:
+		// emit a span (obscures current top)
+			iu = edge->u >> 20;
+
+			if (iu > surf2->last_u)
+			{
+				span = sp++;
+				span->u = surf2->last_u;
+				span->count = iu - span->u;
+				span->v = v;
+				span->pnext = surf2->spans;
+				surf2->spans = QSPREF(span);
+			}
+
+			// set last_u on the new span
+			surf->last_u = iu;
+
+gotposition:
+		// insert before surf2
+			surf->next = QSREF(surf2);
+			surf->prev = surf2->prev;
+			QS(surf2->prev)->next = QSREF(surf);
+			surf2->prev = QSREF(surf);
+		}
+	}
+
+	span_p = sp;
+	r_bmodelactive = bmact;
+	R_CleanupSpan ();
+#undef QE
+#undef QSPREF
+#undef QS
+#undef QSREF
+}
+
+/*
+==============
+R_StepActiveU
+
+QuakeOG (Agent AQ): id's loop with r_edgebase, the tail and the aftertail
+sentinel in locals, for the same reason as above.
+==============
+*/
+void R_StepActiveU (edge_t *pedge)
+{
+	edge_t		*pnext_edge, *pwedge, *tail, *aftertail;
+#ifdef QOG_EDGE_T_PACKED
+	byte		*ebase = r_edgebase;
+#define QE(r)		((edge_t *)(ebase + (r)))
+#define QEREF(p)	((edgeref_t)((byte *)(p) - ebase))
+#else
+#define QE(r)		(r)
+#define QEREF(p)	(p)
+#endif
+
+	tail = &edge_tail;
+	aftertail = &edge_aftertail;
+	while (1)
+	{
+		do
+		{
+			pedge->u += pedge->u_step;
+			if (pedge->u < QE(pedge->prev)->u)
+				break;
+			pedge = QE(pedge->next);
+		} while (1);
+
+		if (pedge == aftertail)
+			return;
+
+	// push it back to keep it sorted
+		pnext_edge = QE(pedge->next);
+
+	// pull the edge out of the edge list
+		QE(pedge->next)->prev = pedge->prev;
+		QE(pedge->prev)->next = pedge->next;
+
+	// find out where the edge goes in the edge list
+		pwedge = QE(QE(pedge->prev)->prev);
+
+		while (pwedge->u > pedge->u)
+		{
+			pwedge = QE(pwedge->prev);
+		}
+
+	// put the edge back into the edge list
+		pedge->next = pwedge->next;
+		pedge->prev = QEREF(pwedge);
+		QE(pedge->next)->prev = QEREF(pedge);
+		pwedge->next = QEREF(pedge);
+
+		pedge = pnext_edge;
+		if (pedge == tail)
+			return;
+	}
+#undef QE
+#undef QEREF
+}
+
+#else	// QOG_SCAN_FAST
+
 /*
 ==============
 R_GenerateSpans
@@ -779,6 +1089,7 @@ void R_GenerateSpans (void)
 
 	R_CleanupSpan ();
 }
+#endif	// QOG_SCAN_FAST
 
 #endif	// !id386
 

@@ -33,6 +33,17 @@ See the GNU General Public License for more details.
 
 #ifndef QOG_SURFCACHE
 
+#ifdef QOG_C1_COPY
+#undef QOG_AR_STATS		// QuakeOG (Agent AR): PC measurement, core 0's copy only
+#undef QOG_AR_DUMP
+#endif
+// QuakeOG (Agent AR): the Q drawer (d_lit_q.h) is the Fast drawer's, and
+// its runs use the interpolators
+#if defined(QOG_LITSPAN_Q) && !(defined(QOG_LITSPAN_INTERP) && defined(QOG_RFAST) && \
+	defined(QOG_LITSPAN_FAST) && !defined(QOG_RFAST_FLOATSETUP))
+#undef QOG_LITSPAN_Q
+#endif
+
 extern unsigned	blocklights[18*18];
 void R_BuildLightMap (void);
 
@@ -143,6 +154,13 @@ void D_QogLitInterpCheck (void)
 	liti_state = bad ? 2 : 1;
 	if (bad)
 		Con_Printf ("Fast render off: the interpolator check failed %d of 64\n", bad);
+#if defined(QOG_LITSPAN_Q) && defined(QOG_LITQ_ASM)
+	if (!bad)
+	{
+		void D_QogLitQCheck (void);
+		D_QogLitQCheck ();	// QuakeOG (Agent AR): the span runs' assembly (d_lit_q.h)
+	}
+#endif
 }
 #define LITI_CHECK	if (liti_state == 2) r_qogfast = 0;
 #else
@@ -174,6 +192,76 @@ void D_QogRfastStats_f (void)
 	memset (litfast_stats, 0, sizeof(litfast_stats));
 	litfast_frame0 = r_framecount;
 }
+#endif
+
+#ifdef QOG_AR_STATS
+/*
+================
+D_QogArStats
+
+QuakeOG (Agent AR): PC measurement only. The lit spans of each surface by
+length, and how much farther than the surface's nearest point each span
+reaches (the nearest 1/z over the span's smaller end), summed since the
+level started and printed every 100 views as "qog_arstat spans".
+================
+*/
+static unsigned	ar_st[24];
+static int		ar_frame0 = -1, ar_lastframe;
+
+static void D_QogArStats (espan_t *pspan)
+{
+	float	nz = 0;
+
+	if (ar_frame0 < 0 || r_framecount < ar_frame0)
+	{
+		memset (ar_st, 0, sizeof(ar_st));
+		ar_frame0 = r_framecount;
+	}
+	if (r_framecount != ar_lastframe)
+	{
+		ar_lastframe = r_framecount;
+		if ((r_framecount - ar_frame0) && !((r_framecount - ar_frame0) % 100))
+			Con_Printf ("qog_arstat spans views %d fast %d turbo %d surf %u spans %u px %u len 1 %u 2 %u 3-4 %u 5-8 %u 9-16 %u "
+				"17-32 %u 33-64 %u 65+ %u ratio 4 %u 8 %u 16 %u 32 %u 64 %u 128 %u 256 %u more %u\n",
+				r_framecount - ar_frame0, r_qogfast,
+#ifdef QOG_RTURBO
+				r_qog_turboview,
+#else
+				0,
+#endif
+				ar_st[0], ar_st[1], ar_st[2], ar_st[3], ar_st[4], ar_st[5], ar_st[6], ar_st[7], ar_st[8],
+				ar_st[9], ar_st[10], ar_st[11], ar_st[12], ar_st[13], ar_st[14], ar_st[15], ar_st[16],
+				ar_st[17], ar_st[18]);
+	}
+	{
+		espan_t	*p = pspan;
+		do
+		{
+			float	z0 = d_ziorigin + p->v * d_zistepv + p->u * d_zistepu;
+			float	z1 = z0 + (p->count - 1) * d_zistepu;
+			if (z0 > nz) nz = z0;
+			if (z1 > nz) nz = z1;
+		} while (p->pnext != SPAN_NONE && (p = SPAN_PTR (p->pnext)));
+	}
+	ar_st[0]++;
+	do
+	{
+		int		c = pspan->count, b;
+		float	z0 = d_ziorigin + pspan->v * d_zistepv + pspan->u * d_zistepu;
+		float	z1 = z0 + (c - 1) * d_zistepu, zm = z0 < z1 ? z0 : z1, r;
+
+		ar_st[1]++;
+		ar_st[2] += c;
+		b = c <= 1 ? 0 : c <= 2 ? 1 : c <= 4 ? 2 : c <= 8 ? 3 : c <= 16 ? 4 : c <= 32 ? 5 : c <= 64 ? 6 : 7;
+		ar_st[3 + b]++;
+		r = zm > 0 ? nz / zm : 1e9f;
+		b = r <= 4 ? 0 : r <= 8 ? 1 : r <= 16 ? 2 : r <= 32 ? 3 : r <= 64 ? 4 : r <= 128 ? 5 : r <= 256 ? 6 : 7;
+		ar_st[11 + b]++;
+	} while (pspan->pnext != SPAN_NONE && (pspan = SPAN_PTR (pspan->pnext)));
+}
+#define QOG_ARSTATS(p)	D_QogArStats (p)
+#else
+#define QOG_ARSTATS(p)
 #endif
 
 #if defined(QOG_RFAST) && defined(QOG_LITSPAN_FAST)
@@ -216,7 +304,19 @@ static QOG_NOINLINE void D_DrawSpans8LitFix (espan_t *pspan, int step)	\
 	D_LITSPANS_FIX_BODY													\
 	}																	\
 }
+#ifdef QOG_LITSPAN_Q
+// QuakeOG (Agent AR): the Fast drawer with 32-bit span starts, the light
+// runs and pixels in one loop and the z written by it (d_lit_q.h)
+static void D_DrawSpans8LitQ (espan_t *pspan, int step);
+#define D_LITFAST(p, step)	(litfix_ok ? (lit_kind <= 3 ? D_DrawSpans8LitQ (p, step) : D_DrawSpans8LitFix (p, step)) \
+								: D_DrawSpans8LitFast (p, step))
+#else
 #define D_LITFAST(p, step)	(litfix_ok ? D_DrawSpans8LitFix (p, step) : D_DrawSpans8LitFast (p, step))
+#endif
+
+#ifdef QOG_LITSPAN_Q
+#include "d_lit_q.h"	// QuakeOG (Agent AR)
+#endif
 
 /*
 ================
@@ -325,8 +425,109 @@ static QOG_NOINLINE void D_LitFixSetup (espan_t *pspan)	// its frame never under
 	litfix_stepbits = b - 25;
 	litfix_zsh = kexp - 31;
 	litfix_ok = 1;
+#ifdef QOG_LITSPAN_Q
+	// QuakeOG (Agent AR): the rest of the surface's values for litq_span (d_lit_q.h)
+	litq_surf.ssw = litfix_sw;
+	litq_surf.tsw = litfix_tw;
+	litq_surf.exts = bbextents;
+	litq_surf.extt = bbextentt;
+#endif
 }
 #endif
+#endif
+
+#if defined(QOG_AR_DUMP) && defined(QOG_RFAST_FIX)
+/*
+================
+D_QogArDump
+
+QuakeOG (Agent AR): PC measurement only. `qog_ardump <file> <first view>
+<views>` writes every Fast lit surface of those views with what the span
+drawers read (gradients, the lit_ and litfix_ values, the light grid, the
+mip level's texels, the spans), so build-ar's emulator can replay them
+through the board's own drawers and count their cycles. The colour map
+comes first.
+================
+*/
+static FILE	*ar_dumpf;
+static int	ar_dump0, ar_dumpn;
+
+void D_QogArDump_f (void)
+{
+	if (Cmd_Argc () < 4)
+	{
+		Con_Printf ("qog_ardump <file> <first view> <views>\n");
+		return;
+	}
+	if (ar_dumpf)
+		fclose (ar_dumpf);
+	ar_dumpf = fopen (Cmd_Argv (1), "wb");
+	ar_dump0 = Q_atoi (Cmd_Argv (2));
+	ar_dumpn = Q_atoi (Cmd_Argv (3));
+	if (ar_dumpf)
+		fwrite (vid.colormap, 1, 16384, ar_dumpf);
+}
+
+static void D_QogArDump (espan_t *pspan)
+{
+	int		hdr[64], n = 0, i;
+	espan_t	*p;
+
+	if (!ar_dumpf || r_framecount < ar_dump0)
+		return;
+	if (r_framecount >= ar_dump0 + ar_dumpn)
+	{
+		fclose (ar_dumpf);
+		ar_dumpf = NULL;
+		Con_Printf ("qog_ardump: done\n");
+		return;
+	}
+	memset (hdr, 0, sizeof(hdr));
+	memcpy (&hdr[0], &d_sdivzstepu, 4); memcpy (&hdr[1], &d_tdivzstepu, 4); memcpy (&hdr[2], &d_zistepu, 4);
+	memcpy (&hdr[3], &d_sdivzstepv, 4); memcpy (&hdr[4], &d_tdivzstepv, 4); memcpy (&hdr[5], &d_zistepv, 4);
+	memcpy (&hdr[6], &d_sdivzorigin, 4); memcpy (&hdr[7], &d_tdivzorigin, 4); memcpy (&hdr[8], &d_ziorigin, 4);
+	hdr[9] = sadjust; hdr[10] = tadjust; hdr[11] = bbextents; hdr[12] = bbextentt;
+	memcpy (&hdr[13], &d_qognearzi, 4);
+	hdr[14] = lit_tw; hdr[15] = lit_th; hdr[16] = lit_soff; hdr[17] = lit_toff; hdr[18] = lit_smax;
+	hdr[19] = lit_lshift; hdr[20] = lit_kind; hdr[21] = lit_soff16; hdr[22] = lit_toff16;
+	hdr[23] = lit_smask; hdr[24] = lit_tshift; hdr[25] = (int)lit_tmask2; hdr[26] = lit_tw16; hdr[27] = lit_th16;
+#ifdef QOG_LITSPAN_INTERP
+	hdr[28] = (int)lit_ictrl0; hdr[29] = (int)lit_ictrl1;
+#endif
+	hdr[30] = (int)(lit_lbase - blocklights);
+	hdr[31] = litfix_ok; hdr[32] = litfix_uref; hdr[33] = litfix_vref;
+	hdr[34] = litfix_sw; hdr[35] = litfix_tw; hdr[36] = litfix_stepbits; hdr[37] = litfix_zsh;
+	hdr[38] = screenwidth;
+#ifdef QOG_RTURBO
+	hdr[39] = r_qog_turboview;
+#endif
+	for (p = pspan ; ; p = SPAN_PTR (p->pnext))
+	{
+		n++;
+		if (p->pnext == SPAN_NONE)
+			break;
+	}
+	hdr[40] = n;
+	hdr[41] = lit_tw * lit_th;
+	fwrite (hdr, 4, 64, ar_dumpf);
+	{
+		long long	f[9];
+		f[0] = litfix_d0; f[1] = litfix_du; f[2] = litfix_dv; f[3] = litfix_s0; f[4] = litfix_su;
+		f[5] = litfix_sv; f[6] = litfix_t0; f[7] = litfix_tu; f[8] = litfix_tv;
+		fwrite (f, 8, 9, ar_dumpf);
+	}
+	fwrite (blocklights, 4, 18 * 18, ar_dumpf);
+	fwrite (lit_tex, 1, lit_tw * lit_th, ar_dumpf);
+	for (p = pspan, i = 0 ; i < n ; i++, p = SPAN_PTR (p->pnext))
+	{
+		short	sp[4];
+		sp[0] = p->u; sp[1] = p->v; sp[2] = p->count; sp[3] = 0;
+		fwrite (sp, 2, 4, ar_dumpf);
+	}
+}
+#define QOG_ARDUMP(p)	D_QogArDump (p)
+#else
+#define QOG_ARDUMP(p)
 #endif
 
 /*
@@ -394,6 +595,16 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 		lit_ictrl0 = LITI_CTRL (16, 0, lit_tshift - 1);
 		lit_ictrl1 = LITI_CTRL (16, lit_tshift, lit_tshift + hbits - 1);
 	}
+#endif
+#if defined(QOG_LITSPAN_Q) && defined(QOG_RFAST_FIX)
+	// QuakeOG (Agent AR): the surface's values for litq_runs (d_lit_q.h)
+	litq_surf.lbase = lit_lbase;
+	litq_surf.lrowbytes = lit_smax * 4;
+	litq_surf.mip = mip;
+	litq_surf.tshift = lit_tshift;
+	litq_surf.recip = litspan_recip;
+	litq_surf.soff16 = lit_soff16;
+	litq_surf.toff16 = lit_toff16;
 #endif
 #endif
 }
@@ -492,9 +703,13 @@ void D_DrawSpans8Lit (espan_t *pspan)
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
+	QOG_ARSTATS (pspan);	// QuakeOG (Agent AR): PC measurement
 #if defined(QOG_RFAST) && defined(QOG_RFAST_FIX)
 	if (r_qogfast)
+	{
 		D_LitFixSetup (pspan);	// QuakeOG (Agent AH): before core 1 reads it
+		QOG_ARDUMP (pspan);		// QuakeOG (Agent AR): PC measurement
+	}
 #endif
 	if (pspan->pnext == SPAN_NONE
 #ifdef QOG_DRAW_CORE1
@@ -524,10 +739,12 @@ void D_DrawSpans8Lit (espan_t *pspan)
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
+	QOG_ARSTATS (pspan);	// QuakeOG (Agent AR): PC measurement
 	if (r_qogfast)
 	{
 #ifdef QOG_RFAST_FIX
 		D_LitFixSetup (pspan);	// QuakeOG (Agent AH)
+		QOG_ARDUMP (pspan);		// QuakeOG (Agent AR): PC measurement
 #endif
 		D_LITFAST (pspan, 1);
 	}

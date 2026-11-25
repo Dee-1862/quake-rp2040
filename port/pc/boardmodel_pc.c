@@ -66,11 +66,11 @@ static const char	*const bm_lmsname[16] = { "lms_views", "lms_dlights", "lms_bui
 	"lms_lit", "lms_rowslit", "lms_marknodes", "lms_marks", "lms_treenodes" };
 static const char	*const bm_asname[QAS_N] = { "check", "drawn", "trivial", "subdivm", "verts", "tris",
 	"back", "smooth", "zero", "tiny", "spans", "pix", "pixw", "subtri", "subcall", "subpix", "cliptri",
-	"parts", "partvis", "partpix" };
+	"parts", "partvis", "partpix", "tinytri" };
 static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dlpair_flt", "dlcell_flt",
 	"dllit_flt", "reachup", "reachup_step", "grad_fast", "grad_idf", "grad_idd", "scanlines", "scanedges",
 	"surfdrawn", "bmsurf", "bmfaces", "bmemit", "bmclip", "bmmark", "bmcheck", "bmsplit", "bpoly",
-	"bpolyedge" };
+	"bpolyedge", "bmsplitint" };
 
 /* every count, as pointers, so one loop takes the differences */
 #define BM_MAXCOL	160
@@ -185,6 +185,33 @@ static void bm_open (void)
 #endif
 #ifdef QOG_FGRAD_AXIAL
 		" QOG_FGRAD_AXIAL"
+#endif
+#ifdef QOG_LITSPAN_Q
+		" QOG_LITSPAN_Q"		// Agent AR: the Q span drawer (d_lit_q.h)
+#endif
+#ifdef QOG_LITQ_SHARELIGHT
+		" QOG_LITQ_SHARELIGHT"
+#endif
+#ifdef QOG_ALIAS_TURBOTINY
+		" QOG_ALIAS_TURBOTINY"
+#endif
+#ifdef QOG_PART_DIEBITS
+		" QOG_PART_DIEBITS"
+#endif
+#ifdef QOG_SCAN_FAST
+		" QOG_SCAN_FAST"
+#endif
+#ifdef QOG_BPOLY_SIDES
+		" QOG_BPOLY_SIDES"
+#endif
+#ifdef QOG_BMSPLIT_INT
+		" QOG_BMSPLIT_INT"
+#endif
+#ifdef QOG_LMAP_FUSE
+		" QOG_LMAP_FUSE"
+#endif
+#if defined(QOG_BMODEL_BBOXINT) && defined(QOG_WORLDNODE_INT)
+		" QOG_BMODEL_BBOXINT"
 #endif
 		"\n");
 	fprintf (bm_log, "frame,racerows,racepacked,rows,packed,rfast,vwidth");

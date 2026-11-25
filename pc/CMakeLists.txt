@@ -252,7 +252,8 @@ target_compile_definitions(quakeog_pc PRIVATE
 # the Fast shortcuts, doubled sideways as the board's LCD scanout does
 # (engine/r_qogturbo.c). r_fast 0 and 1 draw exactly as before.
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_RTURBO)
+    QOG_RTURBO
+    QOG_ALIAS_TURBOTINY)            # Agent AR: Turbo draws model triangles within 3 x 3 pixels without gradients (d_polyse.c)
 # Episode 1 client RAM, exact (Agent Y)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)
@@ -271,6 +272,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DLIGHT_REACHUP              # a lit surface the full hash lost: its node found and the light tested up the parents, not a tree search
     QOG_GRAD_EXACTF                 # D_CalcGradients without double arithmetic, the same values (d_edge.c)
     QOG_GRAD_FAST)                  # r_fast 1: world surface gradients from rows made once a view, in integers
+# Particles, exact (Agent AR): r_part.c
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_PART_DIEBITS)               # a particle's death time against cl.time as an integer compare of float bits, id's result
 # Brush entities and the edge scan with fewer float calls, exact (Agent AQ):
 # r_bsp.c, r_edge.c, d_edge.c, r_main.c
 target_compile_definitions(quakeog_pc PRIVATE
@@ -281,7 +285,12 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_BMODEL_FRUSTUM              # view planes of brush entities that do not turn made from the last ones
     QOG_DSURF_NOFRUSTUM             # D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
     QOG_FX_REUSE                    # with QOG_FRONT_FAST: a brush entity's integer setup made again only for its origin
-    QOG_FGRAD_AXIAL)                # with QOG_FRONT_FAST: face gradients with an exact axial dot product, the same values
+    QOG_FGRAD_AXIAL                 # with QOG_FRONT_FAST: face gradients with an exact axial dot product, the same values
+    QOG_SCAN_FAST                   # span generation in one loop with its globals in locals, the same spans (r_edge.c)
+    QOG_BPOLY_SIDES                 # brush clip sides inline, a point shared with the edge before keeps its side (r_bsp.c)
+    QOG_BMSPLIT_INT                 # R_SplitEntityOnNode2: axial box tests by integer compares of the float bits (r_efrag.c)
+    QOG_LMAP_FUSE                   # R_BuildLightMap: the grid's passes fused, the same cells (r_surf.c)
+    QOG_BMODEL_BBOXINT)             # R_BmodelCheckBBox: integer plane tests with a margin first, with QOG_WORLDNODE_INT (r_main.c)
 # One app for every episode's data image (Agent AG): qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE
@@ -417,6 +426,7 @@ if(QOG_PC_BOARDMODEL)
         QOG_VID_LOCKWAIT QOG_SPANS_CORE1 QOG_VID_SCANRACE QOG_HUD_SKIP
         QOG_VERTCACHE QOG_WORLDNODE_FAST QOG_VERTCACHE_CLIPDIST QOG_ALIAS_CORE1
         QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP
+        QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT    # Agent AR: the board's span drawer (its C version)
         QOG_DRAW_CORE1 QOG_AQ_STATS
         QOG_PHASE_TIME QOG_PHASE_XIP QOG_LMAP_STATS QOG_ALIAS_STATS QOG_BOARDMODEL)
     set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_bm_defs}")
