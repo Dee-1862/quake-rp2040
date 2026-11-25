@@ -295,7 +295,7 @@ visits every node the light reaches until it finds n. A node of a brush
 model's own tree never leads up to the world's head node.
 =============
 */
-static qboolean R_QogLightReachesWorld (dlight_t *light, int n)
+static QOG_NOINLINE qboolean R_QogLightReachesWorld (dlight_t *light, int n)
 {
 	model_t		*w = cl.worldmodel;
 	mnode_t		*node, *p;
@@ -378,6 +378,23 @@ static void R_DlightRunPending (void)
 	}
 	dl_visonly = false;
 	r_dlightframecount = saved;
+}
+
+/*
+=============
+R_QogDlightSettle
+
+QuakeOG (Agent AL): runs the world's light marking pass now if it waits,
+for a caller that is about to build light grids on two cores (the pass
+writes the lit surface hash and the dlightframe bits, the builders then
+only read them). Call it after R_RenderWorld, which stamps the visible
+surfaces the pass looks at. Building on one core never needs it.
+=============
+*/
+void R_QogDlightSettle (void)
+{
+	if (dl_pending)
+		R_DlightRunPending ();
 }
 
 /*

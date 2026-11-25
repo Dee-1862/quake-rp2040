@@ -153,7 +153,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DLIGHT_AXIAL
     QOG_DLIGHT_FACING
     QOG_DLIGHT_INT
-    QOG_DLIGHT_REACHUP)
+    QOG_DLIGHT_REACHUP
+    QOG_GRAD_EXACTF
+    QOG_GRAD_FAST)
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)

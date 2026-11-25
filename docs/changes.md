@@ -2,6 +2,65 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: Dynamic lights in integers, the lit surface hash without tree searches, gradients from rows in Fast mode (Agent AL, PC and ARM build, registered data)
+
+The board's timedemo demo3 spends 13.9 ms a view in lmap (2 ms in E1M1 play) and 3.1 ms in grad. Nothing ran on hardware. Savings below are estimates from the Thumb code (objdump of `build-al/arm`) and the PC's work counts, with ROM float calls taken at 55 to 65 cycles. The board has run about twice the agents' estimates before.
+
+### Where lmap went (PC, `QOG_LMAP_STATS`, timedemo demo3, per view)
+
+| Work | Per view | How it cost before |
+| --- | ---: | --- |
+| light grids built (R_BuildLightMap) | 73.0 (65.9 distinct surfaces) | integer already, about 30 cycles a cell, 2,457 cells and 2,712 cell styles |
+| dynamic lights alive | 1.45 | |
+| light and surface pairs | 34.5, of which 34.1 past the minlight test | |
+| cells of those pairs | 1,361, of which 292 lit | id's loop does about 5 float calls a cell and 5 more a lit cell, about 0.6 M cycles |
+| R_MarkLights world pass (runs inside lmap, at the first lit surface question, L141) | 220 nodes, 391 surfaces looked at | about 8 float calls a node |
+| R_LightReaches tree searches with the board's 256 entry hash | 1,613 nodes (0 with the PC's 1,024 entries) | about 8 float calls a node, about 0.8 M cycles, the biggest item (L140) |
+
+### Changes
+
+| Change | Flag | Mode | What it does | Estimated board saving per view, demo3 |
+| --- | --- | --- | --- | --- |
+| Dynamic light cells in integers | `QOG_DLIGHT_INT` (r_surf.c, R_QogDlightInt) | exact, both modes | per light and surface the floats are read once (floor and fraction of the light's position in the grid, ceil of minlight, rad times 2^24), then each cell is integer: the distance, the test, and the add with id's float rounding as a threshold constant per light (L142, L143). Rows the light cannot reach are skipped (id's distance is never below the row's). Positions beyond 3,800 texels, a fraction within 2^-11 of a whole number, rad below 1 and cells that would reach 2^23 take id's float code. 99.7% of the pairs and all but 10 of 292,000 lit cells take the integer path in demo3 | 0.6 M to about 0.1 M cycles, about 2 ms |
+| Only surfaces facing the eye are marked | `QOG_DLIGHT_FACING` (r_light.c, R_QogNodeFacing) | exact | in the pass that marks the surfaces visible in the frame, a node's surfaces are marked only on the side R_RecursiveWorldNode draws, from the same float distance and the same tests. A surface left out is never drawn in that frame, so nobody asks for its bits. The hash fills about half as often | tree searches 1,613 to 780 nodes a view |
+| A lost surface's node found, the light tested up the parents | `QOG_DLIGHT_REACHUP` (r_light.c, R_QogLightReachesWorld) | exact | qbsp writes nodes and faces in the same order, so a binary search over firstsurface finds the surface's node (checked by its run, else id's search). id's walk reaches the node exactly when every node above it lets the walk go down that side, which is about the tree's depth of tests instead of a search of everything the light reaches | with FACING, searches 1,613 to 0.5 nodes a view plus about 20 tests per lost question, about 0.8 M cycles, 3 ms |
+| A light's distance to an axial plane with one subtraction | `QOG_DLIGHT_AXIAL` (r_light.c, R_QogLightDist) | exact | id's sum of products with a normal of one 1 and two 0 is the coordinate itself | up to 5 of 8 float calls on axial nodes of the marking pass, about 0.3 ms |
+| D_CalcGradients without double arithmetic | `QOG_GRAD_EXACTF` (d_edge.c) | exact, both modes | the mip scale from a table of the same floats, id's `(fixed16_t)(x + 0.5)` with the double 0.5 done in float below 2^23, as `x` or `x + 1` from 2^23 to 2^31 (the float is a whole number there), double only beyond (Agent AJ's note) | 2 f2d, 2 dadd, 2 d2iz and a divide a surface, about 0.05 ms |
+| Fast gradients from rows made once a view | `QOG_GRAD_FAST` (d_edge.c, D_QogGradFast) | r_fast 1 only, world surfaces | Agent AJ's idea for the face 1/z gradients applied to s/z and t/z: three rows (vright / xscale, -vup / yscale, vpn - xcenter row0 - ycenter row1) in 2^13 to 2^14 times a power of two, the texture axis in 1/16384, three integer dot products and three float multiplies per axis. sadjust and tadjust are the eye's texture coordinate, modelorg . v + v[3], in 64-bit integers (the view rotation drops out of id's dot product). Brush entities and axes longer than 2 keep id's code. AJ's own rows live in frame buffer rows the spans overwrite, so these are separate (76 B) | about 78 float calls a surface to about 15, 73 surfaces a view, about 0.25 M cycles, 1 ms of grad |
+| Two-core helper | `R_QogDlightSettle` (r_light.c, declared in model.h) | exact, not called yet | runs the waiting marking pass at once, for Agent AM to call after R_RenderWorld and before two cores build light grids | |
+| Measurement and check builds | `QOG_LMAP_STATS`, `QOG_DLIGHT_CHECK` | PC only | work counts every 100 views (`qog_lmstats`), and both ways on every light pair and every lost question (`qog_dlcheck`, `qog_rccheck`) | |
+
+Together, estimates: lmap from 13.9 ms to about 3 to 5 ms on the board (about 1.4 M of about 1.75 M estimated cycles removed), grad from 3.1 ms to about 1 to 2 ms in Fast mode.
+
+Not done: Fast mode shortcuts for the light grids themselves. After the exact changes a dynamic light costs about 40 cycles a cell and the base build about 30 cycles a cell, so coarser or skipped dynamic lights would save a few hundred microseconds at most for a visible change. A cache of built grids between frames needs RAM the display does not have (1,296 B a grid).
+
+### Exact proof (hidden, `-nosound`, own `build-al/pc2` and an untouched build of de58316 in `build-al/ref`, own git-ignored data folder with a baked qogbake.bin)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc | ce86f894f9de |
+| `qogtest_f_hash`, quakeog_pc | e92bc9e9650d |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, all 200 rows | 121 of 121 byte identical with de58316 |
+| check build (`QOG_DLIGHT_CHECK`, hash cut to 64 entries so it overflows in most lit frames), timedemo demo1, demo2, demo3 | 45,056 light pairs and 52,224 lost questions, 0 differ |
+
+### Fast pictures
+
+The light changes are exact, so frames with rockets and explosions are the same in both modes. Only `QOG_GRAD_FAST` changes Fast pictures: against de58316 with r_fast 1, 0.45% of the view pixels of the 121 frames, worst d_demo2_18 1.38%, demo3 frames up to 1.04% (d_demo3_15). The changed pixels are single texels scattered over world surfaces, sub-texel shifts of the texture coordinate, and side by side the frames look the same. Pairs (Fast reference, Fast new, changed pixels red) and the per-frame list are in the session scratchpad `fast3/light` folder.
+
+### RAM and stack (board, full configure line)
+
+- quake_display `end` 0x2003ea6c (main 0x2003ea28), 68 B for the Fast gradient rows. quake_main `end` 0x2003f544, unchanged. quake_display.bin 394,032 B.
+- Stack: R_QogDlightInt 104 B under R_AddDynamicLights 128 B, R_QogLightReachesWorld 48 B under R_DlightBits 48 B, R_QogNodeFacing 24 B beside R_MarkLights 48 B a recursion level, D_QogGradFast 200 B (with D_QogGradRows 112 B once a view) under D_CalcGradients 104 B. All of these return before the span drawers run, whose frames are larger, so the deepest chain does not grow.
+
+### For Agent AM: what the light grid builder touches
+
+- Writes `blocklights` (1,296 B global), `r_drawsurf` (surf, model, texture, mip, lightadj, set by D_SetupLitSurface) and the `lit_*` statics of d_scanlit.c. D_CalcGradients writes the `d_sdivz*`, `d_tdivz*`, `sadjust`, `tadjust`, `bbextent*` globals and, once a view, the Fast rows `d_qoggr`.
+- The first lit surface of a view runs the world's marking pass (R_DlightRunPending: the lit surface hash, the surfaces' dlightframe bits, `r_dlightframecount` for a moment). Call `R_QogDlightSettle ()` after R_RenderWorld, then the builders only read the hash and the dlight list.
+- Reads only: the surface, its samples, styles and texinfo, `d_lightstylevalue`, `r_refdef.ambientlight`, `cl_dlights`, the nodes and planes.
+- To build on core 1 the builder needs its own grid (1,296 B, of the 3.5 KB free) and its own `r_drawsurf` and `lit_*` values passed in. R_QogDlightInt and the base loops already work only on the grid and their arguments, so passing a grid pointer is a small change. Not done here because the RAM is yours to place.
+
+Files: engine/r_surf.c, engine/r_light.c, engine/d_edge.c (D_CalcGradients only, inside `#ifdef` blocks), engine/model.h (one declaration), pc/CMakeLists.txt, apps/quake/CMakeLists.txt.
+
 ## 2026-11-24: Board results of the speed round (lead, on hardware)
 
 All four speed agents (AK link and frame, AH spans, AJ front end, AI models) plus episodes 2 and 3 support, flashed with the episode 1 image.

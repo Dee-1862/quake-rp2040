@@ -595,6 +595,7 @@ typedef struct model_s
 // asked for, see R_DlightLit and R_DlightBits (r_light.c)
 qboolean	R_DlightLit (model_t *m, msurface_t *surf, int c);
 int		R_DlightBits (model_t *m, msurface_t *surf);
+void	R_QogDlightSettle (void);	// QuakeOG (Agent AL): the waiting pass now, before two cores build grids
 #define SURF_DLIGHTFRAME_IS(m, s, c)	R_DlightLit (m, s, c)
 #else
 #define SURF_DLIGHTFRAME_IS(m, s, c)	DS_IS (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
