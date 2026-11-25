@@ -39,7 +39,7 @@ SHARED = {
     "cl", "cl_entities", "cl_visedicts", "cl_dlights", "d_lightstylevalue",
     # r_light.c's dynamic light hash, filled before the scan (D_QogPipeBegin asks R_DlightLit)
     "dl_surf", "dl_bits", "dl_lost", "dl_pending", "dl_used", "dl_visonly", "dl_pendframe",
-    "r_dlightframecount", "mod_frames", "mod_curframe",
+    "r_dlightframecount", "mod_frames", "mod_curframe", "r_origin",
     # reached only through R_DlightRunPending, which cannot run while
     # dl_pending is false (D_QogPipeBegin ran it), and Sys_Error and the
     # power button poll it calls (a stop, never in a running view)
