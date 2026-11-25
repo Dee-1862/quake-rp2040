@@ -39,15 +39,16 @@
 	.equ	C_IZI, 40
 	.equ	C_IZS, 44
 	.equ	C_SHARE, 48
-	.equ	O_S, 52			@ the assembly's own: s and t of the sub-span,
-	.equ	O_T, 56
-	.equ	O_SN, 60		@   at its end,
-	.equ	O_TN, 64
-	.equ	O_SS, 68		@   their steps,
-	.equ	O_TS, 72
-	.equ	O_SC, 76		@   its pixels and log2 of its full length,
-	.equ	O_SH, 80
-	.equ	O_PAIRS, 84		@   each run's light step and start << 16 (4 runs)
+	.equ	C_SURF, 52		@ the surface's litq_surf_t (each core's copy has its own)
+	.equ	O_S, 56			@ the assembly's own: s and t of the sub-span,
+	.equ	O_T, 60
+	.equ	O_SN, 64		@   at its end,
+	.equ	O_TN, 68
+	.equ	O_SS, 72		@   their steps,
+	.equ	O_TS, 76
+	.equ	O_SC, 80		@   its pixels and log2 of its full length,
+	.equ	O_SH, 84
+	.equ	O_PAIRS, 88		@   each run's light step and start << 16 (4 runs)
 
 	@ litq_surf_t
 	.equ	F_LB, 0
@@ -149,7 +150,7 @@
 1:
 	.endm
 
-	.section .time_critical.litq_span_asm, "ax"
+	.section .text.litq_span_asm, "ax"
 	.align	2
 
 /*
@@ -194,7 +195,7 @@ litq_endpt:
 	asrs	r4, r1			@ Ns >> m
 	ldr	r5, [r7, #C_NT]
 	asrs	r5, r1			@ Nt >> m
-	ldr	r1, =litq_surf
+	ldr	r1, [r7, #C_SURF]
 	nop
 	ldr	r3, [r3, #DIV_QUOTIENT]	@ (2^32 - 1) / Dm, 8 cycles after the divisor
 	@ s
@@ -398,7 +399,7 @@ litq_span_asm:
 
 .Lruns:
 	@ interpolator 0: S, T << tshift and their steps for the whole sub-span
-	ldr	r5, =litq_surf
+	ldr	r5, [r7, #C_SURF]
 	ldr	r0, [r7, #O_S]
 	ldr	r1, [r5, #F_SOFF]
 	adds	r0, r1			@ S
@@ -488,7 +489,8 @@ litq_span_asm:
 	BLEND				@ at the run's last pixel
 	ldr	r4, [sp, #K_TMP]
 	lsls	r4, #2
-	ldr	r5, =litq_surf
+	ldr	r5, [sp, #K_CTX]
+	ldr	r5, [r5, #C_SURF]
 	ldr	r5, [r5, #F_RECIP]
 	ldr	r5, [r5, r4]		@ 65536 / (k - 1)
 	b	.Lp1st
@@ -531,35 +533,11 @@ litq_span_asm:
 	ldr	r0, =SIO_INTERP
 	cmp	r2, #0
 	beq	.Lp2n
-.Lp2z:
-	ldmia	r6!, {r4, r5}
-	str	r5, [r0, #I1_ACC0]
-	str	r4, [r0, #I1_BASE0]
-	movs	r4, #8
-	subs	r4, r7			@ 8 - k for a last run of k
-	bgt	1f
-	movs	r4, #0
-1:	subs	r1, r4
-	subs	r2, r4
-	lsls	r4, #4			@ 16 bytes a slot
-	adr	r5, .Lzs
-	adds	r5, r4
-	adds	r5, #1
-	bx	r5
-	.align	2
-.Lzs:
-	ZPIX	0
-	ZPIX	1
-	ZPIX	2
-	ZPIX	3
-	ZPIX	4
-	ZPIX	5
-	ZPIX	6
-	ZPIX	7
-	adds	r1, #8
-	adds	r2, #8
-	subs	r7, #8
-	bgt	.Lp2z
+	ldr	r4, =litq_zruns		@ the z runs in RAM
+	bx	r4
+	.thumb_func
+	.global	litq_zruns_done
+litq_zruns_done:
 	ldr	r7, [sp, #K_CTX]
 	str	r1, [r7, #C_PD]
 	str	r2, [r7, #C_PZ]
@@ -616,3 +594,51 @@ litq_span_asm:
 	pop	{r4, r5, r6, r7, pc}
 	.ltorg
 	.size	litq_span_asm, . - litq_span_asm
+
+/*
+ * litq_zruns: pass 2 for spans whose z the pixel loop writes, the hottest
+ * loop, in RAM (.time_critical), so the XIP cache's texel and colour map
+ * misses never refetch it. Entered from litq_span_asm with r0 =
+ * SIO_INTERP, r1 = pd, r2 = pz, r3 = izi, r12 = izistep, r6 = the runs'
+ * light, r7 = pixels, returns to litq_zruns_done with r1 to r3 advanced.
+ * The rest of the routine runs from flash.
+ */
+	.section .time_critical.litq_zruns, "ax"
+	.align	2
+	.global	litq_zruns
+	.thumb_func
+	.type	litq_zruns, %function
+litq_zruns:
+	ldmia	r6!, {r4, r5}
+	str	r5, [r0, #I1_ACC0]
+	str	r4, [r0, #I1_BASE0]
+	movs	r4, #8
+	subs	r4, r7			@ 8 - k for a last run of k
+	bgt	1f
+	movs	r4, #0
+1:	subs	r1, r4
+	subs	r2, r4
+	lsls	r4, #4			@ 16 bytes a slot
+	adr	r5, .Lzs
+	adds	r5, r4
+	adds	r5, #1
+	bx	r5
+	.align	2
+.Lzs:
+	ZPIX	0
+	ZPIX	1
+	ZPIX	2
+	ZPIX	3
+	ZPIX	4
+	ZPIX	5
+	ZPIX	6
+	ZPIX	7
+	adds	r1, #8
+	adds	r2, #8
+	subs	r7, #8
+	bgt	litq_zruns
+	ldr	r4, =litq_zruns_done	@ back to flash with r1 to r3
+	bx	r4
+	.ltorg
+	.size	litq_zruns, . - litq_zruns
+

@@ -8,6 +8,7 @@ unsigned	qog_ph_time[QOG_PH_N];
 unsigned	qog_ph_count[QOG_PC_N];
 unsigned	qog_hp_time[QOG_HP_N];	/* QuakeOG (Agent V) */
 unsigned	qog_hp_frames;
+unsigned	qog_c1_stat[QOG_C1_N];	/* QuakeOG (Agent AM) */
 #ifdef QOG_PHASE_XIP
 unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];	/* QuakeOG (Agent Z) */
 unsigned	qog_ph_fcalls[QOG_PH_N], qog_ph_dcalls[QOG_PH_N];
@@ -144,6 +145,12 @@ void qog_phase_report (void (*print) (char *fmt, ...))
 		   qog_wc_count[QOG_WC_ROTATE] / n, qog_wc_count[QOG_WC_ROTTRIG] / n);
 	qog_phase_clear_xip ();
 #endif
+	if (qog_c1_stat[QOG_C1_SURFS])	/* QuakeOG (Agent AM), QOG_DRAW_CORE1 */
+		print ("[phase] core1 pipeline per frame: surfs %u by core1 %u early %u, pixels %u early %u, core1 ms draw %.2f wait %.2f\n",
+			   qog_c1_stat[QOG_C1_SURFS] / n, qog_c1_stat[QOG_C1_C1SURFS] / n, qog_c1_stat[QOG_C1_EARLY] / n,
+			   qog_c1_stat[QOG_C1_PX] / n, qog_c1_stat[QOG_C1_EARLYPX] / n,
+			   qog_phase_us (qog_c1_stat[QOG_C1_DRAWT]) * 1e-3f / n, qog_phase_us (qog_c1_stat[QOG_C1_WAITT]) * 1e-3f / n);
+	memset (qog_c1_stat, 0, sizeof qog_c1_stat);
 	memset (qog_ph_time, 0, sizeof qog_ph_time);
 	memset (qog_ph_count, 0, sizeof qog_ph_count);
 }
@@ -222,6 +229,67 @@ static void qog_phase_board_xip (void (*print) (char *fmt, ...), const char *who
 }
 #endif
 
+/* QuakeOG (Agent AM): where the display's core 1 spends a frame. scan is
+   the LCD scanouts, jobs every job core 0 handed it (Agent V's span halves,
+   Agent Z's alias vertices, the surface pipeline), busy both less the
+   pipeline job's waiting, idle the frame less busy. Per view: pipe is the
+   pipeline job's surface drawing and wait its waiting, c0wait core 0's
+   waiting for core 1's last surface at a flush (inside edgescan), surfs the lit world
+   surfaces drawn through the pipeline, c1 those core 1 drew, early those
+   handed on during the scan. The port gives the scanout and job times
+   (vid_rp2040.c), the server half has none. */
+#if !defined(_WIN32)
+__attribute__((weak)) void Sys_QogCore1Times (unsigned *scan_us, unsigned *job_us)
+{
+	*scan_us = *job_us = 0;
+}
+#else
+static void Sys_QogCore1Times (unsigned *scan_us, unsigned *job_us)
+{
+	*scan_us = *job_us = 0;
+}
+#endif
+
+static void qog_phase_board_core1 (void (*print) (char *fmt, ...), const char *who,
+								   unsigned n, unsigned r, unsigned elapsed_us)
+{
+	static unsigned	last_scan, last_job;
+	unsigned		scan, job, dscan, djob, busy, wait, frame;
+	char			line[240];
+	int				k;
+
+	Sys_QogCore1Times (&scan, &job);
+	dscan = scan - last_scan;
+	djob = job - last_job;
+	last_scan = scan;
+	last_job = job;
+	wait = ph_us (qog_c1_stat[QOG_C1_WAITT]);
+	if (who[0] == 's' || !n || (!djob && !dscan && !qog_c1_stat[QOG_C1_SURFS]))
+	{
+		memset (qog_c1_stat, 0, sizeof qog_c1_stat);
+		return;
+	}
+	busy = dscan + (djob > wait ? djob - wait : 0);
+	frame = elapsed_us;
+	k = snprintf (line, sizeof line, "[time %s] core1 per frame ms", who);
+	k += ph_put (line + k, (int)sizeof line - k, "scan", dscan, n);
+	k += ph_put (line + k, (int)sizeof line - k, "jobs", djob, n);
+	k += ph_put (line + k, (int)sizeof line - k, "busy", busy, n);
+	k += ph_put (line + k, (int)sizeof line - k, "idle", frame > busy ? frame - busy : 0, n);
+	if (r)
+	{
+		k += snprintf (line + k, sizeof line - k, ", per view");
+		k += ph_put (line + k, (int)sizeof line - k, "pipe", qog_c1_stat[QOG_C1_DRAWT], r);
+		k += ph_put (line + k, (int)sizeof line - k, "wait", qog_c1_stat[QOG_C1_WAITT], r);
+		k += ph_put (line + k, (int)sizeof line - k, "c0wait", qog_c1_stat[QOG_C1_C0WAIT], r);
+		k += snprintf (line + k, sizeof line - k, " surfs %u c1 %u early %u",
+					   qog_c1_stat[QOG_C1_SURFS] / r, qog_c1_stat[QOG_C1_C1SURFS] / r,
+					   qog_c1_stat[QOG_C1_EARLY] / r);
+	}
+	print ("%s\n", line);
+	memset (qog_c1_stat, 0, sizeof qog_c1_stat);
+}
+
 void qog_phase_board_report (void (*print) (char *fmt, ...), const char *who, unsigned elapsed_us)
 {
 	static const char	*const hp_names[QOG_HP_N] = { "frame", "input", "link", "read", "screen", "view", "hud",
@@ -270,6 +338,7 @@ void qog_phase_board_report (void (*print) (char *fmt, ...), const char *who, un
 		qog_phase_board_xip (print, who, r);
 #endif
 	}
+	qog_phase_board_core1 (print, who, n, r, elapsed_us);
 #ifdef QOG_PHASE_XIP
 	qog_phase_clear_xip ();
 #endif

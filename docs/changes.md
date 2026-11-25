@@ -17,9 +17,9 @@ The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, mod
 
 | Change | Flag (board option) | Mode | What it does | Model, cycles a view (demo3) |
 | --- | --- | --- | --- | --- |
-| 32-bit span starts | `QOG_LITSPAN_Q` (`QOG_BOARD_LITQ`, on, needs FAST and INTERP) | Fast and Turbo | D_LitFixSetup also keeps the surface's 1/z * 2^k, Ns and Nt and their steps shifted down by 32, so D is 2^28 to 2^29 at the nearest point. A span's start is then three sums of two 32-bit products each, modulo 2^32 (every true value of the surface fits 32 bits, so the wrapped sums are the true ones, L196). The coefficients lose at most a unit each, so a start is off by at most \|du\| + \|dv\| + 1 units of D. A span whose D falls below 2^24 at either end takes Agent AH's 64-bit start (none in demo3). Its 1/z * 2^31 for the z is D shifted | part of the next rows |
+| 32-bit span starts | `QOG_LITSPAN_Q` (`QOG_BOARD_LITQ`, on, needs FAST and INTERP) | Fast and Turbo | D_LitFixSetup also keeps the surface's 1/z * 2^k, Ns and Nt and their steps shifted down by 32, so D is 2^28 to 2^29 at the nearest point. A span's start is then three sums of two 32-bit products each, modulo 2^32 (every true value of the surface fits 32 bits, so the wrapped sums are the true ones, L241). The coefficients lose at most a unit each, so a start is off by at most \|du\| + \|dv\| + 1 units of D. A span whose D falls below 2^24 at either end takes Agent AH's 64-bit start (none in demo3). Its 1/z * 2^31 for the z is D shifted | part of the next rows |
 | The z by the pixel loop | with the above | both | when every pixel of the span takes the one-byte z-buffer's plain z >> 3 (D_QogZSpanI's far case, the same test), the pixel loop writes the z, else D_QogZSpanI does as before | 0.42 M of z walks gone |
-| One span in hand-written Thumb, in RAM | `QOG_LITQ_ASM` (same option) | both | litq_span_asm (port/rp2040/d_litq_rp2040.S, 1,268 B in .time_critical): Agent AH's sub-spans (length from how fast 1/z changes, the end by one SIO divide whose 8 cycles the shifts of Ns and Nt fill, the steps by a shift or two SIO divides), then the runs in two passes. Pass 1 blends the light at each run's ends with the coordinates shifted by the mip level, so one blend serves every level (S << mip puts the light cell at bit 20), and writes each run's light start and step. Pass 2 sets interpolator 1 from them and draws: interpolator 0 gives the texel addresses and carries S and T from run to run, interpolator 1 the colour map rows, and a run's pixels are an unrolled sequence entered at slot 8 - k. A pixel is 8 cycles, 12 with its z. The C version (litq_span_c, d_lit_q.h) is the PC's and the board's fallback. The board checks the assembly against it at start-up on 800 made-up spans (D_QogLitQCheck from D_QogLitInterpCheck) and uses the C if any pixel, z or divisor shift differs. On the PC both ran 2,300 random spans and the replayed demo views with 0 differences | Fast 3.69 M to 2.49 M, Turbo 2.41 M to 1.52 M |
+| One span in hand-written Thumb, its hottest loop in RAM | `QOG_LITQ_ASM` (same option) | both | litq_span_asm (port/rp2040/d_litq_rp2040.S, in flash, with its z run loop litq_zruns, 172 B, in .time_critical RAM): Agent AH's sub-spans (length from how fast 1/z changes, the end by one SIO divide whose 8 cycles the shifts of Ns and Nt fill, the steps by a shift or two SIO divides), then the runs in two passes. Pass 1 blends the light at each run's ends with the coordinates shifted by the mip level, so one blend serves every level (S << mip puts the light cell at bit 20), and writes each run's light start and step. Pass 2 sets interpolator 1 from them and draws: interpolator 0 gives the texel addresses and carries S and T from run to run, interpolator 1 the colour map rows, and a run's pixels are an unrolled sequence entered at slot 8 - k. A pixel is 8 cycles, 12 with its z. The C version (litq_span_c, d_lit_q.h) is the PC's and the board's fallback. The board checks the assembly against it at start-up on 800 made-up spans (D_QogLitQCheck from D_QogLitInterpCheck) and uses the C if any pixel, z or divisor shift differs. On the PC both ran 2,300 random spans and the replayed demo views with 0 differences | Fast 3.69 M to 2.49 M, Turbo 2.41 M to 1.52 M |
 | Shared light ends | `QOG_LITQ_SHARELIGHT` (`QOG_BOARD_LITQSHARE`, on) | Fast and Turbo | each light run of 8 ends at the next run's first pixel, not at its own last one, so the next run starts from it: one blend a run instead of two, and the light is one continuous line along the span | Fast 2.49 M to 2.39 M, Turbo 1.52 M to 1.47 M |
 | Tiny Turbo model triangles | `QOG_ALIAS_TURBOTINY` (`QOG_BOARD_TURBOTINY`, on with TURBO, also in quakeog_pc) | Turbo only | a front-facing alias triangle whose corners lie within 3 x 3 pixels is drawn from its three edge functions (on an edge, drawn for top and left edges), each covered pixel in the first corner's texel, light and depth with id's depth test (D_QogTinyTriangle, d_polyse.c, out of line so its frame sits beside the rasterizer's) | 25.4 of Turbo's 85 gradient triangles a view (demo3), about 2,250 to 750 cycles each, about 38 K |
 | Particle kill checks in integers | `QOG_PART_DIEBITS` (engine flag, PC and board) | exact, all modes | id's `p->die < cl.time` (a float to double conversion and a double compare, twice a particle) is an integer compare of the float's bits against the bits of the smallest float at or above cl.time, made once a view (R_QogDieBits, r_part.c). For a float die that is the same answer | about 205 particles a view, 2 checks each |
@@ -28,7 +28,7 @@ The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, mod
 ### What else the model showed
 
 - After these changes a Fast view's spans split into the pixel slots (about 0.62 M), pass 1's blends (about 0.75 M) and the sub-span logic with its divides (about 0.8 M). Fewer sub-spans (longer affine runs) would change the picture.
-- A gradient alias triangle costs about 2,250 cycles even when it covers one pixel (D_RasterizeAliasPolySmooth 490, D_PolysetScanLeftEdge 430, D_PolysetDrawSpans8 400, gradients 370 in Fast mode), and id's recursive subdivision is cheaper only below a pixel (1,400) and much dearer above (15,000 for a 5 x 5 pixel triangle), so moving id's transition nearer does not pay (L198). Turbo already moves it to 0.71 of Fast's by id's own area rule.
+- A gradient alias triangle costs about 2,250 cycles even when it covers one pixel (D_RasterizeAliasPolySmooth 490, D_PolysetScanLeftEdge 430, D_PolysetDrawSpans8 400, gradients 370 in Fast mode), and id's recursive subdivision is cheaper only below a pixel (1,400) and much dearer above (15,000 for a 5 x 5 pixel triangle), so moving id's transition nearer does not pay (L243). Turbo already moves it to 0.71 of Fast's by id's own area rule.
 - The vertex transforms, gradients and clip points of models are already integers in Fast mode (Agent AI). Cached transforms between frames would only help the view weapon, whose cost is its 2,772 pixels and clipping. Not done.
 
 ### Estimated board savings, ms a view of demo3 (the spans shared by both cores)
@@ -41,7 +41,17 @@ The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, mod
 
 The low end is the model's cycles at the clock, the high end assumes the board's 2.3 times the model holds for what was removed. Code that used to be fetched through the XIP cache now runs from RAM, so the high end is the more likely while the cores share the cache.
 
-### Exact and Fast proof (hidden, `-nosound`, own build-ar folders, untouched build of cd1e749 from `git archive` in build-ar/ref and build-ar/pcbref, own git-ignored data folder with its own qogbake.bin)
+### After merging main dd273c4 (Agent AM's two-core surfaces, AP's PIO scanout, AQ's float cuts, AS's board model)
+
+- Core 1 draws whole surfaces with its own compile of d_scanlit.c (`QOG_DRAW_CORE1`, d_core1.c). The Q drawer's state is per call and in that file's statics, so each core has its own. The assembly now takes the surface's values through a pointer in the span struct, not by the name `litq_surf`, which in core 1's copy would have been core 0's. The one shared value is `litq_asm_ok`, the start-up check's result, written once on core 0 at D_Init (on tools/core1_syms.py's reviewed list). D_QogLitQCheck and the PC measurement code are left out of core 1's copy. `tools/core1_syms.py --build build-ar/arm` passes.
+- RAM: main's display `end` is 0x2003f588 with 632 B spare, so the 1,268 B of assembly no longer fit in RAM. Scratch X holds the link rings and core 1's stack, scratch Y the command history and the interrupt stack. The routine now runs from flash, only the z run loop and its pixel slots (172 B) from RAM, and the 32-bit coefficients are read per call from the high words of Agent AH's 64-bit values instead of being kept (88 B less in both cores' copies). The cycle model does not see where code sits, so its savings stand. The XIP misses on the routine's code are what the RAM placement would have removed.
+- D_DrawSpans8LitQ and litq_span_c are out of line, so core 1's copy keeps main's deepest span chain (c1_D_DrawSpans8Lit 8 + 424 B).
+- The emulator replay through core 1's own entry (c1_D_DrawSpans8Lit, which runs its own D_LitFixSetup) gives the same pixels and z as core 0's drawer, with the assembly and with the C, in Fast and Turbo.
+- AS's board model (tools/boardbench.ps1) now builds with `QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT`, logs the new features and the Turbo tiny triangles (`am_tinytri`), and weights them (tools/boardmodel.py: the span counts at 0.64 of their cycles from the replay, a tiny triangle at a third of a smooth one, the particle kill checks as 4 of 16 float calls). Predicted demo3 at 300 MHz, LCD by PIO: main dd273c4 Fast 22.6 fps (44.3 ms), Turbo 26.5 (37.7 ms). This branch Fast **25.3 fps** (39.6 ms, 23.6 to 27.1), Turbo **29.0 fps** (34.5 ms, 26.4 to 31.3). Spans 25.0 to 16.3 ms in Fast and 16.3 to 10.7 in Turbo, parts 1.0 to 0.8.
+
+Merged proof (hidden, `-nosound`, an untouched build of dd273c4 from `git archive`): `qogtest_hash` ce86f894f9de on quakeog_pc and on the board-flag build with `QOG_DRAW_CORE1` and the Q drawer, `qogtest_f_hash` e92bc9e9650d in every mode. The 121 frames: quakeog_pc r_fast 0 and 1 byte identical, r_fast 2 0.013% (the tiny triangles). The board-flag build with `QOG_DRAW_CORE1` against the same flags on dd273c4: r_fast 0 121 of 121 byte identical, Fast 0.258% (worst d_demo3_00 1.05%), Turbo 0.563% (worst d_demo3_03 2.56%).
+
+### Exact and Fast proof before the merge (hidden, `-nosound`, own build-ar folders, untouched build of cd1e749 from `git archive` in build-ar/ref and build-ar/pcbref, own git-ignored data folder with its own qogbake.bin)
 
 | Test | Result |
 | --- | --- |
@@ -55,26 +65,336 @@ The low end is the model's cycles at the clock, the high end assumes the board's
 | the same, r_fast 2 | 0.564% of the panel's view pixels, worst d_demo3_03 2.56% (the 32-bit starts and shared light 0.551%, the tiny triangles 0.013%) |
 | litq_span_asm against litq_span_c, the board's code in the emulator | 2,300 random spans and the replayed demo3 views, 0 differences, and D_QogLitQCheck run from quake_display.elf passes |
 
-### RAM and stack (board, the full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own build folder build-ar/arm)
+### RAM and stack (board, the full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own build folder build-ar/arm, merged with dd273c4)
 
-| | cd1e749 | now |
+| | main dd273c4 | merged |
 | --- | --- | --- |
-| quake_display `end` | 0x2003ead8 | 0x2003f034 (+1,372 B: the span assembly 1,268 B in RAM, 104 B of surface and coefficient values) |
-| quake_main `end` | 0x2003f58c | 0x2003f58c |
-| quake_display.bin | 397,840 B | 404,240 B |
+| quake_display `end` | 0x2003f588 (632 B spare beside the 2 KB heap reserve) | 0x2003f694 (+268 B: the z run loop 172 B in RAM, the surface values and the check flag), 364 B spare |
+| quake_main `end` | 0x2003f5b4 | 0x2003f5b4 |
+| quake_display.bin | | 435,216 B |
 
-The display keeps about 2.0 KB beside the 2 KB heap reserve (3.4 KB before). Stack: the Q chain is D_DrawSpans8Lit 48 + D_DrawSpans8LitQ 216 + litq_span_asm 52 = 316 B, below Agent AH's chain it replaces (40 + 432, which still runs for textures that are not a power of two, now 48 + 432). D_DrawNonSubdiv 64 to 72 B, D_QogTinyTriangle 120 B beside D_RasterizeAliasPolySmooth 152 B. D_QogLitQCheck's 728 B frame runs once from D_Init.
+Stack: core 0's chain is D_DrawSpans8Lit 56 + D_DrawSpans8LitQ 240 + litq_span_asm 52, or + litq_span_c 184 on the C fallback, below Agent AH's 432 B drawer, which still runs for textures that are not a power of two. Core 1's is c1_D_DrawSpans8Lit 8 + 424, as on main. D_DrawNonSubdiv 72 B, D_QogTinyTriangle 120 B beside D_RasterizeAliasPolySmooth 152 B. D_QogLitQCheck's 736 B frame runs once from D_Init on core 0.
 
 ### For Agent AM and the lead
 
 - The drawers' state is per call (litq_span_t on the caller's stack) plus litq_surf, the coefficients and Agent AH's litfix_ values, all written on core 0 by D_SetupLitSurface and D_LitFixSetup before the spans are shared, so the core split by spans (QOG_SPANS_CORE1) is unchanged. Each core uses its own interpolators and divider.
-- Files: engine/d_lit_q.h (new), port/rp2040/d_litq_rp2040.S (new), engine/d_scanlit.c, engine/d_polyse.c, engine/r_part.c, engine/r_alias.c and engine/r_qogalias.h (a stats counter), engine/d_init.c (the PC dump command), apps/quake/CMakeLists.txt, pc/CMakeLists.txt. r_main.c is not touched.
+- Files: engine/d_lit_q.h (new), port/rp2040/d_litq_rp2040.S (new), engine/d_scanlit.c, engine/d_polyse.c, engine/r_part.c, engine/r_alias.c and engine/r_qogalias.h (a stats counter), engine/d_init.c (the PC dump command), apps/quake/CMakeLists.txt, pc/CMakeLists.txt, and with the merge tools/core1_syms.py (one reviewed name), tools/boardmodel.py and port/pc/boardmodel_pc.c (the new counts and features). r_main.c is not touched.
 - The PC game (quakeog_pc) has no INTERP, so its Fast mode draws with Agent AH's drawer. The board's drawer runs on the PC with `-DQOG_PC_EXTRA_DEFS="QOG_LITSPAN_INTERP;QOG_LITSPAN_Q;QOG_LITQ_SHARELIGHT"`.
 
 Not done, for later:
 - The per-span C of D_DrawSpans8LitQ (about 0.22 M cycles a Fast view) could join the assembly.
 - An exact small-triangle rasterizer for Fast mode (id's coverage and gradients without the edge tables) would save most of the 1,500 cycles a tiny triangle costs in both modes.
 - R_DrawParticles' physics stays float (about 10 float operations a particle), R_LightPoint's float trace runs per model (r_light.c).
+
+## 2026-11-25: The board cost model sees the two-core surfaces, the PIO scanout, Turbo text and the exact float cuts (Agent AS, PC only, registered data)
+
+main 768c8a6 (Agents AM, AP and AQ) merged into agent-as, and the model extended so boardbench prices what they changed. Nothing ran on hardware.
+
+### Prediction (demo3, board, 300 MHz, 10 to 90% range)
+
+| LCD | Fast | Turbo |
+| --- | ---: | ---: |
+| PIO 60 MHz (default) | 22.6 fps (21.4 to 23.4), 44.3 ms | 26.5 fps (24.5 to 27.7), 37.7 ms |
+| SPI peripheral 50 MHz (`-DQOG_LCD_PIO=OFF`) | 21.2 | 24.6 |
+
+Worth by the model: Agent AM's pipeline 3.9 ms in Fast and 3.6 in Turbo, Agent AP's PIO scanout 2.8 and 3.0, Agent AQ's cuts about 4 ms (bmodels 5.7 to 2.7, edgescan 6.0 to 4.8). docs/fps-board.md has the phases, the gap to 35 fps and the re-ranked attacks: Turbo reaches 37.0 fps in the model with the exact race package, the world front end halved, span pixels and alias models 30% cheaper.
+
+### What changed in the model
+
+- Both cores' counts: core 1's copy of the drawing (engine/d_core1.h) undefines QOG_PHASE_TIME, so in the board model builds it keeps its own sums (`c1_qog_ph_count`, `c1_qog_bm_count`, AL's `c1_qog_lms`) and the logger adds both cores (port/pc/boardmodel_pc.c, engine/qog_phase.h `QOG_C1_PHCOUNT`, the lit span counts in d_scanlit.c and the span pixel helper in d_edge.c also compiled for it). Without that the logged lit pixels were core 0's 21,764 of 48,150.
+- The pipeline (`QOG_DRAW_CORE1` in the model build): pipelined world surfaces and pixels, those handed on early (AM's `qog_c1_stat`), and a per frame model of core 0's clock: core 1 draws early surfaces while core 0 scans (at most the scan's length times core 1's speed, 0.9, sampled 0.8 to 1.0), core 0 draws the sky, water and brush surfaces, both share the rest, and core 0 waits half of a surface at the end.
+- The PIO scanout: `--lcd pio --spi 60` (85.7 us a row, Agent AP), the default of boardbench (`-Lcd pl022 -Spi 50` for the old path).
+- Turbo text: a notify frame still waits for the whole scanout (SCR_SetUpToDrawConsole's clear) and spreads the last view, but the view stays packed, so the next view does not race a full width scanout.
+- Agent AQ's paths: QOG_AQ_STATS counts in the log (`aq_` columns), the 1/z compares of brush surfaces and the facing tests as their own work, and each AQ flag makes its counts cheaper by AQ's cycle reads (`FEATURE_SCALE`). The brush entity rotate and the brush surface weights were raised to AQ's measured costs.
+- New reference logs from the merged tree with AL's six, AQ's eight flags and `QOG_DRAW_CORE1` taken out (every count equals the first reference within 1%), recalibrated: two factors x 1.52 for float calls and x 4.10 for integer cycles, 17% rms over the nine phases. E1M1 standing 53.6 ms against the board's 55.2.
+- `-WhatIf` takes several what-ifs separated by `;`, plus `nopipe`.
+
+### Checks
+
+- `qogtest_hash` ce86f894f9de on the merged normal PC build (the md5 of the two qog_statehash lines with LF endings).
+- Board build with the full configure line, `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`: quake_display.bin 425,760 B, quake_main.bin 1,370,620 B. `tools/core1_syms.py --build build-arm`: every variable core 1 reaches is its own or on the list. The board build does not define `QOG_BOARDMODEL`, so none of the counting is in it.
+
+Files: engine/d_core1.h, engine/qog_phase.h, engine/d_scanlit.c, engine/d_edge.c (one guard each, inside the cost model's flags), port/pc/boardmodel_pc.c, pc/CMakeLists.txt, tools/boardmodel.py, tools/boardbench.ps1, tools/boardmodel_calib.json, tools/boardmodel_ref.csv.gz, tools/boardmodel_ref_e1m1.csv.gz, docs/fps-board.md, docs/handoff.md, docs/lessons.md (L200, L201).
+
+## 2026-11-25: A board cost model and tools/boardbench.ps1, the demo3 scoreboard (Agent AS, PC only, registered data)
+
+A way to measure board speed without the board. `powershell -File tools\boardbench.ps1` plays timedemo demo3 on the PC with the board client's render flags, counts the work of every code path in every frame, and predicts the board's ms per phase and fps for Fast and Turbo at any clock and LCD SPI rate. The scoreboard is docs/fps-board.md, the how-to docs/handoff.md. Nothing ran on hardware, nothing touched the board or a COM port.
+
+### Prediction for main cd1e749 (demo3, board, 10 to 90% range)
+
+| | 250 MHz, SPI 62.5 | 300 MHz, SPI 50 |
+| --- | ---: | ---: |
+| Fast | 16.2 fps (15.8 to 16.4) | 18.0 fps (17.2 to 18.9), 55.5 ms |
+| Turbo | 18.9 fps (18.1 to 19.4) | 20.6 fps (19.2 to 22.2), 48.5 ms |
+
+Per phase at 300 MHz, Fast: spans 14.1, world 8.9, edgescan 6.0, bmodels 5.7, models 4.3, lmap 3.1, vmodel 2.8, parts 1.0, grad 0.9. Turbo: spans 9.3, the rest as Fast less 0.7 in world and 1.4 in models and vmodel. Scanout waits: Fast 4.7 ms before the world, 0.9 after, 7.9 in notify frames; Turbo 1.5, 3.8 and 8.4 (the model's view, see the reconciliation below).
+
+### How it works
+
+- PC build option `QOG_PC_BOARDMODEL` (pc/CMakeLists.txt, measurement only): quakeog_pc with the board client's render flags (one-byte z-buffer, edge cache in the frame, 256 entry lit surface hash, scan race, status bar skip, both cores, Agent Z's and AJ's world flags, interpolators), the phase times and every work count. `QOG_PC_REMOVE_DEFS` takes flags out again.
+- `-bmlog <file>` (port/pc/boardmodel_pc.c, new) writes one line per timedemo frame: the rows and packed rows of the scanout the view raced, the byte ranges the view handed to VID_QogScanFree, console lines and centre prints, and the change of every count. `-bmall` logs every frame of a level instead.
+- New counts (engine/qog_bmodel.h, new, empty macros unless `QOG_BOARDMODEL`): dynamic light pairs and cells on the integer and float paths, lit float cells, R_QogLightReachesWorld calls and steps (r_surf.c, r_light.c), gradients by path (d_edge.c), scan lines and active edge visits (r_edge.c), surfaces and brush surfaces drawn (d_edge.c), brush entity faces, edges, clips, light marking, box tests, world splits, R_RecursiveClipBPoly calls and edges (r_main.c, r_bsp.c, r_efrag.c). QOG_ALIAS_STATS keeps its counts off the console in these builds (r_alias.c), because console lines are notify text (L180).
+- tools/boardmodel.py (new): float helper calls and integer cycles per unit of each path (a priori, from the agents' Thumb reads), two factors fitted to the board's nine de58316 phases (kf 1.61 for float calls, ki 3.87 for integer cycles, 20% rms), a residual per phase so the calibration run is exact, E1M1 standing (lmap 2.0) to split lmap into base grids and dynamic lights, and a frame by frame simulation in board time of the scanout (91.5 us a row at 62.5 MHz, 112 at 50), the waits at VID_QogScanFree, after R_RenderWorld and in notify frames, and Turbo's packed frames. Ranges come from refitting with every weight scaled at random and the time before the view and the clock scaling drawn at random. `--whatif` asks what a change would give.
+- Calibration data: tools/boardmodel_calib.json, the demo3 log tools/boardmodel_ref.csv.gz (main with Agent AL's six flags removed, whose per view counts equal an untouched de58316 build's within 0.3%: lit pixels 48,113 against 48,245, spans 1,448 against 1,452, nodes 265.2 against 266) and the E1M1 log tools/boardmodel_ref_e1m1.csv.gz. tools/boardbench_config.cfg is the fixed test config.
+
+### How well it reproduces the board
+
+- de58316 phases: exact by construction. Under it the two factor fit is within 12% on six phases, bmodels 33% under, parts 25% over, edgescan 18% over.
+- E1M1 standing, de58316: 56.3 ms against the board's 55.2, row race 4.9 ms plus the vertex cache wait against the board's race 6.0.
+- demo3 frame: the waits the code implies give 79.6 ms against the measured 73.3. Notify text shows in 34% of demo3's frames in board time and makes the whole view wait for the scanout, and frames after a status bar change wait for it at the edge table, while the board's own view total leaves only about 1 ms outside the view. The model keeps three reconciliations (a constant offset, all waits x 0.31, all phases x 0.90) and averages them. The `race` and `scanwait` fields of the `[time cl]` line during demo3 would settle it.
+
+### Findings for the next attacks (docs/fps-board.md has the ranked list)
+
+- Scanout waits are the largest item left: removing them all is worth 11.4 ms in Fast and 10.7 in Turbo at 300 MHz. An exact package (notify rows cleared after a ScanFree of those rows only, the edge table's status bar wait made a ScanFree as edges reach those rows, brush entities before the wait for the scanout's end) is worth 3.6 and 6.2 ms.
+- In Fast at 50 MHz the world hides behind the scanout: halving it saves 2.8 ms of frame, not 4.5 (L184).
+- Turbo's race wait moved behind R_RenderWorld rather than going away (L198).
+- 35 fps needs the scanout waits gone as well as cheaper phases: with world and bmodels halved and spans, edgescan and models 30% cheaper, Turbo reaches 30.0 fps, and 39.9 only with no waits on top.
+
+### Exact
+
+The normal PC build (`build-pc`, QOG_AOT) gives `qogtest_hash` ce86f894f9de. Every engine hook is inside `QOG_BOARDMODEL`, which only the measurement build defines.
+
+Files: engine/qog_bmodel.h, port/pc/boardmodel_pc.c, tools/boardmodel.py, tools/boardbench.ps1, tools/boardbench_config.cfg, tools/boardmodel_calib.json, tools/boardmodel_ref.csv.gz, tools/boardmodel_ref_e1m1.csv.gz, docs/fps-board.md (new), engine/r_surf.c, engine/r_light.c, engine/d_edge.c, engine/r_edge.c, engine/r_main.c, engine/r_bsp.c, engine/r_efrag.c, engine/r_alias.c, port/pc/vid_pc.c, pc/CMakeLists.txt, docs/handoff.md, docs/lessons.md (L180 to L184, L198, L199).
+## 2026-11-25: Both cores draw the world's surfaces during the edge scan (Agent AM, PC and ARM build, registered data)
+
+Until now the display's core 1 drew every second span of a lit surface (Agent V) and half of an alias model's vertices (Agent Z), and waited through everything else of the view: world, bmodels, edgescan, lmap and grad, about 40 ms of a demo3 view on core 0's clock. Now core 1 draws whole lit world surfaces (light grid, gradients, spans and z) while core 0 is still scanning edges, and at every flush both cores share the remaining surfaces. Exact in both render modes: the same pixels as main in Exact and in Fast. Nothing ran on hardware, every board number below is an estimate.
+
+### The pipeline (`QOG_DRAW_CORE1`, board option `QOG_BOARD_DRAWCORE1`, on, needs `QOG_BOARD_CORE1`)
+
+- Before the first scan line R_ScanEdges gives every world surface the last scan line of its edges (one pass over the removeedges lists, each edge is in the list of its last line). On the board's 32-byte surfaces the line is kept in `entref`, which only brush entity surfaces use, so it costs no RAM (other builds use a byte table).
+- At the end of each scan line the lit world surfaces whose last line that was have their final span list (no later line can add a span), and if their spans' z rows lie above the edge table in the z-buffer they go to a 64-entry ring (surface index and span link). Core 1 takes them from the ring and draws them while core 0 goes on scanning.
+- At a flush (D_DrawSurfaces, span buffer full, before the edge rows, or the end) core 0 first draws the surfaces only it draws (sky, background, water and other turbulent surfaces, brush entity surfaces, whose transform changes core 0's view vectors), then both cores take the rest of the ring and the flush's remaining lit world surfaces from a shared cursor under one SIO spinlock, and core 0 waits until core 1 has finished its last surface before the span buffer is reused. The edge fallbacks keep working: a fallback that draws without z (Agent AC) first waits for core 1.
+- Core 1 runs id's drawing code unchanged, compiled a second time (engine/d_core1.c, d_core1s.c and d_core1e.c include d_scanlit.c, r_surf.c and d_edge.c) under engine/d_core1.h, which gives every variable the drawing writes and every function those files define a c1_ name: its own light grid, r_drawsurf, gradients, mip level, Fast drawer state, interpolator setup, and copies of the world's view vectors and currententity. So Agent AL's light grid code runs on core 1 as it is, and any change AL makes to r_surf.c or D_CalcGradients is compiled into both copies.
+- Core 1 waits for work in WFE, core 0 wakes it with SEV. The job starts at R_ScanEdges, after AK's race waits (the scanout is over by then), and returns at its end, before models, the view model and particles draw on the finished world z (their order is unchanged).
+- Agent V's span halving stays in the code for builds without the pipeline. With it, core 0 draws all spans of the surfaces it draws (core 1 is busy with surfaces of its own).
+- D_DrawOneSurface's lit branch moved unchanged into D_QogDrawLitBody, which both copies use.
+
+### Why it is exact
+
+- Every pixel and z of the view belongs to exactly one span, so the world's surfaces can be drawn in any order and on either core.
+- A surface handed on early has the very span list the flush would give it (same spans, same order, same head span), so Agent AH's Fast drawer takes its fixed point origin from the same span (D_LitFixSetup). Flush points are unchanged (an extra flush would split lists and change Fast pixels, lessons L150).
+- Its z rows lie above the edge table, which only moves to higher addresses (R_QogMoveEdges) or out of the z-buffer, so no edge is overwritten.
+- Each core draws with id's statements from values nothing writes while the scan runs, and its own copies of what the drawing writes. tools/core1_syms.py walks the board objects' relocations from core 1's job and fails on any variable it reaches that is neither core 1's own nor on a hand-checked list (frame and z-buffer pointers, the view's scale and centre, textures, light styles, dynamic lights, r_qogfast, the pipeline's locked state). It passes on the board build.
+- r_light.c's world dynamic light pass runs at the first R_DlightLit question of a frame, which either core could now ask, so core 0 runs it with Agent AL's R_QogDlightSettle before core 1 starts, after the brush entities as the first drawn surface would (lessons L152).
+- Agent AH's interpolator check runs on core 0 before core 1 starts, so a failed check turns Fast off for both copies.
+- The PC checks at every flush that core 1's copies of the view vectors and the transformed model origin equal what D_DrawSurfaces draws with (Sys_Error otherwise, never fired).
+
+### Exact proof (hidden, `-nosound`, own build folders in `build-am`, own git-ignored `data\id1` with a baked qogbake.bin, link port 27961, one run at a time)
+
+References are untouched builds of de58316 with the same flags. Each line is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same build flags and the same r_fast.
+
+References are untouched builds of main b3702b4 (after merging Agent AL's integer dynamic lights and Agent AN's profiler) with the same flags. Each row is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same flags and the same r_fast. The pipeline builds add `QOG_SPANS_CORE1 QOG_DRAW_CORE1`. Core 1 modes are the PC's second thread (thread), core 1's surfaces drawn on the game's thread as soon as they are handed on (`-core1first`) or at each flush after core 0's (`-core1last`).
+
+| Build (extra flags) | r_fast | core 1 mode | hash | fhash | 121 frames |
+| --- | --- | --- | --- | --- | --- |
+| default | 0 and 1 | thread, first, last | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all six runs |
+| board-like (`QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800 QOG_SURF_T_TINY QOG_LITSPAN_INTERP`, so the last lines in `entref` and the interpolators emulated) | 0 and 1 | thread both, first in 1, last in 0 | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all four runs |
+| many flushes (`QOG_ZEDGE_TEST_SPANS=400`, 1,280 edge moves and 129 stack fallbacks in the shot run) | 0 and 1 | thread both, first in 1, last in 0 | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all four runs |
+| the no-z fallback forced (`QOG_ZEDGE_TEST_SPANS=400 QOG_ZEDGE_FORCE_NOZ`, 129 flushes without z, 837 rows) | 0 and 1 | thread | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in both runs |
+
+The same default runs were also identical against de58316 before the merge. `tools/core1_syms.py --build build-am/arm` passes on the board build, and the PC's view check never fired.
+
+How much is handed on during the scan (PC, `-DQOG_PHASE=ON`, timedemo demo3, r_fast 1, per view): 56 lit world surfaces go through the pipeline, 41 of them during the scan with 55% of their 43,200 pixels (in the first 100 views 68 of 81 surfaces, 57% of the pixels). So on the board core 1 has more early work than the 7 ms of edgescan can take, and stays busy through the scan. On the PC's thread core 1 drew 38 of the 56.
+
+### Estimated board time, timedemo demo3, Fast, ms per view on core 0
+
+Before is the lead's board line. After is an estimate: the drawing of a view's surfaces is about 47 ms of work for one core (lmap 13.9 and grad 3.1 on core 0, the spans phase 16.9 is core 0's half of about 31 ms with its wait), of which about 4 ms is sky, water and brush entity surfaces that stay on core 0. Core 1 draws about 7 ms of surfaces during the edgescan (more than half the pixels are ready by then, above), the remaining 40 ms are shared, about 20 ms each plus about 1 ms for the last surface core 0 waits on (c0wait). The range allows core 1 to run up to 20% slower than core 0 while both cores' drawers compete for the XIP cache.
+
+| Phase | before | after (estimate) |
+| --- | ---: | ---: |
+| world | 10.4 | 10.4 |
+| bmodels | 6.9 | 6.9 |
+| edgescan (with c0wait) | 7.2 | 7.5 to 8.5 |
+| lmap, grad, spans (core 0's share) | 33.9 | 20 to 23 |
+| models, vmodel, parts | 9.7 | 9.7 |
+| other (setup, sky, turb, zspans) | 4.1 | 4.1 |
+| total view | 72.2 | 59 to 63 |
+| timedemo frame (13.6 fps, 73.5 ms) | 73.5 | 61 to 64 (15.6 to 16.4 fps) |
+
+Core 1's share of the frame: before about 15 ms of span halves, 1 to 2 ms of alias vertices and 14 to 18 ms of scanout in a 73.5 ms frame, about 45% busy. After about 27 ms of surfaces, 1 to 2 ms of alias vertices and the scanout in a frame of about 62 ms, about 70% busy. Core 1 still waits through the world front end after its scanout, bmodels, models, the view model and particles.
+
+### What to read on the board
+
+A new line on COM8 after the `[time cl]` lines every 2 s:
+
+```
+[time cl] core1 per frame ms scan <ms> jobs <ms> busy <ms> idle <ms>, per view pipe <ms> wait <ms> c0wait <ms> surfs <n> c1 <n> early <n>
+```
+
+- per frame: `scan` core 1's LCD scanouts, `jobs` every job core 0 gave it (the pipeline, Agent Z's alias vertices), `busy` both less the pipeline's waiting, `idle` the frame less busy. busy over the frame time is core 1's share.
+- per view: `pipe` core 1's time drawing surfaces, `wait` its time in the pipeline waiting for one, `c0wait` core 0's wait for core 1's last surface at a flush (it lands in the phase line's edgescan, lessons L153), `surfs` lit world surfaces drawn through the pipeline by either core, `c1` those core 1 drew, `early` those handed on during the scan.
+- The phase line's lmap, grad and spans are now core 0's share only. The sum to watch is edgescan + lmap + grad + spans (41.1 ms before).
+- A/B with `-DQOG_BOARD_DRAWCORE1=OFF` on the configure line (Agent V's span halving comes back).
+
+### RAM and stack
+
+| | `end` | free beside the 2 KB heap reserve |
+| --- | --- | ---: |
+| quake_display, main b3702b4 | 0x2003eab4 | 3,404 B |
+| quake_display, this branch | 0x2003f2c0 | 1,344 B |
+| quake_main, main b3702b4 | 0x2003f58c | 628 B |
+| quake_main, this branch | 0x2003f5b4 | 588 B |
+
+The display takes 2,060 B: core 1's light grid 1,296 B, the ring 256 B, core 1's r_drawsurf 48 B, its gradients, Fast drawer and surface state about 270 B, its copy of Agent AL's Fast gradient rows 76 B, the view copies 60 B, the counters and pipeline state about 60 B. The surfaces' last scan lines cost nothing on the board (entref). quake_main takes 40 B (the counters in the shared qog_phase.c). quake_display.bin is 420,120 B (396,000 on main b3702b4), the second copy of the drawing code is about 24 KB of flash. Core 1's stack (2 KB in scratch X): the deepest chain under its job is 632 B (tools/stack_chain.py, D_QogC1Worker to the exact drawer and its z span), against about 160 B for Agent Z's alias jobs.
+
+### For the lead and Agent AL
+
+- AL's builder and Fast gradients run on core 1 unchanged (each copy keeps its own rows, from core 1's copy of modelorg and the view vectors). A new global that AL's r_surf.c or D_CalcGradients writes needs a c1_ name in engine/d_core1.h (a new function defined in those files too), else both cores share it. Run `python tools/core1_syms.py --build <board build>` after a merge: it fails on any variable core 1 reaches that is not its own or on its list.
+- D_QogPipeBegin calls AL's R_QogDlightSettle before core 1 starts. Agent AN's profiler still starts its core 1 alarm through the qog_video job slot at start-up, which the pipeline does not change (the profiler then also samples core 1 inside the pipeline job).
+- Risk on the board: both cores now run their own copy of the drawers out of the shared 16 KB XIP cache. If the xip line shows many more misses in the scan, the copies compete for it.
+- Next steps from the research the coordinator forwarded: core 1 could run the alias front end and particle physics while core 0 draws its share of the surfaces, and the edge scan itself could be split (one core sorting and stepping edges, the other making spans a line behind, as frank-quake2 does).
+
+Files: engine/d_core1.c, d_core1.h, d_core1s.c, d_core1e.c (new), engine/d_edge.c (D_QogDrawLitBody, the pipeline), engine/r_edge.c (last lines, hand-on, the no-z wait), engine/d_local.h, engine/d_scanlit.c (D_QogLitCheck, no halving while the pipeline runs), engine/qog_phase.h, port/common/qog_phase.c (the core1 line), port/rp2040/vid_rp2040.c and port/pc/vid_pc.c (lock, wake, PC modes), platform/qog_video.c and .h (core 1's scanout and job times), apps/quake/CMakeLists.txt, tools/core1_syms.py (new).
+
+## 2026-11-25: The LCD pixels through PIO at 60 MHz, text over a Turbo view drawn by the scanout, and a race wait model on the PC (Agent AP, PC and ARM build, registered data)
+
+At 300 MHz the PL022's even prescaler gives the LCD only 50 MHz (300 / 6), and a scanout takes about 22.4 ms (Agent V measured 22.4 at the same 50 MHz, against 20.5 ms of wire). The view that races the scanout waits for it. Two changes and a measurement. Nothing ran on hardware. Every board number below is an estimate.
+
+### The panel and its limit
+
+The controller is a Sitronix ST7789 (bsp/display_cpu/lcd/st7789.c, 320x240 branch, MADCTL 0x70). Its serial write limits depend on the part: the ST7789V datasheet (V1.3, 2014) gives a 66 ns write cycle with 15 ns high and low pulses, the ST7789V3 (V0.1) 16 ns with 7 ns high and low. The board's record (`FWOG_LCD_MAX_HZ` 62.5 MHz, docs/hardware/pinmap.md) and the board itself run 62.5 MHz (250 MHz builds, 8 ns pulses) without trouble, so the panel takes the V3 timing in practice. 62.5 MHz stays the cap.
+
+### PIO scanout (`QOG_LCD_PIO`, on)
+
+| | PL022 (before) | PIO (now) |
+| --- | --- | --- |
+| clock at 300 MHz | clk_peri / 6 = 50 MHz | clk_sys / 5 = 60 MHz, divider 1 (no fractional jitter), SCK high 2 and low 3 system clocks (6.7 and 10 ns) |
+| gaps | about 1.5 bit times between 16-bit frames (mode 0 pulses its frame signal between words) | none, autopull of 16 bits from an 8 deep joined FIFO |
+| full scan, 200 rows | 22.4 ms (measured at the same rate) | about 17.2 ms (5,120 bits a row at 60 MHz plus about 0.4 us a line) |
+| status bar skipped, 152 rows | about 17.0 ms | about 13.0 ms |
+| a row | 112 us | about 85.7 us |
+
+- platform/qog_video.c builds a two instruction program at start-up (`out pins, 1 side 0 [lo - 1]`, `nop side 1 [hi - 1]`, side-set on SCK, out on MOSI, shift left, autopull 16) with n the fewest whole system clocks a bit that keep the rate at or under `QOG_LCD_PIO_KHZ` (`qog_video_pio_bit_cycles`, pure). 250 MHz gives 62.5 MHz (4 clocks), 200 MHz 50 MHz. A 16-bit DMA write to the TX FIFO lands in both halves of the word, so core 1's RGB565 line buffers and line DMA stay as they were, only the DREQ and the write address change.
+- The state machine takes pio1 first (pio0 SM 0 holds the WS2812 bar, sys_rp2040.c, and the speaker asks pio0 first, snd_rp2040.c, so it lands on pio0 too), then pio0. No free state machine or instruction room keeps the PL022 and says so.
+- The PL022 still sends CASET, RASET and RAMWR (st7789_set_window, the BSP's own fills and text). SCK and MOSI change GPIO function to the PIO for the pixel stream and back after it. Both sides idle with SCK low (SPI mode 0). The end of a scanout is the state machine stalling on its empty FIFO (FDEBUG TXSTALL, cleared first, set again in every cycle it waits).
+- SCK and MOSI get fast slew and 8 mA drive for the shorter high pulse.
+- The fallback is `-DQOG_LCD_PIO=OFF` (the PL022 as before). `-DQOG_LCD_PIO_KHZ=50000` keeps PIO with 3 and 3 clocks (inside every timing of the V3 sheet, 20.5 ms instead of 22.4). `-DQOG_LCD_PIO_KHZ=75000` gives 75 MHz at 300 MHz (20% over the panel's 62.5), only to try on the board with the user's approval.
+- Core 1's line loop stays in flash: the compiler inlines convert_line and scanout into core1_main, which is in flash, in main as well (the "hot loops live in RAM" comment was not true of the board build). Keeping them in RAM with `__no_inline_not_in_flash_func` costs about 450 B of RAM and was left out.
+
+### Text over a Turbo view drawn by the scanout (Turbo only)
+
+Counting on the PC pair showed that Agent AO's Turbo frames were mostly not packed: in Agent AF's menu Benchmark with r_fast 2 only 153 of 1,449 presented frames went out packed. The rest had a character over the view (901 spreads from Draw_Character, the notify lines of demo3's pickups, 64 from the console background), which spreads the view to full width (0.3 ms on the board) and makes the next view race a full width scanout. Now Draw_Character over a packed view lists the character instead (`R_QogTurboText`, engine/r_qogturbo.c): runs of characters side by side on one row, 32 runs and 160 characters a frame, in drawing order. VID_Update hands the frame's list to the scanout (`qog_video_set_text`), and core 1 draws each glyph over the doubled RGB565 line as Draw_Character would draw it over the spread view (index 0 see-through). Two lists alternate, so the one in flight stays. A character that does not fit, or any other 2D drawing over the view, spreads it as before and first draws the listed characters into the frame in their order. The crosshair goes to the list when characters are already listed, so it stays above them. The PC builds the panel the same way, so shots and frame hashes show the panel.
+
+- After it, 782 of the same run's 1,449 frames went out packed, 408 of them with characters drawn by the scanout (at most 152 characters in a frame).
+- RAM: the two lists 592 B, the scanout's pointers 20 B.
+
+### The race wait model (`-scanmodel`, PC pair)
+
+port/pc/vid_pc.c records for every frame the rows the next view waited for before the end of the scanout and the rows the scanout sent, and with `-scanmodel` prints at exit the board's race wait at five LCD rates: the front end waits until the scanout has sent its rows less the work before the view (pre), and after the world's front end (world) the view waits for the end of the scanout. world is 8.6 ms (the board's demo3 world phase scaled to 300 MHz), pre is not measured, so 3, 5 and 7 ms are printed. Agent AF's menu Benchmark on the board-flag pair, all 1,449 frames (the demo plus the menu and e1m1 start):
+
+| Mode | LCD | scan ms | race wait ms, pre 5 (pre 3 to 7) |
+| --- | --- | ---: | ---: |
+| Fast | PL022 50 MHz (300 MHz today) | 19.2 | 5.7 (3.7 to 7.7) |
+| Fast | PL022 62.5 MHz (250 MHz before) | 15.7 | 2.4 (1.2 to 4.4) |
+| Fast | PIO 60 MHz | 14.7 | 1.7 (0.7 to 3.4) |
+| Fast | PIO 75 MHz (not the default) | 11.8 | 0.2 (0.1 to 1.2) |
+| Turbo before (PL022 50 MHz, text spreads) | | 19.2 | 5.6 |
+| Turbo, PIO 60 MHz and text by the scanout | | 14.5 | 1.5 |
+
+So the PIO scanout is worth about 4 ms of every demo3 frame at 300 MHz in Fast and in Turbo, more than 300 MHz lost to the 50 MHz SPI (3.3 ms in this model). A Turbo view still waits for the end of the scanout before its spans (R_EdgeDrawing's VID_QogScanDone), which AO's counts of row waits did not include. Every ms that later work (Agent AM) takes off the world's front end comes back as race wait unless the scanout is shorter, so the faster scanout also keeps those savings.
+
+### What the board should print (COM8, display)
+
+```
+[lcd] spi 50000000 Hz (clk_peri 300000000 Hz)
+[qog_video] lcd pio1 sm 0, 60000 kHz (clk_sys 300000 kHz / 5, high 2 low 3, limit 62500 kHz), commands on the PL022
+[qog_video] 320x200 -> 320x200 at y=20, dma ch <n>
+...
+[quake_display] status bar rows sent in 25 of 300 frames, last scan 13050 us for 152 rows
+```
+
+The last scan is about 13.0 ms for 152 rows and 17.2 ms for 200 with PIO, about 17.0 and 22.4 ms with the PL022 (`-DQOG_LCD_PIO=OFF`). `[qog_video] lcd no free PIO state machine, staying on the PL022` means the fallback ran. A picture with wrong colours, shifted pixels or a black panel with PIO but not with OFF means the panel misses the 6.7 ns high pulse, and `-DQOG_LCD_PIO_KHZ=50000` is the next build to try.
+
+### Checks (hidden, `-nosound`, own build folders, own git-ignored data folder)
+
+| Check | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc | ce86f894f9de |
+| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against an untouched build of cd1e749 | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d |
+| `qogtest_ap_text.cfg` (E1M1 Turbo, six short notify lines, a long one, the crosshair, then Fast and Exact), 39 frame hashes, quakeog_pc and the board-flag pair against cd1e749 | identical, the pair drew 35 frames' characters from the list |
+| the same with the lists cut to 3 runs and 20 characters (`QOG_TURBO_RUNS`, `QOG_TURBO_CHARS`), every frame overflows | identical |
+| menu Benchmark on the pair, r_fast 1 and r_fast 2 | `qog_scanrace` 0 writes before the scanout passed, `qog_lockcheck` 0 of 1,449 changed |
+
+### RAM and size (board, the full configure line with 300 MHz and Turbo)
+
+| Build | quake_display `end` | spare beside the 2 KB heap | quake_main `end` |
+| --- | --- | --- | --- |
+| main cd1e749 | 0x2003ead8 | 3,368 B | 0x2003f58c |
+| PIO scanout only | 0x2003eafc | 3,332 B | 0x2003f58c |
+| this branch | 0x2003ed68 | 2,712 B | 0x2003f58c |
+
+quake_display.bin 400,016 B (397,840 on main), quake_main.bin 1,343,788 B. `-DQOG_LCD_PIO=OFF` builds and links (0x2003eafc before the text lists).
+
+Files: platform/qog_video.c and .h, platform/CMakeLists.txt (hardware_pio), port/rp2040/vid_rp2040.c, port/rp2040/link_rp2040.c (the diag line), apps/quake/CMakeLists.txt (`QOG_LCD_PIO`, `QOG_LCD_PIO_KHZ`), engine/r_qogturbo.c, engine/vid.h, engine/draw.c (Draw_Character, one call), port/pc/vid_pc.c. Test scripts in the git-ignored data folder: `qogtest_ap_fast.cfg`, `qogtest_ap_turbo.cfg` (r_fast 1 or 2, then Agent AF's menu Benchmark), `qogtest_ap_text.cfg`.
+
+Not done, for later:
+- Measure pre on the board (the time from VID_Update to the view's first scan wait). The model's ranges come from guessing it.
+- Text drawn by the scanout covers Draw_Character only. Draw_Pic and Draw_TransPic over the view (the pause and loading plaques, the menu) still spread it.
+
+## 2026-11-25: Brush entities and the edge scan with fewer float calls, all exact (Agent AQ, PC and ARM build, registered data)
+
+The board's timedemo demo3 spends 6.9 ms a view in bmodels, 10.4 in world and 7.2 in edgescan (250 MHz, Fast), and none of it shrinks in Turbo mode. Counted on the PC (`QOG_AQ_STATS`, below), most of the float and double work left in these phases after Agents Z and AJ sat in brush entity code: the 1/z order of two brush surfaces in the edge scan, the brush polygons' clip against the world BSP, and the view planes turned for every brush surface drawn. Eight changes, each behind its own flag, all exact: r_fast 0, 1 and 2 give the same bits as before. Nothing ran on hardware. Every board saving below is an estimate from the Thumb code (objdump of `build-aq/arm`, ROM float calls at about 55 cycles, fdiv 75, f2d 22, dadd 115, dmul 150) and the PC's work counts.
+
+### Where the time went (PC, timedemo demo3, Fast, per view)
+
+| Work | Per view | Cost before |
+| --- | ---: | --- |
+| brush entities in the view list / rejected by their box / drawn (clipped to the BSP, in one leaf) | 20.7 / 15.2 / 5.4 (3.0, 2.4) | box test about 950 cycles a plane (two float dot products, four f2d, two dsub, two dcmp) |
+| brush surfaces tested for facing / facing | 65.0 / 34.2 | a float dot product, f2d and dcmp each |
+| R_RecursiveClipBPoly calls / edges tested / edges split | 108.8 / 425 / 28 | tplane 21 float calls a call, two float dot products and two compares an edge (about 730 cycles) |
+| planes of those calls that are axial | 99.9% | |
+| 1/z compares of two brush surfaces with one key in R_LeadingEdge | 283 | five f2d, four or five dmul, two dadd, two float multiplies and adds, a dcmp: about 1,350 cycles |
+| brush surfaces drawn by D_DrawSurfaces (of the same entity as the brush surface before) | 13.9 (11.6) | two R_TransformFrustum (80 float calls each) and a TransformVector each |
+| R_RotateBmodel in the bmodels phase | 5.4 entities | R_TransformFrustum to turn and again to put back |
+| Fast face gradients (world and brush) | 140 | 16 float calls each |
+| world nodes / faces / clip edges / emitted edges / projected points | 271 / 197 / 982 / 467 / 506 | integer already (Agent AJ) |
+| scan lines / edge visits in R_GenerateSpans | 152 / 4,152 | integer |
+
+### Changes
+
+| Change | Flag | Mode | What it does | Estimated board saving per view, demo3, 300 MHz |
+| --- | --- | --- | --- | --- |
+| 1/z order of brush surfaces in float | `QOG_LEADZ_FLOAT` (r_edge.c, R_QogZFront) | exact, all modes | id's newzi is a float part plus a product exact in double, scaled by the double 0.99 or 1.01. The float version is within 11.2 2^-24 of the sum of the four terms' sizes of id's difference, which is below 2^(e-17) for e the largest exponent, read from the bits. Outside that bound the float sign is id's, inside it id's double code runs (0.07% of the compares in demo3) | 283 x about 700 cycles, 0.66 ms of edgescan |
+| Brush clip sides by integer compares | `QOG_BPOLY_AXIAL` (r_bsp.c, R_QogAxPlane, R_QogAxSide) | exact, all modes | for an entity that does not turn, tplane's normal is id's identity product (R_QogIdentityRotate), and on an axial plane id's DotProduct is exactly plus or minus one coordinate (or a signed zero by round to nearest), so its bits need no float call. dist > 0 is then an integer compare of the float bits in real order. A split edge gets id's two dists by one float subtraction each. Values not finite, denormal or below 2^-100 take id's arithmetic | tplane 21 float calls to 1, an edge about 730 cycles to about 90: 0.37 M cycles, 1.24 ms of bmodels |
+| Brush surface facing without double | `QOG_BMODEL_FACING` (r_bsp.c, R_QogFacing) | exact | for a float x, x < -0.01 and x > 0.01 are x < -0.01f and x > 0.01f, and on an axial plane the dot product is the exact one above | 65 x about 250 cycles, 0.05 ms |
+| Brush box test in float compares | `QOG_BMODEL_BBOXF` (r_main.c, R_BmodelCheckBBox) | exact | id's double d is a float dot product less a float dist, exact in sign, so d <= 0 is dot <= dist (Agent Z's argument for the world nodes). Turned entities keep id's code | about 330 cycles a plane, 0.06 ms |
+| Brush view planes from the world's | `QOG_BMODEL_FRUSTUM` (r_main.c, R_QogFrustum) | exact | R_TransformFrustum's normals depend on the vectors alone. While view_clipplanes holds the normals of the world's vectors, an entity whose turned vectors have the same bits, and the planes put back after it, compute only the four dists. Anything else runs R_TransformFrustum. No copy of the planes is kept | 6.6 of 11 calls a view reuse the normals, about 3,300 cycles each, 0.07 ms of bmodels |
+| Brush surfaces draw without turning the view planes | `QOG_DSURF_NOFRUSTUM` (d_edge.c D_QogSubmodelBegin, r_bsp.c R_QogRotateBmodelVecs) | exact | nothing that draws spans reads view_clipplanes, so D_DrawSurfaces turns only the vectors and modelorg and sets the planes back once at its end, from the same vectors and modelorg as id's last restore. The entity's transformed origin is kept for the entity drawn last | 13.9 x about 9,000 cycles, 0.42 ms of edgescan |
+| Brush entity Fast setup made again only for its origin | `QOG_FX_REUSE` (r_draw.c R_QogFxSetup) | Fast and Turbo, the same values | when the vectors have the bits of the last complete setup (usually the world's), only org, the rounding constants cx, cy, cz and the view planes' origin terms are made again, by the same statements | about 7,500 cycles an entity, 0.14 ms of bmodels |
+| Face gradients with fewer float calls | `QOG_FGRAD_AXIAL` (r_draw.c R_QogFaceGradFast) | Fast and Turbo, the same values | an axial plane's dot product as above, and since gk is a power of two, g (distinv gk) rounds as (g gk) distinv, with g gk made by adding to the float's exponent | 140 x about 300 cycles, 0.15 ms (most of it world) |
+| Measurement | `QOG_AQ_STATS`, `QOG_LEADZ_CHECK`, `QOG_BPOLY_CHECK`, `QOG_BMODEL_FACING_CHECK`, `QOG_FGRAD_CHECK` | PC only | work counts every 100 views (`qog_aqstats`, engine/qog_aqstats.h), and both ways on every compare, side, dist and gradient with the mismatches counted | |
+
+Together, estimates at 300 MHz: bmodels about 1.6 ms, edgescan about 1.1 ms, world about 0.15 ms, about 2.8 ms a view (3.4 ms at 250 MHz). The board has run about twice the agents' estimates, so 2.8 to 5.6 ms is the range to expect. Turbo has the same counts (the brush and scan work does not depend on the width).
+
+Not done: the world phase is now mostly integer work and flash reads of the BSP data (271 nodes, 197 faces, about 1,300 plane distances and 500 projections a view, all integer since Agent AJ), which these flags cannot touch. The Fast clipped points (138 a view, 13 float calls each, about 0.35 ms) and an integer box test for brush entities (about 0.1 ms) are left, the first changes Fast pictures. R_GenerateSpans calls R_LeadingEdge for every leading edge (4,152 edge visits a view), and taking its first test (spanstate) into the loop would save the call on most of them, about 0.2 ms, but that loop is in Agent AM's edge scan work. The "brush entity in no visible leaf" reject the lead suggested only applies to 0.16 entities a view, since the server sends only entities in the PVS and the box test rejects 15 of 21.
+
+### Exact proof (hidden, `-nosound`, own `build-aq` folders, an untouched build of cd1e749 in `build-aq/ref`, own git-ignored data folder)
+
+Both PC builds carry the board's world flags (`QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT`) so the Fast front end runs too.
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc as pc/CMakeLists.txt builds it and with the world flags | ce86f894f9de both |
+| `qogtest_f_hash` | e92bc9e9650d |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), all 200 rows, against cd1e749 | r_fast 0 121 of 121 byte identical, r_fast 1 121 of 121, r_fast 2 (Turbo) 121 of 121 |
+| check build, timedemo demo1 (r_fast 0), demo2 (r_fast 1), demo3 (r_fast 1 and 2) | 1/z compares, clip planes, sides and dists, facing tests and face gradients both ways: about 710,000 compares, 2.75 million plane, side and dist tests, 160,000 facing tests and 410,000 gradients (counted to the last full 65,536 printed), 0 differ |
+
+### RAM and stack (board, the full configure line of docs/handoff.md with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own `build-aq/arm` and `build-aq/armref` of cd1e749)
+
+| | `end` | cd1e749 |
+| --- | --- | --- |
+| quake_display | 0x2003eaec | 0x2003ead8 (20 B more: the last entity and its transformed origin, three byte flags) |
+| quake_main | 0x2003f58c | 0x2003f58c |
+
+quake_display.bin 399,480 B (397,872 for cd1e749), so the display keeps about 3,350 B beside the 2 KB heap reserve. Stack: R_RecursiveClipBPoly 136 B a level as before (the axis rides in tplane.type), R_DrawBEntitiesOnList 120 B as before, new leaves R_QogZFront 48, R_QogAxSide 32, R_QogFacing 32, R_QogFrustum 32, D_QogSubmodelBegin 40, so no chain gets deeper.
+
+### For Agent AM
+
+- r_edge.c: R_QogZFront and R_QogZFrontDouble before R_LeadingEdge, and the two 1/z sites inside it. They read only the two surfaces, the edge and fv, so they run on either core.
+- d_edge.c: D_QogSubmodelBegin and three statics (the last entity, its transformed origin, a flag) used inside one D_DrawSurfaces call, which must stay on one core at a time. The view planes are set back at the end of D_DrawSurfaces.
+- r_main.c: R_QogFrustum before R_DrawBEntitiesOnList and its two calls, the box test's float compares, and the `qog_aqstats` print at the end of R_RenderView_ (PC measurement only).
+
+Files: engine/r_bsp.c, engine/r_edge.c, engine/d_edge.c, engine/r_main.c, engine/r_draw.c, engine/r_efrag.c (a count), engine/qog_aqstats.h (new), pc/CMakeLists.txt, apps/quake/CMakeLists.txt. Test scripts (git-ignored data folder): `qogtest_aq_td<1..3>_<0..2>.cfg` (timedemo with r_fast set), `qogtest_ai_turbo.cfg`.
 
 ## 2026-11-25: 300 MHz at 1.25 V, a flash check over every RX delay, die temperature lines, and a board PC-sampling profiler (Agent AN, ARM build, not run on hardware)
 

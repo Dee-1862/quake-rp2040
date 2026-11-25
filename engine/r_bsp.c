@@ -22,6 +22,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 
 //
 // current entity info
@@ -115,6 +117,12 @@ comes out unchanged, a zero comes out -0 only if all three products are
 NaNs would make NaNs from 0 * t, so such a vector takes id's dot products.
 */
 static const float	r_qog_identity[3][3] = { {1, 0, 0}, {0, 1, 0}, {0, 0, 1} };
+#if defined(QOG_BPOLY_AXIAL) || defined(QOG_DSURF_NOFRUSTUM)
+static byte			r_qog_entident;	// QuakeOG (Agent AQ): entity_rotation is r_qog_identity
+#endif
+#if defined(QOG_DSURF_NOFRUSTUM) || defined(QOG_BMODEL_FRUSTUM)
+static byte			r_qog_nofrustum;	// QuakeOG (Agent AQ): R_QogRotateBmodelVecs
+#endif
 
 static void R_QogIdentityRotate (vec3_t vec)
 {
@@ -156,16 +164,25 @@ void R_RotateBmodel (void)
 	{
 		unsigned	ab[3];
 
+#if defined(QOG_BPOLY_AXIAL) || defined(QOG_DSURF_NOFRUSTUM)
+		r_qog_entident = false;
+#endif
 		memcpy (ab, currententity->angles, sizeof ab);
 		if (!(ab[0] | ab[1] | ab[2]))
 		{
 			// QuakeOG (Agent AJ): no turn, the same values without the
 			// matrix products
 			memcpy (entity_rotation, r_qog_identity, sizeof entity_rotation);
+#if defined(QOG_BPOLY_AXIAL) || defined(QOG_DSURF_NOFRUSTUM)
+			r_qog_entident = true;
+#endif
 			R_QogIdentityRotate (modelorg);
 			R_QogIdentityRotate (vpn);
 			R_QogIdentityRotate (vright);
 			R_QogIdentityRotate (vup);
+#if defined(QOG_DSURF_NOFRUSTUM) || defined(QOG_BMODEL_FRUSTUM)
+			if (!r_qog_nofrustum)
+#endif
 			R_TransformFrustum ();
 			return;
 		}
@@ -244,9 +261,232 @@ void R_RotateBmodel (void)
 	R_EntityRotate (vright);
 	R_EntityRotate (vup);
 
+#if defined(QOG_DSURF_NOFRUSTUM) || defined(QOG_BMODEL_FRUSTUM)
+	if (!r_qog_nofrustum)
+#endif
 	R_TransformFrustum ();
 }
 
+#if defined(QOG_DSURF_NOFRUSTUM) || defined(QOG_BMODEL_FRUSTUM)
+/*
+QuakeOG (Agent AQ): R_RotateBmodel without the view planes. D_DrawSurfaces
+needs the turned vectors and modelorg but never the view planes: nothing
+that draws spans reads view_clipplanes, so D_DrawSurfaces leaves them alone
+and sets them back once at its end (d_edge.c). R_DrawBEntitiesOnList makes
+the planes itself from what it made for the entity before (r_main.c).
+*/
+void R_QogRotateBmodelVecs (void)
+{
+	r_qog_nofrustum = true;
+	R_RotateBmodel ();
+	r_qog_nofrustum = false;
+}
+#endif
+
+
+#if defined(QOG_BPOLY_AXIAL) || defined(QOG_BMODEL_FACING)
+#ifndef QOG_BMODEL_ZEROANGLE
+#error "QOG_BPOLY_AXIAL and QOG_BMODEL_FACING need QOG_BMODEL_ZEROANGLE"
+#endif
+/*
+QuakeOG (Agent AQ): R_RecursiveClipBPoly on an axial plane of a brush
+entity that does not turn, without float arithmetic for the sides.
+
+With entity_rotation the identity, tplane's normal is id's identity product
+of the node plane's normal (R_QogIdentityRotate), so on an axial plane it
+has one component +-1 and two +-0. id's DotProduct of a finite point p with
+such a normal n is then exactly p[k] n[k] when p[k] is not zero (the
+products with +-0 are zeros, which leave a sum unchanged), else a zero that
+is -0 only when all three products are -0 (round to nearest adds zeros that
+way). R_QogAxDot builds those bits, so the dot product needs no float call.
+A point's dist is the float difference q - tplane.dist, and dist > 0 holds
+exactly when q > tplane.dist as real numbers, which an integer compare of
+the bits decides (both zeros as 0). Points with a component that is not
+finite or denormal, a p[k] below 2^-100 or a tplane.dist below 2^-100 but
+not zero take id's floats (no difference can then flush to zero on the
+board's float routines). The dists of a split edge are id's values, q -
+tplane.dist in one float subtraction.
+*/
+// a float's bits (may alias a float, so no memcpy call on the board)
+#if defined(__GNUC__)
+typedef unsigned int __attribute__((may_alias))	r_qogbits_t;
+#else
+typedef unsigned int							r_qogbits_t;
+#endif
+#define QOG_FB(f)	(*(r_qogbits_t *)&(f))
+
+/* id's DotProduct (v, n) for an axial n (component k), or 0 when v needs
+   id's arithmetic */
+static int R_QogAxDot (const float *v, const float *n, int k, float *out)
+{
+	const r_qogbits_t	*b = (const r_qogbits_t *)v, *nb = (const r_qogbits_t *)n;
+	unsigned			e, q;
+	int					i;
+
+	for (i=0 ; i<3 ; i++)
+	{
+		e = b[i] & 0x7F800000;
+		if (e == 0x7F800000 || (e == 0 && (b[i] & 0x007FFFFF)))
+			return 0;	// not finite, or denormal
+	}
+	if (b[k] & 0x7FFFFFFF)
+	{
+		if ((b[k] & 0x7F800000) < (27u << 23))
+			return 0;	// below 2^-100
+		q = b[k] ^ (nb[k] & 0x80000000);
+	}
+	else
+		q = ((b[0] ^ nb[0]) & (b[1] ^ nb[1]) & (b[2] ^ nb[2])) & 0x80000000;
+	*(r_qogbits_t *)out = q;
+	return 1;
+}
+
+/* a float's bits as an int in the order of the real numbers (+-0 as 0) */
+static int R_QogFKey (unsigned b)
+{
+	return (b & 0x80000000) ? -(int)(b & 0x7FFFFFFF) : (int)b;
+}
+
+/* the axis of a normal with one component +-1 and two +-0, else -1 */
+static int R_QogAxis (const float *n)
+{
+	const r_qogbits_t	*nb = (const r_qogbits_t *)n;
+
+	if ((nb[0] & 0x7FFFFFFF) == 0x3F800000 && !((nb[1] | nb[2]) & 0x7FFFFFFF))
+		return 0;
+	if ((nb[1] & 0x7FFFFFFF) == 0x3F800000 && !((nb[0] | nb[2]) & 0x7FFFFFFF))
+		return 1;
+	if ((nb[2] & 0x7FFFFFFF) == 0x3F800000 && !((nb[0] | nb[1]) & 0x7FFFFFFF))
+		return 2;
+	return -1;
+}
+
+#ifdef QOG_BMODEL_FACING
+#ifdef QOG_BMODEL_FACING_CHECK
+/* PC check build: both ways on every brush surface */
+static void R_QogFacingCheck (int a, int b)
+{
+	static unsigned	n, bad;
+
+	n++;
+	if (a != b)
+		bad++;
+	if ((n & 0x3FFF) == 0)
+		Sys_Printf ("qog_facingcheck %u surfaces, %u differ\n", n, bad);
+}
+#endif
+/*
+QuakeOG (Agent AQ): whether a brush entity surface faces the eye, as id
+decides it: dot = DotProduct (modelorg, normal) - dist in float, compared
+in double with -BACKFACE_EPSILON or BACKFACE_EPSILON. For a float x, x <
+-0.01 and x > 0.01 are x < -0.01f and x > 0.01f (0.01f is the float just
+below 0.01), so the compare needs no double. On an axial plane the dot
+product is R_QogAxDot's exact value, one float subtraction in all.
+*/
+static int R_QogFacing (msurface_t *psurf, mplane_t *pplane)
+{
+	float	dot;
+	int		k = R_QogAxis (pplane->normal);
+
+	if (k < 0 || !R_QogAxDot (modelorg, pplane->normal, k, &dot))
+		dot = DotProduct (modelorg, pplane->normal);
+	dot -= pplane->dist;
+	if (psurf->flags & SURF_PLANEBACK)
+		return dot < -0.01f;
+	return dot > 0.01f;
+}
+#endif
+
+#ifdef QOG_BPOLY_AXIAL
+/*
+tplane of an axial node plane for an entity that does not turn, with id's
+values and the axis in its type. Returns the axis, or -1 for id's
+arithmetic (tplane then unset).
+*/
+static int R_QogAxPlane (mplane_t *splitplane, mplane_t *tp)
+{
+	unsigned	db;
+	int			k;
+	float		dot;
+
+	if (!r_qog_entident)
+		return -1;
+	VectorCopy (splitplane->normal, tp->normal);
+	R_QogIdentityRotate (tp->normal);	// id's DotProduct (entity_rotation[i], normal)
+	k = R_QogAxis (tp->normal);
+	if (k < 0)
+		return -1;
+	// the node plane's own normal is the same up to the signs of its zeros
+	if (!R_QogAxDot (r_entorigin, splitplane->normal, k, &dot))
+		return -1;
+	tp->dist = splitplane->dist - dot;
+	db = QOG_FB (tp->dist);
+	if ((db & 0x7F800000) == 0x7F800000 || ((db & 0x7FFFFFFF) && (db & 0x7F800000) < (27u << 23)))
+		return -1;
+	tp->type = (byte)k;
+	return k;
+}
+
+/* id's side of a point (0 when dist > 0), and its dist when asked */
+static int R_QogAxSide (mvertex_t *pv, mplane_t *tp, float *pdist)
+{
+	float	q, d;
+
+	if (!R_QogAxDot (pv->position, tp->normal, tp->type, &q))
+	{
+		QOG_AQ (AQ_BPOLYFB, 1);
+		d = DotProduct (pv->position, tp->normal) - tp->dist;	// id's arithmetic
+		if (pdist)
+			*pdist = d;
+		return d > 0 ? 0 : 1;
+	}
+	if (pdist)
+		*pdist = q - tp->dist;
+	return R_QogFKey (QOG_FB (q)) > R_QogFKey (QOG_FB (tp->dist)) ? 0 : 1;
+}
+#endif
+#endif
+
+#ifdef QOG_BPOLY_CHECK
+/* PC check build: id's tplane, sides and dists beside the axial ones */
+static unsigned	r_qog_bpn, r_qog_bpbad;
+
+static void R_QogBpolyCount (int bad)
+{
+	r_qog_bpn++;
+	if (bad)
+		r_qog_bpbad++;
+	if ((r_qog_bpn & 0xFFFF) == 0)
+		Sys_Printf ("qog_bpolycheck %u tests, %u differ\n", r_qog_bpn, r_qog_bpbad);
+}
+
+static void R_QogBpolyCheckPlane (mplane_t *splitplane, mplane_t *tp, int axk)
+{
+	mplane_t	t;
+
+	if (axk < 0)
+		return;
+	t.dist = splitplane->dist - DotProduct(r_entorigin, splitplane->normal);
+	t.normal[0] = DotProduct (entity_rotation[0], splitplane->normal);
+	t.normal[1] = DotProduct (entity_rotation[1], splitplane->normal);
+	t.normal[2] = DotProduct (entity_rotation[2], splitplane->normal);
+	R_QogBpolyCount (memcmp (&t.dist, &tp->dist, sizeof t.dist) || memcmp (t.normal, tp->normal, sizeof t.normal));
+}
+
+static void R_QogBpolyCheckSide (mvertex_t *pv, mplane_t *tp, int side)
+{
+	float	d = DotProduct (pv->position, tp->normal) - tp->dist;
+
+	R_QogBpolyCount ((d > 0 ? 0 : 1) != side);
+}
+
+static void R_QogBpolyCheckDist (mvertex_t *pv, mplane_t *tp, float dist)
+{
+	float	d = DotProduct (pv->position, tp->normal) - tp->dist;
+
+	R_QogBpolyCount (memcmp (&d, &dist, sizeof d) != 0);
+}
+#endif
 
 /*
 ================
@@ -263,26 +503,58 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	mnode_t		*pn;
 
 	psideedges[0] = psideedges[1] = NULL;
+	QOG_BM (QOG_BM_BPOLY, 1);	// QuakeOG (Agent AS)
+	QOG_AQ (AQ_BPOLY, 1);
 
 	makeclippededge = false;
 
 // transform the BSP plane into model space
 // FIXME: cache these?
 	splitplane = pnode->plane;
+	QOG_AQ (AQ_BPOLYAX, splitplane->type < 3);
+#ifdef QOG_BPOLY_AXIAL
+	// QuakeOG (Agent AQ): tplane.type holds the axis, or 0xFF for id's
+	// arithmetic (no more locals in this recursion's frame)
+	tplane.type = 0xFF;
+	if (R_QogAxPlane (splitplane, &tplane) < 0)
+#endif
+	{
 	tplane.dist = splitplane->dist -
 			DotProduct(r_entorigin, splitplane->normal);
 	tplane.normal[0] = DotProduct (entity_rotation[0], splitplane->normal);
 	tplane.normal[1] = DotProduct (entity_rotation[1], splitplane->normal);
 	tplane.normal[2] = DotProduct (entity_rotation[2], splitplane->normal);
+	}
+#ifdef QOG_BPOLY_CHECK
+	R_QogBpolyCheckPlane (splitplane, &tplane, tplane.type == 0xFF ? -1 : 0);
+#endif
 
 // clip edges to BSP plane
 	for ( ; pedges ; pedges = pnextedge)
 	{
 		pnextedge = pedges->pnext;
+		QOG_BM (QOG_BM_BPOLYEDGE, 1);	// QuakeOG (Agent AS)
+		QOG_AQ (AQ_BPOLYEDGE, 1);
 
 	// set the status for the last point as the previous point
 	// FIXME: cache this stuff somehow?
 		plastvert = pedges->v[0];
+		pvert = pedges->v[1];
+#ifdef QOG_BPOLY_AXIAL
+		if (tplane.type != 0xFF)
+		{
+			// QuakeOG (Agent AQ): the sides by integer compares, the dists
+			// only for a split edge
+			lastside = R_QogAxSide (plastvert, &tplane, NULL);
+			side = R_QogAxSide (pvert, &tplane, NULL);
+#ifdef QOG_BPOLY_CHECK
+			R_QogBpolyCheckSide (plastvert, &tplane, lastside);
+			R_QogBpolyCheckSide (pvert, &tplane, side);
+#endif
+		}
+		else
+#endif
+		{
 		lastdist = DotProduct (plastvert->position, tplane.normal) -
 				   tplane.dist;
 
@@ -291,20 +563,31 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 		else
 			lastside = 1;
 
-		pvert = pedges->v[1];
-
 		dist = DotProduct (pvert->position, tplane.normal) - tplane.dist;
 
 		if (dist > 0)
 			side = 0;
 		else
 			side = 1;
+		}
 
 		if (side != lastside)
 		{
 		// clipped
+			QOG_AQ (AQ_BPOLYSPLIT, 1);
 			if (numbverts >= MAX_BMODEL_VERTS)
 				return;
+#ifdef QOG_BPOLY_AXIAL
+			if (tplane.type != 0xFF)
+			{
+				R_QogAxSide (plastvert, &tplane, &lastdist);
+				R_QogAxSide (pvert, &tplane, &dist);
+#ifdef QOG_BPOLY_CHECK
+				R_QogBpolyCheckDist (plastvert, &tplane, lastdist);
+				R_QogBpolyCheckDist (pvert, &tplane, dist);
+#endif
+			}
+#endif
 
 		// generate the clipped vertex
 			frac = lastdist / (lastdist - dist);
@@ -459,12 +742,23 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 	// find which side of the node we are on
 		pplane = SURF_PLANE (pmodel, psurf);	// QuakeOG
 
+		QOG_AQ (AQ_BSURFS, 1);
+#ifdef QOG_BMODEL_FACING
+#ifdef QOG_BMODEL_FACING_CHECK
+		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
+		R_QogFacingCheck (R_QogFacing (psurf, pplane), ((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
+			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)));
+#endif
+		if (R_QogFacing (psurf, pplane))	// QuakeOG (Agent AQ)
+#else
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
 	// draw the polygon
 		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
+#endif
 		{
+			QOG_AQ (AQ_BFRONT, 1);
 		// FIXME: use bounding-box-based frustum clipping info?
 
 		// copy the edges to bedges, flipping if necessary so always
@@ -543,12 +837,23 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 	// find which side of the node we are on
 		pplane = SURF_PLANE (pmodel, psurf);	// QuakeOG
 
+		QOG_AQ (AQ_BSURFS, 1);
+#ifdef QOG_BMODEL_FACING
+#ifdef QOG_BMODEL_FACING_CHECK
+		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
+		R_QogFacingCheck (R_QogFacing (psurf, pplane), ((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
+			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)));
+#endif
+		if (R_QogFacing (psurf, pplane))	// QuakeOG (Agent AQ)
+#else
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
 	// draw the polygon
 		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
+#endif
 		{
+			QOG_AQ (AQ_BFRONT, 1);
 			r_currentkey = LEAF_KEY (cl.worldmodel, (mleaf_t *)ENT_TOPNODE (currententity));
 
 		// FIXME: use bounding-box-based frustum clipping info?
@@ -596,6 +901,7 @@ static int R_QogCullFloat (mnode_t *node, int i, int *pindex)
 {
 	vec3_t	pt;
 
+	QOG_AQ (AQ_CULLFLT, 1);
 	pt[0] = (float)node->minmaxs[pindex[0]];
 	pt[1] = (float)node->minmaxs[pindex[1]];
 	pt[2] = (float)node->minmaxs[pindex[2]];
@@ -636,6 +942,7 @@ static QOG_NOINLINE int R_QogCullNodeInt (mnode_t *node, int clipflags, const in
 			clipflags &= ~(1<<i);	// node is entirely on screen
 		else if (d > -e)
 		{
+			QOG_AQ (AQ_CULLFLT, 1);
 			pt[0] = (float)c0;
 			pt[1] = (float)c1;
 			pt[2] = (float)c2;
@@ -816,6 +1123,8 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		{
 		float	fdot;
 
+		QOG_AQ (AQ_NODEAX, plane->type < 3);
+		QOG_AQ (AQ_NODEDOT, plane->type >= 3);
 		switch (plane->type)
 		{
 		case PLANE_X:

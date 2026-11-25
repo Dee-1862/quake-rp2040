@@ -22,6 +22,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
+#ifdef QOG_AQ_STATS
+unsigned	qog_aq[AQ_N];
+#endif
 
 //define	PASSAGES
 
@@ -1033,27 +1038,84 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 			rejectpt[1] = minmaxs[pindex[1]];
 			rejectpt[2] = minmaxs[pindex[2]];
 			
+#ifdef QOG_BMODEL_BBOXF
+			// QuakeOG (Agent AQ): id's d is a float dot product less a float
+			// dist in double, which is exact in sign and zero only when the
+			// two are equal, so d <= 0 is the float compare dot <= dist
+			if (DotProduct (rejectpt, view_clipplanes[i].normal) <= view_clipplanes[i].dist)
+				return BMODEL_FULLY_CLIPPED;
+#else
 			d = DotProduct (rejectpt, view_clipplanes[i].normal);
 			d -= view_clipplanes[i].dist;
 
 			if (d <= 0)
 				return BMODEL_FULLY_CLIPPED;
+#endif
 
 			acceptpt[0] = minmaxs[pindex[3+0]];
 			acceptpt[1] = minmaxs[pindex[3+1]];
 			acceptpt[2] = minmaxs[pindex[3+2]];
 
+#ifdef QOG_BMODEL_BBOXF
+			if (DotProduct (acceptpt, view_clipplanes[i].normal) <= view_clipplanes[i].dist)
+				clipflags |= (1<<i);
+#else
 			d = DotProduct (acceptpt, view_clipplanes[i].normal);
 			d -= view_clipplanes[i].dist;
 
 			if (d <= 0)
 				clipflags |= (1<<i);
+#endif
 		}
 	}
 
 	return clipflags;
 }
 
+
+#ifdef QOG_BMODEL_FRUSTUM
+/*
+QuakeOG (Agent AQ): R_TransformFrustum makes each view plane's normal from
+vright, vup and vpn alone and its dist as DotProduct (modelorg, normal).
+A brush entity that does not turn usually keeps the world's vectors bit for
+bit (R_QogIdentityRotate changes only the sign of some zeros), and the
+planes put back after it come from the world's vectors too. So while the
+normals in view_clipplanes are known to be those of the world's vectors
+(*pworld), such an entity and the put back planes take them and compute
+only the four dists. Anything else runs R_TransformFrustum. The same inputs
+give the same bits, and no copy of the planes is kept.
+*/
+extern void R_QogRotateBmodelVecs (void);
+
+static qboolean R_QogWorldVecs (void)
+{
+	return !memcmp (vright, base_vright, sizeof(vec3_t)) && !memcmp (vup, base_vup, sizeof(vec3_t)) &&
+		   !memcmp (vpn, base_vpn, sizeof(vec3_t));
+}
+
+static void R_QogFrustum (qboolean *pworld)
+{
+	int		i;
+
+	if (R_QogWorldVecs ())
+	{
+		if (*pworld)
+		{
+			QOG_AQ (AQ_BFRDIST, 1);
+			for (i=0 ; i<4 ; i++)
+				view_clipplanes[i].dist = DotProduct (modelorg, view_clipplanes[i].normal);
+			return;
+		}
+		QOG_AQ (AQ_BFRFULL, 1);
+		R_TransformFrustum ();
+		*pworld = true;
+		return;
+	}
+	QOG_AQ (AQ_BFRFULL, 1);
+	R_TransformFrustum ();
+	*pworld = false;
+}
+#endif
 
 /*
 =============
@@ -1066,6 +1128,9 @@ void R_DrawBEntitiesOnList (void)
 	vec3_t		oldorigin;
 	model_t		*clmodel;
 	float		minmaxs[6];
+#ifdef QOG_BMODEL_FRUSTUM
+	qboolean	qworld = false;	// QuakeOG (Agent AQ): R_QogFrustum
+#endif
 
 	if (!r_drawentities.value)
 		return;
@@ -1097,10 +1162,18 @@ void R_DrawBEntitiesOnList (void)
 						clmodel->maxs[j];
 			}
 
+			QOG_BM (QOG_BM_BMCHECK, 1);	// QuakeOG (Agent AS)
 			clipflags = R_BmodelCheckBBox (clmodel, minmaxs);
+			QOG_AQ (AQ_BENTS, 1);
+			QOG_AQ (AQ_BBOXREJ, clipflags == BMODEL_FULLY_CLIPPED);
 
 			if (clipflags != BMODEL_FULLY_CLIPPED)
 			{
+#ifdef QOG_AQ_STATS
+				unsigned	aqwc[3] = { qog_wc_count[QOG_WC_CLIPEDGE], qog_wc_count[QOG_WC_EMITEDGE], qog_wc_count[QOG_WC_PROJECT] };
+
+				QOG_AQ (AQ_BROTANG, currententity->angles[0] || currententity->angles[1] || currententity->angles[2]);
+#endif
 				VectorCopy (currententity->origin, r_entorigin);
 				VectorSubtract (r_origin, r_entorigin, modelorg);
 			// FIXME: is this needed?
@@ -1109,7 +1182,12 @@ void R_DrawBEntitiesOnList (void)
 				r_pcurrentvertbase = clmodel->vertexes;
 		
 			// FIXME: stop transforming twice
+#ifdef QOG_BMODEL_FRUSTUM
+				R_QogRotateBmodelVecs ();	// QuakeOG (Agent AQ)
+				R_QogFrustum (&qworld);
+#else
 				R_RotateBmodel ();
+#endif
 #ifdef QOG_FRONT_FAST
 				R_QogFxSetup ();	// QuakeOG (Agent AJ): Fast mode's integer front end
 #endif
@@ -1128,6 +1206,7 @@ void R_DrawBEntitiesOnList (void)
 
 						R_MarkLights (&cl_dlights[k], 1<<k,
 							clmodel->nodes + clmodel->hulls[0].firstclipnode);
+						QOG_AQ (AQ_BMARK, 1);
 					}
 				}
 
@@ -1149,15 +1228,17 @@ void R_DrawBEntitiesOnList (void)
 					}
 
 					R_SplitEntityOnNode2 (cl.worldmodel->nodes);
+					QOG_AQ (AQ_BNOTOP, !r_pefragtopnode);
 
 					if (r_pefragtopnode)
 					{
 						ENT_TOPNODE (currententity) = r_pefragtopnode;
-	
+
 						if (r_pefragtopnode->contents >= 0)
 						{
 						// not a leaf; has to be clipped to the world BSP
 							r_clipflags = clipflags;
+							QOG_AQ (AQ_BCLIPPED, 1);
 							R_DrawSolidClippedSubmodelPolygons (clmodel);
 						}
 						else
@@ -1165,12 +1246,18 @@ void R_DrawBEntitiesOnList (void)
 						// falls entirely in one leaf, so we just put all the
 						// edges in the edge list and let 1/z sorting handle
 						// drawing order
+							QOG_AQ (AQ_BONELEAF, 1);
 							R_DrawSubmodelPolygons (clmodel, clipflags);
 						}
-	
+
 						ENT_TOPNODE (currententity) = NULL;
 					}
 				}
+#ifdef QOG_AQ_STATS
+				QOG_AQ (AQ_BCLIPEDGE, qog_wc_count[QOG_WC_CLIPEDGE] - aqwc[0]);
+				QOG_AQ (AQ_BEMIT, qog_wc_count[QOG_WC_EMITEDGE] - aqwc[1]);
+				QOG_AQ (AQ_BPROJ, qog_wc_count[QOG_WC_PROJECT] - aqwc[2]);
+#endif
 
 			// put back world rotation and frustum clipping		
 			// FIXME: R_RotateBmodel should just work off base_vxx
@@ -1179,7 +1266,11 @@ void R_DrawBEntitiesOnList (void)
 				VectorCopy (base_vright, vright);
 				VectorCopy (base_modelorg, modelorg);
 				VectorCopy (oldorigin, modelorg);
+#ifdef QOG_BMODEL_FRUSTUM
+				R_QogFrustum (&qworld);	// QuakeOG (Agent AQ)
+#else
 				R_TransformFrustum ();
+#endif
 			}
 
 			break;
@@ -1364,7 +1455,13 @@ void R_EdgeDrawing (void)
 
 	{
 	QOG_PH_T (ph);	// QuakeOG
+#ifdef QOG_BOARDMODEL
+	qog_bm_bmodels (1);	// QuakeOG (Agent AS)
+#endif
 	R_DrawBEntitiesOnList ();
+#ifdef QOG_BOARDMODEL
+	qog_bm_bmodels (0);
+#endif
 #ifdef QOG_FRONT_FAST
 	// QuakeOG (Agent AJ): the Fast header after the cache serves the brush
 	// entities too (the cache itself is for world faces only)
@@ -1551,6 +1648,25 @@ SetVisibilityByPassages ();
 	Sys_HighFPPrecision ();
 	QOG_PH_ADD (QOG_PH_TOTAL, ph_total);	// QuakeOG
 	QOG_PH_COUNT (QOG_PC_FRAMES, 1);
+#ifdef QOG_AQ_STATS
+	// QuakeOG (Agent AQ): PC measurement, sums since the start every 100 views
+	if (++qog_aq[AQ_VIEWS] % 100 == 0)
+	{
+		int		i;
+		char	line[600];
+		int		k = 0;
+
+		k += sprintf (line + k, "qog_aqstats");
+		for (i=0 ; i<AQ_N ; i++)
+			k += sprintf (line + k, " %u", qog_aq[i]);
+#ifdef QOG_PHASE_XIP
+		k += sprintf (line + k, " wc");
+		for (i=0 ; i<QOG_WC_N ; i++)
+			k += sprintf (line + k, " %u", qog_wc_count[i]);
+#endif
+		Sys_Printf ("%s\n", line);
+	}
+#endif
 }
 
 void R_RenderView (void)

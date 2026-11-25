@@ -117,14 +117,11 @@ typedef struct
 	int				izi;		// 40: 1/z * 2^31 at the first pixel
 	int				izistep;	// 44
 	int				share;		// 48: a run's light ends at the next run's start
-	int				own[23];	// 52: the assembly's (s, t, the next ones, steps, the runs' light)
+	const litq_surf_t	*surf;	// 52: the surface's values (each core's copy of this file has its own)
+	int				own[22];	// 56: the assembly's (s, t, the next ones, steps, the runs' light)
 } litq_span_t;
 
-#if defined(QOG_LITQ_ASM) && !defined(_WIN32)
-litq_surf_t			litq_surf;	// the assembly reads it by name
-#else
 static litq_surf_t	litq_surf;
-#endif
 
 
 // id's four-sample light at S, T (with the origin added), every mip level
@@ -243,7 +240,7 @@ divide, the steps) and litq_runs_c for the pixels. The board's assembly
 (litq_span_asm) does the same.
 ================
 */
-static void litq_span_c (litq_span_t *c)
+static QOG_NOINLINE void litq_span_c (litq_span_t *c)
 {
 	int				D = c->D, Ns = c->Ns, Nt = c->Nt, DU = c->DU, SU = c->SU, TU = c->TU;
 	int				m = c->m, count = c->count, sh, spancount, izi = c->izi;
@@ -323,9 +320,17 @@ static void litq_span_c (litq_span_t *c)
 }
 
 #if defined(QOG_LITQ_ASM) && !defined(_WIN32)
-void litq_span_asm (litq_span_t *c);	// port/rp2040/d_litq_rp2040.S
-static int	litq_asm_ok;	// D_QogLitQCheck found the assembly equal to litq_span_c
+void litq_span_asm (litq_span_t *c);	// port/rp2040/d_litq_rp2040.S, shared by both cores
+// D_QogLitQCheck found the assembly equal to litq_span_c: one flag for both
+// cores' copies of this file, written once at start-up before core 1 draws
+#ifdef QOG_C1_COPY
+extern int	litq_asm_ok;
+#else
+int			litq_asm_ok;
+#endif
 #define LITQ_SPAN(c)	(litq_asm_ok ? litq_span_asm (c) : litq_span_c (c))
+
+#ifndef QOG_C1_COPY
 
 /*
 ================
@@ -388,6 +393,7 @@ void D_QogLitQCheck (void)
 				ca.izi = (int)(seed & 0x00FFFFFF);
 				ca.izistep = (int)((seed >> 13) & 0x7FFF) - 0x4000;
 				ca.share = mode >> 1;
+				ca.surf = &litq_surf;
 				cb = ca;
 				memset (pa, 0, sizeof(pa)); memset (pb, 0, sizeof(pb));
 				memset (za, 0, sizeof(za)); memset (zb, 0, sizeof(zb));
@@ -403,6 +409,7 @@ void D_QogLitQCheck (void)
 	if (bad)
 		Con_Printf ("Fast spans in C: the assembly check failed %d times\n", bad);
 }
+#endif	// !QOG_C1_COPY
 #else
 #define LITQ_SPAN(c)	litq_span_c (c)
 #endif
@@ -446,9 +453,14 @@ QuakeOG (Agent AR): every step-th span from pspan (1, or 2 with both cores):
 the 32-bit start, the z, then litq_span.
 ================
 */
-static LITQ_RAM void D_DrawSpans8LitQ (espan_t *pspan, int step)
+static LITQ_RAM QOG_NOINLINE void D_DrawSpans8LitQ (espan_t *pspan, int step)	// out of line: its frame never under Agent AH's drawer
 {
-	const int		d0 = litq_d0, du = litq_du, dv = litq_dv;
+	// the surface's 32-bit coefficients: the high words of Agent AH's 64-bit
+	// values (D_LitFixSetup), so D is 2^28 to 2^29 at the nearest point
+	const int		d0 = (int)(litfix_d0 >> 32), du = (int)(litfix_du >> 32), dv = (int)(litfix_dv >> 32);
+	const int		s0 = (int)(litfix_s0 >> 32), su = (int)(litfix_su >> 32), sv = (int)(litfix_sv >> 32);
+	const int		t0 = (int)(litfix_t0 >> 32), tu = (int)(litfix_tu >> 32), tv = (int)(litfix_tv >> 32);
+	const int		zsh = 32 - litfix_zsh;	// 1/z * 2^31 is D << zsh, or D >> -zsh (litfix_zsh is k - 31)
 	const int		uref = litfix_uref, vref = litfix_vref;
 	int				izistep = (int)(d_zistepu * 0x8000 * 0x10000);
 	litq_span_t		c;
@@ -461,6 +473,7 @@ static LITQ_RAM void D_DrawSpans8LitQ (espan_t *pspan, int step)
 #endif
 	c.m = 8;
 	c.izistep = izistep;
+	c.surf = &litq_surf;
 	for (;;)
 	{
 		int		du_ = pspan->u - uref, dv_ = pspan->v - vref, count = pspan->count, izi, D;
@@ -471,15 +484,17 @@ static LITQ_RAM void D_DrawSpans8LitQ (espan_t *pspan, int step)
 		if (D >= LITQ_DMIN && D + (count - 1) * du >= LITQ_DMIN)
 		{
 			c.D = D;
-			c.Ns = (int)((unsigned)litq_s0 + (unsigned)du_ * (unsigned)litq_su + (unsigned)dv_ * (unsigned)litq_sv);
-			c.Nt = (int)((unsigned)litq_t0 + (unsigned)du_ * (unsigned)litq_tu + (unsigned)dv_ * (unsigned)litq_tv);
+			c.Ns = (int)((unsigned)s0 + (unsigned)du_ * (unsigned)su + (unsigned)dv_ * (unsigned)sv);
+			c.Nt = (int)((unsigned)t0 + (unsigned)du_ * (unsigned)tu + (unsigned)dv_ * (unsigned)tv);
 			c.DU = du;
-			c.SU = litq_su;
-			c.TU = litq_tu;
-			if (litq_zsh >= 0)
-				izi = (unsigned)D >= litq_zmax ? 0x7FFFFFFF : D << litq_zsh;
+			c.SU = su;
+			c.TU = tu;
+			if (zsh >= 31)
+				izi = 0x7FFFFFFF;		// 1/z past 2^30
+			else if (zsh >= 0)
+				izi = (unsigned)D >= (0x80000000u >> zsh) ? 0x7FFFFFFF : D << zsh;
 			else
-				izi = D >> -litq_zsh;
+				izi = zsh <= -31 ? 0 : D >> -zsh;
 		}
 		else
 		{

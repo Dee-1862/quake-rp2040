@@ -22,8 +22,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "d_local.h"
 #include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 // QuakeOG: pixels in a span list, for the phase counts
 static int D_QogSpanPixels (espan_t *pspan)
 {
@@ -49,6 +51,41 @@ int			vstartscan;
 // FIXME: should go away
 extern void			R_RotateBmodel (void);
 extern void			R_TransformFrustum (void);
+#ifdef QOG_DSURF_NOFRUSTUM
+/*
+QuakeOG (Agent AQ): id turned the view planes for every brush entity
+surface it drew (R_RotateBmodel) and back again after it (two
+R_TransformFrustum calls, about 80 float operations each), and transformed
+the entity's origin each time. Nothing that draws spans reads the view
+planes, so the surfaces turn only the vectors and modelorg
+(R_QogRotateBmodelVecs) and the view planes are set back once at the end of
+D_DrawSurfaces from the same vectors and modelorg as id's last restore,
+which gives the same bits. The transformed origin is kept for the entity
+drawn last, from the same inputs (the vectors are the world's whenever it is
+made).
+*/
+extern void			R_QogRotateBmodelVecs (void);
+extern vec3_t		transformed_modelorg;
+static byte			d_qog_frustumdirty;
+static entity_t		*d_qog_xfent;
+static vec3_t		d_qog_xfmodelorg;
+
+static void D_QogSubmodelBegin (surf_t *s)
+{
+	vec3_t	local_modelorg;
+
+	currententity = SURF_ENTITY (s);
+	if (currententity != d_qog_xfent)
+	{
+		VectorSubtract (r_origin, currententity->origin, local_modelorg);
+		TransformVector (local_modelorg, d_qog_xfmodelorg);
+		d_qog_xfent = currententity;
+	}
+	VectorCopy (d_qog_xfmodelorg, transformed_modelorg);
+	R_QogRotateBmodelVecs ();
+	d_qog_frustumdirty = true;
+}
+#endif
 
 vec3_t		transformed_modelorg;
 
@@ -346,7 +383,15 @@ void D_CalcGradients (msurface_t *pface)
 
 #if defined(QOG_GRAD_FAST) && defined(QOG_RFAST)
 	if (r_qogfast && currententity == &cl_entities[0] && D_QogGradFast (pface))
+	{
+		QOG_BM (QOG_BM_GRAD_FAST, 1);	// QuakeOG (Agent AS)
 		return;	// QuakeOG (Agent AL): Fast mode, world surfaces
+	}
+#endif
+#ifdef QOG_GRAD_EXACTF
+	QOG_BM (QOG_BM_GRAD_IDF, 1);	// QuakeOG (Agent AS)
+#else
+	QOG_BM (QOG_BM_GRAD_IDD, 1);
 #endif
 	pplane = SURF_PLANE (currententity->model, pface);	// QuakeOG
 
@@ -392,6 +437,89 @@ void D_CalcGradients (msurface_t *pface)
 
 /*
 ==============
+D_QogDrawLitBody
+
+QuakeOG (Agent AM): id's lit branch of D_DrawSurfaces from the mip level to
+the z spans, unchanged, for the span list spans (s->spans, or the list the
+two-core pipeline took from it, QOG_DRAW_CORE1). The caller has set the
+surface's 1/z gradients and, for a brush entity, its transform. d_core1.c
+compiles this file a second time with core 1's own copies of every value
+written here (d_core1.h).
+==============
+*/
+static void D_QogDrawLitBody (surf_t *s, espan_t *spans)
+{
+	msurface_t		*pface;
+#ifdef QOG_SURFCACHE
+	surfcache_t		*pcurrentcache;
+#endif
+
+		pface = SURF_DATA (s);	// QuakeOG: SURF_DATA, SURF_ENTITY
+		miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
+		* SURF_TEXINFO (SURF_ENTITY (s)->model, pface)->mipadjust);	// QuakeOG
+
+		r_drawsurf.model = SURF_ENTITY (s)->model;	// QuakeOG: owner of pface's state arrays
+#ifdef QOG_SURFCACHE
+	// FIXME: make this passed in to D_CacheSurface
+		pcurrentcache = D_CacheSurface (pface, miplevel);
+
+		cacheblock = (pixel_t *)pcurrentcache->data;
+		cachewidth = pcurrentcache->width;
+
+		D_CalcGradients (pface);
+
+		(*d_drawspans) (spans);	// QuakeOG
+#else
+	// QuakeOG: no surface cache, light each pixel as it is drawn (d_scanlit.c)
+#if defined(QOG_RFAST) && defined(QOG_LITSPAN_FAST) && !defined(QOG_RFAST_FLOATSETUP)
+		{
+			extern float	d_qognearzi;	// QuakeOG (Agent AH): for the fixed point Fast drawer (d_scanlit.c)
+			d_qognearzi = s->nearzi;
+		}
+#endif
+		{
+		QOG_PH_T (ph);	// QuakeOG
+		D_SetupLitSurface (pface, miplevel);
+		QOG_PH_ADD (QOG_PH_LIGHTMAP, ph);
+		}
+		{
+		QOG_PH_T (ph);	// QuakeOG
+		D_CalcGradients (pface);
+		QOG_PH_ADD (QOG_PH_GRADIENTS, ph);
+		}
+		{
+		QOG_PH_T (ph);	// QuakeOG
+		D_DrawSpans8Lit (spans);	// QuakeOG
+		QOG_PH_ADD (QOG_PH_SPANS, ph);
+		}
+#endif
+
+#if !defined(QOG_LITSPAN_ZFUSE) || defined(QOG_SURFCACHE)	// QuakeOG: else D_DrawSpans8Lit wrote z
+		QOG_ZSPANS (spans);	// QuakeOG
+#endif
+}
+
+#ifdef QOG_DRAW_CORE1
+/*
+==============
+D_QogDrawLit
+
+QuakeOG (Agent AM): a lit world surface (insubmodel 0, not sky, background
+or turbulent) with the span list spans, as D_DrawOneSurface draws it, for
+the two-core pipeline. r_drawnpolycount is counted by the pipeline.
+==============
+*/
+void D_QogDrawLit (surf_t *s, espan_t *spans)
+{
+	d_zistepu = s->d_zistepu;
+	d_zistepv = s->d_zistepv;
+	d_ziorigin = s->d_ziorigin;
+	D_QogDrawLitBody (s, spans);
+}
+#endif
+
+/*
+==============
 D_DrawOneSurface
 
 QuakeOG (Agent AH): id's loop body of D_DrawSurfaces for one surface with
@@ -402,12 +530,24 @@ surfaces in another order
 static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 {
 	msurface_t		*pface;
-#ifdef QOG_SURFCACHE
-	surfcache_t		*pcurrentcache;
-#endif
 	vec3_t			local_modelorg;
 
 	r_drawnpolycount++;
+	QOG_BM (QOG_BM_SURFDRAWN, 1);	// QuakeOG (Agent AS)
+	QOG_BM (QOG_BM_BMSURF, s->insubmodel != 0);
+	QOG_AQ (AQ_DSURF, 1);
+#ifdef QOG_AQ_STATS
+	{
+		static entity_t	*aqlast;
+
+		if (s->insubmodel)
+		{
+			QOG_AQ (AQ_DSUB, 1);
+			QOG_AQ (AQ_DSUBSAME, SURF_ENTITY (s) == aqlast);
+			aqlast = SURF_ENTITY (s);
+		}
+	}
+#endif
 
 	d_zistepu = s->d_zistepu;
 	d_zistepv = s->d_zistepv;
@@ -449,6 +589,9 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 		if (s->insubmodel)
 		{
+#ifdef QOG_DSURF_NOFRUSTUM
+			D_QogSubmodelBegin (s);	// QuakeOG (Agent AQ)
+#else
 		// FIXME: we don't want to do all this for every polygon!
 		// TODO: store once at start of frame
 			currententity = SURF_ENTITY (s);	//FIXME: make this passed in to
@@ -459,6 +602,7 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 			R_RotateBmodel ();	// FIXME: don't mess with the frustum,
 								// make entity passed in
+#endif
 		}
 
 		{
@@ -484,13 +628,18 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 			VectorCopy (base_vup, vup);
 			VectorCopy (base_vright, vright);
 			VectorCopy (base_modelorg, modelorg);
+#ifndef QOG_DSURF_NOFRUSTUM	// QuakeOG (Agent AQ): once at the end of D_DrawSurfaces
 			R_TransformFrustum ();
+#endif
 		}
 	}
 	else
 	{
 		if (s->insubmodel)
 		{
+#ifdef QOG_DSURF_NOFRUSTUM
+			D_QogSubmodelBegin (s);	// QuakeOG (Agent AQ)
+#else
 		// FIXME: we don't want to do all this for every polygon!
 		// TODO: store once at start of frame
 			currententity = SURF_ENTITY (s);	//FIXME: make this passed in to
@@ -500,51 +649,10 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 			R_RotateBmodel ();	// FIXME: don't mess with the frustum,
 								// make entity passed in
-		}
-
-		pface = SURF_DATA (s);	// QuakeOG: SURF_DATA, SURF_ENTITY
-		miplevel = D_MipLevelForScale (s->nearzi * scale_for_mip
-		* SURF_TEXINFO (SURF_ENTITY (s)->model, pface)->mipadjust);	// QuakeOG
-
-		r_drawsurf.model = SURF_ENTITY (s)->model;	// QuakeOG: owner of pface's state arrays
-#ifdef QOG_SURFCACHE
-	// FIXME: make this passed in to D_CacheSurface
-		pcurrentcache = D_CacheSurface (pface, miplevel);
-
-		cacheblock = (pixel_t *)pcurrentcache->data;
-		cachewidth = pcurrentcache->width;
-
-		D_CalcGradients (pface);
-
-		(*d_drawspans) (SPAN_PTR (s->spans));	// QuakeOG
-#else
-	// QuakeOG: no surface cache, light each pixel as it is drawn (d_scanlit.c)
-#if defined(QOG_RFAST) && defined(QOG_LITSPAN_FAST) && !defined(QOG_RFAST_FLOATSETUP)
-		{
-			extern float	d_qognearzi;	// QuakeOG (Agent AH): for the fixed point Fast drawer (d_scanlit.c)
-			d_qognearzi = s->nearzi;
-		}
 #endif
-		{
-		QOG_PH_T (ph);	// QuakeOG
-		D_SetupLitSurface (pface, miplevel);
-		QOG_PH_ADD (QOG_PH_LIGHTMAP, ph);
 		}
-		{
-		QOG_PH_T (ph);	// QuakeOG
-		D_CalcGradients (pface);
-		QOG_PH_ADD (QOG_PH_GRADIENTS, ph);
-		}
-		{
-		QOG_PH_T (ph);	// QuakeOG
-		D_DrawSpans8Lit (SPAN_PTR (s->spans));	// QuakeOG
-		QOG_PH_ADD (QOG_PH_SPANS, ph);
-		}
-#endif
 
-#if !defined(QOG_LITSPAN_ZFUSE) || defined(QOG_SURFCACHE)	// QuakeOG: else D_DrawSpans8Lit wrote z
-		QOG_ZSPANS (SPAN_PTR (s->spans));	// QuakeOG
-#endif
+		D_QogDrawLitBody (s, SPAN_PTR (s->spans));	// QuakeOG (Agent AM): id's statements, below
 
 		if (s->insubmodel)
 		{
@@ -560,7 +668,9 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 			VectorCopy (base_vup, vup);
 			VectorCopy (base_vright, vright);
 			VectorCopy (base_modelorg, modelorg);
+#ifndef QOG_DSURF_NOFRUSTUM	// QuakeOG (Agent AQ): once at the end of D_DrawSurfaces
 			R_TransformFrustum ();
+#endif
 		}
 	}
 }
@@ -638,6 +748,311 @@ static void D_QogDrawSorted (vec3_t world_transformed_modelorg)
 }
 #endif
 
+#if defined(QOG_DRAW_CORE1) && !defined(QOG_C1_COPY)
+/*
+==============
+QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+
+R_ScanEdges (r_edge.c) runs on core 0 and, at the end of each scan line,
+hands each lit world surface whose last scan line that was (its span list
+is then final) to a ring. Core 1 takes surfaces from the ring and draws them
+whole (light grid, gradients, spans and z) in its own copy of the drawing
+code and state (d_core1.c), while core 0 goes on scanning. At every flush
+(D_DrawSurfaces) core 0 draws the surfaces core 1 cannot (sky, background,
+turbulent, brush entities) and then both cores take the rest of the ring
+and the flush's remaining lit world surfaces until none is left, and core 0
+waits for core 1 to finish its last one before the span buffer is reused.
+
+Exact: every pixel and z of the view belongs to exactly one span, so the
+surfaces can be drawn in any order and on either core. A surface handed on
+early has the very span list (same spans, same order, same head) the flush
+would give it, since no scan line after its last can add a span to it, and
+its spans' z rows lie above the edge table in the z-buffer (r_edge.c checks
+that). Each core draws a surface with id's statements from values nothing
+changes meanwhile: the surface, the face, the frame's view values, and its
+own copies of what the drawing writes.
+==============
+*/
+#ifndef QOG_ESPAN_T_PACKED
+#error "QOG_DRAW_CORE1 needs QOG_ESPAN_T_PACKED (a ring entry is a surface index and a span link)"
+#endif
+#ifndef QOG_SPANS_CORE1
+#error "QOG_DRAW_CORE1 needs the core 1 job of QOG_SPANS_CORE1"
+#endif
+#define QOG_PIPE_RING	64		// a power of two. When full, the flush draws the surface
+
+volatile int			d_qogpipe_on;		// R_ScanEdges runs the pipeline
+volatile int			d_qogc1_drawing;	// core 1 draws a surface it took
+static volatile unsigned	pipe_ring[QOG_PIPE_RING];	// surface index << 16 | span link
+static volatile int		pipe_head, pipe_tail;
+static surf_t * volatile	pipe_cursor;	// the flush's walk, NULL outside it
+static volatile int		pipe_end;			// core 1's job may return when idle
+static int				pipe_mode;			// Sys_QogCore1Mode: 0 core 1, 1 first, 2 last
+static int				pipe_drawn;			// lit surfaces drawn through the pipeline (under the lock)
+static int				pipe_early;			// of which handed on before their flush
+#if defined(QOG_PHASE_TIME) && defined(_WIN32)
+// PC measurement: the pixels of a span list
+static int D_QogPipePx (espanref_t r)
+{
+	int	n = 0;
+
+	for ( ; r != SPAN_NONE ; r = SPAN_PTR (r)->pnext)
+		n += SPAN_PTR (r)->count;
+	return n;
+}
+#define QOG_PIPE_PX(i, r)	(qog_c1_stat[i] += D_QogPipePx (r))
+#else
+#define QOG_PIPE_PX(i, r)
+#endif
+
+/*
+==============
+D_QogPipeBegin
+
+QuakeOG (Agent AM): core 0 before the first scan line. Core 1's copies of
+the view values its drawing reads and core 0's drawing may change (the
+transform a brush entity's surface sets) are the world's, as D_DrawSurfaces
+sets them.
+==============
+*/
+void D_QogPipeBegin (int on)
+{
+	extern vec3_t		c1_vright, c1_vup, c1_vpn, c1_modelorg, c1_transformed_modelorg;
+	extern entity_t		*c1_currententity;
+
+	d_qogpipe_on = 0;
+	if (!on || r_drawflat.value)
+		return;
+	D_QogLitCheck ();	// Agent AH's interpolator check, before core 1 reads r_qogfast
+#ifdef QOG_DLIGHT_SPARSE
+	// the world's dynamic light pass waits for the first question about a
+	// lit surface (r_light.c R_DlightLit): Agent AL's R_QogDlightSettle runs
+	// it here on core 0, after the brush entities and before any surface is
+	// drawn, as the first drawn surface would, so neither core's drawing
+	// writes the light hash
+	R_QogDlightSettle ();
+#endif
+	VectorCopy (vright, c1_vright);
+	VectorCopy (vup, c1_vup);
+	VectorCopy (vpn, c1_vpn);
+	VectorCopy (modelorg, c1_modelorg);
+	TransformVector (modelorg, c1_transformed_modelorg);	// what D_DrawSurfaces computes
+	c1_currententity = &cl_entities[0];
+	pipe_head = pipe_tail = 0;
+	pipe_cursor = NULL;
+	pipe_end = 0;
+	d_qogc1_drawing = 0;
+	pipe_drawn = pipe_early = 0;
+	pipe_mode = Sys_QogCore1Mode ();
+	d_qogpipe_on = 1;
+	if (pipe_mode == 0)
+		Sys_QogCore1Start (D_QogC1Worker, NULL);
+}
+
+/*
+==============
+D_QogPipePush
+
+QuakeOG (Agent AM): core 0, a lit world surface whose span list is final
+==============
+*/
+void D_QogPipePush (surf_t *s)
+{
+	espanref_t	sp = s->spans;
+
+	QOG_PIPE_PX (QOG_C1_EARLYPX, sp);
+	if (pipe_mode == 1)
+	{	// PC test: core 1's copy draws it at once, on this thread
+		s->spans = SPAN_NONE;
+		QOG_PIPE_PX (QOG_C1_PX, sp);
+		pipe_drawn++;
+		pipe_early++;
+		D_QogC1Draw (s, SPAN_PTR (sp));
+		return;
+	}
+	if (pipe_tail - pipe_head >= QOG_PIPE_RING)
+		return;		// the flush draws it
+	s->spans = SPAN_NONE;
+	pipe_ring[pipe_tail & (QOG_PIPE_RING - 1)] = ((unsigned)(s - surfaces) << 16) | sp;
+	pipe_tail = pipe_tail + 1;	// after the entry (volatile, in order)
+	pipe_early++;
+	if (pipe_mode == 0)
+		Sys_QogCore1Wake ();
+}
+
+/*
+==============
+D_QogPipePop
+
+QuakeOG (Agent AM): either core, the next surface to draw: the ring first,
+then, inside a flush, the flush's lit world surfaces. Takes the span list
+off the surface, so each surface is drawn once. core1 marks core 1 busy
+until D_QogPipeDone.
+==============
+*/
+int D_QogPipePop (int core1, surf_t **ps, espan_t **pspans)
+{
+	surf_t		*s = NULL, *c;
+	espanref_t	sp = SPAN_NONE;
+	unsigned	e;
+
+	Sys_QogLock ();
+	if (pipe_head != pipe_tail)
+	{
+		e = pipe_ring[pipe_head & (QOG_PIPE_RING - 1)];
+		pipe_head = pipe_head + 1;
+		s = surfaces + (e >> 16);
+		sp = (espanref_t)(e & 0xFFFF);
+	}
+	else if ((c = pipe_cursor) != NULL)
+	{
+		for ( ; c < surface_p ; c++)
+		{
+			if (D_QOG_C1OK (c) && c->spans)
+			{
+				s = c++;
+				sp = s->spans;
+				s->spans = SPAN_NONE;
+				break;
+			}
+		}
+		pipe_cursor = c;
+	}
+	if (s)
+	{
+		QOG_PIPE_PX (QOG_C1_PX, sp);
+		pipe_drawn++;
+		if (core1)
+			d_qogc1_drawing = 1;
+	}
+	Sys_QogUnlock ();
+	if (!s)
+		return 0;
+	*ps = s;
+	*pspans = SPAN_PTR (sp);
+	return 1;
+}
+
+// QuakeOG (Agent AM): core 1 has drawn the surface it took (its stores
+// before the flag, through the lock's barriers)
+void D_QogPipeDone (void)
+{
+	Sys_QogLock ();
+	d_qogc1_drawing = 0;
+	Sys_QogUnlock ();
+}
+
+int D_QogPipeEnded (void)
+{
+	return pipe_end;
+}
+
+/*
+==============
+D_QogPipeSync
+
+QuakeOG (Agent AM): core 0, every surface handed on is drawn and core 1 is
+idle. Before the span buffer is reused or the z-buffer pointer changes.
+==============
+*/
+void D_QogPipeSync (void)
+{
+	surf_t	*s;
+	espan_t	*sp;
+
+	if (!d_qogpipe_on)
+		return;
+	if (pipe_mode == 0)
+	{
+		while (D_QogPipePop (0, &s, &sp))
+			D_QogDrawLit (s, sp);
+		if (d_qogc1_drawing)
+		{
+#ifdef QOG_PHASE_TIME
+			unsigned	t0 = qog_phase_clock ();
+#endif
+			while (d_qogc1_drawing)
+				;
+#ifdef QOG_PHASE_TIME
+			qog_c1_stat[QOG_C1_C0WAIT] += qog_phase_clock () - t0;
+#endif
+		}
+	}
+	else
+	{
+		while (D_QogPipePop (1, &s, &sp))
+		{
+			D_QogC1Draw (s, sp);
+			d_qogc1_drawing = 0;
+		}
+	}
+}
+
+/*
+==============
+D_QogPipeEnd
+
+QuakeOG (Agent AM): core 0 after the last flush
+==============
+*/
+void D_QogPipeEnd (void)
+{
+	if (!d_qogpipe_on)
+		return;
+	D_QogPipeSync ();
+	pipe_end = 1;
+	if (pipe_mode == 0)
+	{
+		Sys_QogCore1Wake ();
+		Sys_QogCore1Join ();
+	}
+	r_drawnpolycount += pipe_drawn;
+#ifdef QOG_PHASE_TIME
+	qog_c1_stat[QOG_C1_SURFS] += pipe_drawn;
+	qog_c1_stat[QOG_C1_EARLY] += pipe_early;
+#endif
+	d_qogpipe_on = 0;
+}
+
+/*
+==============
+D_QogPipeFlush
+
+QuakeOG (Agent AM): D_DrawSurfaces while the pipeline runs. Core 0 draws
+what only it can, both cores share the lit world surfaces.
+==============
+*/
+static void D_QogPipeFlush (vec3_t world_transformed_modelorg)
+{
+	extern vec3_t	c1_vright, c1_vup, c1_vpn, c1_modelorg, c1_transformed_modelorg;
+	surf_t			*s;
+
+#ifdef _WIN32
+	// PC check: core 1's copies are the values this flush draws with
+	if (memcmp (c1_vright, vright, sizeof(vec3_t)) || memcmp (c1_vup, vup, sizeof(vec3_t))
+		|| memcmp (c1_vpn, vpn, sizeof(vec3_t)) || memcmp (c1_modelorg, modelorg, sizeof(vec3_t))
+		|| memcmp (c1_transformed_modelorg, world_transformed_modelorg, sizeof(vec3_t)))
+		Sys_Error ("D_DrawSurfaces: the view moved under the core 1 pipeline");
+#endif
+	if (pipe_mode == 1)
+	{	// PC test: core 1's share first
+		pipe_cursor = &surfaces[1];
+		D_QogPipeSync ();
+	}
+	pipe_cursor = &surfaces[1];
+	if (pipe_mode == 0)
+		Sys_QogCore1Wake ();
+	for (s = &surfaces[1] ; s<surface_p ; s++)
+	{
+		if (D_QOG_C1OK (s) || !s->spans)
+			continue;
+		D_DrawOneSurface (s, world_transformed_modelorg);
+	}
+	D_QogPipeSync ();	// pipe_mode 2: core 1's share last
+	pipe_cursor = NULL;
+}
+#endif
+
 /*
 ==============
 D_DrawSurfaces
@@ -651,6 +1066,10 @@ void D_DrawSurfaces (void)
 	currententity = &cl_entities[0];
 	TransformVector (modelorg, transformed_modelorg);
 	VectorCopy (transformed_modelorg, world_transformed_modelorg);
+#ifdef QOG_DSURF_NOFRUSTUM
+	d_qog_frustumdirty = false;	// QuakeOG (Agent AQ)
+	d_qog_xfent = NULL;
+#endif
 
 // TODO: could preset a lot of this at mode set time
 	if (r_drawflat.value)
@@ -668,6 +1087,10 @@ void D_DrawSurfaces (void)
 			D_DrawZSpans (SPAN_PTR (s->spans));	// QuakeOG
 		}
 	}
+#if defined(QOG_DRAW_CORE1) && !defined(QOG_C1_COPY)
+	else if (d_qogpipe_on)
+		D_QogPipeFlush (world_transformed_modelorg);	// QuakeOG (Agent AM)
+#endif
 	else
 	{
 #ifdef QOG_SURF_SORT
@@ -682,5 +1105,11 @@ void D_DrawSurfaces (void)
 		}
 #endif
 	}
+#ifdef QOG_DSURF_NOFRUSTUM
+	// QuakeOG (Agent AQ): id's last restore, from the world's vectors and
+	// base_modelorg, which every brush surface above put back
+	if (d_qog_frustumdirty)
+		R_TransformFrustum ();
+#endif
 }
 

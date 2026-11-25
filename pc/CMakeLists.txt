@@ -275,6 +275,17 @@ target_compile_definitions(quakeog_pc PRIVATE
 # Particles, exact (Agent AR): r_part.c
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_PART_DIEBITS)               # a particle's death time against cl.time as an integer compare of float bits, id's result
+# Brush entities and the edge scan with fewer float calls, exact (Agent AQ):
+# r_bsp.c, r_edge.c, d_edge.c, r_main.c
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_LEADZ_FLOAT                 # two brush surfaces of one key ordered by 1/z in float, id's doubles only near a tie
+    QOG_BPOLY_AXIAL                 # R_RecursiveClipBPoly: sides on axial planes by integer compares of the float bits
+    QOG_BMODEL_FACING               # brush surface facing tests without double, one subtraction on axial planes
+    QOG_BMODEL_BBOXF                # R_BmodelCheckBBox: float compares instead of double differences
+    QOG_BMODEL_FRUSTUM              # view planes of brush entities that do not turn made from the last ones
+    QOG_DSURF_NOFRUSTUM             # D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
+    QOG_FX_REUSE                    # with QOG_FRONT_FAST: a brush entity's integer setup made again only for its origin
+    QOG_FGRAD_AXIAL)                # with QOG_FRONT_FAST: face gradients with an exact axial dot product, the same values
 # One app for every episode's data image (Agent AG): qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE
@@ -390,3 +401,34 @@ foreach(_t quakeog_sv quakeog_cl)
     target_link_options(${_t} PRIVATE /DYNAMICBASE:NO)
     set_target_properties(${_t} PROPERTIES WIN32_EXECUTABLE OFF)
 endforeach()
+
+# Board cost model (Agent AS), a measurement build only: tools/boardbench.ps1
+# makes it in its own folder. quakeog_pc gets the board client's render
+# flags (apps/quake/CMakeLists.txt, keep the two lists in step), the phase
+# times and every work count, and -bmlog <file> writes the counts of each
+# timedemo frame (port/pc/boardmodel_pc.c) for tools/boardmodel.py.
+# QOG_PC_REMOVE_DEFS takes flags out again, to measure a path a branch
+# replaced (for example the code before Agent AL with its six flags).
+option(QOG_PC_BOARDMODEL "quakeog_pc with the board client's render flags and the cost model's work counts" OFF)
+set(QOG_PC_REMOVE_DEFS "" CACHE STRING "compile definitions taken out of quakeog_pc (measurement builds)")
+if(QOG_PC_BOARDMODEL)
+    get_target_property(_bm_defs quakeog_pc COMPILE_DEFINITIONS)
+    list(TRANSFORM _bm_defs REPLACE "^QOG_NUMSTACKEDGES=[0-9]+$" "QOG_NUMSTACKEDGES=1800")
+    list(TRANSFORM _bm_defs REPLACE "^QOG_NUMSTACKSURFACES=[0-9]+$" "QOG_NUMSTACKSURFACES=600")
+    list(APPEND _bm_defs
+        QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_EDGECACHE_FRAME=152 QOG_DLIGHT_SURFS=256
+        QOG_SURF_T_TINY QOG_TRANSLATE_INLINE
+        QOG_VID_LOCKWAIT QOG_SPANS_CORE1 QOG_VID_SCANRACE QOG_HUD_SKIP
+        QOG_VERTCACHE QOG_WORLDNODE_FAST QOG_VERTCACHE_CLIPDIST QOG_ALIAS_CORE1
+        QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP
+        QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT    # Agent AR: the board's span drawer (its C version)
+        QOG_DRAW_CORE1 QOG_AQ_STATS
+        QOG_PHASE_TIME QOG_PHASE_XIP QOG_LMAP_STATS QOG_ALIAS_STATS QOG_BOARDMODEL)
+    set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_bm_defs}")
+    target_sources(quakeog_pc PRIVATE ${ROOT}/port/pc/boardmodel_pc.c)
+endif()
+if(QOG_PC_REMOVE_DEFS)
+    get_target_property(_rm_defs quakeog_pc COMPILE_DEFINITIONS)
+    list(REMOVE_ITEM _rm_defs ${QOG_PC_REMOVE_DEFS})
+    set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_rm_defs}")
+endif()

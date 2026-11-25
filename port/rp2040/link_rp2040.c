@@ -197,7 +197,12 @@ void qog_link_hw_idle(void) {
 #if !defined(QOG_LINK_MAIN) && defined(QOG_HUD_SKIP)
             {   /* Agent AK: frames that sent the status bar rows to the LCD */
                 extern unsigned vid_qog_frames, vid_qog_hudsent;
-                DIAG("[quake_display] status bar rows sent in %u of %u frames\n", vid_qog_hudsent, vid_qog_frames);
+                /* Agent AP: and the last scanout's time, to confirm the LCD rate */
+                extern void VID_QogScanStats(unsigned *us, unsigned *rows);
+                unsigned scan_us, scan_rows;
+                VID_QogScanStats(&scan_us, &scan_rows);
+                DIAG("[quake_display] status bar rows sent in %u of %u frames, last scan %u us for %u rows\n",
+                     vid_qog_hudsent, vid_qog_frames, scan_us, scan_rows);
                 vid_qog_frames = vid_qog_hudsent = 0;
             }
 #endif

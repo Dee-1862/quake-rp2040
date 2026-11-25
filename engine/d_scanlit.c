@@ -33,6 +33,10 @@ See the GNU General Public License for more details.
 
 #ifndef QOG_SURFCACHE
 
+#ifdef QOG_C1_COPY
+#undef QOG_AR_STATS		// QuakeOG (Agent AR): PC measurement, core 0's copy only
+#undef QOG_AR_DUMP
+#endif
 // QuakeOG (Agent AR): the Q drawer (d_lit_q.h) is the Fast drawer's, and
 // its runs use the interpolators
 #if defined(QOG_LITSPAN_Q) && !(defined(QOG_LITSPAN_INTERP) && defined(QOG_RFAST) && \
@@ -96,15 +100,6 @@ static int			litfix_sw, litfix_tw;	// 16 - ws and 16 - wt
 static int			litfix_stepbits;		// bits of the largest u step, less 25
 static int			litfix_zsh;				// k - 31: 1/z * 2^31 is D >> litfix_zsh
 float				d_qognearzi;			// the surface's nearest 1/z (d_edge.c)
-#ifdef QOG_LITSPAN_Q
-// QuakeOG (Agent AR): the fixed point values above in 32 bits for the
-// whole surface (d_lit_q.h), set on core 0 by D_LitFixSetup
-static int			litq_d0, litq_du, litq_dv;
-static int			litq_s0, litq_su, litq_sv;
-static int			litq_t0, litq_tu, litq_tv;
-static int			litq_zsh;				// 1/z * 2^31 is D << litq_zsh, or D >> -litq_zsh
-static unsigned		litq_zmax;				// with litq_zsh 0 or more, D from which that passes 2^31
-#endif
 #endif
 #include "d_litspan.h"
 #endif
@@ -170,6 +165,15 @@ void D_QogLitInterpCheck (void)
 #define LITI_CHECK	if (liti_state == 2) r_qogfast = 0;
 #else
 #define LITI_CHECK
+#endif
+
+#ifdef QOG_DRAW_CORE1
+// QuakeOG (Agent AM): the check above, on core 0 before core 1 draws with
+// its own copy of this file (d_core1.c), which never checks
+void D_QogLitCheck (void)
+{
+	LITI_CHECK
+}
 #endif
 
 #ifdef QOG_RFAST_STATS
@@ -422,23 +426,7 @@ static QOG_NOINLINE void D_LitFixSetup (espan_t *pspan)	// its frame never under
 	litfix_zsh = kexp - 31;
 	litfix_ok = 1;
 #ifdef QOG_LITSPAN_Q
-	// QuakeOG (Agent AR): the same values in 32 bits for the whole surface,
-	// D near 2^28 at the nearest point (d_lit_q.h)
-	litq_d0 = (int)(litfix_d0 >> 32);
-	litq_du = (int)(litfix_du >> 32);
-	litq_dv = (int)(litfix_dv >> 32);
-	litq_s0 = (int)(litfix_s0 >> 32);
-	litq_su = (int)(litfix_su >> 32);
-	litq_sv = (int)(litfix_sv >> 32);
-	litq_t0 = (int)(litfix_t0 >> 32);
-	litq_tu = (int)(litfix_tu >> 32);
-	litq_tv = (int)(litfix_tv >> 32);
-	litq_zsh = 63 - kexp;
-	if (litq_zsh > 31)
-		litq_zsh = 31;		// 1/z past 2^30, saturated by litq_zmax anyway
-	if (litq_zsh < -31)
-		litq_zsh = -31;
-	litq_zmax = litq_zsh >= 0 ? 0x80000000u >> litq_zsh : 0xFFFFFFFFu;
+	// QuakeOG (Agent AR): the rest of the surface's values for litq_span (d_lit_q.h)
 	litq_surf.ssw = litfix_sw;
 	litq_surf.tsw = litfix_tw;
 	litq_surf.exts = bbextents;
@@ -631,7 +619,7 @@ no modulo and fewer instructions per pixel (d_litspan.h).
 =============
 */
 
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 static void D_QogCountLit (espan_t *pspan, int any)
 {
 	do
@@ -711,7 +699,7 @@ static void D_QogSpansCore1 (void *pspan)
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
@@ -723,7 +711,11 @@ void D_DrawSpans8Lit (espan_t *pspan)
 		QOG_ARDUMP (pspan);		// QuakeOG (Agent AR): PC measurement
 	}
 #endif
-	if (pspan->pnext == SPAN_NONE)
+	if (pspan->pnext == SPAN_NONE
+#ifdef QOG_DRAW_CORE1
+		|| d_qogpipe_on		// QuakeOG (Agent AM): core 1 draws surfaces of its own
+#endif
+		)
 	{
 		D_LITSTEP (pspan, 1);	// QuakeOG (Agent AA): or the Fast drawer
 		return;
@@ -743,7 +735,7 @@ static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan);
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
@@ -765,7 +757,7 @@ static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan)
 void D_DrawSpans8Lit (espan_t *pspan)
 #endif
 {
-#if defined(QOG_PHASE_TIME) && !defined(QOG_RFAST)
+#if (defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)) && !defined(QOG_RFAST)
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	{
