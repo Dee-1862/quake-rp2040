@@ -290,7 +290,10 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_BPOLY_SIDES                 # brush clip sides inline, a point shared with the edge before keeps its side (r_bsp.c)
     QOG_BMSPLIT_INT                 # R_SplitEntityOnNode2: axial box tests by integer compares of the float bits (r_efrag.c)
     QOG_LMAP_FUSE                   # R_BuildLightMap: the grid's passes fused, the same cells (r_surf.c)
-    QOG_BMODEL_BBOXINT)             # R_BmodelCheckBBox: integer plane tests with a margin first, with QOG_WORLDNODE_INT (r_main.c)
+    QOG_BMODEL_BBOXINT              # R_BmodelCheckBBox: integer plane tests with a margin first, with QOG_WORLDNODE_INT (r_main.c)
+    QOG_SUBDIV_LEAF                 # alias subdivision leaves tested inline, no call (d_polyse.c)
+    QOG_LEFTEDGE_LOCALS             # D_PolysetScanLeftEdge with the edge's state in locals (d_polyse.c)
+    QOG_ALIAS_SMALLTRI)             # alias triangles with no pixel or one drawn without gradients (d_polyse.c)
 # One app for every episode's data image (Agent AG): qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE

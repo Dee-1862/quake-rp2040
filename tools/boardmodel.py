@@ -113,10 +113,12 @@ WEIGHTS = {
         "am_check": (2, 2400), "am_drawn": (60, 2000), "am_verts": (0, 130), "am_tris": (0, 60),
         "am_smooth": (0, 450), "am_spans": (0, 80), "am_pix": (0, 35), "am_subcall": (0, 120),
         "am_subpix": (0, 30), "am_cliptri": (0, 1200),
+        "am_subleaf": (0, 25),      # Agent AQ: a subdivision leaf tested inline (QOG_SUBDIV_LEAF), six compares
+        "am_smalltri": (0, 150),    # Agent AQ: a triangle of two lines or less with no pixel or one, integer edge steps only (QOG_ALIAS_SMALLTRI)
         "am_tinytri": (0, 150),     # Agent AR: Turbo triangles within 3 x 3 pixels, about a third of a smooth one
     },
     "vmodel": {
-        "vm_drawn": (60, 2000), "vm_verts": (0, 130), "vm_tris": (0, 60), "vm_smooth": (0, 450),
+        "vm_drawn": (60, 2000), "vm_smalltri": (0, 150), "vm_verts": (0, 130), "vm_tris": (0, 60), "vm_smooth": (0, 450),
         "vm_spans": (0, 80), "vm_pix": (0, 35), "vm_cliptri": (0, 1200),
     },
     "parts": {
@@ -160,6 +162,7 @@ FEATURE_SCALE = {
     "QOG_BPOLY_SIDES": {"bm_bpolyedge": (1.0, 0.5)},        # sides inline, a shared point's side kept
     "QOG_LMAP_FUSE": {"lms_lux": (1.0, 0.65), "lms_stylelux": (1.0, 0.65)},  # the grid's passes fused
     "QOG_BMODEL_BBOXINT": {"bm_bmcheck": (0.2, 1.0)},       # integer plane tests, floats only within 0.3 units of a plane
+    "QOG_LEFTEDGE_LOCALS": {"am_spans": (1.0, 0.85), "vm_spans": (1.0, 0.85)},  # Agent AQ round 3: the left edge's rows without global stores
 }
 # Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either
 # core, core 1 during the edge scan, both at each flush
