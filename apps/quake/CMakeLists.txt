@@ -373,6 +373,12 @@ if(QOG_SPLIT)
     endif()
     if(QOG_BOARD_SCANRACE AND QOG_BOARD_LOCKWAIT)
         list(APPEND _cl_defs QOG_VID_SCANRACE)     # vid_rp2040.c, r_main.c, r_draw.c, screen.c
+        # QuakeOG (Agent AP): a scanout that sends the status bar rows sends
+        # them first, so the next view's z-buffer writes wait for 48 rows
+        option(QOG_BOARD_HUDFIRST "the status bar rows go to the LCD before the 3D view rows (exact)" ON)
+        if(QOG_BOARD_HUDFIRST)
+            list(APPEND _cl_defs QOG_VID_HUDFIRST)  # vid_rp2040.c, platform/qog_video.c
+        endif()
     endif()
     if(QOG_BOARD_HUDSKIP)
         list(APPEND _cl_defs QOG_HUD_SKIP)         # r_main.c, screen.c, vid_rp2040.c

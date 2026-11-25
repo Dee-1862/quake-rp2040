@@ -140,6 +140,7 @@ static bool s_scan_pending;
 static bool s_racing;           /* Agent AK: the 3D view runs beside the scanout */
 static uint8_t s_scan_rows;     /* rows the scanout in flight sends */
 static uint8_t s_scan_packed;   /* Agent AO: its first rows that hold a packed Turbo view */
+static uint8_t s_scan_first;    /* Agent AP: rows [first, rows) go out first, 0 top to bottom */
 #endif
 
 void VID_LockBuffer(void) {
@@ -165,7 +166,25 @@ void VID_QogRaceBegin(void) {
     if (s_scan_pending) s_racing = true;
 }
 
-/* QuakeOG (Agent AO): the rows of the scanout in flight that read a byte of
+/* QuakeOG (Agent AP): the place of scan row r in the order the scanout
+   sends its rows, from 1 (the status bar rows first when s_scan_first) */
+static int scan_pos(int r) {
+    if (!s_scan_first) return r + 1;
+    return r >= s_scan_first ? r - s_scan_first + 1 : s_scan_rows - s_scan_first + r + 1;
+}
+
+/* the latest place among scan rows lo to hi */
+static int scan_maxpos(int lo, int hi) {
+    int m = scan_pos(hi);
+    if (s_scan_first && lo < s_scan_first) {
+        int p = scan_pos(hi < s_scan_first ? hi : s_scan_first - 1);
+        if (p > m) m = p;
+    }
+    return m;
+}
+
+/* QuakeOG (Agent AO, Agent AP): how far into its order the scanout in
+   flight must be before no row it has still to send reads a byte of
    [lo, hi). Rows below s_scan_packed read W / 2 bytes each from the start
    of the frame (a Turbo view), the others their W bytes. */
 int VID_QogScanNeed(const void *lo, const void *hi) {
@@ -173,9 +192,10 @@ int VID_QogScanNeed(const void *lo, const void *hi) {
     int p = s_scan_packed, end = s_scan_rows * W, need = 0;
     if (!s_scan_pending || h <= 0 || h <= l) return 0;
     if (l < 0) l = 0;
-    if (l < p * (W / 2)) need = ((h < p * (W / 2) ? h : p * (W / 2)) - 1) / (W / 2) + 1;
+    if (l < p * (W / 2))
+        need = scan_maxpos(l / (W / 2), ((h < p * (W / 2) ? h : p * (W / 2)) - 1) / (W / 2));
     if (h > p * W && l < end && end > p * W) {
-        int r = ((h < end ? h : end) - 1) / W + 1;
+        int r = scan_maxpos((l > p * W ? l : p * W) / W, ((h < end ? h : end) - 1) / W);
         if (r > need) need = r;
     }
     return need;
@@ -192,6 +212,8 @@ void VID_QogScanFree(const void *lo, const void *hi) {
     qog_video_wait_rows((uint32_t)need);
     QOG_HP_ADD(QOG_HP_RACEWAIT, hp_wait);
 }
+
+void VID_QogRaceMark(int phase) { (void)phase; }   /* Agent AP: the PC models the race with it */
 
 void VID_QogScanDone(void) {
     s_racing = false;
@@ -217,6 +239,17 @@ extern byte *draw_chars;
 #define TURBO_TEXT()    ((void)0)
 #endif
 
+/* QuakeOG (Agent AP): a frame that sends the status bar rows sends them
+   first, so the next view's writes into the z-buffer (whose start holds
+   them: the edge table, the brush clip buffers) wait for 48 rows instead of
+   the whole scanout (QOG_VID_HUDFIRST, platform/qog_video.c) */
+#if defined(QOG_VID_HUDFIRST) && defined(QOG_VID_SCANRACE) && ZROWS < H
+#define HUD_FIRST(rows) do { s_scan_first = (uint8_t)((rows) >= H ? ZROWS : 0); \
+                             qog_video_set_first(s_scan_first); } while (0)
+#else
+#define HUD_FIRST(rows) ((void)0)
+#endif
+
 void VID_Update(vrect_t *rects) {
     QOG_PH_T(hp_present);   /* QuakeOG (Agent V) */
     (void)rects;
@@ -229,6 +262,7 @@ void VID_Update(vrect_t *rects) {
         vid_qog_frames++;
         if (rows >= H) vid_qog_hudsent++;
         TURBO_TEXT();
+        HUD_FIRST(rows);
         qog_video_present_packed(vid_buffer, (uint32_t)rows, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
         s_scan_rows = (uint8_t)rows;
@@ -241,6 +275,7 @@ void VID_Update(vrect_t *rects) {
     R_HudFrameEnd();
 #endif
     TURBO_TEXT();
+    HUD_FIRST(H);
     qog_video_present_packed(vid_buffer, H, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
     s_scan_rows = H;

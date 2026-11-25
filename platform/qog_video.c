@@ -48,6 +48,7 @@ static volatile bool     s_busy;
 static volatile uint32_t s_scan_row;
 static uint32_t          s_scan_rows;
 static uint32_t          s_scan_packed;   /* Agent AO: its first rows hold src_w / 2 pixels each, sent doubled */
+static uint32_t          s_scan_first, s_first_next;   /* Agent AP: rows [first, rows) go out first, 0 in order */
 static volatile uint32_t s_frames;
 static volatile uint32_t s_last_scan_us;
 static uint32_t          s_last_wait_us;
@@ -152,19 +153,9 @@ static inline void dma_wait_with_hook(void) {
     dma_channel_wait_for_finish_blocking((uint)s_dma);
 }
 
-static void __not_in_flash_func(scanout)(const uint8_t *fb) {
-    const uint64_t t0 = time_us_64();
-    if (s_pal_dirty) {
-        memcpy(s_pal, s_pal_pending, sizeof s_pal);
-        s_pal_dirty = false;
-    }
-
-    st7789_dma_wait();   /* the BSP's own fill DMA, if any */
-    /* QuakeOG (Agent AK): only the first s_scan_rows lines when the rows
-       below them are already on the panel (qog_video_present_rows) */
-    const uint32_t out_h = s_scan_rows;
-    st7789_set_window(0u, s_y0, QOG_LCD_W, out_h);
-
+/* QuakeOG (Agent AP): RAMWR, then the pins or the PL022 set for the pixel
+   stream, and back to 8-bit commands once its last bit is out */
+static void stream_begin(void) {
     /* RAMWR as an 8-bit command, then switch the PL022 to 16-bit frames for
        the pixel stream so RGB565 goes out MSB-first with no byte swap. */
     const uint8_t ramwr = ST7789_RAMWR;
@@ -173,51 +164,18 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
     spi_write_blocking(FWOG_LCD_SPI, &ramwr, 1);
     spi_drain();
     gpio_put(PIN_LCD_DC, 1);
-
-    dma_channel_config c = dma_channel_get_default_config((uint)s_dma);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
-    channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, false);
-    volatile void *dr;
-    const bool pio = s_pio_sm >= 0;
-    if (pio) {
+    if (s_pio_sm >= 0) {
         /* Agent AP: SCK and MOSI to the state machine (both idle low) */
         const gpio_function_t f = pio_get_index(s_pio) ? GPIO_FUNC_PIO1 : GPIO_FUNC_PIO0;
         gpio_set_function(PIN_LCD_SCK, f);
         gpio_set_function(PIN_LCD_MOSI, f);
-        channel_config_set_dreq(&c, pio_get_dreq(s_pio, (uint)s_pio_sm, true));
-        dr = &s_pio->txf[s_pio_sm];
-    } else {
+    } else
         spi_set_format(FWOG_LCD_SPI, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
-        channel_config_set_dreq(&c, spi_get_dreq(FWOG_LCD_SPI, true));
-        dr = &spi_get_hw(FWOG_LCD_SPI)->dr;
-    }
+}
 
-    const uint32_t src_h = s_cfg.src_h, src_w = s_cfg.src_w, map_h = s_cfg.out_h;
-    int last_sy = -1;
-    unsigned cur = 0;
-    for (uint32_t oy = 0; oy < out_h; oy++) {
-        const int sy = (int)(((2u * oy + 1u) * src_h) / (2u * map_h));
-        if (sy != last_sy) {
-            /* New source line: build it in the free buffer. The other one
-               may still be on the wire. */
-            cur ^= 1u;
-            if ((uint32_t)sy < s_scan_packed) {   /* Agent AO: a Turbo view's row, packed */
-                convert_line_double(s_line[cur], fb + (uint32_t)sy * (src_w / 2u));
-                if (s_scan_text_n) text_line(s_line[cur], (uint32_t)sy);   /* Agent AP */
-            } else
-                convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
-            last_sy = sy;
-            __dmb();
-            s_scan_row = (uint32_t)sy + 1u;   /* Agent AK: the game may draw over rows above this */
-        }
-        /* A repeated line (vertical scale-up) resends the same buffer, which
-           is safe: DMA only reads it. */
-        if (oy) dma_wait_with_hook();
-        dma_channel_configure((uint)s_dma, &c, dr, s_line[cur], QOG_LCD_W, true);
-    }
+static void stream_end(void) {
     dma_channel_wait_for_finish_blocking((uint)s_dma);
-    if (pio) {
+    if (s_pio_sm >= 0) {
         /* Agent AP: the last bits have left the shift register once the
            state machine stalls on the empty FIFO (TXSTALL is set again in
            every cycle it waits, so clearing it first cannot miss the end).
@@ -233,6 +191,68 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
         spi_drain();
         gpio_put(PIN_LCD_CS, 1);
         spi_set_format(FWOG_LCD_SPI, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    }
+}
+
+static void __not_in_flash_func(scanout)(const uint8_t *fb) {
+    const uint64_t t0 = time_us_64();
+    if (s_pal_dirty) {
+        memcpy(s_pal, s_pal_pending, sizeof s_pal);
+        s_pal_dirty = false;
+    }
+
+    st7789_dma_wait();   /* the BSP's own fill DMA, if any */
+    /* QuakeOG (Agent AK): only the first s_scan_rows lines when the rows
+       below them are already on the panel (qog_video_present_rows).
+       Agent AP: with s_scan_first, lines [first, out_h) go out first in a
+       window of their own, then [0, first), and s_scan_row counts the lines
+       sent in that order (qog_video_set_first). */
+    const uint32_t out_h = s_scan_rows, first = s_scan_first;
+
+    dma_channel_config c = dma_channel_get_default_config((uint)s_dma);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false);
+    volatile void *dr;
+    if (s_pio_sm >= 0) {
+        channel_config_set_dreq(&c, pio_get_dreq(s_pio, (uint)s_pio_sm, true));
+        dr = &s_pio->txf[s_pio_sm];
+    } else {
+        channel_config_set_dreq(&c, spi_get_dreq(FWOG_LCD_SPI, true));
+        dr = &spi_get_hw(FWOG_LCD_SPI)->dr;
+    }
+
+    const uint32_t src_h = s_cfg.src_h, src_w = s_cfg.src_w, map_h = s_cfg.out_h;
+    unsigned cur = 0;
+    uint32_t pos = 0;
+    for (uint32_t seg = 0; seg < (first ? 2u : 1u); seg++) {
+        const uint32_t lo = first ? (seg ? 0u : first) : 0u, hi = first ? (seg ? first : out_h) : out_h;
+        st7789_set_window(0u, (uint16_t)(s_y0 + lo), QOG_LCD_W, (uint16_t)(hi - lo));
+        stream_begin();
+        int last_sy = -1;
+        for (uint32_t oy = lo; oy < hi; oy++) {
+            const int sy = (int)(((2u * oy + 1u) * src_h) / (2u * map_h));
+            if (sy != last_sy) {
+                /* New source line: build it in the free buffer. The other one
+                   may still be on the wire. */
+                cur ^= 1u;
+                if ((uint32_t)sy < s_scan_packed) {   /* Agent AO: a Turbo view's row, packed */
+                    convert_line_double(s_line[cur], fb + (uint32_t)sy * (src_w / 2u));
+                    if (s_scan_text_n) text_line(s_line[cur], (uint32_t)sy);   /* Agent AP */
+                } else
+                    convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
+                last_sy = sy;
+                __dmb();
+                /* Agent AK: the game may draw over rows above this (Agent AP:
+                   over the rows sent so far, in the order they go out) */
+                s_scan_row = first ? ++pos : (uint32_t)sy + 1u;
+            }
+            /* A repeated line (vertical scale-up) resends the same buffer, which
+               is safe: DMA only reads it. */
+            if (oy != lo) dma_wait_with_hook();
+            dma_channel_configure((uint)s_dma, &c, dr, s_line[cur], QOG_LCD_W, true);
+        }
+        stream_end();
     }
 
     s_last_scan_rows = out_h;
@@ -381,6 +401,8 @@ bool qog_video_init(const qog_video_config_t *cfg) {
 
 void qog_video_use_pio(uint32_t max_khz) { s_pio_want_khz = max_khz; }
 
+void qog_video_set_first(uint32_t first) { s_first_next = first; }
+
 void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font) {
     s_text_next = runs;
     s_chars_next = chars;
@@ -430,6 +452,9 @@ void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed)
     s_scan_rows = (rows && rows < s_cfg.out_h && s_cfg.src_h == s_cfg.out_h) ? rows : s_cfg.out_h;
     /* Agent AO: packed rows only for a 320 wide frame, rows one to one */
     s_scan_packed = (s_x_identity && s_cfg.src_h == s_cfg.out_h && packed <= s_cfg.src_h) ? packed : 0u;
+    /* Agent AP: rows [first, out_h) first, for a whole frame of rows one to one */
+    s_scan_first = (s_first_next && s_first_next < s_scan_rows && s_scan_rows == s_cfg.out_h
+                    && s_cfg.src_h == s_cfg.out_h) ? s_first_next : 0u;
     /* Agent AP: the characters only over packed rows */
     s_scan_text = s_text_next;
     s_scan_chars = s_chars_next;

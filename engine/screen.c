@@ -104,6 +104,36 @@ void SCR_CenterPrint (char *str)
 	}
 }
 
+#ifdef QOG_VID_SCANRACE
+/*
+==============
+SCR_QogViewCovers
+
+QuakeOG (Agent AP): the 3D view this frame draws (V_RenderView runs after
+SCR_SetUpToDrawConsole and SCR_EraseCenterString, and returns early only
+with con_forcedup) writes every pixel of rows [y, y + h) over the whole
+width, so a clear of those rows is drawn over before any scanout reads
+it. Skipping it keeps the picture and spares the wait for the end of the
+last scanout (and in Turbo the spread of the last packed view). A Turbo
+view packs its rows into the first scr_vrect.height * width / 2 bytes, which
+cover the cleared rows when they lie in the first half of the view.
+==============
+*/
+static qboolean SCR_QogViewCovers (int y, int h)
+{
+	if (con_forcedup || lcd_x.value || h <= 0)
+		return false;
+	if (scr_vrect.x != 0 || scr_vrect.width != (int)vid.width || vid.buffer != vid.conbuffer
+		|| y < scr_vrect.y || y + h > scr_vrect.y + scr_vrect.height)
+		return false;
+#ifdef QOG_RTURBO
+	if (r_fast.value >= 2 && (scr_vrect.y != 0 || 2 * (y + h) > scr_vrect.height))
+		return false;	// the rows a Turbo view's packed pixels do not reach
+#endif
+	return true;
+}
+#endif
+
 void SCR_EraseCenterString (void)
 {
 	int		y;
@@ -121,6 +151,8 @@ void SCR_EraseCenterString (void)
 
 	scr_copytop = 1;
 #ifdef QOG_VID_SCANRACE
+	if (SCR_QogViewCovers (y, 8*scr_erase_lines))
+		return;		// QuakeOG (Agent AP): the view draws over these rows
 	VID_QogScanDone ();	// QuakeOG (Agent AK): the last scanout must be over
 #endif
 	Draw_TileClear (0, y,vid.width, 8*scr_erase_lines);
@@ -542,9 +574,14 @@ void SCR_SetUpToDrawConsole (void)
 	{
 		scr_copytop = 1;
 #ifdef QOG_VID_SCANRACE
+		if (!SCR_QogViewCovers (0, con_notifylines))	// QuakeOG (Agent AP): else the view draws over them
+		{
 		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
 #endif
 		Draw_TileClear (0,0,vid.width, con_notifylines);
+#ifdef QOG_VID_SCANRACE
+		}
+#endif
 	}
 	else
 		con_notifylines = 0;

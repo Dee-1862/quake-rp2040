@@ -105,6 +105,10 @@ void VID_QogScanDone (void);
 // QuakeOG (Agent AO): how many rows of the scanout in flight read a byte of
 // [lo, hi), 0 for none (a Turbo frame's packed rows are half as wide)
 int VID_QogScanNeed (const void *lo, const void *hi);
+// QuakeOG (Agent AP): which part of the view runs now, for the PC's race
+// wait model (vid_pc.c -scanmodel): 1 the world's front end, 2 after
+// R_RenderWorld, 3 after the brush entities, 0 from VID_Update on
+void VID_QogRaceMark (int phase);
 #endif
 
 #ifdef QOG_RTURBO
