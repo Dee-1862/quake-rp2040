@@ -49,6 +49,9 @@ SHARED = {
     "d_qogc1_drawing", "s_pipe_lock", "qog_c1_stat",
     # the SDK's float and divide helpers' tables, the timer
     "timer_hw",
+    # Agent AR: the span assembly's start-up check result (d_lit_q.h), written
+    # once by D_QogLitQCheck on core 0 at D_Init, before core 1 ever draws
+    "litq_asm_ok",
 }
 
 

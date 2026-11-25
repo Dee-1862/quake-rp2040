@@ -66,7 +66,7 @@ static const char	*const bm_lmsname[16] = { "lms_views", "lms_dlights", "lms_bui
 	"lms_lit", "lms_rowslit", "lms_marknodes", "lms_marks", "lms_treenodes" };
 static const char	*const bm_asname[QAS_N] = { "check", "drawn", "trivial", "subdivm", "verts", "tris",
 	"back", "smooth", "zero", "tiny", "spans", "pix", "pixw", "subtri", "subcall", "subpix", "cliptri",
-	"parts", "partvis", "partpix" };
+	"parts", "partvis", "partpix", "tinytri" };
 static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dlpair_flt", "dlcell_flt",
 	"dllit_flt", "reachup", "reachup_step", "grad_fast", "grad_idf", "grad_idd", "scanlines", "scanedges",
 	"surfdrawn", "bmsurf", "bmfaces", "bmemit", "bmclip", "bmmark", "bmcheck", "bmsplit", "bpoly",
@@ -185,6 +185,18 @@ static void bm_open (void)
 #endif
 #ifdef QOG_FGRAD_AXIAL
 		" QOG_FGRAD_AXIAL"
+#endif
+#ifdef QOG_LITSPAN_Q
+		" QOG_LITSPAN_Q"		// Agent AR: the Q span drawer (d_lit_q.h)
+#endif
+#ifdef QOG_LITQ_SHARELIGHT
+		" QOG_LITQ_SHARELIGHT"
+#endif
+#ifdef QOG_ALIAS_TURBOTINY
+		" QOG_ALIAS_TURBOTINY"
+#endif
+#ifdef QOG_PART_DIEBITS
+		" QOG_PART_DIEBITS"
 #endif
 		"\n");
 	fprintf (bm_log, "frame,racerows,racepacked,rows,packed,rfast,vwidth");

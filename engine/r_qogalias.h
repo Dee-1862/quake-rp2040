@@ -35,6 +35,7 @@ enum
 	QAS_PARTS,		// D_DrawParticle calls
 	QAS_PARTVIS,	// particles on the screen
 	QAS_PARTPIX,	// particle pixels tested
+	QAS_TINYTRI,	// Turbo triangles drawn without gradients (Agent AR, d_polyse.c)
 	QAS_N
 };
 extern unsigned	qog_astats[2][QAS_N];

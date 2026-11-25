@@ -112,6 +112,7 @@ WEIGHTS = {
         "am_check": (2, 2400), "am_drawn": (60, 2000), "am_verts": (0, 130), "am_tris": (0, 60),
         "am_smooth": (0, 450), "am_spans": (0, 80), "am_pix": (0, 35), "am_subcall": (0, 120),
         "am_subpix": (0, 30), "am_cliptri": (0, 1200),
+        "am_tinytri": (0, 150),     # Agent AR: Turbo triangles within 3 x 3 pixels, about a third of a smooth one
     },
     "vmodel": {
         "vm_drawn": (60, 2000), "vm_verts": (0, 130), "vm_tris": (0, 60), "vm_smooth": (0, 450),
@@ -143,6 +144,14 @@ FEATURE_SCALE = {
     "QOG_FX_REUSE": {"bm_rotent": (0.45, 1.0)},             # the Fast setup only for the origin, about 7,500 cycles less
     "QOG_DSURF_NOFRUSTUM": {"bm_bmsurf": (0.1, 1.0)},       # no view planes turned per brush surface
     "QOG_FGRAD_AXIAL": {"wc_faces": (0.77, 1.0)},           # about 300 cycles a face gradient less
+    # Agent AR: the Q span drawer, the same spans, sub-spans and pixels for
+    # fewer cycles. Its replay of demo3 surfaces through the board's own code
+    # (docs/changes.md) gives 2.39 M against 3.69 M cycles a Fast view and
+    # 1.47 M against 2.41 M a Turbo view, about 0.64 of every span count
+    "QOG_LITSPAN_Q": {"pc_litpx": (1.0, 0.64), "pc_runs": (1.0, 0.64), "pc_litspans": (1.0, 0.64)},
+    # the particle kill checks as integer compares: 4 of about 16 float helper
+    # calls a particle gone (two float to double conversions, two double compares)
+    "QOG_PART_DIEBITS": {"am_parts": (0.75, 1.0)},
 }
 # Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either
 # core, core 1 during the edge scan, both at each flush

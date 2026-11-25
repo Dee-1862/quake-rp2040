@@ -156,6 +156,9 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DLIGHT_REACHUP
     QOG_GRAD_EXACTF
     QOG_GRAD_FAST)
+
+list(APPEND QOG_ENGINE_DEFS
+    QOG_PART_DIEBITS)               # Agent AR, exact: particle kill checks as integer compares (r_part.c)
 # Agent AQ: brush entities and the edge scan with fewer float calls, exact,
 # same as pc/CMakeLists.txt (r_bsp.c, r_edge.c, d_edge.c, r_main.c)
 list(APPEND QOG_ENGINE_DEFS
@@ -448,6 +451,12 @@ if(QOG_SPLIT)
     option(QOG_BOARD_TURBO "with FAST, the Turbo render mode (r_fast 2), a half width 3D view" ON)
     if(QOG_BOARD_FAST AND QOG_BOARD_TURBO)
         list(APPEND _cl_defs QOG_RTURBO)
+        # Agent AR: in Turbo a model triangle within 3 x 3 pixels is drawn
+        # without gradients, its pixels in the first corner's texel and light
+        option(QOG_BOARD_TURBOTINY "with TURBO, tiny model triangles without gradients in Turbo" ON)
+        if(QOG_BOARD_TURBOTINY)
+            list(APPEND _cl_defs QOG_ALIAS_TURBOTINY)   # d_polyse.c D_QogTinyTriangle
+        endif()
     endif()
     # QuakeOG (Agent AP): the LCD's pixel stream from a PIO state machine at
     # clk_sys over a whole number of clocks a bit, at most QOG_LCD_PIO_KHZ
@@ -491,6 +500,20 @@ if(QOG_SPLIT)
     option(QOG_BOARD_INTERP "Fast lit spans address texels through the interpolators" ON)
     if(QOG_BOARD_FAST AND QOG_BOARD_INTERP)
         list(APPEND _cl_defs QOG_LITSPAN_INTERP)
+    endif()
+    # Agent AR: Fast and Turbo lit spans with 32-bit span starts, the z
+    # written by the pixel loop, and the runs of light and pixels in
+    # hand-written Thumb in RAM (engine/d_lit_q.h, port/rp2040/d_litq_rp2040.S)
+    option(QOG_BOARD_LITQ "with FAST and INTERP, the Q span drawer for Fast and Turbo" ON)
+    if(QOG_BOARD_FAST AND QOG_BOARD_INTERP AND QOG_BOARD_LITQ)
+        list(APPEND _cl_defs QOG_LITSPAN_Q QOG_LITQ_ASM)
+        target_sources(qog_engine_cl PRIVATE ${QOG_ROOT}/port/rp2040/d_litq_rp2040.S)
+        # each light run of 8 pixels ends at the next run's start, one blend a
+        # run instead of two (0.23% of Fast pixels, single colour map rows)
+        option(QOG_BOARD_LITQSHARE "with LITQ, light runs share their ends (Fast and Turbo)" ON)
+        if(QOG_BOARD_LITQSHARE)
+            list(APPEND _cl_defs QOG_LITQ_SHARELIGHT)
+        endif()
     endif()
     option(QOG_BOARD_CONSMALL "client console text 1 KB, its hunk 3 KB smaller" ON)
     if(QOG_BOARD_CONSMALL)

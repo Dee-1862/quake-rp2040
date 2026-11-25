@@ -2,6 +2,90 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: Fast and Turbo spans in hand-written Thumb in RAM, 32-bit span starts, tiny Turbo model triangles, particle kill checks in integers, and a board cost model (Agent AR, PC and ARM build, registered data)
+
+The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, models 5.1, vmodel 3.4 and parts 1.2. Nothing ran on hardware. The savings below come from a cost model that runs the board's own compiled code (quake_display.elf) in an emulator on real surfaces from timedemo demo3, then a range up to the board's ratio to that model.
+
+### The cost model (build-ar, git-ignored, rebuilt from these notes)
+
+- A PC measurement build (`-DQOG_PC_EXTRA_DEFS=QOG_AR_DUMP;...`, `qog_ardump <file> <first view> <views>`, engine/d_scanlit.c) writes every Fast lit surface of the views it is given: gradients, the lit_ and litfix_ values, the light grid, the mip level's texels and the spans, after the colour map.
+- `replay.py` loads quake_display.elf into Unicorn (pip package, a scratch virtual environment), emulates the SIO interpolators and divider through `mmio_map`, does the ROM float calls in Python at 60 cycles each, weights each M0+ instruction by its cycles (loads and stores 2, SIO 1, taken branches 2, bl 3, push and pop 1 + n), replays each surface through D_DrawSpans8LitFix (Agent AH's) and D_DrawSpans8LitQ (this one) and compares their pixels and z. `test_span.py` runs the assembly against the C on random spans, `bench_alias.py` runs D_PolysetDraw on made-up meshes.
+- Views 600 to 603 of timedemo demo3, Fast: 53 surfaces, 1,194 spans and 44,800 pixels a view. Agent AH's drawer models at 3.69 M cycles a view (82.5 a pixel), 7.4 ms of one core at 250 MHz with the spans shared by both cores, against the board's 16.9 ms phase, so the board runs about 2.3 times the model (flash misses, the two cores sharing the XIP cache, core 1's join).
+- PC counts (`QOG_AR_STATS`, `qog_arstat spans`, every 100 views): per view about 1,470 lit spans in Fast (48,200 pixels) and 1,430 in Turbo (24,100). Turbo's spans: 9.5% are 1 pixel, 7.7% 2, 12.7% 3 or 4, 18.2% 5 to 8. In every span of the demo the surface's nearest 1/z is at most 16 times the span's own, 99.4% within 4 times.
+
+### Changes
+
+| Change | Flag (board option) | Mode | What it does | Model, cycles a view (demo3) |
+| --- | --- | --- | --- | --- |
+| 32-bit span starts | `QOG_LITSPAN_Q` (`QOG_BOARD_LITQ`, on, needs FAST and INTERP) | Fast and Turbo | D_LitFixSetup also keeps the surface's 1/z * 2^k, Ns and Nt and their steps shifted down by 32, so D is 2^28 to 2^29 at the nearest point. A span's start is then three sums of two 32-bit products each, modulo 2^32 (every true value of the surface fits 32 bits, so the wrapped sums are the true ones, L241). The coefficients lose at most a unit each, so a start is off by at most \|du\| + \|dv\| + 1 units of D. A span whose D falls below 2^24 at either end takes Agent AH's 64-bit start (none in demo3). Its 1/z * 2^31 for the z is D shifted | part of the next rows |
+| The z by the pixel loop | with the above | both | when every pixel of the span takes the one-byte z-buffer's plain z >> 3 (D_QogZSpanI's far case, the same test), the pixel loop writes the z, else D_QogZSpanI does as before | 0.42 M of z walks gone |
+| One span in hand-written Thumb, its hottest loop in RAM | `QOG_LITQ_ASM` (same option) | both | litq_span_asm (port/rp2040/d_litq_rp2040.S, in flash, with its z run loop litq_zruns, 172 B, in .time_critical RAM): Agent AH's sub-spans (length from how fast 1/z changes, the end by one SIO divide whose 8 cycles the shifts of Ns and Nt fill, the steps by a shift or two SIO divides), then the runs in two passes. Pass 1 blends the light at each run's ends with the coordinates shifted by the mip level, so one blend serves every level (S << mip puts the light cell at bit 20), and writes each run's light start and step. Pass 2 sets interpolator 1 from them and draws: interpolator 0 gives the texel addresses and carries S and T from run to run, interpolator 1 the colour map rows, and a run's pixels are an unrolled sequence entered at slot 8 - k. A pixel is 8 cycles, 12 with its z. The C version (litq_span_c, d_lit_q.h) is the PC's and the board's fallback. The board checks the assembly against it at start-up on 800 made-up spans (D_QogLitQCheck from D_QogLitInterpCheck) and uses the C if any pixel, z or divisor shift differs. On the PC both ran 2,300 random spans and the replayed demo views with 0 differences | Fast 3.69 M to 2.49 M, Turbo 2.41 M to 1.52 M |
+| Shared light ends | `QOG_LITQ_SHARELIGHT` (`QOG_BOARD_LITQSHARE`, on) | Fast and Turbo | each light run of 8 ends at the next run's first pixel, not at its own last one, so the next run starts from it: one blend a run instead of two, and the light is one continuous line along the span | Fast 2.49 M to 2.39 M, Turbo 1.52 M to 1.47 M |
+| Tiny Turbo model triangles | `QOG_ALIAS_TURBOTINY` (`QOG_BOARD_TURBOTINY`, on with TURBO, also in quakeog_pc) | Turbo only | a front-facing alias triangle whose corners lie within 3 x 3 pixels is drawn from its three edge functions (on an edge, drawn for top and left edges), each covered pixel in the first corner's texel, light and depth with id's depth test (D_QogTinyTriangle, d_polyse.c, out of line so its frame sits beside the rasterizer's) | 25.4 of Turbo's 85 gradient triangles a view (demo3), about 2,250 to 750 cycles each, about 38 K |
+| Particle kill checks in integers | `QOG_PART_DIEBITS` (engine flag, PC and board) | exact, all modes | id's `p->die < cl.time` (a float to double conversion and a double compare, twice a particle) is an integer compare of the float's bits against the bits of the smallest float at or above cl.time, made once a view (R_QogDieBits, r_part.c). For a float die that is the same answer | about 205 particles a view, 2 checks each |
+| Measurement | `QOG_AR_STATS`, `QOG_AR_DUMP` | PC only | the counts above, the surface dump | |
+
+### What else the model showed
+
+- After these changes a Fast view's spans split into the pixel slots (about 0.62 M), pass 1's blends (about 0.75 M) and the sub-span logic with its divides (about 0.8 M). Fewer sub-spans (longer affine runs) would change the picture.
+- A gradient alias triangle costs about 2,250 cycles even when it covers one pixel (D_RasterizeAliasPolySmooth 490, D_PolysetScanLeftEdge 430, D_PolysetDrawSpans8 400, gradients 370 in Fast mode), and id's recursive subdivision is cheaper only below a pixel (1,400) and much dearer above (15,000 for a 5 x 5 pixel triangle), so moving id's transition nearer does not pay (L243). Turbo already moves it to 0.71 of Fast's by id's own area rule.
+- The vertex transforms, gradients and clip points of models are already integers in Fast mode (Agent AI). Cached transforms between frames would only help the view weapon, whose cost is its 2,772 pixels and clipping. Not done.
+
+### Estimated board savings, ms a view of demo3 (the spans shared by both cores)
+
+| Phase | Fast at 250 MHz | Fast at 300 MHz | Turbo at 300 MHz |
+| --- | ---: | ---: | ---: |
+| spans (model saving, both cores' work halved) | 2.6 to 6.0 | 2.2 to 5.0 | 1.6 to 3.6 |
+| models (Turbo tiny triangles) | 0 | 0 | 0.13 to 0.3 |
+| parts (kill checks) | about 0.1 | about 0.1 | about 0.1 |
+
+The low end is the model's cycles at the clock, the high end assumes the board's 2.3 times the model holds for what was removed. Code that used to be fetched through the XIP cache now runs from RAM, so the high end is the more likely while the cores share the cache.
+
+### After merging main dd273c4 (Agent AM's two-core surfaces, AP's PIO scanout, AQ's float cuts, AS's board model)
+
+- Core 1 draws whole surfaces with its own compile of d_scanlit.c (`QOG_DRAW_CORE1`, d_core1.c). The Q drawer's state is per call and in that file's statics, so each core has its own. The assembly now takes the surface's values through a pointer in the span struct, not by the name `litq_surf`, which in core 1's copy would have been core 0's. The one shared value is `litq_asm_ok`, the start-up check's result, written once on core 0 at D_Init (on tools/core1_syms.py's reviewed list). D_QogLitQCheck and the PC measurement code are left out of core 1's copy. `tools/core1_syms.py --build build-ar/arm` passes.
+- RAM: main's display `end` is 0x2003f588 with 632 B spare, so the 1,268 B of assembly no longer fit in RAM. Scratch X holds the link rings and core 1's stack, scratch Y the command history and the interrupt stack. The routine now runs from flash, only the z run loop and its pixel slots (172 B) from RAM, and the 32-bit coefficients are read per call from the high words of Agent AH's 64-bit values instead of being kept (88 B less in both cores' copies). The cycle model does not see where code sits, so its savings stand. The XIP misses on the routine's code are what the RAM placement would have removed.
+- D_DrawSpans8LitQ and litq_span_c are out of line, so core 1's copy keeps main's deepest span chain (c1_D_DrawSpans8Lit 8 + 424 B).
+- The emulator replay through core 1's own entry (c1_D_DrawSpans8Lit, which runs its own D_LitFixSetup) gives the same pixels and z as core 0's drawer, with the assembly and with the C, in Fast and Turbo.
+- AS's board model (tools/boardbench.ps1) now builds with `QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT`, logs the new features and the Turbo tiny triangles (`am_tinytri`), and weights them (tools/boardmodel.py: the span counts at 0.64 of their cycles from the replay, a tiny triangle at a third of a smooth one, the particle kill checks as 4 of 16 float calls). Predicted demo3 at 300 MHz, LCD by PIO: main dd273c4 Fast 22.6 fps (44.3 ms), Turbo 26.5 (37.7 ms). This branch Fast **25.3 fps** (39.6 ms, 23.6 to 27.1), Turbo **29.0 fps** (34.5 ms, 26.4 to 31.3). Spans 25.0 to 16.3 ms in Fast and 16.3 to 10.7 in Turbo, parts 1.0 to 0.8.
+
+Merged proof (hidden, `-nosound`, an untouched build of dd273c4 from `git archive`): `qogtest_hash` ce86f894f9de on quakeog_pc and on the board-flag build with `QOG_DRAW_CORE1` and the Q drawer, `qogtest_f_hash` e92bc9e9650d in every mode. The 121 frames: quakeog_pc r_fast 0 and 1 byte identical, r_fast 2 0.013% (the tiny triangles). The board-flag build with `QOG_DRAW_CORE1` against the same flags on dd273c4: r_fast 0 121 of 121 byte identical, Fast 0.258% (worst d_demo3_00 1.05%), Turbo 0.563% (worst d_demo3_03 2.56%).
+
+### Exact and Fast proof before the merge (hidden, `-nosound`, own build-ar folders, untouched build of cd1e749 from `git archive` in build-ar/ref and build-ar/pcbref, own git-ignored data folder with its own qogbake.bin)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc of this tree (with `QOG_PART_DIEBITS` and `QOG_ALIAS_TURBOTINY`) | ce86f894f9de |
+| the same, the board-flag build with the Q drawer (`QOG_LITSPAN_INTERP QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800 QOG_SPANS_CORE1 QOG_ALIAS_CORE1` plus `QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT QOG_ALIAS_TURBOTINY`) | ce86f894f9de, and `qogtest_f_hash` e92bc9e9650d in every mode |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, quakeog_pc against cd1e749 | 121 of 121 byte identical |
+| the same, r_fast 1 (the PC has no INTERP, so this shows the particle change is exact) | 121 of 121 byte identical |
+| the same, r_fast 2 (the Turbo tiny triangles) | 0.013% of the view pixels, worst d_demo1_03 0.18% |
+| the board-flag build with the Q drawer against the same flags on cd1e749, r_fast 0 | 121 of 121 byte identical (a run without the stats build's notify lines, and with them all frames identical below the notify rows) |
+| the same, r_fast 1 | 0.258% of the view pixels, worst d_demo3_00 1.05%, single pixels one colour map row apart (the 32-bit starts alone 0.023%) |
+| the same, r_fast 2 | 0.564% of the panel's view pixels, worst d_demo3_03 2.56% (the 32-bit starts and shared light 0.551%, the tiny triangles 0.013%) |
+| litq_span_asm against litq_span_c, the board's code in the emulator | 2,300 random spans and the replayed demo3 views, 0 differences, and D_QogLitQCheck run from quake_display.elf passes |
+
+### RAM and stack (board, the full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own build folder build-ar/arm, merged with dd273c4)
+
+| | main dd273c4 | merged |
+| --- | --- | --- |
+| quake_display `end` | 0x2003f588 (632 B spare beside the 2 KB heap reserve) | 0x2003f694 (+268 B: the z run loop 172 B in RAM, the surface values and the check flag), 364 B spare |
+| quake_main `end` | 0x2003f5b4 | 0x2003f5b4 |
+| quake_display.bin | | 435,216 B |
+
+Stack: core 0's chain is D_DrawSpans8Lit 56 + D_DrawSpans8LitQ 240 + litq_span_asm 52, or + litq_span_c 184 on the C fallback, below Agent AH's 432 B drawer, which still runs for textures that are not a power of two. Core 1's is c1_D_DrawSpans8Lit 8 + 424, as on main. D_DrawNonSubdiv 72 B, D_QogTinyTriangle 120 B beside D_RasterizeAliasPolySmooth 152 B. D_QogLitQCheck's 736 B frame runs once from D_Init on core 0.
+
+### For Agent AM and the lead
+
+- The drawers' state is per call (litq_span_t on the caller's stack) plus litq_surf, the coefficients and Agent AH's litfix_ values, all written on core 0 by D_SetupLitSurface and D_LitFixSetup before the spans are shared, so the core split by spans (QOG_SPANS_CORE1) is unchanged. Each core uses its own interpolators and divider.
+- Files: engine/d_lit_q.h (new), port/rp2040/d_litq_rp2040.S (new), engine/d_scanlit.c, engine/d_polyse.c, engine/r_part.c, engine/r_alias.c and engine/r_qogalias.h (a stats counter), engine/d_init.c (the PC dump command), apps/quake/CMakeLists.txt, pc/CMakeLists.txt, and with the merge tools/core1_syms.py (one reviewed name), tools/boardmodel.py and port/pc/boardmodel_pc.c (the new counts and features). r_main.c is not touched.
+- The PC game (quakeog_pc) has no INTERP, so its Fast mode draws with Agent AH's drawer. The board's drawer runs on the PC with `-DQOG_PC_EXTRA_DEFS="QOG_LITSPAN_INTERP;QOG_LITSPAN_Q;QOG_LITQ_SHARELIGHT"`.
+
+Not done, for later:
+- The per-span C of D_DrawSpans8LitQ (about 0.22 M cycles a Fast view) could join the assembly.
+- An exact small-triangle rasterizer for Fast mode (id's coverage and gradients without the edge tables) would save most of the 1,500 cycles a tiny triangle costs in both modes.
+- R_DrawParticles' physics stays float (about 10 float operations a particle), R_LightPoint's float trace runs per model (r_light.c).
+
 ## 2026-11-25: The board cost model sees the two-core surfaces, the PIO scanout, Turbo text and the exact float cuts (Agent AS, PC only, registered data)
 
 main 768c8a6 (Agents AM, AP and AQ) merged into agent-as, and the model extended so boardbench prices what they changed. Nothing ran on hardware.
