@@ -156,6 +156,15 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DLIGHT_REACHUP
     QOG_GRAD_EXACTF
     QOG_GRAD_FAST)
+# Agent AQ: brush entities and the edge scan with fewer float calls, exact,
+# same as pc/CMakeLists.txt (r_bsp.c, r_edge.c, d_edge.c, r_main.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_LEADZ_FLOAT                 # r_edge.c: two brush surfaces of one key ordered by 1/z in float, id's doubles only near a tie
+    QOG_BPOLY_AXIAL                 # r_bsp.c R_RecursiveClipBPoly: sides on axial planes by integer compares of the float bits
+    QOG_BMODEL_FACING               # r_bsp.c: brush surface facing tests without double, one subtraction on axial planes
+    QOG_BMODEL_BBOXF                # r_main.c R_BmodelCheckBBox: float compares instead of double differences
+    QOG_BMODEL_FRUSTUM              # r_main.c R_DrawBEntitiesOnList: view planes of entities that do not turn from the last ones
+    QOG_DSURF_NOFRUSTUM)            # d_edge.c D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)
@@ -451,6 +460,11 @@ if(QOG_SPLIT)
         if(QOG_BOARD_WORLDNODEINT AND QOG_BOARD_WORLDNODE)
             list(APPEND _cl_defs QOG_WORLDNODE_INT)
         endif()
+        # Agent AQ: the same Fast values with fewer float calls (r_draw.c):
+        # a brush entity's integer setup made again only for its origin when
+        # its vectors are those of the setup before, and face gradients with
+        # an exact axial dot product and one multiply less per gradient
+        list(APPEND _cl_defs QOG_FX_REUSE QOG_FGRAD_AXIAL)
     endif()
     # Agent AH: the console's text 4 KB to 1 KB (26 lines of scrollback, the
     # 4 notify lines, MG24Quake keeps 913 B). It is taken from the client's

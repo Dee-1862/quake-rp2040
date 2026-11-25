@@ -271,6 +271,17 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DLIGHT_REACHUP              # a lit surface the full hash lost: its node found and the light tested up the parents, not a tree search
     QOG_GRAD_EXACTF                 # D_CalcGradients without double arithmetic, the same values (d_edge.c)
     QOG_GRAD_FAST)                  # r_fast 1: world surface gradients from rows made once a view, in integers
+# Brush entities and the edge scan with fewer float calls, exact (Agent AQ):
+# r_bsp.c, r_edge.c, d_edge.c, r_main.c
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_LEADZ_FLOAT                 # two brush surfaces of one key ordered by 1/z in float, id's doubles only near a tie
+    QOG_BPOLY_AXIAL                 # R_RecursiveClipBPoly: sides on axial planes by integer compares of the float bits
+    QOG_BMODEL_FACING               # brush surface facing tests without double, one subtraction on axial planes
+    QOG_BMODEL_BBOXF                # R_BmodelCheckBBox: float compares instead of double differences
+    QOG_BMODEL_FRUSTUM              # view planes of brush entities that do not turn made from the last ones
+    QOG_DSURF_NOFRUSTUM             # D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
+    QOG_FX_REUSE                    # with QOG_FRONT_FAST: a brush entity's integer setup made again only for its origin
+    QOG_FGRAD_AXIAL)                # with QOG_FRONT_FAST: face gradients with an exact axial dot product, the same values
 # One app for every episode's data image (Agent AG): qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE
