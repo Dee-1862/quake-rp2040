@@ -162,6 +162,12 @@ static void bm_open (void)
 #ifdef QOG_DRAW_CORE1
 		" QOG_DRAW_CORE1"
 #endif
+#ifdef QOG_VID_SCANRACE
+		" QOG_NOTIFY_COVERED QOG_BMODELS_EARLY"	// Agent AP's race package came with these (screen.c, r_main.c)
+#endif
+#ifdef QOG_VID_HUDFIRST
+		" QOG_VID_HUDFIRST"
+#endif
 #ifdef QOG_LEADZ_FLOAT
 		" QOG_LEADZ_FLOAT"
 #endif

@@ -288,8 +288,20 @@ def to_ms(parts, cal, mhz):
     return [{ph: r.get(ph, 1.0) * (kf * p[ph][0] + ki * p[ph][1]) / (mhz * 1000.0) for ph in p} for p in parts]
 
 
-def scan_need(lo, hi, rows, packed):
-    """rows of the scanout in flight that read a byte of [lo, hi) (VID_QogScanNeed)"""
+def scan_need(lo, hi, rows, packed, first=0):
+    """how far into its order the scanout in flight must be before no row it
+    still sends reads a byte of [lo, hi) (VID_QogScanNeed). Agent AP: with
+    first, rows [first, rows) go out first (QOG_VID_HUDFIRST)"""
+    def pos(r):
+        if not first:
+            return r + 1
+        return r - first + 1 if r >= first else rows - first + r + 1
+
+    def maxpos(a, b):
+        m = pos(b)
+        if first and a < first:
+            m = max(m, pos(min(b, first - 1)))
+        return m
     end = rows * W
     need = 0
     if hi <= 0 or hi <= lo:
@@ -297,9 +309,9 @@ def scan_need(lo, hi, rows, packed):
     lo = max(lo, 0)
     p = packed
     if lo < p * (W // 2):
-        need = (min(hi, p * (W // 2)) - 1) // (W // 2) + 1
+        need = maxpos(lo // (W // 2), (min(hi, p * (W // 2)) - 1) // (W // 2))
     if hi > p * W and lo < end and end > p * W:
-        need = max(need, (min(hi, end) - 1) // W + 1)
+        need = max(need, maxpos(max(lo, p * W) // W, (min(hi, end) - 1) // W))
     return need
 
 
@@ -311,6 +323,12 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
     opts = opts or {}
     rms = row_ms(spi, mhz, opts.get("lcd", "pl022"))
     pipe, text, s1 = opts.get("pipe", False), opts.get("text", False), opts.get("s1", CORE1_SPEED)
+    # Agent AP's race package: notify clears the view draws over are skipped
+    # (a centre print erase still waits in Turbo, its rows lie below the
+    # packed pixels), the brush entities run before the wait for the end
+    # with a row wait for their clip buffers, and the status bar rows go
+    # out first
+    covered, early_b, hudfirst = opts.get("covered", False), opts.get("early_b", False), opts.get("hudfirst", False)
     t_now = 0.0
     notes = []          # board times of console lines and centre prints
     prev_packed = 0
@@ -325,7 +343,10 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             notes.append((t_now, CENTER_S))
         notes = [n for n in notes if t_now - n[0] < n[1]]
         notify = bool(notes) and "nonotify" not in whatif
+        if covered:
+            notify = notify and turbo and any(n[1] == CENTER_S for n in notes)
         rows_prev = int(fr.get("racerows", 200))
+        first = VIEW_ROWS if hudfirst and rows_prev > VIEW_ROWS else 0
         t_scan = rows_prev * rms
         t = pre_ms
         if "norace" in whatif:
@@ -343,8 +364,10 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
                 ranges = [x for x in ranges if x[0] < VIEW_ROWS * W]
             if "norace" in whatif:
                 ranges, t_scan = [], 0.0
+            late = [x for x in ranges if early_b and x[0] == VIEW_ROWS * W]    # the brush clip buffers
+            ranges = [x for x in ranges if x not in late]
             for j, (lo, hi) in enumerate(ranges):
-                need = scan_need(lo, hi, rows_prev, prev_packed)
+                need = scan_need(lo, hi, rows_prev, prev_packed, first)
                 if need <= 0:
                     continue
                 ready = t_scan if need >= rows_prev else need * rms
@@ -354,12 +377,22 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
                     waits[key] += (ready - t) * wscale
                     t += (ready - t) * wscale
             t += m["world"]
+            for lo, hi in late:
+                need = scan_need(lo, hi, rows_prev, prev_packed, first)
+                ready = t_scan if need >= rows_prev else need * rms
+                if need > 0 and ready > t:
+                    waits["race_done"] += (ready - t) * wscale
+                    t += (ready - t) * wscale
             early = [x.split(":")[1] for x in whatif if x.startswith("early:")]
+            if early_b and "bmodels" not in early:
+                early.append("bmodels")
             t += sum(m[p] for p in early)      # work moved before the wait for the scanout's end
             if t_scan > t:                   # VID_QogScanDone after R_RenderWorld
                 waits["race_done"] += (t_scan - t) * wscale
                 t += (t_scan - t) * wscale
         done = ["world"] + ([] if notify else [x.split(":")[1] for x in whatif if x.startswith("early:")])
+        if early_b and not notify and "bmodels" not in done:
+            done.append("bmodels")
         if pipe:
             pt, pw, pa = pipeline(fr, m, s1)
             waits["c0wait"] += pw
@@ -496,7 +529,9 @@ def calibrate(frames, feats, scale=None, pre=None, e1m1=None):
 def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=(), lcd="pl022"):
     turbo = statistics.mean(fr.get("rfast", 1) for fr in frames) >= 1.5
     pipe = "QOG_DRAW_CORE1" in feats and "nopipe" not in whatif
-    opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats, "s1": cal.get("_s1", CORE1_SPEED)}
+    opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats, "s1": cal.get("_s1", CORE1_SPEED),
+            "covered": "QOG_NOTIFY_COVERED" in feats, "early_b": "QOG_BMODELS_EARLY" in feats,
+            "hudfirst": "QOG_VID_HUDFIRST" in feats}
     parts = frame_parts(frames, weights_for(feats, cal.get("_scale"), cal.get("keymult")), pipe)
     ms = to_ms(parts, cal, mhz)
     for wi in whatif:           # phase*factor: a phase made that much cheaper or dearer
