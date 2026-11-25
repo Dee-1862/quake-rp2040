@@ -75,6 +75,8 @@ void qog_video_set_core1_hook(void (*fn)(void));
  * 2 KB core 1 stack, so the job must be shallow. */
 void qog_video_core1_start(void (*fn)(void *), void *arg);
 void qog_video_core1_join(void);
+/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs since boot, us */
+void qog_video_core1_times(uint32_t *scan_us, uint32_t *job_us);
 
 qog_video_stats_t qog_video_stats(void);
 

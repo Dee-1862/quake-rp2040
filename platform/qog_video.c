@@ -163,6 +163,9 @@ static const uint8_t *volatile s_next_fb;
 static void (*volatile s_job_fn)(void *);
 static void *volatile s_job_arg;
 static volatile bool s_job_done = true;
+/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs, us since boot
+   (wrap after 71 minutes, the reader takes differences) */
+static volatile uint32_t s_c1_scan_us, s_c1_job_us;
 
 static void core1_main(void) {
     /* Lets core 0 pause us safely while it erases/programs flash (saves). */
@@ -172,9 +175,11 @@ static void core1_main(void) {
         while ((fb = s_next_fb) == NULL) {
             void (*job)(void *) = s_job_fn;
             if (job) {
+                const uint32_t j0 = time_us_32();
                 __dmb();
                 s_job_fn = NULL;
                 job(s_job_arg);
+                s_c1_job_us = s_c1_job_us + (time_us_32() - j0);
                 __dmb();
                 s_job_done = true;
                 __sev();
@@ -186,6 +191,7 @@ static void core1_main(void) {
         }
         s_next_fb = NULL;
         scanout(fb);
+        s_c1_scan_us = s_c1_scan_us + s_last_scan_us;
         s_frames = s_frames + 1u;
         __dmb();
         s_busy = false;
@@ -296,6 +302,11 @@ void qog_video_core1_start(void (*fn)(void *), void *arg) {
 void qog_video_core1_join(void) {
     while (!s_job_done) __wfe();
     __dmb();
+}
+
+void qog_video_core1_times(uint32_t *scan_us, uint32_t *job_us) {
+    *scan_us = s_c1_scan_us;
+    *job_us = s_c1_job_us;
 }
 
 qog_video_stats_t qog_video_stats(void) {

@@ -244,6 +244,34 @@ void Sys_QogCore1Start(void (*fn)(void *), void *arg) { qog_video_core1_start(fn
 void Sys_QogCore1Join(void) { qog_video_core1_join(); }
 #endif
 
+#ifdef QOG_DRAW_CORE1
+/* QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+   (engine/d_edge.c). One hardware spinlock, claimed by core 0 before core 1
+   first takes it. Core 1 waits for work in WFE, core 0 wakes it by SEV. */
+#include "hardware/sync.h"
+static spin_lock_t *s_pipe_lock;
+
+int Sys_QogCore1Mode(void) {
+    if (!s_pipe_lock) s_pipe_lock = spin_lock_instance((uint)spin_lock_claim_unused(true));
+    return 0;
+}
+void Sys_QogLock(void) { spin_lock_unsafe_blocking(s_pipe_lock); }
+void Sys_QogUnlock(void) { spin_unlock_unsafe(s_pipe_lock); }
+void Sys_QogCore1Wake(void) { __sev(); }
+void Sys_QogCore1Idle(void) { __wfe(); }
+#endif
+
+#if defined(QOG_PHASE_TIME) && defined(QOG_SPANS_CORE1)
+/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs so far, in us
+   (port/common/qog_phase.c prints it per frame) */
+void Sys_QogCore1Times(unsigned *scan_us, unsigned *job_us) {
+    uint32_t s, j;
+    qog_video_core1_times(&s, &j);
+    *scan_us = s;
+    *job_us = j;
+}
+#endif
+
 void D_BeginDirectRect(int x, int y, byte *pbitmap, int width, int height) {
     (void)x; (void)y; (void)pbitmap; (void)width; (void)height;
 }

@@ -902,6 +902,9 @@ static void R_QogFlushNoZ (int iv, int bottom)
 	unsigned	zwidth;
 	int			v;
 
+#ifdef QOG_DRAW_CORE1
+	D_QogPipeSync ();	// QuakeOG (Agent AM): core 1 done before the z-buffer moves
+#endif
 	r_qog_znoz++;
 	v = r_qog_basespan->v;		// the buffer's spans are of scan lines v to iv
 #ifndef QOG_ZEDGE_STACK_GUARD
@@ -943,6 +946,79 @@ static void R_QogClearNoZ (void)
 
 static qboolean R_QogEdgesToStack (int iv, int bottom);
 
+#ifdef QOG_DRAW_CORE1
+/*
+==============
+QuakeOG (Agent AM): the scan's part of the two-core pipeline (d_edge.c)
+
+Before the first scan line each world surface gets the last scan line of
+its edges (an edge's last line is the line whose removeedges list holds
+it). At the end of that line no later line can add a span to the surface,
+so its span list is the one the flush would draw, and it goes to core 1
+(D_QogPipePush), if the z rows of its spans lie above the edge table.
+On the board's 32-byte surfaces the line is kept in entref, which only a
+brush entity's surface uses (SURF_ENTITY), else in a table of its own.
+==============
+*/
+#if MAXHEIGHT > 256
+#error "QOG_DRAW_CORE1 keeps a scan line in a byte"
+#endif
+#ifdef QOG_SURF_T_TINY
+#define SURF_LASTROW(s)		((s)->entref)
+#define SURF_LASTROW_OK(si)	1
+#else
+static byte	r_qog_lastrow[NUMSTACKSURFACES + 2];
+#define SURF_LASTROW(s)		(r_qog_lastrow[(s) - surfaces])
+#define SURF_LASTROW_OK(si)	((si) < NUMSTACKSURFACES + 2)
+#endif
+
+static void R_QogPipeLastRows (int top, int bottom)
+{
+	edgeref_t	r;
+	edge_t		*e;
+	unsigned	si;
+	int			w, k;
+
+	for (w = top ; w <= bottom ; w++)
+	{
+		for (r = removeedges[w] ; r != EDGE_NONE ; r = e->nextremove)
+		{
+			e = EDGE_PTR(r);
+			for (k = 0 ; k < 2 ; k++)
+			{
+				si = e->surfs[k];
+				if (si > 1 && SURF_LASTROW_OK (si) && !surfaces[si].insubmodel)
+					SURF_LASTROW (&surfaces[si]) = (byte)w;
+			}
+		}
+	}
+}
+
+// the lit world surfaces whose last scan line iv was, to core 1
+static void R_QogPipeRow (int iv)
+{
+	edgeref_t	r;
+	edge_t		*e;
+	surf_t		*s;
+	unsigned	si;
+	int			k;
+
+	for (r = removeedges[iv] ; r != EDGE_NONE ; r = e->nextremove)
+	{
+		e = EDGE_PTR(r);
+		for (k = 0 ; k < 2 ; k++)
+		{
+			si = e->surfs[k];
+			if (si <= 1 || !SURF_LASTROW_OK (si))
+				continue;
+			s = &surfaces[si];
+			if (s->spans != SPAN_NONE && D_QOG_C1OK (s) && SURF_LASTROW (s) == iv)
+				D_QogPipePush (s);
+		}
+	}
+}
+#endif
+
 /*
 ==============
 R_QogScanRows
@@ -972,6 +1048,13 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 	// flushed first, neither touches what the other uses)
 		if (removeedges[iv])
 			R_RemoveEdges (EDGE_PTR(removeedges[iv]));
+
+#ifdef QOG_DRAW_CORE1
+	// QuakeOG (Agent AM): the surfaces that ended here, to core 1, when
+	// their z rows are free of edges
+		if (d_qogpipe_on && removeedges[iv] && (!edgesinz || ZROWS_END(iv) <= (byte *)r_edgesentinels))
+			R_QogPipeRow (iv);
+#endif
 
 		if (!edgesinz)
 		{
@@ -1194,7 +1277,16 @@ void R_ScanEdges (void)
 	edge_sentinel.u = 2000 << 24;		// make sure nothing sorts past this
 	edge_sentinel.prev = EDGE_REF(&edge_aftertail);
 
+#ifdef QOG_DRAW_CORE1
+	// QuakeOG (Agent AM): core 1 draws surfaces while the scan goes on
+	D_QogPipeBegin (!r_drawculledpolys);
+	if (d_qogpipe_on)
+		R_QogPipeLastRows (r_refdef.vrect.y, r_refdef.vrectbottom - 1);
+#endif
 	R_QogScanRows (r_refdef.vrect.y, r_refdef.vrectbottom - 1, true);
+#ifdef QOG_DRAW_CORE1
+	D_QogPipeEnd ();	// the last flush drew every surface, core 1's job returns
+#endif
 #ifdef QOG_ZEDGE_NOZ
 	R_QogClearNoZ ();	// Agent AC: every edge is done with
 #endif

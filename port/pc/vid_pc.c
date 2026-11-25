@@ -318,7 +318,7 @@ static DWORD WINAPI core1_thread(LPVOID unused) {
     }
 }
 
-void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
+static void core1_init(void) {
     if (s_c1_mode < 0) {
         s_c1_mode = COM_CheckParm("-core1first") ? 1 : COM_CheckParm("-core1last") ? 2 : 0;
         if (!s_c1_mode) {
@@ -329,6 +329,10 @@ void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
         Con_Printf("QOG_SPANS_CORE1: the second core's spans %s\n",
                    s_c1_mode == 1 ? "first, same thread" : s_c1_mode == 2 ? "last, same thread" : "on a second thread");
     }
+}
+
+void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
+    core1_init();
     s_c1_fn = fn;
     s_c1_arg = arg;
     if (s_c1_mode == 1) { fn(arg); s_c1_fn = NULL; }
@@ -340,6 +344,20 @@ void Sys_QogCore1Join(void) {
     else if (s_c1_mode == 2 && s_c1_fn) s_c1_fn(s_c1_arg);
     s_c1_fn = NULL;
 }
+#endif
+
+#ifdef QOG_DRAW_CORE1
+/* QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+   (engine/d_edge.c). On a second thread by default, or with -core1first and
+   -core1last core 1's surfaces are drawn on the game's thread, each as soon
+   as it is handed on, or at each flush after core 0's. */
+static volatile LONG s_pipe_lock;
+
+int Sys_QogCore1Mode(void) { core1_init(); return s_c1_mode; }
+void Sys_QogLock(void) { while (InterlockedExchange(&s_pipe_lock, 1)) YieldProcessor(); }
+void Sys_QogUnlock(void) { InterlockedExchange(&s_pipe_lock, 0); }
+void Sys_QogCore1Wake(void) {}
+void Sys_QogCore1Idle(void) { SwitchToThread(); }
 #endif
 
 void VID_Update(vrect_t *rects) {

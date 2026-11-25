@@ -149,6 +149,15 @@ void D_QogLitInterpCheck (void)
 #define LITI_CHECK
 #endif
 
+#ifdef QOG_DRAW_CORE1
+// QuakeOG (Agent AM): the check above, on core 0 before core 1 draws with
+// its own copy of this file (d_core1.c), which never checks
+void D_QogLitCheck (void)
+{
+	LITI_CHECK
+}
+#endif
+
 #ifdef QOG_RFAST_STATS
 // QuakeOG (Agent AA): PC measurement of the Fast drawer's work (d_litspan.h).
 // qog_rfaststats prints the sums since the last call and clears them.
@@ -487,7 +496,11 @@ void D_DrawSpans8Lit (espan_t *pspan)
 	if (r_qogfast)
 		D_LitFixSetup (pspan);	// QuakeOG (Agent AH): before core 1 reads it
 #endif
-	if (pspan->pnext == SPAN_NONE)
+	if (pspan->pnext == SPAN_NONE
+#ifdef QOG_DRAW_CORE1
+		|| d_qogpipe_on		// QuakeOG (Agent AM): core 1 draws surfaces of its own
+#endif
+		)
 	{
 		D_LITSTEP (pspan, 1);	// QuakeOG (Agent AA): or the Fast drawer
 		return;

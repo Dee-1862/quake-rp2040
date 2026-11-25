@@ -91,7 +91,24 @@ enum
 	QOG_WC_N
 };
 
+/* QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+ * (QOG_DRAW_CORE1, engine/d_edge.c). Sums since the last report, written by
+ * the core named. */
+enum
+{
+	QOG_C1_DRAWT,		/* core 1: time drawing surfaces in its pipeline job */
+	QOG_C1_WAITT,		/* core 1: time in that job waiting for a surface */
+	QOG_C1_C1SURFS,		/* core 1: surfaces it drew */
+	QOG_C1_SURFS,		/* core 0: lit world surfaces drawn through the pipeline (either core) */
+	QOG_C1_EARLY,		/* core 0: of which handed on before their flush */
+	QOG_C1_C0WAIT,		/* core 0: time waiting for core 1 to finish a surface (in edgescan) */
+	QOG_C1_PX,			/* PC only: their pixels */
+	QOG_C1_EARLYPX,		/* PC only: the pixels of those handed on early */
+	QOG_C1_N
+};
+
 #ifdef QOG_PHASE_TIME
+extern unsigned	qog_c1_stat[QOG_C1_N];
 extern unsigned	qog_ph_time[QOG_PH_N];
 extern unsigned	qog_ph_count[QOG_PC_N];
 extern unsigned	qog_hp_time[QOG_HP_N];
