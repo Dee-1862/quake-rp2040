@@ -433,6 +433,12 @@ if(QOG_SPLIT)
     option(QOG_BOARD_TURBO "with FAST, the Turbo render mode (r_fast 2), a half width 3D view" ON)
     if(QOG_BOARD_FAST AND QOG_BOARD_TURBO)
         list(APPEND _cl_defs QOG_RTURBO)
+        # Agent AR: in Turbo a model triangle within 3 x 3 pixels is drawn
+        # without gradients, its pixels in the first corner's texel and light
+        option(QOG_BOARD_TURBOTINY "with TURBO, tiny model triangles without gradients in Turbo" ON)
+        if(QOG_BOARD_TURBOTINY)
+            list(APPEND _cl_defs QOG_ALIAS_TURBOTINY)   # d_polyse.c D_QogTinyTriangle
+        endif()
     endif()
     # QuakeOG (Agent AI): in Fast mode alias models (monsters, items, the view
     # weapon) and particles are made in integers, r_fast 0 draws as before

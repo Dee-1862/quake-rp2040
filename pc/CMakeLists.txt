@@ -252,7 +252,8 @@ target_compile_definitions(quakeog_pc PRIVATE
 # the Fast shortcuts, doubled sideways as the board's LCD scanout does
 # (engine/r_qogturbo.c). r_fast 0 and 1 draw exactly as before.
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_RTURBO)
+    QOG_RTURBO
+    QOG_ALIAS_TURBOTINY)            # Agent AR: Turbo draws model triangles within 3 x 3 pixels without gradients (d_polyse.c)
 # Episode 1 client RAM, exact (Agent Y)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)

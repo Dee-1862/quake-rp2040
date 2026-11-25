@@ -50,11 +50,11 @@ void R_QogAliasStatsView (void)
 
 		Con_Printf ("qog_aliasstats %s views %d check %u drawn %u trivial %u subdivm %u verts %u tris %u back %u"
 				" smooth %u zero %u tiny %u spans %u pix %u pixw %u subtri %u subcall %u subpix %u cliptri %u"
-				" parts %u partvis %u partpix %u\n",
+				" parts %u partvis %u partpix %u tinytri %u\n",
 				s ? "vm" : "ents", r_framecount - frame0, a[QAS_CHECK], a[QAS_DRAWN], a[QAS_TRIVIAL],
 				a[QAS_SUBDIVM], a[QAS_VERTS], a[QAS_TRIS], a[QAS_BACK], a[QAS_SMOOTH], a[QAS_ZERO],
 				a[QAS_TINY], a[QAS_SPANS], a[QAS_PIX], a[QAS_PIXW], a[QAS_SUBTRI], a[QAS_SUBCALL],
-				a[QAS_SUBPIX], a[QAS_CLIPTRI], a[QAS_PARTS], a[QAS_PARTVIS], a[QAS_PARTPIX]);
+				a[QAS_SUBPIX], a[QAS_CLIPTRI], a[QAS_PARTS], a[QAS_PARTVIS], a[QAS_PARTPIX], a[QAS_TINYTRI]);
 	}
 }
 #endif
