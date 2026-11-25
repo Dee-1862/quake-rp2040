@@ -33,7 +33,22 @@ typedef struct {
     uint32_t frames;          /* scanouts completed */
     uint32_t last_scan_us;    /* duration of the last scanout */
     uint32_t last_wait_us;    /* how long the last present()/wait() blocked core 0 */
+    uint32_t last_scan_rows;  /* QuakeOG (Agent AP): panel lines the last scanout sent */
 } qog_video_stats_t;
+
+/* QuakeOG (Agent AP): send the pixel stream through a PIO state machine
+ * instead of the PL022, at clk_sys / n with n the smallest whole number of
+ * system clocks a bit that keeps the bit rate at or under max_khz (clock
+ * divider 1, so no fractional jitter). The PL022 still sends the commands
+ * (window, RAMWR). Call before qog_video_init. When no PIO state machine or
+ * instruction room is free, qog_video_init keeps the PL022 and says so. */
+void qog_video_use_pio(uint32_t max_khz);
+
+/* Pure, host-testable (Agent AP): system clocks a bit for the PIO stream at
+ * clk_hz with the rate at most max_hz (at least 2, at most 32), and how many
+ * of them the clock is high (hi) and low (lo, the data setup before the
+ * rising edge, never shorter than hi). */
+uint32_t qog_video_pio_bit_cycles(uint32_t clk_hz, uint32_t max_hz, uint32_t *hi, uint32_t *lo);
 
 /* Bring the panel up (blocking, ~150 ms), clear it, start core 1.
  * Returns false if the panel driver never reported ready. Call once. */

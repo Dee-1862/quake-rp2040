@@ -77,6 +77,12 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 #ifdef QOG_HUD_SKIP
 static bool s_pal_changed;
 unsigned vid_qog_frames, vid_qog_hudsent;   /* Agent AK: for the diag line (link_rp2040.c) */
+/* Agent AP: the last scanout's time and rows, for the same line */
+void VID_QogScanStats(unsigned *us, unsigned *rows) {
+    const qog_video_stats_t vs = qog_video_stats();
+    *us = (unsigned)vs.last_scan_us;
+    *rows = (unsigned)vs.last_scan_rows;
+}
 #define PAL_CHANGED()   (s_pal_changed = true)
 #else
 #define PAL_CHANGED()
@@ -107,6 +113,11 @@ void VID_Init(unsigned char *palette) {
     r_ztemp_bytes = ZBUFFER_BYTES & ~3;
 #endif
     D_InitCaches(surfcache, sizeof surfcache);
+#ifdef QOG_LCD_PIO
+    /* QuakeOG (Agent AP): the pixels through PIO, the PL022's even
+       prescaler gives only 50 MHz at 300 MHz (apps/quake QOG_LCD_PIO) */
+    qog_video_use_pio(QOG_LCD_PIO_KHZ);
+#endif
     if (!qog_video_init(&vc)) Sys_Error("VID_Init: LCD did not start");
     VID_SetPalette(palette);
     qog_mem_register();

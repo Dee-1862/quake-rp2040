@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include "quakedef.h"
 #include "d_local.h"
 #include "qog_input.h"
@@ -220,6 +221,8 @@ static byte s_sr_copy[QOG_PC_W * QOG_PC_H];
 static int s_sr_relrow, s_sr_rows, s_sr_packed;   /* Agent AO: rows released, sent, packed (Turbo) */
 static unsigned s_sr_checks, s_sr_waits, s_sr_bad;
 static qboolean s_racing;
+static qboolean s_sm_race;   /* Agent AP: the view started beside this scanout */
+static int s_sm_front;       /* Agent AP: and its front end waited for the whole scan */
 
 /* the bytes scan row r reads: a packed Turbo row QOG_PC_W / 2 from the
    frame's start, the others their own QOG_PC_W */
@@ -254,13 +257,14 @@ int VID_QogScanNeed(const void *lo, const void *hi) {
 }
 
 void VID_QogRaceBegin(void) {
-    if (s_lk_pending) s_racing = true;
+    if (s_lk_pending) s_racing = s_sm_race = true;
 }
 
 void VID_QogScanFree(const void *lo, const void *hi) {
     int need = VID_QogScanNeed(lo, hi);
     if (!need) return;
     if (need >= s_sr_rows) {
+        if (s_racing) s_sm_front = 1;   /* Agent AP */
         VID_QogScanDone();
         return;
     }
@@ -275,11 +279,85 @@ void VID_QogScanDone(void) {
 }
 #endif
 
+#ifdef QOG_VID_SCANRACE
+/* QuakeOG (Agent AP): per frame, the rows the next view waited for before
+   the end of the scanout (the front end's caches) and the rows the scanout
+   sent, so `qog_scanmodel <pre ms> <world ms>` can work out the board's
+   race wait at each LCD row time: the front end waits until the scanout
+   has sent its rows, less the work before the view (pre), and after the
+   world's front end (world) the view waits for the end of the scanout. */
+#define SM_MAX 8192
+static unsigned char s_sm_need[SM_MAX], s_sm_rows[SM_MAX], s_sm_turbo[SM_MAX], s_sm_raced[SM_MAX];
+static int s_sm_n;
+
+static void scanmodel_record(void) {
+    if (s_sm_n >= SM_MAX) return;
+    s_sm_need[s_sm_n] = (unsigned char)s_sr_relrow;
+    s_sm_rows[s_sm_n] = (unsigned char)s_sr_rows;
+    s_sm_turbo[s_sm_n] = (unsigned char)(s_sr_packed > 0);
+    s_sm_raced[s_sm_n] = (unsigned char)s_sm_race;
+    if (s_sm_front) s_sm_need[s_sm_n] = (unsigned char)s_sr_rows;   /* the front end waited for the whole scan */
+    s_sm_n++;
+}
+
+static void scanmodel_print(void (*pr)(char *fmt, ...), double pre, double world) {
+    /* us per row: the PL022 at 50 MHz (Agent V's 22.4 ms for 200 rows on
+       the board) and at 62.5 MHz (250 MHz), then PIO at 50, 60 and 75 MHz,
+       5,120 bits a row with no gap and about 0.4 us a line to restart DMA */
+    static const struct { const char *name; double us; } rate[] = {
+        { "spi 50.0 MHz", 112.0 }, { "spi 62.5 MHz", 91.5 },
+        { "pio 50.0 MHz", 102.8 }, { "pio 60.0 MHz", 85.7 }, { "pio 75.0 MHz", 68.7 },
+    };
+    for (int t = 0; t < 2; t++) {
+        int n = 0, raced = 0;
+        double need = 0, rows = 0;
+        for (int i = 0; i < s_sm_n; i++)
+            if (s_sm_turbo[i] == t) { n++; need += s_sm_need[i]; rows += s_sm_rows[i]; raced += s_sm_raced[i]; }
+        if (!n) continue;
+        pr("qog_scanmodel: %s, %d frames (%d raced), rows waited for avg %.1f, rows sent avg %.1f, pre %.1f ms world %.1f ms\n",
+           t ? "Turbo" : "Exact and Fast", n, raced, need / n, rows / n, pre, world);
+        for (unsigned k = 0; k < sizeof rate / sizeof rate[0]; k++) {
+            double w1 = 0, w2 = 0, scan = 0;
+            for (int i = 0; i < s_sm_n; i++) {
+                if (s_sm_turbo[i] != t) continue;
+                double front = s_sm_need[i] * rate[k].us / 1000.0, end = s_sm_rows[i] * rate[k].us / 1000.0;
+                double start = front > pre ? front : pre;
+                if (!s_sm_raced[i]) {   /* locked before the view: waits for the end */
+                    if (end > pre) w1 += end - pre;
+                    scan += end;
+                    continue;
+                }
+                w1 += start - pre;
+                if (end > start + world) w2 += end - start - world;
+                scan += end;
+            }
+            pr("qog_scanmodel:   %s scan %.2f ms, race wait %.2f ms (front end %.2f, end of scan %.2f)\n",
+               rate[k].name, scan / n, (w1 + w2) / n, w1 / n, w2 / n);
+        }
+    }
+}
+
+static void scanmodel_con(char *fmt, ...) {
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    Con_Printf("%s", buf);
+}
+
+static void cmd_qog_scanmodel(void) {
+    scanmodel_print(scanmodel_con, Cmd_Argc() > 1 ? Q_atof(Cmd_Argv(1)) : 5.0,
+                    Cmd_Argc() > 2 ? Q_atof(Cmd_Argv(2)) : 8.0);
+}
+#endif
+
 void VID_LockBuffer(void) {
     if (!s_lk_pending) return;
 #ifdef QOG_VID_SCANRACE
     if (s_racing) return;
     scanrace_check();
+    scanmodel_record();   /* Agent AP */
     s_lk_pending = false;
     s_lk_frames++;
 #else
@@ -376,6 +454,8 @@ void VID_Update(vrect_t *rects) {
     s_sr_rows = rows;
     s_sr_packed = TURBO_PACKED;
     s_racing = false;
+    s_sm_race = false;   /* Agent AP */
+    s_sm_front = 0;
 #endif
     if (s_framehash) framehash_print();
 #ifdef QOG_EDGES_IN_ZBUFFER
@@ -660,6 +740,9 @@ void VID_Init(unsigned char *palette) {
 #ifdef QOG_VID_LOCKWAIT
     Cmd_AddCommand("qog_lockcheck", cmd_qog_lockcheck);   /* QuakeOG (Agent V) */
 #endif
+#ifdef QOG_VID_SCANRACE
+    Cmd_AddCommand("qog_scanmodel", cmd_qog_scanmodel);   /* QuakeOG (Agent AP) */
+#endif
     Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
     Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
 #ifdef QOG_BOARD_MENU
@@ -700,6 +783,11 @@ void VID_Shutdown(void) {
 #ifdef QOG_VID_SCANRACE
     Sys_Printf("qog_scanrace: %u checks, %u waits for rows, %u writes before the scanout passed\n",
                s_sr_checks, s_sr_waits, s_sr_bad);
+    if (COM_CheckParm("-scanmodel")) {   /* Agent AP: the board's race wait, a few guesses of pre */
+        scanmodel_print(Sys_Printf, 3.0, 8.6);
+        scanmodel_print(Sys_Printf, 5.0, 8.6);
+        scanmodel_print(Sys_Printf, 7.0, 8.6);
+    }
 #endif
 #ifdef QOG_HUD_SKIP
 #ifdef QOG_HUD_SKIP_CHECK
