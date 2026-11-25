@@ -78,6 +78,14 @@ void qog_video_present_rows(const uint8_t *fb, uint32_t rows);
  * each pixel goes to the panel twice side by side (no CPU on core 0). Only
  * for a 320 wide frame whose rows and lines are one to one. */
 void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed);
+/* QuakeOG (Agent AP): characters the next present_packed draws over its
+ * packed rows after doubling them, as runs in list order: each run is
+ * x | y << 9 | length << 17 | first << 23, its characters chars[first] on,
+ * 8 pixels apart. A glyph is 8x8 at font + (num >> 4) * 1024 + (num & 15)
+ * * 8 with rows 128 bytes apart, index 0 see-through (id's Draw_Character).
+ * Each must lie wholly inside the packed rows. The lists must stay as they
+ * are until the present after that one. */
+void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font);
 void qog_video_wait_rows(uint32_t rows);
 
 /* Optional work for core 1 to do while its line DMA runs (sound mixing in

@@ -206,8 +206,15 @@ void VID_QogScanDone(void) {
    W / 2 bytes a row, which the scanout sends twice as wide (r_qogturbo.c) */
 #ifdef QOG_RTURBO
 #define TURBO_PACKED    r_qog_turbopacked
+/* Agent AP: the characters listed over the packed view go with the frame,
+   core 1 draws them over the doubled rows (engine/r_qogturbo.c) */
+extern byte *draw_chars;
+#define TURBO_TEXT()    do { const r_qogtext_t *t_ = R_QogTurboTextTake(); \
+                             qog_video_set_text((const uint32_t *)t_->runs, (uint32_t)t_->numruns, \
+                                                t_->chars, draw_chars); } while (0)
 #else
 #define TURBO_PACKED    0
+#define TURBO_TEXT()    ((void)0)
 #endif
 
 void VID_Update(vrect_t *rects) {
@@ -221,6 +228,7 @@ void VID_Update(vrect_t *rects) {
         if (rows >= H) s_pal_changed = false;
         vid_qog_frames++;
         if (rows >= H) vid_qog_hudsent++;
+        TURBO_TEXT();
         qog_video_present_packed(vid_buffer, (uint32_t)rows, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
         s_scan_rows = (uint8_t)rows;
@@ -232,6 +240,7 @@ void VID_Update(vrect_t *rects) {
 #ifdef QOG_HUD_IN_ZBUFFER
     R_HudFrameEnd();
 #endif
+    TURBO_TEXT();
     qog_video_present_packed(vid_buffer, H, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
     s_scan_rows = H;

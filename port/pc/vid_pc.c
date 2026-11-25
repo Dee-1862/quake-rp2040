@@ -131,6 +131,28 @@ static qboolean s_panel_turbo;   /* the last frame presented was a Turbo one */
 #define TURBO_PACKED 0
 #endif
 
+#ifdef QOG_RTURBO
+/* QuakeOG (Agent AP): the characters listed over a packed Turbo view
+   (engine/r_qogturbo.c R_QogTurboText), drawn over the doubled rows as the
+   board's scanout draws them. Takes the frame's list every frame. */
+static void panel_text(byte *panel) {
+    extern byte *draw_chars;
+    int i, k, r, c;
+    const r_qogtext_t *t = R_QogTurboTextTake();
+    for (i = 0; i < t->numruns; i++) {
+        const unsigned e = t->runs[i];
+        const int x = (int)(e & 511), y = (int)((e >> 9) & 255), len = (int)((e >> 17) & 63), first = (int)(e >> 23);
+        for (k = 0; k < len; k++) {
+            const int num = t->chars[first + k];
+            const byte *src = draw_chars + ((num >> 4) << 10) + ((num & 15) << 3);
+            for (r = 0; r < 8; r++, src += 128)
+                for (c = 0; c < 8; c++)
+                    if (src[c]) panel[(y + r) * QOG_PC_W + x + 8 * k + c] = src[c];
+        }
+    }
+}
+#endif
+
 /* QuakeOG (Agent AO): the panel's first rows, as the board's scanout sends
    them: rows below `packed` hold QOG_PC_W / 2 pixels each from the start of
    the frame (a Turbo view, engine/r_qogturbo.c), each sent twice */
@@ -436,12 +458,16 @@ void VID_Update(vrect_t *rects) {
 #endif
     }
     panel_rows(s_panel, rows, TURBO_PACKED);   /* Agent AO: a Turbo view doubled as on the panel */
+#ifdef QOG_RTURBO
+    panel_text(s_panel);   /* Agent AP: and the characters listed over it */
+#endif
 #elif defined(QOG_HUD_IN_ZBUFFER)
     R_HudFrameEnd();
 #endif
 #if !defined(QOG_HUD_SKIP) && defined(QOG_RTURBO)
     s_panel_turbo = TURBO_PACKED > 0;
     if (s_panel_turbo) panel_rows(s_panel, QOG_PC_H, TURBO_PACKED);
+    panel_text(s_panel);   /* Agent AP */
 #endif
     if (rows >= QOG_PC_H) s_pal_changed = false;
 #ifdef QOG_VID_LOCKWAIT
@@ -783,6 +809,13 @@ void VID_Shutdown(void) {
 #ifdef QOG_VID_SCANRACE
     Sys_Printf("qog_scanrace: %u checks, %u waits for rows, %u writes before the scanout passed\n",
                s_sr_checks, s_sr_waits, s_sr_bad);
+#ifdef QOG_RTURBO
+    {   /* Agent AP: characters over packed Turbo views (engine/r_qogturbo.c) */
+        extern int r_qog_turbotextmax, r_qog_turbotextover, r_qog_turbotextframes;
+        Sys_Printf("qog_turbotext: %d frames with characters over a packed view, most in a frame %d of %d, %d did not fit\n",
+                   r_qog_turbotextframes, r_qog_turbotextmax, QOG_TURBO_CHARS, r_qog_turbotextover);
+    }
+#endif
     if (COM_CheckParm("-scanmodel")) {   /* Agent AP: the board's race wait, a few guesses of pre */
         scanmodel_print(Sys_Printf, 3.0, 8.6);
         scanmodel_print(Sys_Printf, 5.0, 8.6);

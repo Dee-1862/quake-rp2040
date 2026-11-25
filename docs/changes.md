@@ -2,6 +2,91 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: The LCD pixels through PIO at 60 MHz, text over a Turbo view drawn by the scanout, and a race wait model on the PC (Agent AP, PC and ARM build, registered data)
+
+At 300 MHz the PL022's even prescaler gives the LCD only 50 MHz (300 / 6), and a scanout takes about 22.4 ms (Agent V measured 22.4 at the same 50 MHz, against 20.5 ms of wire). The view that races the scanout waits for it. Two changes and a measurement. Nothing ran on hardware. Every board number below is an estimate.
+
+### The panel and its limit
+
+The controller is a Sitronix ST7789 (bsp/display_cpu/lcd/st7789.c, 320x240 branch, MADCTL 0x70). Its serial write limits depend on the part: the ST7789V datasheet (V1.3, 2014) gives a 66 ns write cycle with 15 ns high and low pulses, the ST7789V3 (V0.1) 16 ns with 7 ns high and low. The board's record (`FWOG_LCD_MAX_HZ` 62.5 MHz, docs/hardware/pinmap.md) and the board itself run 62.5 MHz (250 MHz builds, 8 ns pulses) without trouble, so the panel takes the V3 timing in practice. 62.5 MHz stays the cap.
+
+### PIO scanout (`QOG_LCD_PIO`, on)
+
+| | PL022 (before) | PIO (now) |
+| --- | --- | --- |
+| clock at 300 MHz | clk_peri / 6 = 50 MHz | clk_sys / 5 = 60 MHz, divider 1 (no fractional jitter), SCK high 2 and low 3 system clocks (6.7 and 10 ns) |
+| gaps | about 1.5 bit times between 16-bit frames (mode 0 pulses its frame signal between words) | none, autopull of 16 bits from an 8 deep joined FIFO |
+| full scan, 200 rows | 22.4 ms (measured at the same rate) | about 17.2 ms (5,120 bits a row at 60 MHz plus about 0.4 us a line) |
+| status bar skipped, 152 rows | about 17.0 ms | about 13.0 ms |
+| a row | 112 us | about 85.7 us |
+
+- platform/qog_video.c builds a two instruction program at start-up (`out pins, 1 side 0 [lo - 1]`, `nop side 1 [hi - 1]`, side-set on SCK, out on MOSI, shift left, autopull 16) with n the fewest whole system clocks a bit that keep the rate at or under `QOG_LCD_PIO_KHZ` (`qog_video_pio_bit_cycles`, pure). 250 MHz gives 62.5 MHz (4 clocks), 200 MHz 50 MHz. A 16-bit DMA write to the TX FIFO lands in both halves of the word, so core 1's RGB565 line buffers and line DMA stay as they were, only the DREQ and the write address change.
+- The state machine takes pio1 first (pio0 SM 0 holds the WS2812 bar, sys_rp2040.c, and the speaker asks pio0 first, snd_rp2040.c, so it lands on pio0 too), then pio0. No free state machine or instruction room keeps the PL022 and says so.
+- The PL022 still sends CASET, RASET and RAMWR (st7789_set_window, the BSP's own fills and text). SCK and MOSI change GPIO function to the PIO for the pixel stream and back after it. Both sides idle with SCK low (SPI mode 0). The end of a scanout is the state machine stalling on its empty FIFO (FDEBUG TXSTALL, cleared first, set again in every cycle it waits).
+- SCK and MOSI get fast slew and 8 mA drive for the shorter high pulse.
+- The fallback is `-DQOG_LCD_PIO=OFF` (the PL022 as before). `-DQOG_LCD_PIO_KHZ=50000` keeps PIO with 3 and 3 clocks (inside every timing of the V3 sheet, 20.5 ms instead of 22.4). `-DQOG_LCD_PIO_KHZ=75000` gives 75 MHz at 300 MHz (20% over the panel's 62.5), only to try on the board with the user's approval.
+- Core 1's line loop stays in flash: the compiler inlines convert_line and scanout into core1_main, which is in flash, in main as well (the "hot loops live in RAM" comment was not true of the board build). Keeping them in RAM with `__no_inline_not_in_flash_func` costs about 450 B of RAM and was left out.
+
+### Text over a Turbo view drawn by the scanout (Turbo only)
+
+Counting on the PC pair showed that Agent AO's Turbo frames were mostly not packed: in Agent AF's menu Benchmark with r_fast 2 only 153 of 1,449 presented frames went out packed. The rest had a character over the view (901 spreads from Draw_Character, the notify lines of demo3's pickups, 64 from the console background), which spreads the view to full width (0.3 ms on the board) and makes the next view race a full width scanout. Now Draw_Character over a packed view lists the character instead (`R_QogTurboText`, engine/r_qogturbo.c): runs of characters side by side on one row, 32 runs and 160 characters a frame, in drawing order. VID_Update hands the frame's list to the scanout (`qog_video_set_text`), and core 1 draws each glyph over the doubled RGB565 line as Draw_Character would draw it over the spread view (index 0 see-through). Two lists alternate, so the one in flight stays. A character that does not fit, or any other 2D drawing over the view, spreads it as before and first draws the listed characters into the frame in their order. The crosshair goes to the list when characters are already listed, so it stays above them. The PC builds the panel the same way, so shots and frame hashes show the panel.
+
+- After it, 782 of the same run's 1,449 frames went out packed, 408 of them with characters drawn by the scanout (at most 152 characters in a frame).
+- RAM: the two lists 592 B, the scanout's pointers 20 B.
+
+### The race wait model (`-scanmodel`, PC pair)
+
+port/pc/vid_pc.c records for every frame the rows the next view waited for before the end of the scanout and the rows the scanout sent, and with `-scanmodel` prints at exit the board's race wait at five LCD rates: the front end waits until the scanout has sent its rows less the work before the view (pre), and after the world's front end (world) the view waits for the end of the scanout. world is 8.6 ms (the board's demo3 world phase scaled to 300 MHz), pre is not measured, so 3, 5 and 7 ms are printed. Agent AF's menu Benchmark on the board-flag pair, all 1,449 frames (the demo plus the menu and e1m1 start):
+
+| Mode | LCD | scan ms | race wait ms, pre 5 (pre 3 to 7) |
+| --- | --- | ---: | ---: |
+| Fast | PL022 50 MHz (300 MHz today) | 19.2 | 5.7 (3.7 to 7.7) |
+| Fast | PL022 62.5 MHz (250 MHz before) | 15.7 | 2.4 (1.2 to 4.4) |
+| Fast | PIO 60 MHz | 14.7 | 1.7 (0.7 to 3.4) |
+| Fast | PIO 75 MHz (not the default) | 11.8 | 0.2 (0.1 to 1.2) |
+| Turbo before (PL022 50 MHz, text spreads) | | 19.2 | 5.6 |
+| Turbo, PIO 60 MHz and text by the scanout | | 14.5 | 1.5 |
+
+So the PIO scanout is worth about 4 ms of every demo3 frame at 300 MHz in Fast and in Turbo, more than 300 MHz lost to the 50 MHz SPI (3.3 ms in this model). A Turbo view still waits for the end of the scanout before its spans (R_EdgeDrawing's VID_QogScanDone), which AO's counts of row waits did not include. Every ms that later work (Agent AM) takes off the world's front end comes back as race wait unless the scanout is shorter, so the faster scanout also keeps those savings.
+
+### What the board should print (COM8, display)
+
+```
+[lcd] spi 50000000 Hz (clk_peri 300000000 Hz)
+[qog_video] lcd pio1 sm 0, 60000 kHz (clk_sys 300000 kHz / 5, high 2 low 3, limit 62500 kHz), commands on the PL022
+[qog_video] 320x200 -> 320x200 at y=20, dma ch <n>
+...
+[quake_display] status bar rows sent in 25 of 300 frames, last scan 13050 us for 152 rows
+```
+
+The last scan is about 13.0 ms for 152 rows and 17.2 ms for 200 with PIO, about 17.0 and 22.4 ms with the PL022 (`-DQOG_LCD_PIO=OFF`). `[qog_video] lcd no free PIO state machine, staying on the PL022` means the fallback ran. A picture with wrong colours, shifted pixels or a black panel with PIO but not with OFF means the panel misses the 6.7 ns high pulse, and `-DQOG_LCD_PIO_KHZ=50000` is the next build to try.
+
+### Checks (hidden, `-nosound`, own build folders, own git-ignored data folder)
+
+| Check | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc | ce86f894f9de |
+| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against an untouched build of cd1e749 | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d |
+| `qogtest_ap_text.cfg` (E1M1 Turbo, six short notify lines, a long one, the crosshair, then Fast and Exact), 39 frame hashes, quakeog_pc and the board-flag pair against cd1e749 | identical, the pair drew 35 frames' characters from the list |
+| the same with the lists cut to 3 runs and 20 characters (`QOG_TURBO_RUNS`, `QOG_TURBO_CHARS`), every frame overflows | identical |
+| menu Benchmark on the pair, r_fast 1 and r_fast 2 | `qog_scanrace` 0 writes before the scanout passed, `qog_lockcheck` 0 of 1,449 changed |
+
+### RAM and size (board, the full configure line with 300 MHz and Turbo)
+
+| Build | quake_display `end` | spare beside the 2 KB heap | quake_main `end` |
+| --- | --- | --- | --- |
+| main cd1e749 | 0x2003ead8 | 3,368 B | 0x2003f58c |
+| PIO scanout only | 0x2003eafc | 3,332 B | 0x2003f58c |
+| this branch | 0x2003ed68 | 2,712 B | 0x2003f58c |
+
+quake_display.bin 400,016 B (397,840 on main), quake_main.bin 1,343,788 B. `-DQOG_LCD_PIO=OFF` builds and links (0x2003eafc before the text lists).
+
+Files: platform/qog_video.c and .h, platform/CMakeLists.txt (hardware_pio), port/rp2040/vid_rp2040.c, port/rp2040/link_rp2040.c (the diag line), apps/quake/CMakeLists.txt (`QOG_LCD_PIO`, `QOG_LCD_PIO_KHZ`), engine/r_qogturbo.c, engine/vid.h, engine/draw.c (Draw_Character, one call), port/pc/vid_pc.c. Test scripts in the git-ignored data folder: `qogtest_ap_fast.cfg`, `qogtest_ap_turbo.cfg` (r_fast 1 or 2, then Agent AF's menu Benchmark), `qogtest_ap_text.cfg`.
+
+Not done, for later:
+- Measure pre on the board (the time from VID_Update to the view's first scan wait). The model's ranges come from guessing it.
+- Text drawn by the scanout covers Draw_Character only. Draw_Pic and Draw_TransPic over the view (the pause and loading plaques, the menu) still spread it.
+
 ## 2026-11-25: 300 MHz at 1.25 V, a flash check over every RX delay, die temperature lines, and a board PC-sampling profiler (Agent AN, ARM build, not run on hardware)
 
 The user approved 300 MHz. Both Quake apps now raise the core voltage to 1.25 V and then the clock to 300 MHz right after `board_init()`, extending Agent AB's run-time switch (port/rp2040/clock_rp2040.c). The BSP, its 200 MHz display bootloader and every other app are untouched. A new build option, `QOG_PROF`, adds a profiler that samples the interrupted PC on the board and prints each core's top 20 functions every 5 s. Nothing ran on hardware. Every board number below is an estimate.

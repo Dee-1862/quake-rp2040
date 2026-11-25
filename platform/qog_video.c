@@ -53,6 +53,12 @@ static volatile uint32_t s_last_scan_us;
 static uint32_t          s_last_wait_us;
 static void (*volatile s_hook)(void);
 static uint32_t          s_last_scan_rows;   /* Agent AP */
+/* Agent AP: characters over the packed rows (qog_video_set_text), the next
+   present's and the scanout's in flight */
+static const uint32_t   *s_text_next, *s_scan_text;
+static const uint8_t    *s_chars_next, *s_scan_chars;
+static uint32_t          s_text_next_n, s_scan_text_n;
+static const uint8_t    *s_font;
 
 /* QuakeOG (Agent AP): the pixel stream through PIO (qog_video_use_pio).
    Two instructions, side-set 1 bit on SCK, autopull 16 bits MSB first:
@@ -74,7 +80,11 @@ static uint32_t s_pio_hz;
 /* ---- core 1 ---------------------------------------------------------- */
 
 /* Hot loops live in RAM so core 1 never contends with core 0 for XIP while
-   the renderer is streaming textures out of flash. */
+   the renderer is streaming textures out of flash. QuakeOG (Agent AP): in
+   the board build the compiler inlines them into scanout and scanout into
+   core1_main, which is in flash, so the loop runs from flash and its few
+   cache lines stay in the XIP cache. Keeping them in RAM with
+   __no_inline_not_in_flash_func costs about 450 bytes of RAM. */
 static void __not_in_flash_func(convert_line)(uint16_t *dst, const uint8_t *src) {
     const uint16_t *pal = s_pal;
     if (s_x_identity) {
@@ -107,6 +117,25 @@ static void __not_in_flash_func(convert_line_double)(uint16_t *dst, const uint8_
         d[2] = pal[(w >> 16) & 0xFFu] * 0x10001u;
         d[3] = pal[w >> 24] * 0x10001u;
         d += 4;
+    }
+}
+
+/* QuakeOG (Agent AP): the listed characters that cross source row sy, over
+   its converted line, as Draw_Character draws them over a spread view */
+static void text_line(uint16_t *dst, uint32_t sy) {
+    const uint16_t *pal = s_pal;
+    const uint32_t *t = s_scan_text;
+    for (uint32_t i = 0, n = s_scan_text_n; i < n; i++) {
+        const uint32_t e = t[i], r = sy - ((e >> 9) & 255u);
+        if (r >= 8u) continue;
+        const uint8_t *ch = s_scan_chars + (e >> 23);
+        uint16_t *d = dst + (e & 511u);
+        for (uint32_t k = 0, len = (e >> 17) & 63u; k < len; k++, d += 8) {
+            const uint32_t num = ch[k];
+            const uint8_t *src = s_font + ((num >> 4) << 10) + ((num & 15u) << 3) + (r << 7);
+            for (uint32_t c = 0; c < 8u; c++)
+                if (src[c]) d[c] = pal[src[c]];
+        }
     }
 }
 
@@ -173,9 +202,10 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
             /* New source line: build it in the free buffer. The other one
                may still be on the wire. */
             cur ^= 1u;
-            if ((uint32_t)sy < s_scan_packed)   /* Agent AO: a Turbo view's row, packed */
+            if ((uint32_t)sy < s_scan_packed) {   /* Agent AO: a Turbo view's row, packed */
                 convert_line_double(s_line[cur], fb + (uint32_t)sy * (src_w / 2u));
-            else
+                if (s_scan_text_n) text_line(s_line[cur], (uint32_t)sy);   /* Agent AP */
+            } else
                 convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
             last_sy = sy;
             __dmb();
@@ -345,6 +375,13 @@ bool qog_video_init(const qog_video_config_t *cfg) {
 
 void qog_video_use_pio(uint32_t max_khz) { s_pio_want_khz = max_khz; }
 
+void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font) {
+    s_text_next = runs;
+    s_chars_next = chars;
+    s_text_next_n = nruns;
+    s_font = font;
+}
+
 void qog_video_set_palette565(const uint16_t pal[256]) {
     memcpy(s_pal_pending, pal, sizeof s_pal_pending);
     __dmb();
@@ -387,6 +424,11 @@ void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed)
     s_scan_rows = (rows && rows < s_cfg.out_h && s_cfg.src_h == s_cfg.out_h) ? rows : s_cfg.out_h;
     /* Agent AO: packed rows only for a 320 wide frame, rows one to one */
     s_scan_packed = (s_x_identity && s_cfg.src_h == s_cfg.out_h && packed <= s_cfg.src_h) ? packed : 0u;
+    /* Agent AP: the characters only over packed rows */
+    s_scan_text = s_text_next;
+    s_scan_chars = s_chars_next;
+    s_scan_text_n = (s_scan_packed && s_font) ? s_text_next_n : 0u;
+    s_text_next_n = 0;
     s_scan_row = 0;
     s_busy = true;
     __dmb();

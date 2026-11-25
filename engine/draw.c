@@ -194,6 +194,10 @@ void Draw_Character (int x, int y, int num)
 	
 	if (y <= -8)
 		return;			// totally off screen
+#ifdef QOG_RTURBO
+	if (R_QogTurboText (x, y, num))
+		return;			// QuakeOG (Agent AP): the scanout draws it over the packed view
+#endif
 	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
 
 #ifdef PARANOID

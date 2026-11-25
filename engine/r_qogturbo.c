@@ -34,6 +34,10 @@ the last scanout to pass those rows (QOG_VID_SCANRACE).
 
 #ifdef QOG_RTURBO
 
+#if defined(_WIN32) && !defined(QOG_TURBO_TEXT_STATS)
+#define QOG_TURBO_TEXT_STATS	// Agent AP: the PC counts the listed characters (vid_pc.c)
+#endif
+
 int		r_qog_turboview;		// vid.h
 int		r_qog_turbopacked;		// vid.h
 byte	*r_qog_turbocachelo, *r_qog_turbocachehi;	// r_draw.c: room for the vertex cache, hi NULL outside a Turbo view
@@ -52,6 +56,14 @@ static float			r_qog_turboaspect;	// vid.aspect outside the view
 static short			r_qog_turboscrw;	// scr_vrect.width outside the view
 static d_zval_t			*r_qog_turbozbuf;	// d_pzbuffer outside the view
 static unsigned short	*r_qog_turboedgecache;	// r_qog_edgecache outside the view
+
+// Agent AP: characters over the packed view (vid.h R_QogTurboText), two
+// lists so the one the scanout in flight reads stays as it is
+static r_qogtext_t		r_qog_turbotext[2];
+static r_qogtext_t		*r_qog_text = &r_qog_turbotext[0];	// the frame's
+#ifdef QOG_TURBO_TEXT_STATS
+int		r_qog_turbotextmax, r_qog_turbotextover, r_qog_turbotextframes;	// PC measurement
+#endif
 
 /*
 ==============
@@ -74,6 +86,7 @@ void R_QogTurboBegin (void)
 		r_qog_turbolast = turbo;
 	}
 	r_qog_turbopacked = 0;		// this view draws over the rows (a Turbo view packs them again)
+	r_qog_text->numruns = r_qog_text->numchars = 0;	// Agent AP: and over any character listed before it
 	if (!turbo)
 		return;
 
@@ -193,7 +206,7 @@ by then, and within row 0 each word is read before it is written over.
 */
 void R_QogTurboUnpack (void)
 {
-	int			rows = r_qog_turbopacked, half = vid.rowbytes >> 1, r, i;
+	int			rows = r_qog_turbopacked, half = vid.rowbytes >> 1, r, i, n;
 	unsigned	*src, *dst, w, lo, hi;
 
 	if (!rows)
@@ -217,6 +230,83 @@ void R_QogTurboUnpack (void)
 			dst[2 * i + 1] = hi * 0x101;
 		}
 	}
+	// Agent AP: the characters listed so far go into the frame now, in
+	// their order, before whatever spread the view draws over them
+	n = r_qog_text->numruns;
+	r_qog_text->numruns = r_qog_text->numchars = 0;
+	for (r = 0 ; r < n ; r++)
+	{
+		w = r_qog_text->runs[r];
+		for (i = 0 ; i < (int)((w >> 17) & 63) ; i++)
+			Draw_Character ((w & 511) + 8 * i, (w >> 9) & 255, r_qog_text->chars[(w >> 23) + i]);
+	}
+}
+
+/*
+==============
+R_QogTurboText
+
+Agent AP: Draw_Character over a packed Turbo view. A character wholly
+inside the packed rows is listed instead of drawn (vid.h), when the list
+has room. The scanout draws it over the doubled pixels as Draw_Character
+would draw it over the spread view: a pixel of index 0 is see-through.
+==============
+*/
+int R_QogTurboText (int x, int y, int num)
+{
+	r_qogtext_t	*t = r_qog_text;
+	unsigned	*last;
+
+	if (!r_qog_turbopacked || y < 0 || y + 8 > r_qog_turbopacked || x < 0 || x + 8 > (int)vid.width
+		|| vid.conbuffer != vid.buffer || vid.conrowbytes != vid.rowbytes)
+		return 0;
+	last = t->numruns ? &t->runs[t->numruns - 1] : NULL;
+	if (t->numchars < QOG_TURBO_CHARS)
+	{
+		// the next character of the last run (Draw_String, Con_DrawNotify)
+		if (last && (int)((*last >> 9) & 255) == y && ((*last >> 17) & 63) < 63
+			&& (int)(*last & 511) + 8 * (int)((*last >> 17) & 63) == x)
+		{
+			*last += 1u << 17;
+			t->chars[t->numchars++] = (byte)num;
+			return 1;
+		}
+		if (t->numruns < QOG_TURBO_RUNS)
+		{
+			t->runs[t->numruns++] = (unsigned)x | ((unsigned)y << 9) | (1u << 17) | ((unsigned)t->numchars << 23);
+			t->chars[t->numchars++] = (byte)num;
+			return 1;
+		}
+	}
+#ifdef QOG_TURBO_TEXT_STATS
+	r_qog_turbotextover++;
+#endif
+	return 0;		// Draw_Character spreads the view and draws the list and this one
+}
+
+/*
+==============
+R_QogTurboTextTake
+
+Agent AP: VID_Update hands the frame's list to the scanout and the next
+frame lists into the other one. Empty when the frame holds no packed view.
+==============
+*/
+const r_qogtext_t *R_QogTurboTextTake (void)
+{
+	r_qogtext_t	*t = r_qog_text;
+
+	if (!r_qog_turbopacked)
+		t->numruns = t->numchars = 0;	// a spread frame drew them already
+#ifdef QOG_TURBO_TEXT_STATS
+	if (t->numruns)
+		r_qog_turbotextframes++;
+	if (t->numchars > r_qog_turbotextmax)
+		r_qog_turbotextmax = t->numchars;
+#endif
+	r_qog_text = t == &r_qog_turbotext[0] ? &r_qog_turbotext[1] : &r_qog_turbotext[0];
+	r_qog_text->numruns = r_qog_text->numchars = 0;
+	return t;
 }
 
 /*
@@ -234,7 +324,8 @@ void R_QogTurboChar (int x, int y, int num)
 	byte		*src, *dst;
 	int			r, c, half = vid.rowbytes >> 1;
 
-	if (y < 0 || y + 8 > r_qog_turbopacked || x < 0 || x + 8 > (int)vid.width)
+	if (y < 0 || y + 8 > r_qog_turbopacked || x < 0 || x + 8 > (int)vid.width
+		|| r_qog_text->numruns)	// Agent AP: over listed characters it must stay above them
 	{
 		Draw_Character (x, y, num);
 		return;
