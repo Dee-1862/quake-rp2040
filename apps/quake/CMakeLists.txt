@@ -172,7 +172,10 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_BPOLY_SIDES                 # r_bsp.c: brush clip sides inline, a point shared with the edge before keeps its side
     QOG_BMSPLIT_INT                 # r_efrag.c R_SplitEntityOnNode2: axial box tests by integer compares of the float bits
     QOG_LMAP_FUSE                   # r_surf.c R_BuildLightMap: the grid's passes fused, the same cells
-    QOG_BMODEL_BBOXINT)             # r_main.c R_BmodelCheckBBox: integer plane tests with a margin first (with QOG_WORLDNODE_INT)
+    QOG_BMODEL_BBOXINT              # r_main.c R_BmodelCheckBBox: integer plane tests with a margin first (with QOG_WORLDNODE_INT)
+    QOG_SUBDIV_LEAF                 # d_polyse.c: subdivision leaves tested inline, no call (Agent AQ, round 3)
+    QOG_LEFTEDGE_LOCALS             # d_polyse.c D_PolysetScanLeftEdge: the edge's state in locals
+    QOG_ALIAS_SMALLTRI)             # d_polyse.c: triangles with no pixel or one drawn without gradients
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)

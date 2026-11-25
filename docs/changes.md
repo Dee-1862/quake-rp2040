@@ -2,6 +2,50 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: Alias triangles, third round, all exact (Agent AQ, PC and ARM build, registered data)
+
+Models (4.0 ms in Fast, 3.3 in Turbo by the model) and the view model (2.7 and 2.0). Three flags in d_polyse.c, on the rasterizer side only (r_alias.c and r_main.c, where Agent AM moves the front end to core 1, are not touched). All exact: r_fast 0, 1 and 2 draw the same bits as main 4b0c98b. Nothing ran on hardware.
+
+### Boardbench (300 MHz, LCD by PIO at 60 MHz)
+
+| | Fast fps | Turbo fps | models ms (Fast / Turbo) | vmodel ms (Fast / Turbo) |
+| --- | ---: | ---: | ---: | ---: |
+| main 4b0c98b | 26.1 (24.3 to 27.7) | 30.0 (27.1 to 31.9) | 4.2 / 3.5 | 2.8 / 2.1 |
+| this branch | 26.5 (24.6 to 28.0) | 30.4 (27.6 to 31.9) | 3.7 / 3.1 | 2.7 / 2.0 |
+
+New counts per view (Fast / Turbo): 21.3 / 2.3 small triangles of 124.6 / 64.6 that used to take gradients, 259 / 249 subdivision leaves tested inline of 494 / 477 calls. The coordinator's main figure was 27.0 / 30.9 on another run, this machine gave 26.1 / 30.0 for the same commit, so compare the two rows above.
+
+### What the model priced (Fast, main, ms per view)
+
+models: recursive subdivision calls 0.86 (495 a view drawing 29 points), gradient triangles 0.81 (125 a view, 19 with no pixel and 61 with 1 to 4), vertices 0.55, span pixels 0.51, triangles looked at 0.42, span rows 0.38. vmodel: span pixels 1.30 (2,777 a view), span rows 0.62, clipped triangles 0.42, gradient triangles 0.24.
+
+### Changes
+
+| Change | Flag | What it does |
+| --- | --- | --- |
+| Small triangles without gradients | `QOG_ALIAS_SMALLTRI` | a triangle of at most two scan lines runs only the integer edge steps first (D_PolysetSetUpForLineScan's quotients, the left edge's counts as D_PolysetScanLeftEdge makes them, the right edge's as D_PolysetDrawSpans8 steps them). With no pixel nothing else happens (id's path would only set globals the next triangle sets again). With one pixel at the start of the first line, that pixel takes the top left corner's own s, t, light and 1/z, since id adds the steps only after it, so its texel, colour and depth need no gradient. Anything else takes id's path. AR's measured 2,250 cycles a gradient triangle at one pixel become the integer edge steps |
+| Subdivision leaves inline | `QOG_SUBDIV_LEAF` | a call of D_PolysetRecursiveTriangle whose three edges are each at most one pixel long returns at once, so the caller tests that inline and leaves the call out. The same points in the same order |
+| Left edge in locals | `QOG_LEFTEDGE_LOCALS` | D_PolysetScanLeftEdge with the edge's state in locals, written back at the end (the engine's -fno-strict-aliasing made every span package store reload every d_ global, L220) |
+
+New counts for the model: `am_subleaf` and `am_smalltri` (and `vm_smalltri`), weights 25 and 150 integer cycles from the Thumb code. A small triangle is counted as `smalltri`, not `smooth`. `QOG_LEFTEDGE_LOCALS` scales the span row weight by 0.85.
+
+### Exact proof (hidden, `-nosound`, an untouched build of 4b0c98b with the board's world flags)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, default quakeog_pc and with the world flags | ce86f894f9de |
+| 121 shot frames, all 200 rows, r_fast 0, 1 and 2 | 121 of 121 byte identical in each (so 0% of the Fast and Turbo pixels changed) |
+| check build (`QOG_ALIAS_SMALLTRI_CHECK` with `QOG_ALIAS_STATS`): each small triangle's prediction (pixels, colour, depth, or the old bytes when the depth test fails) against what id's path then drew, timedemo demo1 r_fast 0 and demo3 r_fast 1 and 2 | over 32,000 small triangles (counted to the last 16,384 printed), 0 differ |
+| tools/core1_syms.py | passes |
+
+### RAM (full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`)
+
+quake_display `end` 0x2003f6ac, the same as main: no static RAM. quake_main 0x2003f5b4. Stack: D_PolysetScanLeftEdge 144 B (120 before) under D_RasterizeAliasPolySmooth's 152 (unchanged, the small triangle test is inlined), D_PolysetRecursiveTriangle 64 B a level as before.
+
+Not done: the view model's span pixel loop (1.3 ms) keeps 14 values live through each pixel on a core with 8 low registers, so GCC spills, and only an assembly loop would change that. The gradient triangles with two or more pixels keep id's path.
+
+Files: engine/d_polyse.c, engine/r_qogalias.h, port/pc/boardmodel_pc.c, tools/boardmodel.py, pc/CMakeLists.txt, apps/quake/CMakeLists.txt.
+
 ## 2026-11-25: Fast and Turbo spans in hand-written Thumb in RAM, 32-bit span starts, tiny Turbo model triangles, particle kill checks in integers, and a board cost model (Agent AR, PC and ARM build, registered data)
 
 The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, models 5.1, vmodel 3.4 and parts 1.2. Nothing ran on hardware. The savings below come from a cost model that runs the board's own compiled code (quake_display.elf) in an emulator on real surfaces from timedemo demo3, then a range up to the board's ratio to that model.

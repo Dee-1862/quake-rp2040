@@ -36,6 +36,8 @@ enum
 	QAS_PARTVIS,	// particles on the screen
 	QAS_PARTPIX,	// particle pixels tested
 	QAS_TINYTRI,	// Turbo triangles drawn without gradients (Agent AR, d_polyse.c)
+	QAS_SUBLEAF,	// subdivision leaves tested inline, no call (Agent AQ, QOG_SUBDIV_LEAF)
+	QAS_SMALLTRI,	// triangles of two lines or less with no pixel or one, without gradients (Agent AQ, QOG_ALIAS_SMALLTRI)
 	QAS_N
 };
 extern unsigned	qog_astats[2][QAS_N];

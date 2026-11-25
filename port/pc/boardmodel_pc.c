@@ -66,7 +66,7 @@ static const char	*const bm_lmsname[16] = { "lms_views", "lms_dlights", "lms_bui
 	"lms_lit", "lms_rowslit", "lms_marknodes", "lms_marks", "lms_treenodes" };
 static const char	*const bm_asname[QAS_N] = { "check", "drawn", "trivial", "subdivm", "verts", "tris",
 	"back", "smooth", "zero", "tiny", "spans", "pix", "pixw", "subtri", "subcall", "subpix", "cliptri",
-	"parts", "partvis", "partpix", "tinytri" };
+	"parts", "partvis", "partpix", "tinytri", "subleaf", "smalltri" };
 static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dlpair_flt", "dlcell_flt",
 	"dllit_flt", "reachup", "reachup_step", "grad_fast", "grad_idf", "grad_idd", "scanlines", "scanedges",
 	"surfdrawn", "bmsurf", "bmfaces", "bmemit", "bmclip", "bmmark", "bmcheck", "bmsplit", "bpoly",
@@ -212,6 +212,9 @@ static void bm_open (void)
 #endif
 #if defined(QOG_BMODEL_BBOXINT) && defined(QOG_WORLDNODE_INT)
 		" QOG_BMODEL_BBOXINT"
+#endif
+#ifdef QOG_LEFTEDGE_LOCALS
+		" QOG_LEFTEDGE_LOCALS"
 #endif
 		"\n");
 	fprintf (bm_log, "frame,racerows,racepacked,rows,packed,rfast,vwidth");

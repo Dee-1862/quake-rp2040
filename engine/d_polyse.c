@@ -416,6 +416,19 @@ void D_DrawNonSubdiv (void)
 }
 
 
+#ifdef QOG_SUBDIV_LEAF
+/*
+QuakeOG (Agent AQ): a call of D_PolysetRecursiveTriangle whose three edges
+are each at most one pixel long in u and in v returns at once without
+drawing (id's first six tests). In demo3 about half of the calls are such
+leaves, so the caller makes the same test inline and leaves the call out:
+the same points are drawn in the same order. A leaf costs a few compares
+instead of a call with its frame and saved registers.
+*/
+#define QOG_SUBNEAR(a, b)	((unsigned)((a)[0] - (b)[0] + 1) <= 2 && (unsigned)((a)[1] - (b)[1] + 1) <= 2)
+#define QOG_SUBLEAF(a, b, c)	(QOG_SUBNEAR (b, a) && QOG_SUBNEAR (c, b) && QOG_SUBNEAR (a, c))
+#endif
+
 /*
 ================
 D_PolysetRecursiveTriangle
@@ -497,8 +510,19 @@ split:
 
 nodraw:
 // recursively continue
+#ifdef QOG_SUBDIV_LEAF
+	if (QOG_SUBLEAF (lp3, lp1, new))
+		QOG_AST(QAS_SUBLEAF, 1);
+	else
+		D_PolysetRecursiveTriangle (lp3, lp1, new);
+	if (QOG_SUBLEAF (lp3, new, lp2))
+		QOG_AST(QAS_SUBLEAF, 1);
+	else
+		D_PolysetRecursiveTriangle (lp3, new, lp2);
+#else
 	D_PolysetRecursiveTriangle (lp3, lp1, new);
 	D_PolysetRecursiveTriangle (lp3, new, lp2);
+#endif
 }
 
 #endif	// !id386
@@ -535,6 +559,92 @@ void D_PolysetUpdateTables (void)
 D_PolysetScanLeftEdge
 ====================
 */
+#ifdef QOG_LEFTEDGE_LOCALS
+/*
+QuakeOG (Agent AQ): id's left edge scan with the edge's state in locals for
+the loop and written back at the end. The engine is built with
+-fno-strict-aliasing, so each store into a span package made GCC read and
+write every d_ global again on every row. The same statements, so the same
+span packages and the same final values.
+*/
+void D_PolysetScanLeftEdge (int height)
+{
+	spanpackage_t	*pk = d_pedgespanpackage;
+	byte			*pdest = d_pdest, *ptex = d_ptex;
+	d_zval_t		*pz = d_pz;
+	int				count = d_aspancount, sfrac = d_sfrac, tfrac = d_tfrac;
+	int				light = d_light, zi = d_zi, err = errorterm;
+	int				adjup = erroradjustup, adjdown = erroradjustdown, skinw = r_affinetridesc.skinwidth;
+
+	do
+	{
+		pk->pdest = pdest;
+		pk->pz = pz;
+		pk->count = count;
+		pk->ptex = ptex;
+
+		pk->sfrac = sfrac;
+		pk->tfrac = tfrac;
+
+	// FIXME: need to clamp l, s, t, at both ends?
+		pk->light = light;
+		pk->zi = zi;
+
+		pk++;
+
+		err += adjup;
+		if (err >= 0)
+		{
+			pdest += d_pdestextrastep;
+			pz += d_pzextrastep;
+			count += d_countextrastep;
+			ptex += d_ptexextrastep;
+			sfrac += d_sfracextrastep;
+			ptex += sfrac >> 16;
+
+			sfrac &= 0xFFFF;
+			tfrac += d_tfracextrastep;
+			if (tfrac & 0x10000)
+			{
+				ptex += skinw;
+				tfrac &= 0xFFFF;
+			}
+			light += d_lightextrastep;
+			zi += d_ziextrastep;
+			err -= adjdown;
+		}
+		else
+		{
+			pdest += d_pdestbasestep;
+			pz += d_pzbasestep;
+			count += ubasestep;
+			ptex += d_ptexbasestep;
+			sfrac += d_sfracbasestep;
+			ptex += sfrac >> 16;
+			sfrac &= 0xFFFF;
+			tfrac += d_tfracbasestep;
+			if (tfrac & 0x10000)
+			{
+				ptex += skinw;
+				tfrac &= 0xFFFF;
+			}
+			light += d_lightbasestep;
+			zi += d_zibasestep;
+		}
+	} while (--height);
+
+	d_pedgespanpackage = pk;
+	d_pdest = pdest;
+	d_pz = pz;
+	d_aspancount = count;
+	d_ptex = ptex;
+	d_sfrac = sfrac;
+	d_tfrac = tfrac;
+	d_light = light;
+	d_zi = zi;
+	errorterm = err;
+}
+#else
 void D_PolysetScanLeftEdge (int height)
 {
 
@@ -595,6 +705,7 @@ void D_PolysetScanLeftEdge (int height)
 		}
 	} while (--height);
 }
+#endif	// QOG_LEFTEDGE_LOCALS
 
 #endif	// !id386
 
@@ -1173,6 +1284,166 @@ void D_PolysetFillSpans8 (spanpackage_t *pspanpackage)
 	}
 }
 
+#ifdef QOG_ALIAS_SMALLTRI
+/*
+QuakeOG (Agent AQ): triangles of at most two scan lines that cover no
+pixel, or only the first pixel of their first line, without gradients.
+
+Which pixels id's rasterizer covers depends only on the integer screen
+corners: the left edge's span counts (D_PolysetScanLeftEdge) and the right
+edge's (D_PolysetDrawSpans8) step with D_PolysetSetUpForLineScan's integer
+quotients, and a line has aspancount - count pixels. D_QogSmallTri runs
+those integer steps alone. With no pixel, id's code only sets globals the
+next triangle sets again, so nothing is drawn. With one pixel at the start
+of the first line, that pixel takes the top left corner's own s, t, light
+and 1/z (the steps are added only after it), so its texel, colour and depth
+need no gradient: the texel is the skin at the corner's whole s and t, the
+depth D_ZQ (zi >> 16) (D_PolysetDrawSpans8's linear pieces give the same
+for one pixel), the colour the colour map row of the corner's light.
+Anything else, or a shape id's loops do not expect (a height below 1),
+takes id's path. Returns 1 when the triangle is done.
+*/
+#ifdef QOG_ALIAS_SMALLTRI_CHECK
+// PC check build: what D_QogSmallTri would do, compared after id's path drew
+static struct
+{
+	int			on, px, wrote;
+	byte		*pdest, color;
+	d_zval_t	*pz, z, oldz;
+	byte		olddest;
+	unsigned	pix0;
+} d_qogst;
+static unsigned	d_qogst_n, d_qogst_bad;
+#endif
+
+static int D_QogSmallTri (int *plefttop, int *prighttop, int *pleftbottom, int *prightbottom)
+{
+	int		lc[2], nrows, r, c, h, err, part, ubase, adjup, adjdown, a, n, px;
+	int		*lt, *lb;
+
+	nrows = 0;
+	// the left edge's counts, as D_RasterizeAliasPolySmooth and
+	// D_PolysetScanLeftEdge make them
+	lt = plefttop;
+	lb = pleftbottom;
+	for (part = 0 ; part < pedgetable->numleftedges ; part++)
+	{
+		if (part)
+		{
+			lt = lb;
+			lb = pedgetable->pleftedgevert2;
+		}
+		h = lb[1] - lt[1];
+		if (h < 1 || nrows + h > 2)
+			return 0;
+		c = lt[0] - prighttop[0];
+		if (h == 1)
+			lc[nrows++] = c;
+		else
+		{
+			D_PolysetSetUpForLineScan (lt[0], lt[1], lb[0], lb[1]);
+			err = errorterm;
+			for (r=0 ; r<h ; r++)
+			{
+				lc[nrows++] = c;
+				err += erroradjustup;
+				if (err >= 0)
+				{
+					c += ubasestep + 1;
+					err -= erroradjustdown;
+				}
+				else
+					c += ubasestep;
+			}
+		}
+	}
+	// the right edge's, as D_PolysetDrawSpans8 steps them
+	n = 0;
+	px = 0;
+	lt = prighttop;
+	lb = prightbottom;
+	a = 0;
+	for (part = 0 ; part < pedgetable->numrightedges ; part++)
+	{
+		if (part)
+		{
+			a = lb[0] - lt[0];
+			lt = lb;
+			lb = pedgetable->prightedgevert2;
+		}
+		h = lb[1] - lt[1];
+		if (h < 1 || n + h > nrows)
+			return 0;
+		D_PolysetSetUpForLineScan (lt[0], lt[1], lb[0], lb[1]);
+		err = errorterm;
+		ubase = ubasestep;
+		adjup = erroradjustup;
+		adjdown = erroradjustdown;
+		for (r=0 ; r<h ; r++, n++)
+		{
+			c = a - lc[n];
+			if (c < 0 || (c && (n || c > 1)))
+				return 0;	// a pixel past the first, id's path
+			px += c;
+			err += adjup;
+			if (err >= 0)
+			{
+				a += ubase + 1;
+				err -= adjdown;
+			}
+			else
+				a += ubase;
+		}
+	}
+	if (n != nrows)
+		return 0;
+
+#ifdef QOG_ALIAS_SMALLTRI_CHECK
+	{
+		byte		*tex = (byte *)r_affinetridesc.pskin + (plefttop[2] >> 16) +
+						   (plefttop[3] >> 16) * r_affinetridesc.skinwidth;
+
+		d_qogst.on = 1;
+		d_qogst.px = px;
+		d_qogst.pdest = (byte *)d_viewbuffer + plefttop[1] * screenwidth + plefttop[0];
+		d_qogst.pz = d_pzbuffer + plefttop[1] * d_zwidth + plefttop[0];
+		d_qogst.z = (d_zval_t)D_ZQ (plefttop[5] >> 16);
+		d_qogst.color = ((byte *)acolormap)[D_ATEX (*tex) + (plefttop[4] & 0xFF00)];
+		if (px)
+		{
+			d_qogst.oldz = *d_qogst.pz;
+			d_qogst.olddest = *d_qogst.pdest;
+			d_qogst.wrote = D_ZQ (plefttop[5] >> 16) >= *d_qogst.pz;
+		}
+		d_qogst.pix0 = qog_astats[qog_astat_vm][QAS_PIX];
+		return 0;	// id's path draws, compared at its end
+	}
+#endif
+	if (px)
+	{
+		// the first pixel of the first line, with the corner's values
+		byte		*tex = (byte *)r_affinetridesc.pskin + (plefttop[2] >> 16) +
+						   (plefttop[3] >> 16) * r_affinetridesc.skinwidth;
+		d_zval_t	*pz = d_pzbuffer + plefttop[1] * d_zwidth + plefttop[0];
+		int			z = D_ZQ (plefttop[5] >> 16);
+
+		QOG_AST(QAS_SPANS, 1);
+		QOG_AST(QAS_PIX, 1);
+		if (z >= *pz)
+		{
+			((byte *)d_viewbuffer)[plefttop[1] * screenwidth + plefttop[0]] =
+				((byte *)acolormap)[D_ATEX (*tex) + (plefttop[4] & 0xFF00)];
+			*pz = z;
+			QOG_AST(QAS_PIXW, 1);
+		}
+	}
+	QOG_AST(QAS_SMALLTRI, 1);
+	QOG_AST(QAS_ZERO, px == 0);
+	QOG_AST(QAS_TINY, px != 0);
+	return 1;
+}
+#endif
+
 /*
 ================
 D_RasterizeAliasPolySmooth
@@ -1197,6 +1468,16 @@ void D_RasterizeAliasPolySmooth (void)
 
 	initialleftheight = pleftbottom[1] - plefttop[1];
 	initialrightheight = prightbottom[1] - prighttop[1];
+#ifdef QOG_ALIAS_SMALLTRI
+	if (initialleftheight + (pedgetable->numleftedges == 2 ? pedgetable->pleftedgevert2[1] - pleftbottom[1] : 0) <= 2 &&
+		D_QogSmallTri (plefttop, prighttop, pleftbottom, prightbottom))
+	{
+#ifdef QOG_ALIAS_STATS
+		qog_astats[qog_astat_vm][QAS_SMOOTH]--;	// counted as QAS_SMALLTRI
+#endif
+		return;
+	}
+#endif
 
 //
 // set the s, t, and light gradients, which are consistent across the triangle
@@ -1438,6 +1719,26 @@ void D_RasterizeAliasPolySmooth (void)
 	pix0 = qog_astats[qog_astat_vm][QAS_PIX] - pix0;	// QuakeOG (Agent AI)
 	QOG_AST(QAS_ZERO, pix0 == 0);
 	QOG_AST(QAS_TINY, pix0 >= 1 && pix0 <= 4);
+#endif
+#ifdef QOG_ALIAS_SMALLTRI_CHECK
+	if (d_qogst.on)
+	{
+		int		bad = (int)(qog_astats[qog_astat_vm][QAS_PIX] - d_qogst.pix0) != d_qogst.px;
+
+		if (!bad && d_qogst.px)
+		{
+			if (d_qogst.wrote)
+				bad = *d_qogst.pdest != d_qogst.color || *d_qogst.pz != d_qogst.z;
+			else
+				bad = *d_qogst.pdest != d_qogst.olddest || *d_qogst.pz != d_qogst.oldz;
+		}
+		d_qogst_n++;
+		if (bad)
+			d_qogst_bad++;
+		if ((d_qogst_n & 0x3FFF) == 0)
+			Sys_Printf ("qog_smalltricheck %u triangles, %u differ%c", d_qogst_n, d_qogst_bad, 10);
+		d_qogst.on = 0;
+	}
 #endif
 }
 
