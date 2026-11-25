@@ -61,8 +61,9 @@ WEIGHTS = {
         "wc_clipdot": (0, 80),      # integer view plane distance
     },
     "bmodels": {
-        "bm_bmcheck": (30, 300),    # R_BmodelCheckBBox
-        "bm_rotent": (20, 300),     # R_RotateBmodel and R_QogFxSetup (rotate less bmsurf)
+        "bm_bmcheck": (30, 300),    # R_BmodelCheckBBox (doubles: float compares with QOG_BMODEL_BBOXF)
+        "bm_rotent": (200, 500),    # R_RotateBmodel with two R_TransformFrustum (80 float calls each) and R_QogFxSetup (about 7,500 cycles)
+        "aq_bsurfs": (4, 30),       # brush surface facing test (a float dot product, f2d, dcmp)
         "bm_bmsplit": (6, 60),      # R_SplitEntityOnNode2 box against a world plane
         "bm_bpoly": (20, 150),      # R_RecursiveClipBPoly: the world plane into model space
         "bm_bpolyedge": (8, 80),    #   an edge against it (more when split)
@@ -73,10 +74,11 @@ WEIGHTS = {
     },
     "edgescan": {
         "bm_scanlines": (0, 250),   # per scan line: insert, remove, flush checks
-        "bm_scanedges": (0.5, 90),  # each active edge each line: spans, u step, float 1/z on overlaps
-        "pc_litspans": (0, 60),     # span emission
+        "bm_scanedges": (0.2, 55),  # each active edge each line: spans, u step, a float 1/z on some overlaps
+        "pc_litspans": (0, 40),     # span emission
         "bm_surfdrawn": (8, 200),   # D_DrawSurfaces per surface: mip level, state
-        "bm_bmsurf": (50, 300),     # brush surface: rotate, transform, restore the frustum
+        "bm_bmsurf": (150, 300),    # brush surface: two R_TransformFrustum and a TransformVector (Agent AQ: about 9,000 cycles)
+        "aq_leadz": (20, 50),       # 1/z order of two brush surfaces in R_LeadingEdge (doubles, about 1,350 cycles)
     },
     "lmap": {
         "lms_builds": (2, 800),     # D_SetupLitSurface and the light grid setup
@@ -129,14 +131,52 @@ WEIGHTS = {
 SPLIT2 = {"pc_litpx", "pc_runs", "pc_litspans"}     # spans work shared by both cores
 CORE_SHARE = 0.55           # the busier core's share of it
 # weights that depend on how the build was compiled (#features line of the log)
-FEATURE_SCALE = {"QOG_DLIGHT_AXIAL": {"lmap_marknodes": (5.0 / 8, 1.0), "lms_treenodes": (5.0 / 8, 1.0),
-                                      "bm_bmmark": (5.0 / 8, 1.0)}}
+FEATURE_SCALE = {
+    "QOG_DLIGHT_AXIAL": {"lmap_marknodes": (5.0 / 8, 1.0), "lms_treenodes": (5.0 / 8, 1.0),
+                         "bm_bmmark": (5.0 / 8, 1.0)},
+    # Agent AQ's exact float cuts: the same counts, cheaper (docs/changes.md)
+    "QOG_LEADZ_FLOAT": {"aq_leadz": (0.5, 1.0)},            # about 1,350 to 700 cycles
+    "QOG_BPOLY_AXIAL": {"bm_bpoly": (0.05, 1.0), "bm_bpolyedge": (0.05, 1.0)},  # tplane 21 calls to 1, an edge 730 to 90 cycles
+    "QOG_BMODEL_FACING": {"aq_bsurfs": (0.1, 1.0)},
+    "QOG_BMODEL_BBOXF": {"bm_bmcheck": (0.35, 1.0)},        # about 330 cycles a plane less
+    "QOG_BMODEL_FRUSTUM": {"bm_rotent": (0.6, 1.0)},        # 6.6 of 11 view plane sets from the world's normals
+    "QOG_FX_REUSE": {"bm_rotent": (0.45, 1.0)},             # the Fast setup only for the origin, about 7,500 cycles less
+    "QOG_DSURF_NOFRUSTUM": {"bm_bmsurf": (0.1, 1.0)},       # no view planes turned per brush surface
+    "QOG_FGRAD_AXIAL": {"wc_faces": (0.77, 1.0)},           # about 300 cycles a face gradient less
+}
+# Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either
+# core, core 1 during the edge scan, both at each flush
+CORE1_SPEED = 0.9           # core 1's speed against core 0's while both draw from the shared XIP cache (AM: up to 20% slower)
+# Agent AP's PIO scanout: 5,120 bits a row plus about 0.4 us a line
+LCD_LINE_US = 0.4
 
 # ---- the LCD scanout ----------------------------------------------------------
 # Agent V: 200 rows in 18.3 ms at 62.5 MHz SPI (91.5 us a row, 81.9 of them
 # the bits), Agent AN: 22.4 ms at 50 MHz (112 us a row)
-def row_ms(spi_mhz, mhz):
+def row_ms(spi_mhz, mhz, lcd="pl022"):
+    if lcd == "pio":    # Agent AP: no gaps between words, about 0.4 us a line
+        return (320 * 16 / spi_mhz + LCD_LINE_US) / 1000.0
     return (320 * 16 / spi_mhz + 9.6 * 250.0 / mhz) / 1000.0
+
+
+def pipeline(fr, m, s1):
+    """core 0's time for the edge scan and the surfaces with Agent AM's
+    pipeline, and core 0's wait for core 1's last surface"""
+    e = m["edgescan"]
+    sd = m["lmap"] + m["grad"]
+    surfs = max(1.0, fr.get("pc_litsurfs", 1.0))
+    px = max(1.0, fr.get("pc_litpx", 1.0))
+    fs = min(1.0, fr.get("c1_surfs", 0.0) / surfs)
+    fp = min(1.0, fr.get("c1_px", 0.0) / px)
+    d = sd * fs + m["spans"] * fp               # pipelined world surfaces
+    c0 = sd * (1 - fs) + m["spans"] * (1 - fp)  # sky, water and brush surfaces stay on core 0
+    fe = fr.get("c1_earlypx", 0.0) / max(1.0, fr.get("c1_px", 0.0))
+    during = min(e * s1, fe * d)                # core 1 during the scan
+    r = d - during
+    after = c0 if r <= s1 * c0 else (r + c0) / (1 + s1)
+    n = max(1.0, fr.get("c1_surfs", 1.0))
+    wait = 0.5 * d / n / s1 if d > 0 else 0.0
+    return e + after + wait, wait, after
 
 NOTIFY_S = 3.0              # con_notifytime
 CENTER_S = 2.0              # scr_centertime
@@ -187,15 +227,17 @@ def weights_for(feats, scale=None, keymult=None):
     return w
 
 
-def frame_parts(frames, w):
-    """per frame and phase: (float cycles a priori, integer cycles a priori)"""
+def frame_parts(frames, w, pipe=False):
+    """per frame and phase: (float cycles a priori, integer cycles a priori).
+    With pipe (QOG_DRAW_CORE1) the spans of a surface are one core's work."""
+    share = 1.0 if pipe else CORE_SHARE
     out = []
     for fr in frames:
         d = {}
         for ph, table in w.items():
             f = i = 0.0
             for k, (fc, ic) in table.items():
-                n = fr.get(k, 0.0) * (CORE_SHARE if k in SPLIT2 else 1.0)
+                n = fr.get(k, 0.0) * (share if k in SPLIT2 else 1.0)
                 f += n * fc * FCALL
                 i += n * ic
             d[ph] = (f, i)
@@ -244,15 +286,20 @@ def scan_need(lo, hi, rows, packed):
     return need
 
 
-def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()):
+def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=(), opts=None):
     """board time of each frame (ms) and the mean waits. wscale scales every
-    wait (the "wait" reconciliation, see calibrate)"""
-    rms = row_ms(spi, mhz)
+    wait (the "wait" reconciliation, see calibrate). opts: lcd ("pl022" or
+    "pio"), pipe (Agent AM's pipeline), text (Agent AP's Turbo text list),
+    s1 (core 1's speed)"""
+    opts = opts or {}
+    rms = row_ms(spi, mhz, opts.get("lcd", "pl022"))
+    pipe, text, s1 = opts.get("pipe", False), opts.get("text", False), opts.get("s1", CORE1_SPEED)
     t_now = 0.0
     notes = []          # board times of console lines and centre prints
     prev_packed = 0
     total = []
-    waits = {"race_view": 0.0, "race_world": 0.0, "race_done": 0.0, "notify": 0.0}
+    waits = {"race_view": 0.0, "race_world": 0.0, "race_done": 0.0, "notify": 0.0, "c0wait": 0.0,
+             "surf_c0": 0.0}
     notify_frames = 0
     for fr, m in zip(frames, ms):
         if fr.get("conlines", 0) > 0:
@@ -296,11 +343,19 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
                 waits["race_done"] += (t_scan - t) * wscale
                 t += (t_scan - t) * wscale
         done = ["world"] + ([] if notify else [x.split(":")[1] for x in whatif if x.startswith("early:")])
+        if pipe:
+            pt, pw, pa = pipeline(fr, m, s1)
+            waits["c0wait"] += pw
+            waits["surf_c0"] += pa
+            t += pt
+            done += ["edgescan", "lmap", "grad", "spans"]
         t += sum(m[p] for p in PHASES if p not in done) + m[OTHER] * (1 - SETUP_SHARE) + post_ms
         packed = 0
         if turbo:
             if notify:
-                t += UNPACK_MS_250 * 250.0 / mhz
+                t += UNPACK_MS_250 * 250.0 / mhz   # the notify clear spreads the last packed view
+                if text:    # Agent AP: the notify characters go to the scanout's list, the view stays packed
+                    packed = VIEW_ROWS
             else:
                 packed = VIEW_ROWS
         prev_packed = packed
@@ -421,9 +476,11 @@ def calibrate(frames, feats, scale=None, pre=None, e1m1=None):
     return cal
 
 
-def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=()):
+def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=(), lcd="pl022"):
     turbo = statistics.mean(fr.get("rfast", 1) for fr in frames) >= 1.5
-    parts = frame_parts(frames, weights_for(feats, cal.get("_scale"), cal.get("keymult")))
+    pipe = "QOG_DRAW_CORE1" in feats and "nopipe" not in whatif
+    opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats, "s1": cal.get("_s1", CORE1_SPEED)}
+    parts = frame_parts(frames, weights_for(feats, cal.get("_scale"), cal.get("keymult")), pipe)
     ms = to_ms(parts, cal, mhz)
     for wi in whatif:           # phase*factor: a phase made that much cheaper or dearer
         if "*" in wi:
@@ -444,7 +501,7 @@ def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=()):
         c = rc["cscale"]
         msc = ms if c == 1.0 else [{ph: v * c for ph, v in m.items()} for m in ms]
         total, waits, nf = simulate(frames, msc, turbo, mhz, spi, cal["pre_ms_250"] * f * c,
-                                    rc["post"] * f, rc["wscale"], whatif)
+                                    rc["post"] * f, rc["wscale"], whatif, opts)
         res["modes"][mode] = statistics.mean(total)
         if mode == "offset":    # phases and waits as the code implies, for the tables
             mp = mean_ms(ms)
@@ -509,13 +566,14 @@ def do_predict(a):
         c = calibrate(rframes, rfeats, scale, rng.uniform(0.8, 4.0), e1m1)
         c["_scale"] = scale
         c["_clock"] = rng.uniform(0.94, 1.0)
+        c["_s1"] = rng.uniform(0.8, 1.0)
         samples.append(c)
-    out = {"mhz": a.mhz, "spi": a.spi, "runs": {}}
+    out = {"mhz": a.mhz, "spi": a.spi, "lcd": a.lcd, "runs": {}}
     for name, path in zip(names, a.log):
         frames, feats = load_log(path)
         frames = frames[a.skip:]
-        point = predict(frames, feats, cal, a.mhz, a.spi)
-        sp = [predict(frames, feats, c, a.mhz, a.spi, (RECON[i % 3],)) for i, c in enumerate(samples)]
+        point = predict(frames, feats, cal, a.mhz, a.spi, lcd=a.lcd)
+        sp = [predict(frames, feats, c, a.mhz, a.spi, (RECON[i % 3],), lcd=a.lcd) for i, c in enumerate(samples)]
         rng_ = {}
         for key in list(point["phases"]) + ["frame_ms", "fps"]:
             vals = sorted(s["phases"][key] if key in s["phases"] else s[key] for s in sp)
@@ -532,7 +590,7 @@ def do_predict(a):
             for name, path in zip(names, a.log):
                 frames, feats = load_log(path)
                 frames = frames[a.skip:]
-                r = predict(frames, feats, cal, a.mhz, a.spi, whatif=items)
+                r = predict(frames, feats, cal, a.mhz, a.spi, whatif=items, lcd=a.lcd)
                 base = out["runs"][name]["frame_ms"]
                 line += "  %s %.1f fps %.1f ms (-%.1f)" % (name, r["fps"], r["frame_ms"], base - r["frame_ms"])
                 out["runs"][name].setdefault("whatif", {})[label] = r["frame_ms"]
@@ -545,8 +603,8 @@ def do_predict(a):
 def print_table(out, cal):
     names = list(out["runs"])
     ref = cal["ref"]["phases"]
-    print("Predicted board ms per view, timedemo demo3, %g MHz, LCD SPI %g MHz (10 to 90%% range)"
-          % (out["mhz"], out["spi"]))
+    print("Predicted board ms per view, timedemo demo3, %g MHz, LCD %g MHz by %s (10 to 90%% range)"
+          % (out["mhz"], out["spi"], out.get("lcd", "pl022")))
     hdr = "%-34s %8s" % ("phase", "de58316")
     for n in names:
         hdr += " %22s" % n
@@ -560,7 +618,9 @@ def print_table(out, cal):
             line += " %8.1f (%4.1f to %4.1f)" % (r["phases"][ph], lo, hi)
         print(line)
     for key, label in (("race_view", "race wait before the world"), ("race_done", "race wait after the world"),
-                       ("notify", "whole scanout waits (notify text)")):
+                       ("notify", "whole scanout waits (notify text)"),
+                       ("surf_c0", "surfaces after the scan, core 0 clock"),
+                       ("c0wait", "core 0 waits for core 1's last surface")):
         line = "%-34s %8s" % (label, "")
         for n in names:
             line += " %8.1f %13s" % (out["runs"][n]["waits"][key], "")
@@ -606,7 +666,8 @@ def main():
     p.add_argument("--log", action="append", required=True)
     p.add_argument("--names")
     p.add_argument("--mhz", type=float, default=300.0)
-    p.add_argument("--spi", type=float, default=50.0)
+    p.add_argument("--spi", type=float, default=50.0, help="LCD bit rate in MHz")
+    p.add_argument("--lcd", choices=("pl022", "pio"), default="pl022", help="LCD scanout by the SPI peripheral or PIO (Agent AP)")
     p.add_argument("--samples", type=int, default=30)
     p.add_argument("--json")
     p.add_argument("--skip", type=int, default=0, help="frames to leave out at the start of each log")

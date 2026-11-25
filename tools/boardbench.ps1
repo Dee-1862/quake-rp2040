@@ -1,9 +1,10 @@
 # Predicted board speed of timedemo demo3 for this worktree (Agent AS).
 #
-#   powershell -File tools\boardbench.ps1                  # Fast and Turbo at 300 MHz, LCD SPI 50 MHz
-#   powershell -File tools\boardbench.ps1 -Mhz 250 -Spi 62.5
+#   powershell -File tools\boardbench.ps1                  # Fast and Turbo at 300 MHz, LCD by PIO at 60 MHz (Agent AP)
+#   powershell -File tools\boardbench.ps1 -Lcd pl022 -Spi 50   # the SPI peripheral at 300 MHz
+#   powershell -File tools\boardbench.ps1 -Mhz 250 -Spi 62.5 -Lcd pl022
 #   powershell -File tools\boardbench.ps1 -Ref agent-am    # another branch, merged with this tool in a temporary worktree
-#   powershell -File tools\boardbench.ps1 -WhatIf "notify rows only=nonotify","spans x0.7=spans*0.7"
+#   powershell -File tools\boardbench.ps1 -WhatIf "notify rows only=nonotify;spans x0.7=spans*0.7"
 #
 # Builds quakeog_pc with the board client's render flags and the cost
 # model's work counts (-DQOG_PC_BOARDMODEL=ON, its own folder
@@ -19,10 +20,11 @@
 # the first time (the build) and about 1 minute after.
 param(
     [double]$Mhz = 300,
-    [double]$Spi = 50,
+    [double]$Spi = 60,
+    [ValidateSet("pio", "pl022")][string]$Lcd = "pio",
     [int]$Samples = 30,
     [string]$Ref = "",
-    [string[]]$WhatIf = @(),
+    [string]$WhatIf = "",       # "label=item,item;label=item": several what-ifs separated by ;
     [switch]$NoBuild,
     [string]$Json = ""
 )
@@ -93,8 +95,8 @@ try {
     $logs = Invoke-Bench $tree
     $args2 = @("tools\boardmodel.py", "predict", "--calib", "tools\boardmodel_calib.json",
                "--log", $logs[0], "--log", $logs[1], "--names", "Fast,Turbo",
-               "--mhz", "$Mhz", "--spi", "$Spi", "--samples", "$Samples")
-    foreach ($w in $WhatIf) { $args2 += @("--whatif", $w) }
+               "--mhz", "$Mhz", "--spi", "$Spi", "--lcd", $Lcd, "--samples", "$Samples")
+    foreach ($w in ($WhatIf -split ";")) { if ($w.Trim()) { $args2 += @("--whatif", $w.Trim()) } }
     if ($Json) { $args2 += @("--json", $Json) }
     $label = if ($Ref) { $Ref } else { (git rev-parse --short HEAD).Trim() + " (" + (git rev-parse --abbrev-ref HEAD).Trim() + ")" }
     Write-Output "boardbench: $label, timedemo demo3 on the PC, predicted for the board"

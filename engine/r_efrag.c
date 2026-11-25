@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 
 mnode_t	*r_pefragtopnode;
 #ifdef QOG_ENTITY_NOTOPNODE
@@ -172,6 +173,7 @@ void R_SplitEntityOnNode2 (mnode_t *node)
 	mplane_t	*splitplane;
 	int			sides;
 
+	QOG_AQ (AQ_BSPLIT, 1);
 	if (!NODE_VISFRAME_IS (cl.worldmodel, node, r_visframecount))	// QuakeOG
 		return;
 	
@@ -268,6 +270,7 @@ void R_StoreEfrags (efrag_t **ppefrag)
 			if ((pent->visframe != r_framecount) &&
 				(cl_numvisedicts < MAX_VISEDICTS))
 			{
+				QOG_AQ (AQ_EFRAGS, 1);
 				cl_visedicts[cl_numvisedicts++] = pent;
 
 			// mark that we've recorded this entity for this frame
@@ -350,6 +353,7 @@ void R_StoreLeafEfrags (mleaf_t *leaf)
 			if ((pent->visframe != r_framecount) &&
 				(cl_numvisedicts < MAX_VISEDICTS))
 			{
+				QOG_AQ (AQ_EFRAGS, 1);
 				cl_visedicts[cl_numvisedicts++] = pent;
 				pent->visframe = r_framecount;
 			}

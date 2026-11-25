@@ -156,6 +156,15 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DLIGHT_REACHUP
     QOG_GRAD_EXACTF
     QOG_GRAD_FAST)
+# Agent AQ: brush entities and the edge scan with fewer float calls, exact,
+# same as pc/CMakeLists.txt (r_bsp.c, r_edge.c, d_edge.c, r_main.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_LEADZ_FLOAT                 # r_edge.c: two brush surfaces of one key ordered by 1/z in float, id's doubles only near a tie
+    QOG_BPOLY_AXIAL                 # r_bsp.c R_RecursiveClipBPoly: sides on axial planes by integer compares of the float bits
+    QOG_BMODEL_FACING               # r_bsp.c: brush surface facing tests without double, one subtraction on axial planes
+    QOG_BMODEL_BBOXF                # r_main.c R_BmodelCheckBBox: float compares instead of double differences
+    QOG_BMODEL_FRUSTUM              # r_main.c R_DrawBEntitiesOnList: view planes of entities that do not turn from the last ones
+    QOG_DSURF_NOFRUSTUM)            # d_edge.c D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)
@@ -396,6 +405,12 @@ if(QOG_SPLIT)
     if(QOG_BOARD_CORE1 AND QOG_BOARD_ALIASCORE1)
         list(APPEND _cl_defs QOG_ALIAS_CORE1)      # r_alias.c R_QogAliasPrepareRange
     endif()
+    # QuakeOG (Agent AM): core 1 draws whole lit world surfaces while core 0
+    # scans the edges, and both share each flush's surfaces (exact)
+    option(QOG_BOARD_DRAWCORE1 "with CORE1, the world's lit surfaces drawn by both cores during the edge scan (exact)" ON)
+    if(QOG_BOARD_CORE1 AND QOG_BOARD_DRAWCORE1)
+        list(APPEND _cl_defs QOG_DRAW_CORE1)       # d_edge.c, d_core1.c, r_edge.c
+    endif()
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
     endif()
@@ -434,6 +449,16 @@ if(QOG_SPLIT)
     if(QOG_BOARD_FAST AND QOG_BOARD_TURBO)
         list(APPEND _cl_defs QOG_RTURBO)
     endif()
+    # QuakeOG (Agent AP): the LCD's pixel stream from a PIO state machine at
+    # clk_sys over a whole number of clocks a bit, at most QOG_LCD_PIO_KHZ
+    # (300 MHz gives 60 MHz, 300 / 5, where the PL022 gives 50, 300 / 6, and
+    # no gap between pixels). OFF sends the pixels through the PL022 as before
+    option(QOG_LCD_PIO "LCD pixels through PIO (platform/qog_video.c), OFF for the SPI peripheral" ON)
+    set(QOG_LCD_PIO_KHZ 62500 CACHE STRING "highest LCD bit rate in kHz for QOG_LCD_PIO (the panel's 62.5 MHz)")
+    if(QOG_LCD_PIO)
+        list(APPEND _cl_defs QOG_LCD_PIO QOG_LCD_PIO_KHZ=${QOG_LCD_PIO_KHZ})
+        message(STATUS "qog: LCD pixels through PIO, at most ${QOG_LCD_PIO_KHZ} kHz")
+    endif()
     # QuakeOG (Agent AI): in Fast mode alias models (monsters, items, the view
     # weapon) and particles are made in integers, r_fast 0 draws as before
     option(QOG_BOARD_ALIASFAST "with FAST, alias vertices, triangle gradients and particles in integers in Fast mode" ON)
@@ -451,6 +476,11 @@ if(QOG_SPLIT)
         if(QOG_BOARD_WORLDNODEINT AND QOG_BOARD_WORLDNODE)
             list(APPEND _cl_defs QOG_WORLDNODE_INT)
         endif()
+        # Agent AQ: the same Fast values with fewer float calls (r_draw.c):
+        # a brush entity's integer setup made again only for its origin when
+        # its vectors are those of the setup before, and face gradients with
+        # an exact axial dot product and one multiply less per gradient
+        list(APPEND _cl_defs QOG_FX_REUSE QOG_FGRAD_AXIAL)
     endif()
     # Agent AH: the console's text 4 KB to 1 KB (26 lines of scrollback, the
     # 4 notify lines, MG24Quake keeps 913 B). It is taken from the client's

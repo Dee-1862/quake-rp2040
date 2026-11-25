@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include "quakedef.h"
 #include "d_local.h"
 #include "qog_input.h"
@@ -131,6 +132,28 @@ static qboolean s_panel_turbo;   /* the last frame presented was a Turbo one */
 #define TURBO_PACKED 0
 #endif
 
+#ifdef QOG_RTURBO
+/* QuakeOG (Agent AP): the characters listed over a packed Turbo view
+   (engine/r_qogturbo.c R_QogTurboText), drawn over the doubled rows as the
+   board's scanout draws them. Takes the frame's list every frame. */
+static void panel_text(byte *panel) {
+    extern byte *draw_chars;
+    int i, k, r, c;
+    const r_qogtext_t *t = R_QogTurboTextTake();
+    for (i = 0; i < t->numruns; i++) {
+        const unsigned e = t->runs[i];
+        const int x = (int)(e & 511), y = (int)((e >> 9) & 255), len = (int)((e >> 17) & 63), first = (int)(e >> 23);
+        for (k = 0; k < len; k++) {
+            const int num = t->chars[first + k];
+            const byte *src = draw_chars + ((num >> 4) << 10) + ((num & 15) << 3);
+            for (r = 0; r < 8; r++, src += 128)
+                for (c = 0; c < 8; c++)
+                    if (src[c]) panel[(y + r) * QOG_PC_W + x + 8 * k + c] = src[c];
+        }
+    }
+}
+#endif
+
 /* QuakeOG (Agent AO): the panel's first rows, as the board's scanout sends
    them: rows below `packed` hold QOG_PC_W / 2 pixels each from the start of
    the frame (a Turbo view, engine/r_qogturbo.c), each sent twice */
@@ -221,6 +244,8 @@ static byte s_sr_copy[QOG_PC_W * QOG_PC_H];
 static int s_sr_relrow, s_sr_rows, s_sr_packed;   /* Agent AO: rows released, sent, packed (Turbo) */
 static unsigned s_sr_checks, s_sr_waits, s_sr_bad;
 static qboolean s_racing;
+static qboolean s_sm_race;   /* Agent AP: the view started beside this scanout */
+static int s_sm_front;       /* Agent AP: and its front end waited for the whole scan */
 
 /* the bytes scan row r reads: a packed Turbo row QOG_PC_W / 2 from the
    frame's start, the others their own QOG_PC_W */
@@ -255,7 +280,7 @@ int VID_QogScanNeed(const void *lo, const void *hi) {
 }
 
 void VID_QogRaceBegin(void) {
-    if (s_lk_pending) s_racing = true;
+    if (s_lk_pending) s_racing = s_sm_race = true;
 }
 
 void VID_QogScanFree(const void *lo, const void *hi) {
@@ -265,6 +290,7 @@ void VID_QogScanFree(const void *lo, const void *hi) {
 #endif
     if (!need) return;
     if (need >= s_sr_rows) {
+        if (s_racing) s_sm_front = 1;   /* Agent AP */
         VID_QogScanDone();
         return;
     }
@@ -279,11 +305,85 @@ void VID_QogScanDone(void) {
 }
 #endif
 
+#ifdef QOG_VID_SCANRACE
+/* QuakeOG (Agent AP): per frame, the rows the next view waited for before
+   the end of the scanout (the front end's caches) and the rows the scanout
+   sent, so `qog_scanmodel <pre ms> <world ms>` can work out the board's
+   race wait at each LCD row time: the front end waits until the scanout
+   has sent its rows, less the work before the view (pre), and after the
+   world's front end (world) the view waits for the end of the scanout. */
+#define SM_MAX 8192
+static unsigned char s_sm_need[SM_MAX], s_sm_rows[SM_MAX], s_sm_turbo[SM_MAX], s_sm_raced[SM_MAX];
+static int s_sm_n;
+
+static void scanmodel_record(void) {
+    if (s_sm_n >= SM_MAX) return;
+    s_sm_need[s_sm_n] = (unsigned char)s_sr_relrow;
+    s_sm_rows[s_sm_n] = (unsigned char)s_sr_rows;
+    s_sm_turbo[s_sm_n] = (unsigned char)(s_sr_packed > 0);
+    s_sm_raced[s_sm_n] = (unsigned char)s_sm_race;
+    if (s_sm_front) s_sm_need[s_sm_n] = (unsigned char)s_sr_rows;   /* the front end waited for the whole scan */
+    s_sm_n++;
+}
+
+static void scanmodel_print(void (*pr)(char *fmt, ...), double pre, double world) {
+    /* us per row: the PL022 at 50 MHz (Agent V's 22.4 ms for 200 rows on
+       the board) and at 62.5 MHz (250 MHz), then PIO at 50, 60 and 75 MHz,
+       5,120 bits a row with no gap and about 0.4 us a line to restart DMA */
+    static const struct { const char *name; double us; } rate[] = {
+        { "spi 50.0 MHz", 112.0 }, { "spi 62.5 MHz", 91.5 },
+        { "pio 50.0 MHz", 102.8 }, { "pio 60.0 MHz", 85.7 }, { "pio 75.0 MHz", 68.7 },
+    };
+    for (int t = 0; t < 2; t++) {
+        int n = 0, raced = 0;
+        double need = 0, rows = 0;
+        for (int i = 0; i < s_sm_n; i++)
+            if (s_sm_turbo[i] == t) { n++; need += s_sm_need[i]; rows += s_sm_rows[i]; raced += s_sm_raced[i]; }
+        if (!n) continue;
+        pr("qog_scanmodel: %s, %d frames (%d raced), rows waited for avg %.1f, rows sent avg %.1f, pre %.1f ms world %.1f ms\n",
+           t ? "Turbo" : "Exact and Fast", n, raced, need / n, rows / n, pre, world);
+        for (unsigned k = 0; k < sizeof rate / sizeof rate[0]; k++) {
+            double w1 = 0, w2 = 0, scan = 0;
+            for (int i = 0; i < s_sm_n; i++) {
+                if (s_sm_turbo[i] != t) continue;
+                double front = s_sm_need[i] * rate[k].us / 1000.0, end = s_sm_rows[i] * rate[k].us / 1000.0;
+                double start = front > pre ? front : pre;
+                if (!s_sm_raced[i]) {   /* locked before the view: waits for the end */
+                    if (end > pre) w1 += end - pre;
+                    scan += end;
+                    continue;
+                }
+                w1 += start - pre;
+                if (end > start + world) w2 += end - start - world;
+                scan += end;
+            }
+            pr("qog_scanmodel:   %s scan %.2f ms, race wait %.2f ms (front end %.2f, end of scan %.2f)\n",
+               rate[k].name, scan / n, (w1 + w2) / n, w1 / n, w2 / n);
+        }
+    }
+}
+
+static void scanmodel_con(char *fmt, ...) {
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+    Con_Printf("%s", buf);
+}
+
+static void cmd_qog_scanmodel(void) {
+    scanmodel_print(scanmodel_con, Cmd_Argc() > 1 ? Q_atof(Cmd_Argv(1)) : 5.0,
+                    Cmd_Argc() > 2 ? Q_atof(Cmd_Argv(2)) : 8.0);
+}
+#endif
+
 void VID_LockBuffer(void) {
     if (!s_lk_pending) return;
 #ifdef QOG_VID_SCANRACE
     if (s_racing) return;
     scanrace_check();
+    scanmodel_record();   /* Agent AP */
     s_lk_pending = false;
     s_lk_frames++;
 #else
@@ -322,7 +422,7 @@ static DWORD WINAPI core1_thread(LPVOID unused) {
     }
 }
 
-void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
+static void core1_init(void) {
     if (s_c1_mode < 0) {
         s_c1_mode = COM_CheckParm("-core1first") ? 1 : COM_CheckParm("-core1last") ? 2 : 0;
         if (!s_c1_mode) {
@@ -333,6 +433,10 @@ void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
         Con_Printf("QOG_SPANS_CORE1: the second core's spans %s\n",
                    s_c1_mode == 1 ? "first, same thread" : s_c1_mode == 2 ? "last, same thread" : "on a second thread");
     }
+}
+
+void Sys_QogCore1Start(void (*fn)(void *), void *arg) {
+    core1_init();
     s_c1_fn = fn;
     s_c1_arg = arg;
     if (s_c1_mode == 1) { fn(arg); s_c1_fn = NULL; }
@@ -344,6 +448,20 @@ void Sys_QogCore1Join(void) {
     else if (s_c1_mode == 2 && s_c1_fn) s_c1_fn(s_c1_arg);
     s_c1_fn = NULL;
 }
+#endif
+
+#ifdef QOG_DRAW_CORE1
+/* QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+   (engine/d_edge.c). On a second thread by default, or with -core1first and
+   -core1last core 1's surfaces are drawn on the game's thread, each as soon
+   as it is handed on, or at each flush after core 0's. */
+static volatile LONG s_pipe_lock;
+
+int Sys_QogCore1Mode(void) { core1_init(); return s_c1_mode; }
+void Sys_QogLock(void) { while (InterlockedExchange(&s_pipe_lock, 1)) YieldProcessor(); }
+void Sys_QogUnlock(void) { InterlockedExchange(&s_pipe_lock, 0); }
+void Sys_QogCore1Wake(void) {}
+void Sys_QogCore1Idle(void) { SwitchToThread(); }
 #endif
 
 void VID_Update(vrect_t *rects) {
@@ -362,12 +480,16 @@ void VID_Update(vrect_t *rects) {
 #endif
     }
     panel_rows(s_panel, rows, TURBO_PACKED);   /* Agent AO: a Turbo view doubled as on the panel */
+#ifdef QOG_RTURBO
+    panel_text(s_panel);   /* Agent AP: and the characters listed over it */
+#endif
 #elif defined(QOG_HUD_IN_ZBUFFER)
     R_HudFrameEnd();
 #endif
 #if !defined(QOG_HUD_SKIP) && defined(QOG_RTURBO)
     s_panel_turbo = TURBO_PACKED > 0;
     if (s_panel_turbo) panel_rows(s_panel, QOG_PC_H, TURBO_PACKED);
+    panel_text(s_panel);   /* Agent AP */
 #endif
     if (rows >= QOG_PC_H) s_pal_changed = false;
 #ifdef QOG_BOARDMODEL
@@ -383,6 +505,8 @@ void VID_Update(vrect_t *rects) {
     s_sr_rows = rows;
     s_sr_packed = TURBO_PACKED;
     s_racing = false;
+    s_sm_race = false;   /* Agent AP */
+    s_sm_front = 0;
 #endif
     if (s_framehash) framehash_print();
 #ifdef QOG_EDGES_IN_ZBUFFER
@@ -667,6 +791,9 @@ void VID_Init(unsigned char *palette) {
 #ifdef QOG_VID_LOCKWAIT
     Cmd_AddCommand("qog_lockcheck", cmd_qog_lockcheck);   /* QuakeOG (Agent V) */
 #endif
+#ifdef QOG_VID_SCANRACE
+    Cmd_AddCommand("qog_scanmodel", cmd_qog_scanmodel);   /* QuakeOG (Agent AP) */
+#endif
     Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
     Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
 #ifdef QOG_BOARD_MENU
@@ -707,6 +834,18 @@ void VID_Shutdown(void) {
 #ifdef QOG_VID_SCANRACE
     Sys_Printf("qog_scanrace: %u checks, %u waits for rows, %u writes before the scanout passed\n",
                s_sr_checks, s_sr_waits, s_sr_bad);
+#ifdef QOG_RTURBO
+    {   /* Agent AP: characters over packed Turbo views (engine/r_qogturbo.c) */
+        extern int r_qog_turbotextmax, r_qog_turbotextover, r_qog_turbotextframes;
+        Sys_Printf("qog_turbotext: %d frames with characters over a packed view, most in a frame %d of %d, %d did not fit\n",
+                   r_qog_turbotextframes, r_qog_turbotextmax, QOG_TURBO_CHARS, r_qog_turbotextover);
+    }
+#endif
+    if (COM_CheckParm("-scanmodel")) {   /* Agent AP: the board's race wait, a few guesses of pre */
+        scanmodel_print(Sys_Printf, 3.0, 8.6);
+        scanmodel_print(Sys_Printf, 5.0, 8.6);
+        scanmodel_print(Sys_Printf, 7.0, 8.6);
+    }
 #endif
 #ifdef QOG_HUD_SKIP
 #ifdef QOG_HUD_SKIP_CHECK

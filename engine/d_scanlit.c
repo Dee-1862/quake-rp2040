@@ -149,6 +149,15 @@ void D_QogLitInterpCheck (void)
 #define LITI_CHECK
 #endif
 
+#ifdef QOG_DRAW_CORE1
+// QuakeOG (Agent AM): the check above, on core 0 before core 1 draws with
+// its own copy of this file (d_core1.c), which never checks
+void D_QogLitCheck (void)
+{
+	LITI_CHECK
+}
+#endif
+
 #ifdef QOG_RFAST_STATS
 // QuakeOG (Agent AA): PC measurement of the Fast drawer's work (d_litspan.h).
 // qog_rfaststats prints the sums since the last call and clears them.
@@ -399,7 +408,7 @@ no modulo and fewer instructions per pixel (d_litspan.h).
 =============
 */
 
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 static void D_QogCountLit (espan_t *pspan, int any)
 {
 	do
@@ -479,7 +488,7 @@ static void D_QogSpansCore1 (void *pspan)
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
@@ -487,7 +496,11 @@ void D_DrawSpans8Lit (espan_t *pspan)
 	if (r_qogfast)
 		D_LitFixSetup (pspan);	// QuakeOG (Agent AH): before core 1 reads it
 #endif
-	if (pspan->pnext == SPAN_NONE)
+	if (pspan->pnext == SPAN_NONE
+#ifdef QOG_DRAW_CORE1
+		|| d_qogpipe_on		// QuakeOG (Agent AM): core 1 draws surfaces of its own
+#endif
+		)
 	{
 		D_LITSTEP (pspan, 1);	// QuakeOG (Agent AA): or the Fast drawer
 		return;
@@ -507,7 +520,7 @@ static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan);
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#ifdef QOG_PHASE_TIME
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
@@ -527,7 +540,7 @@ static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan)
 void D_DrawSpans8Lit (espan_t *pspan)
 #endif
 {
-#if defined(QOG_PHASE_TIME) && !defined(QOG_RFAST)
+#if (defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)) && !defined(QOG_RFAST)
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
 	{

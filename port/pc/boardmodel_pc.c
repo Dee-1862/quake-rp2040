@@ -28,6 +28,27 @@
 #include "r_qogalias.h"
 
 unsigned	qog_bm_count[QOG_BM_N];
+#ifdef QOG_DRAW_CORE1
+/* core 1's copy of the drawing counts in its own sums (engine/d_core1.h) */
+unsigned	c1_qog_bm_count[QOG_BM_N];
+unsigned	c1_qog_ph_count[QOG_PC_N];
+extern unsigned	c1_qog_lms[16];			/* d_core1s.c, r_surf.c compiled for core 1 */
+#define BM_C1(a)	(a)
+#else
+#define BM_C1(a)	NULL
+#endif
+#ifdef QOG_AQ_STATS
+#include "qog_aqstats.h"
+static const char	*const bm_aqname[AQ_N] = { "views", "bents", "bboxrej", "bnotop", "bclipped", "boneleaf",
+	"bsurfs", "bfront", "bpoly", "bpolyedge", "bpolysplit", "bfaces", "bmark", "bsplit", "brotang", "bclipedge",
+	"bemit", "bproj", "dsurf", "dsub", "dsubsame", "leadz", "nodeax", "nodedot", "cullflt", "fgrad", "fprojflt",
+	"fclipvert", "scanlines", "scanedges", "spansgen", "efrags", "bpolyax", "leadzfb", "bboxfb", "bpolyfb",
+	"bfrfull", "bfrdist" };
+#endif
+#ifdef QOG_DRAW_CORE1
+static const char	*const bm_c1name[QOG_C1_N] = { "drawt", "waitt", "c1surfs", "surfs", "early", "c0wait",
+	"px", "earlypx" };
+#endif
 
 extern unsigned	qog_lms[16];			/* r_surf.c, QOG_LMAP_STATS */
 extern cvar_t	r_fast;					/* r_main.c */
@@ -54,7 +75,7 @@ static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dl
 /* every count, as pointers, so one loop takes the differences */
 #define BM_MAXCOL	160
 #define BM_RANGES	4
-static unsigned		*bm_col[BM_MAXCOL];
+static unsigned		*bm_col[BM_MAXCOL], *bm_col2[BM_MAXCOL];	/* core 0's sum and core 1's, if any */
 static char			bm_colname[BM_MAXCOL][24];
 static unsigned		bm_last[BM_MAXCOL];
 static unsigned		bm_lasttime[QOG_PH_N];
@@ -65,14 +86,17 @@ static int			bm_range[BM_RANGES][2], bm_nrange, bm_lastcon;
 static float		bm_lastcenter;
 static unsigned		bm_bmmark[4];
 
-static void bm_add (unsigned *p, const char *prefix, const char *name)
+static void bm_add2 (unsigned *p, unsigned *p1, const char *prefix, const char *name)
 {
 	if (bm_ncol >= BM_MAXCOL)
 		Sys_Error ("boardmodel: too many columns");
 	bm_col[bm_ncol] = p;
+	bm_col2[bm_ncol] = p1;
 	snprintf (bm_colname[bm_ncol], sizeof bm_colname[0], "%s%s", prefix, name);
 	bm_ncol++;
 }
+
+#define bm_add(p, prefix, name)	bm_add2 (p, NULL, prefix, name)
 
 static void bm_open (void)
 {
@@ -90,17 +114,25 @@ static void bm_open (void)
 		return;
 	}
 	for (i = 0 ; i < QOG_PC_N ; i++)
-		bm_add (&qog_ph_count[i], "pc_", bm_pcname[i]);
+		bm_add2 (&qog_ph_count[i], BM_C1 (&c1_qog_ph_count[i]), "pc_", bm_pcname[i]);
 	for (i = 0 ; i < QOG_WC_N ; i++)
 		bm_add (&qog_wc_count[i], "wc_", bm_wcname[i]);
 	for (i = 0 ; i < 16 ; i++)
-		bm_add (&qog_lms[i], "", bm_lmsname[i]);
+		bm_add2 (&qog_lms[i], BM_C1 (&c1_qog_lms[i]), "", bm_lmsname[i]);
 	for (i = 0 ; i < QAS_N ; i++)
 		bm_add (&qog_astats[0][i], "am_", bm_asname[i]);
 	for (i = 0 ; i < QAS_N ; i++)
 		bm_add (&qog_astats[1][i], "vm_", bm_asname[i]);
 	for (i = 0 ; i < QOG_BM_N ; i++)
-		bm_add (&qog_bm_count[i], "bm_", bm_bmname[i]);
+		bm_add2 (&qog_bm_count[i], BM_C1 (&c1_qog_bm_count[i]), "bm_", bm_bmname[i]);
+#ifdef QOG_AQ_STATS
+	for (i = 0 ; i < AQ_N ; i++)
+		bm_add (&qog_aq[i], "aq_", bm_aqname[i]);
+#endif
+#ifdef QOG_DRAW_CORE1
+	for (i = 0 ; i < QOG_C1_N ; i++)
+		bm_add (&qog_c1_stat[i], "c1_", bm_c1name[i]);
+#endif
 	// the compile flags that change what a count costs (tools/boardmodel.py FEATURE_SCALE)
 	fprintf (bm_log, "#features"
 #ifdef QOG_DLIGHT_AXIAL
@@ -125,7 +157,34 @@ static void bm_open (void)
 		" QOG_LITSPAN_INTERP"
 #endif
 #ifdef QOG_RTURBO
-		" QOG_RTURBO"
+		" QOG_RTURBO QOG_TURBO_TEXT"	// Agent AP's text list came with this logger
+#endif
+#ifdef QOG_DRAW_CORE1
+		" QOG_DRAW_CORE1"
+#endif
+#ifdef QOG_LEADZ_FLOAT
+		" QOG_LEADZ_FLOAT"
+#endif
+#ifdef QOG_BPOLY_AXIAL
+		" QOG_BPOLY_AXIAL"
+#endif
+#ifdef QOG_BMODEL_FACING
+		" QOG_BMODEL_FACING"
+#endif
+#ifdef QOG_BMODEL_BBOXF
+		" QOG_BMODEL_BBOXF"
+#endif
+#ifdef QOG_BMODEL_FRUSTUM
+		" QOG_BMODEL_FRUSTUM"
+#endif
+#ifdef QOG_DSURF_NOFRUSTUM
+		" QOG_DSURF_NOFRUSTUM"
+#endif
+#ifdef QOG_FX_REUSE
+		" QOG_FX_REUSE"
+#endif
+#ifdef QOG_FGRAD_AXIAL
+		" QOG_FGRAD_AXIAL"
 #endif
 		"\n");
 	fprintf (bm_log, "frame,racerows,racepacked,rows,packed,rfast,vwidth");
@@ -177,7 +236,7 @@ void qog_bm_frame (int rows, int packed)
 		if (!bm_was)
 		{	// the first frame of a timedemo: differences start here
 			for (i = 0 ; i < bm_ncol ; i++)
-				bm_last[i] = *bm_col[i];
+				bm_last[i] = *bm_col[i] + (bm_col2[i] ? *bm_col2[i] : 0);
 			memcpy (bm_lasttime, qog_ph_time, sizeof bm_lasttime);
 			bm_lastcon = con_current;
 			bm_lastcenter = scr_centertime_start;
@@ -196,7 +255,7 @@ void qog_bm_frame (int rows, int packed)
 		bm_lastcenter = scr_centertime_start;
 		for (i = 0 ; i < bm_ncol ; i++)
 		{
-			v = *bm_col[i];
+			v = *bm_col[i] + (bm_col2[i] ? *bm_col2[i] : 0);
 			d = v >= bm_last[i] ? v - bm_last[i] : v;	// a count cleared meanwhile (a new level)
 			bm_last[i] = v;
 			fprintf (bm_log, ",%u", d);

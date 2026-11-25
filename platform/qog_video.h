@@ -33,7 +33,22 @@ typedef struct {
     uint32_t frames;          /* scanouts completed */
     uint32_t last_scan_us;    /* duration of the last scanout */
     uint32_t last_wait_us;    /* how long the last present()/wait() blocked core 0 */
+    uint32_t last_scan_rows;  /* QuakeOG (Agent AP): panel lines the last scanout sent */
 } qog_video_stats_t;
+
+/* QuakeOG (Agent AP): send the pixel stream through a PIO state machine
+ * instead of the PL022, at clk_sys / n with n the smallest whole number of
+ * system clocks a bit that keeps the bit rate at or under max_khz (clock
+ * divider 1, so no fractional jitter). The PL022 still sends the commands
+ * (window, RAMWR). Call before qog_video_init. When no PIO state machine or
+ * instruction room is free, qog_video_init keeps the PL022 and says so. */
+void qog_video_use_pio(uint32_t max_khz);
+
+/* Pure, host-testable (Agent AP): system clocks a bit for the PIO stream at
+ * clk_hz with the rate at most max_hz (at least 2, at most 32), and how many
+ * of them the clock is high (hi) and low (lo, the data setup before the
+ * rising edge, never shorter than hi). */
+uint32_t qog_video_pio_bit_cycles(uint32_t clk_hz, uint32_t max_hz, uint32_t *hi, uint32_t *lo);
 
 /* Bring the panel up (blocking, ~150 ms), clear it, start core 1.
  * Returns false if the panel driver never reported ready. Call once. */
@@ -63,6 +78,14 @@ void qog_video_present_rows(const uint8_t *fb, uint32_t rows);
  * each pixel goes to the panel twice side by side (no CPU on core 0). Only
  * for a 320 wide frame whose rows and lines are one to one. */
 void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed);
+/* QuakeOG (Agent AP): characters the next present_packed draws over its
+ * packed rows after doubling them, as runs in list order: each run is
+ * x | y << 9 | length << 17 | first << 23, its characters chars[first] on,
+ * 8 pixels apart. A glyph is 8x8 at font + (num >> 4) * 1024 + (num & 15)
+ * * 8 with rows 128 bytes apart, index 0 see-through (id's Draw_Character).
+ * Each must lie wholly inside the packed rows. The lists must stay as they
+ * are until the present after that one. */
+void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font);
 void qog_video_wait_rows(uint32_t rows);
 
 /* Optional work for core 1 to do while its line DMA runs (sound mixing in
@@ -75,6 +98,8 @@ void qog_video_set_core1_hook(void (*fn)(void));
  * 2 KB core 1 stack, so the job must be shallow. */
 void qog_video_core1_start(void (*fn)(void *), void *arg);
 void qog_video_core1_join(void);
+/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs since boot, us */
+void qog_video_core1_times(uint32_t *scan_us, uint32_t *job_us);
 
 qog_video_stats_t qog_video_stats(void);
 

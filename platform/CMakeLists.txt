@@ -10,6 +10,7 @@ target_link_libraries(qog_platform PUBLIC
     fwog_display_bsp
     pico_multicore
     hardware_dma
+    hardware_pio
     hardware_spi)
 target_compile_options(qog_platform PRIVATE -Wall -Wextra)
 

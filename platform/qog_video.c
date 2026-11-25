@@ -7,10 +7,23 @@ void qog_video_build_map(uint16_t *map, uint16_t out_n, uint16_t src_n) {
         map[o] = (uint16_t)(((2u * o + 1u) * src_n) / (2u * out_n));
 }
 
+uint32_t qog_video_pio_bit_cycles(uint32_t clk_hz, uint32_t max_hz, uint32_t *hi, uint32_t *lo) {
+    /* the fewest whole system clocks a bit with clk_hz / n <= max_hz */
+    uint32_t n = max_hz ? (clk_hz + max_hz - 1u) / max_hz : 32u;
+    if (n < 2u) n = 2u;
+    if (n > 32u) n = 32u;   /* two instructions of at most 16 cycles each */
+    if (hi) *hi = n / 2u;
+    if (lo) *lo = n - n / 2u;
+    return n;
+}
+
 #ifndef HOST_TEST
 
 #include "fwog_display.h"
+#include "hardware/clocks.h"
 #include "hardware/dma.h"
+#include "hardware/gpio.h"
+#include "hardware/pio.h"
 #include "hardware/spi.h"
 #include "hardware/sync.h"
 #include "pico/multicore.h"
@@ -39,11 +52,39 @@ static volatile uint32_t s_frames;
 static volatile uint32_t s_last_scan_us;
 static uint32_t          s_last_wait_us;
 static void (*volatile s_hook)(void);
+static uint32_t          s_last_scan_rows;   /* Agent AP */
+/* Agent AP: characters over the packed rows (qog_video_set_text), the next
+   present's and the scanout's in flight */
+static const uint32_t   *s_text_next, *s_scan_text;
+static const uint8_t    *s_chars_next, *s_scan_chars;
+static uint32_t          s_text_next_n, s_scan_text_n;
+static const uint8_t    *s_font;
+
+/* QuakeOG (Agent AP): the pixel stream through PIO (qog_video_use_pio).
+   Two instructions, side-set 1 bit on SCK, autopull 16 bits MSB first:
+       out pins, 1   side 0 [lo - 1]    data out, SCK low
+       nop           side 1 [hi - 1]    SCK high, the panel samples
+   An empty FIFO stalls the out with SCK low (SPI mode 0 idle). A 16-bit
+   DMA write to the TX FIFO lands in both halves of the word, and the left
+   shift sends the upper copy. No gap between pixels or lines, where the
+   PL022 in mode 0 leaves about 1.5 bit times between frames (Agent V
+   measured 22.4 ms a scanout against 20.5 ms of wire at 50 MHz). */
+static uint32_t s_pio_want_khz;     /* 0: PL022 only */
+static PIO      s_pio;
+static int      s_pio_sm = -1;
+static uint     s_pio_offset;
+static uint16_t s_pio_instr[2];
+static struct pio_program s_pio_prog = { .instructions = s_pio_instr, .length = 2, .origin = -1 };
+static uint32_t s_pio_hz;
 
 /* ---- core 1 ---------------------------------------------------------- */
 
 /* Hot loops live in RAM so core 1 never contends with core 0 for XIP while
-   the renderer is streaming textures out of flash. */
+   the renderer is streaming textures out of flash. QuakeOG (Agent AP): in
+   the board build the compiler inlines them into scanout and scanout into
+   core1_main, which is in flash, so the loop runs from flash and its few
+   cache lines stay in the XIP cache. Keeping them in RAM with
+   __no_inline_not_in_flash_func costs about 450 bytes of RAM. */
 static void __not_in_flash_func(convert_line)(uint16_t *dst, const uint8_t *src) {
     const uint16_t *pal = s_pal;
     if (s_x_identity) {
@@ -76,6 +117,25 @@ static void __not_in_flash_func(convert_line_double)(uint16_t *dst, const uint8_
         d[2] = pal[(w >> 16) & 0xFFu] * 0x10001u;
         d[3] = pal[w >> 24] * 0x10001u;
         d += 4;
+    }
+}
+
+/* QuakeOG (Agent AP): the listed characters that cross source row sy, over
+   its converted line, as Draw_Character draws them over a spread view */
+static void text_line(uint16_t *dst, uint32_t sy) {
+    const uint16_t *pal = s_pal;
+    const uint32_t *t = s_scan_text;
+    for (uint32_t i = 0, n = s_scan_text_n; i < n; i++) {
+        const uint32_t e = t[i], r = sy - ((e >> 9) & 255u);
+        if (r >= 8u) continue;
+        const uint8_t *ch = s_scan_chars + (e >> 23);
+        uint16_t *d = dst + (e & 511u);
+        for (uint32_t k = 0, len = (e >> 17) & 63u; k < len; k++, d += 8) {
+            const uint32_t num = ch[k];
+            const uint8_t *src = s_font + ((num >> 4) << 10) + ((num & 15u) << 3) + (r << 7);
+            for (uint32_t c = 0; c < 8u; c++)
+                if (src[c]) d[c] = pal[src[c]];
+        }
     }
 }
 
@@ -113,14 +173,25 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
     spi_write_blocking(FWOG_LCD_SPI, &ramwr, 1);
     spi_drain();
     gpio_put(PIN_LCD_DC, 1);
-    spi_set_format(FWOG_LCD_SPI, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
     dma_channel_config c = dma_channel_get_default_config((uint)s_dma);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_16);
     channel_config_set_read_increment(&c, true);
     channel_config_set_write_increment(&c, false);
-    channel_config_set_dreq(&c, spi_get_dreq(FWOG_LCD_SPI, true));
-    volatile void *dr = &spi_get_hw(FWOG_LCD_SPI)->dr;
+    volatile void *dr;
+    const bool pio = s_pio_sm >= 0;
+    if (pio) {
+        /* Agent AP: SCK and MOSI to the state machine (both idle low) */
+        const gpio_function_t f = pio_get_index(s_pio) ? GPIO_FUNC_PIO1 : GPIO_FUNC_PIO0;
+        gpio_set_function(PIN_LCD_SCK, f);
+        gpio_set_function(PIN_LCD_MOSI, f);
+        channel_config_set_dreq(&c, pio_get_dreq(s_pio, (uint)s_pio_sm, true));
+        dr = &s_pio->txf[s_pio_sm];
+    } else {
+        spi_set_format(FWOG_LCD_SPI, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+        channel_config_set_dreq(&c, spi_get_dreq(FWOG_LCD_SPI, true));
+        dr = &spi_get_hw(FWOG_LCD_SPI)->dr;
+    }
 
     const uint32_t src_h = s_cfg.src_h, src_w = s_cfg.src_w, map_h = s_cfg.out_h;
     int last_sy = -1;
@@ -131,9 +202,10 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
             /* New source line: build it in the free buffer. The other one
                may still be on the wire. */
             cur ^= 1u;
-            if ((uint32_t)sy < s_scan_packed)   /* Agent AO: a Turbo view's row, packed */
+            if ((uint32_t)sy < s_scan_packed) {   /* Agent AO: a Turbo view's row, packed */
                 convert_line_double(s_line[cur], fb + (uint32_t)sy * (src_w / 2u));
-            else
+                if (s_scan_text_n) text_line(s_line[cur], (uint32_t)sy);   /* Agent AP */
+            } else
                 convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
             last_sy = sy;
             __dmb();
@@ -145,10 +217,25 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
         dma_channel_configure((uint)s_dma, &c, dr, s_line[cur], QOG_LCD_W, true);
     }
     dma_channel_wait_for_finish_blocking((uint)s_dma);
-    spi_drain();
-    gpio_put(PIN_LCD_CS, 1);
-    spi_set_format(FWOG_LCD_SPI, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    if (pio) {
+        /* Agent AP: the last bits have left the shift register once the
+           state machine stalls on the empty FIFO (TXSTALL is set again in
+           every cycle it waits, so clearing it first cannot miss the end).
+           Then the pins go back to the PL022 for the BSP's commands. */
+        const uint32_t stall = 1u << (PIO_FDEBUG_TXSTALL_LSB + (uint)s_pio_sm);
+        while (!pio_sm_is_tx_fifo_empty(s_pio, (uint)s_pio_sm)) tight_loop_contents();
+        s_pio->fdebug = stall;
+        while (!(s_pio->fdebug & stall)) tight_loop_contents();
+        gpio_put(PIN_LCD_CS, 1);
+        gpio_set_function(PIN_LCD_SCK, GPIO_FUNC_SPI);
+        gpio_set_function(PIN_LCD_MOSI, GPIO_FUNC_SPI);
+    } else {
+        spi_drain();
+        gpio_put(PIN_LCD_CS, 1);
+        spi_set_format(FWOG_LCD_SPI, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    }
 
+    s_last_scan_rows = out_h;
     s_last_scan_us = (uint32_t)(time_us_64() - t0);
 }
 
@@ -163,6 +250,9 @@ static const uint8_t *volatile s_next_fb;
 static void (*volatile s_job_fn)(void *);
 static void *volatile s_job_arg;
 static volatile bool s_job_done = true;
+/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs, us since boot
+   (wrap after 71 minutes, the reader takes differences) */
+static volatile uint32_t s_c1_scan_us, s_c1_job_us;
 
 static void core1_main(void) {
     /* Lets core 0 pause us safely while it erases/programs flash (saves). */
@@ -172,9 +262,11 @@ static void core1_main(void) {
         while ((fb = s_next_fb) == NULL) {
             void (*job)(void *) = s_job_fn;
             if (job) {
+                const uint32_t j0 = time_us_32();
                 __dmb();
                 s_job_fn = NULL;
                 job(s_job_arg);
+                s_c1_job_us = s_c1_job_us + (time_us_32() - j0);
                 __dmb();
                 s_job_done = true;
                 __sev();
@@ -186,6 +278,7 @@ static void core1_main(void) {
         }
         s_next_fb = NULL;
         scanout(fb);
+        s_c1_scan_us = s_c1_scan_us + s_last_scan_us;
         s_frames = s_frames + 1u;
         __dmb();
         s_busy = false;
@@ -194,6 +287,57 @@ static void core1_main(void) {
 }
 
 /* ---- core 0 ---------------------------------------------------------- */
+
+/* QuakeOG (Agent AP): claim a state machine and load the stream program,
+   pio1 first (pio0 holds the WS2812 bar's SM 0, and the speaker asks pio0
+   first, sys_rp2040.c and snd_rp2040.c). Called once before core 1 starts,
+   after the panel init, so the BSP's init and clear ran on the PL022. */
+static bool pio_claim(PIO pio) {
+    if (!pio_can_add_program(pio, &s_pio_prog)) return false;
+    const int sm = pio_claim_unused_sm(pio, false);
+    if (sm < 0) return false;
+    s_pio = pio;
+    s_pio_sm = sm;
+    s_pio_offset = (uint)pio_add_program(pio, &s_pio_prog);
+    return true;
+}
+
+static void pio_start(void) {
+    const uint32_t clk = (uint32_t)clock_get_hz(clk_sys);
+    uint32_t hi, lo;
+    const uint32_t n = qog_video_pio_bit_cycles(clk, s_pio_want_khz * 1000u, &hi, &lo);
+    s_pio_instr[0] = (uint16_t)(pio_encode_out(pio_pins, 1) | pio_encode_sideset(1, 0) | pio_encode_delay(lo - 1u));
+    s_pio_instr[1] = (uint16_t)(pio_encode_nop() | pio_encode_sideset(1, 1) | pio_encode_delay(hi - 1u));
+    if (!pio_claim(pio1) && !pio_claim(pio0)) {
+        DIAG("[qog_video] lcd no free PIO state machine, staying on the PL022\n");
+        return;
+    }
+    const uint sm = (uint)s_pio_sm;
+    pio_sm_config c = pio_get_default_sm_config();
+    sm_config_set_wrap(&c, s_pio_offset, s_pio_offset + 1u);
+    sm_config_set_sideset(&c, 1, false, false);
+    sm_config_set_sideset_pins(&c, PIN_LCD_SCK);
+    sm_config_set_out_pins(&c, PIN_LCD_MOSI, 1);
+    sm_config_set_out_shift(&c, false, true, 16);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);   /* 8 pixels of slack between line DMAs */
+    sm_config_set_clkdiv_int_frac(&c, 1, 0);
+    pio_sm_init(s_pio, sm, s_pio_offset, &c);
+    const uint32_t mask = (1u << PIN_LCD_SCK) | (1u << PIN_LCD_MOSI);
+    pio_sm_set_pins_with_mask(s_pio, sm, 0u, mask);
+    pio_sm_set_pindirs_with_mask(s_pio, sm, mask, mask);
+    /* the state machine drives the pins only during a scanout (their gpio
+       function), the PL022 the rest of the time. Faster edges keep the
+       shorter clock pulse whole */
+    gpio_set_slew_rate(PIN_LCD_SCK, GPIO_SLEW_RATE_FAST);
+    gpio_set_slew_rate(PIN_LCD_MOSI, GPIO_SLEW_RATE_FAST);
+    gpio_set_drive_strength(PIN_LCD_SCK, GPIO_DRIVE_STRENGTH_8MA);
+    gpio_set_drive_strength(PIN_LCD_MOSI, GPIO_DRIVE_STRENGTH_8MA);
+    pio_sm_set_enabled(s_pio, sm, true);
+    s_pio_hz = clk / n;
+    DIAG("[qog_video] lcd pio%u sm %u, %u kHz (clk_sys %u kHz / %u, high %u low %u, limit %u kHz), commands on the PL022\n",
+         (unsigned)pio_get_index(s_pio), sm, (unsigned)(s_pio_hz / 1000u), (unsigned)(clk / 1000u),
+         (unsigned)n, (unsigned)hi, (unsigned)lo, (unsigned)s_pio_want_khz);
+}
 
 bool qog_video_init(const qog_video_config_t *cfg) {
     if (!cfg || cfg->src_w == 0u || cfg->src_w > QOG_LCD_W || cfg->src_h == 0u ||
@@ -228,10 +372,20 @@ bool qog_video_init(const qog_video_config_t *cfg) {
         DIAG("[qog_video] no free DMA channel\n");
         return false;
     }
+    if (s_pio_want_khz) pio_start();
     multicore_launch_core1(core1_main);
     DIAG("[qog_video] %ux%u -> 320x%u at y=%u, dma ch %d\n",
          cfg->src_w, cfg->src_h, cfg->out_h, s_y0, s_dma);
     return true;
+}
+
+void qog_video_use_pio(uint32_t max_khz) { s_pio_want_khz = max_khz; }
+
+void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font) {
+    s_text_next = runs;
+    s_chars_next = chars;
+    s_text_next_n = nruns;
+    s_font = font;
 }
 
 void qog_video_set_palette565(const uint16_t pal[256]) {
@@ -276,6 +430,11 @@ void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed)
     s_scan_rows = (rows && rows < s_cfg.out_h && s_cfg.src_h == s_cfg.out_h) ? rows : s_cfg.out_h;
     /* Agent AO: packed rows only for a 320 wide frame, rows one to one */
     s_scan_packed = (s_x_identity && s_cfg.src_h == s_cfg.out_h && packed <= s_cfg.src_h) ? packed : 0u;
+    /* Agent AP: the characters only over packed rows */
+    s_scan_text = s_text_next;
+    s_scan_chars = s_chars_next;
+    s_scan_text_n = (s_scan_packed && s_font) ? s_text_next_n : 0u;
+    s_text_next_n = 0;
     s_scan_row = 0;
     s_busy = true;
     __dmb();
@@ -298,8 +457,13 @@ void qog_video_core1_join(void) {
     __dmb();
 }
 
+void qog_video_core1_times(uint32_t *scan_us, uint32_t *job_us) {
+    *scan_us = s_c1_scan_us;
+    *job_us = s_c1_job_us;
+}
+
 qog_video_stats_t qog_video_stats(void) {
-    qog_video_stats_t st = { s_frames, s_last_scan_us, s_last_wait_us };
+    qog_video_stats_t st = { s_frames, s_last_scan_us, s_last_wait_us, s_last_scan_rows };
     return st;
 }
 
