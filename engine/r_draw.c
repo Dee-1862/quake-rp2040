@@ -32,6 +32,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 #include "d_local.h"	// FIXME: shouldn't need to include this
 #include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 
 #define MAXLEFTCLIPEDGES		100
 
@@ -292,6 +293,10 @@ typedef struct
 	int		cn[4][4];			// view_clipplanes normals in 1/8192 and the origin's rounding
 	int		gr[3][3];			// the face gradient rows (R_QogFaceGradFast), 2^gs times
 	float	gk[3];				//   and 2^-(gs + 14) for each
+#ifdef QOG_FX_REUSE
+	float	vec[9];				// vright, vup, vpn of the values above (Agent AQ)
+	float	xs, ys;				// xscale 2^xl, yscale 2^yl
+#endif
 #ifdef QOG_WORLDNODE_INT
 	int		plon;				// the world's view planes below are set
 	int		pl[4][4];			// view_clipplanes normal and dist in 1/16384
@@ -606,9 +611,25 @@ void R_QogFxSetup (void)
 	float		xs, ys, gr[3][3];
 	int			i, k, xl, yl;
 
+#ifdef QOG_FX_REUSE
+	int			same;
+#endif
+
 	if (!r_qog_vertcache)
 		return;
 	fx = R_QOGFX;
+#ifdef QOG_FX_REUSE
+	/*
+	QuakeOG (Agent AQ): a brush entity that does not turn has the world's
+	vectors (or those of the entity before), and everything below but the
+	origin's part comes from the vectors, the view planes' normals (made
+	from the vectors) and the view's projection values. When the vectors
+	have the bits of the last complete setup, only the origin's part is
+	made again, with the same statements, so the values are the same.
+	*/
+	same = fx->on && insubmodel && !memcmp (fx->vec, vright, sizeof(vec3_t)) &&
+		   !memcmp (fx->vec + 3, vup, sizeof(vec3_t)) && !memcmp (fx->vec + 6, vpn, sizeof(vec3_t));
+#endif
 	fx->on = 0;
 #ifdef QOG_WORLDNODE_INT
 	// QuakeOG (Agent AJ): the world's view planes for R_QogCullNode, in
@@ -646,6 +667,18 @@ void R_QogFxSetup (void)
 		fx->org[i] = R_QogRound (modelorg[i] * 1024);
 		r[i] = fx->org[i] * (1.0f / 1024) - modelorg[i];
 	}
+#ifdef QOG_FX_REUSE
+	if (same)
+	{
+		fx->cx = R_QogRound (DotProduct (r, vright) * fx->xs * 1024);
+		fx->cy = R_QogRound (DotProduct (r, vup) * fx->ys * 1024);
+		fx->cz = R_QogRound (DotProduct (r, vpn) * (8192.0f * 1024));
+		for (i=0 ; i<4 ; i++)
+			fx->cn[i][3] = R_QogRound (DotProduct (r, view_clipplanes[i].normal) * 262144);
+		fx->on = 1;
+		return;
+	}
+#endif
 	// the largest power of two that keeps xscale * 2^xl within 8192
 	if (xscale > 8192 || yscale > 8192 || xscale < 1.0f / 512 || yscale < 1.0f / 512)
 		return;
@@ -708,6 +741,13 @@ void R_QogFxSetup (void)
 			fx->gr[k][i] = R_QogRound (gr[k][i] * sc);
 		fx->gk[k] = 1.0f / (sc * 16384);
 	}
+#ifdef QOG_FX_REUSE
+	memcpy (fx->vec, vright, sizeof(vec3_t));
+	memcpy (fx->vec + 3, vup, sizeof(vec3_t));
+	memcpy (fx->vec + 6, vpn, sizeof(vec3_t));
+	fx->xs = xs;
+	fx->ys = ys;
+#endif
 	fx->on = 1;
 }
 
@@ -834,7 +874,10 @@ static void R_QogProjectFast (mvertex_t *pv, int *o)
 	}
 	QOG_WC (QOG_WC_PROJECT);
 	if (!R_QogProjectFx (pv, o))
+	{
+		QOG_AQ (AQ_FPROJFLT, 1);
 		R_QogProjectFloatFx (pv, o);
+	}
 #ifdef QOG_FRONT_FAST_CHECK
 	// measurement (PC): the integer point against id's float one
 	{
@@ -903,6 +946,55 @@ static int R_QogQ14 (float f)
 	return (b & 0x80000000) ? -q : q;
 }
 
+#ifdef QOG_FGRAD_AXIAL
+/*
+QuakeOG (Agent AQ): the same gradients with fewer float calls and the same
+bits. On an axial plane (one normal component +-1, two +-0) id's
+DotProduct (modelorg, normal) is exactly modelorg[k] normal[k] when that is
+not zero, else a zero that is -0 only when all three products are -0
+(round to nearest adds zeros that way), so its bits need no float call
+(R_QogAxialDotF, any modelorg component not finite or denormal takes id's
+arithmetic). gk is a power of two (R_QogFxSetup), so distinv gk is exact
+and g (distinv gk) rounds as (g gk) distinv: g gk is made by adding to the
+exponent of (float) g (R_QogScale2), one multiply instead of two.
+*/
+static int R_QogAxialDotF (const float *v, const float *n, float *out)
+{
+	const r_qogaint_t	*b = (const r_qogaint_t *)v, *nb = (const r_qogaint_t *)n;
+	unsigned			e, q;
+	int					i, k;
+
+	if (((unsigned)nb[0] & 0x7FFFFFFF) == 0x3F800000 && !(((unsigned)nb[1] | (unsigned)nb[2]) & 0x7FFFFFFF))
+		k = 0;
+	else if (((unsigned)nb[1] & 0x7FFFFFFF) == 0x3F800000 && !(((unsigned)nb[0] | (unsigned)nb[2]) & 0x7FFFFFFF))
+		k = 1;
+	else if (((unsigned)nb[2] & 0x7FFFFFFF) == 0x3F800000 && !(((unsigned)nb[0] | (unsigned)nb[1]) & 0x7FFFFFFF))
+		k = 2;
+	else
+		return 0;
+	for (i=0 ; i<3 ; i++)
+	{
+		e = (unsigned)b[i] & 0x7F800000;
+		if (e == 0x7F800000 || (e == 0 && ((unsigned)b[i] & 0x007FFFFF)))
+			return 0;	// not finite, or denormal
+	}
+	if ((unsigned)b[k] & 0x7FFFFFFF)
+		q = (unsigned)b[k] ^ ((unsigned)nb[k] & 0x80000000);
+	else
+		q = ((unsigned)(b[0] ^ nb[0]) & (unsigned)(b[1] ^ nb[1]) & (unsigned)(b[2] ^ nb[2])) & 0x80000000;
+	QOG_FI (*out) = (int)q;
+	return 1;
+}
+
+/* f times p, p a power of two, for results that stay normal floats */
+static float R_QogScale2 (float f, float p)
+{
+	if (QOG_FI (f) & 0x7FFFFFFF)
+		QOG_FI (f) += (QOG_FI (p) & 0x7F800000) - (127 << 23);
+	return f;
+}
+#endif
+
 /*
 A face's 1/z gradients in Fast mode: the plane normal in 1/16384 against
 rows made once per view or entity (R_QogFxSetup), so the face costs the
@@ -915,16 +1007,53 @@ static void R_QogFaceGradFast (mplane_t *pplane)
 	int			n0, n1, n2, g;
 	float		distinv;
 
+	QOG_AQ (AQ_FGRAD, 1);
+#ifdef QOG_FGRAD_AXIAL
+	{
+		float	dot;
+
+		if (!R_QogAxialDotF (modelorg, pplane->normal, &dot))
+			dot = DotProduct (modelorg, pplane->normal);
+		distinv = QOG_FRECIP (pplane->dist - dot);
+	}
+#else
 	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));
+#endif
 	n0 = R_QogQ14 (pplane->normal[0]);
 	n1 = R_QogQ14 (pplane->normal[1]);
 	n2 = R_QogQ14 (pplane->normal[2]);
+#ifdef QOG_FGRAD_AXIAL
+	g = fx->gr[0][0] * n0 + fx->gr[0][1] * n1 + fx->gr[0][2] * n2;
+	surface_p->d_zistepu = R_QogScale2 ((float)g, fx->gk[0]) * distinv;
+	g = fx->gr[1][0] * n0 + fx->gr[1][1] * n1 + fx->gr[1][2] * n2;
+	surface_p->d_zistepv = R_QogScale2 ((float)g, fx->gk[1]) * distinv;
+	g = fx->gr[2][0] * n0 + fx->gr[2][1] * n1 + fx->gr[2][2] * n2;
+	surface_p->d_ziorigin = R_QogScale2 ((float)g, fx->gk[2]) * distinv;
+#else
 	g = fx->gr[0][0] * n0 + fx->gr[0][1] * n1 + fx->gr[0][2] * n2;
 	surface_p->d_zistepu = (float)g * (distinv * fx->gk[0]);
 	g = fx->gr[1][0] * n0 + fx->gr[1][1] * n1 + fx->gr[1][2] * n2;
 	surface_p->d_zistepv = (float)g * (distinv * fx->gk[1]);
 	g = fx->gr[2][0] * n0 + fx->gr[2][1] * n1 + fx->gr[2][2] * n2;
 	surface_p->d_ziorigin = (float)g * (distinv * fx->gk[2]);
+#endif
+#ifdef QOG_FGRAD_CHECK
+	// PC check build: the values of the code above against AJ's statements
+	{
+		static unsigned	n, bad;
+		float			di = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal)), v[3];
+
+		v[0] = (float)(fx->gr[0][0] * n0 + fx->gr[0][1] * n1 + fx->gr[0][2] * n2) * (di * fx->gk[0]);
+		v[1] = (float)(fx->gr[1][0] * n0 + fx->gr[1][1] * n1 + fx->gr[1][2] * n2) * (di * fx->gk[1]);
+		v[2] = (float)(fx->gr[2][0] * n0 + fx->gr[2][1] * n1 + fx->gr[2][2] * n2) * (di * fx->gk[2]);
+		n++;
+		if (QOG_FI (v[0]) != QOG_FI (surface_p->d_zistepu) || QOG_FI (v[1]) != QOG_FI (surface_p->d_zistepv) ||
+			QOG_FI (v[2]) != QOG_FI (surface_p->d_ziorigin))
+			bad++;
+		if ((n & 0x3FFF) == 0)
+			Sys_Printf ("qog_fgradcheck %u faces, %u differ\n", n, bad);
+	}
+#endif
 }
 
 /*
@@ -1126,6 +1255,7 @@ static void R_QogClipEdgeFast (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip
 			// we don't cache clipped edges
 				cacheoffset = 0x7FFFFFFF;
 
+				QOG_AQ (AQ_FCLIPVERT, 1);
 				f = (float)d0 / ((float)d0 - (float)d1);
 				clipvert.position[0] = pv0->position[0] +
 						f * (pv1->position[0] - pv0->position[0]);
@@ -1167,6 +1297,7 @@ static void R_QogClipEdgeFast (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip
 			// we don't cache partially clipped edges
 				cacheoffset = 0x7FFFFFFF;
 
+				QOG_AQ (AQ_FCLIPVERT, 1);
 				f = (float)d0 / ((float)d0 - (float)d1);
 				clipvert.position[0] = pv0->position[0] +
 						f * (pv1->position[0] - pv0->position[0]);
@@ -1451,6 +1582,7 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 			// we don't cache clipped edges
 				cacheoffset = 0x7FFFFFFF;
 
+				QOG_AQ (AQ_FCLIPVERT, 1);
 				f = d0 / (d0 - d1);
 				clipvert.position[0] = pv0->position[0] +
 						f * (pv1->position[0] - pv0->position[0]);
@@ -1492,6 +1624,7 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 			// we don't cache partially clipped edges
 				cacheoffset = 0x7FFFFFFF;
 
+				QOG_AQ (AQ_FCLIPVERT, 1);
 				f = d0 / (d0 - d1);
 				clipvert.position[0] = pv0->position[0] +
 						f * (pv1->position[0] - pv0->position[0]);
@@ -1808,6 +1941,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 
 // this is a dummy to give the caching mechanism someplace to write to
 	r_pedge = &tedge;
+	QOG_AQ (AQ_BFACES, 1);
 
 // set up clip planes
 	pclip = NULL;

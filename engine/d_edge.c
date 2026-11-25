@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "d_local.h"
 #include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 
 #ifdef QOG_PHASE_TIME
 // QuakeOG: pixels in a span list, for the phase counts
@@ -49,6 +50,41 @@ int			vstartscan;
 // FIXME: should go away
 extern void			R_RotateBmodel (void);
 extern void			R_TransformFrustum (void);
+#ifdef QOG_DSURF_NOFRUSTUM
+/*
+QuakeOG (Agent AQ): id turned the view planes for every brush entity
+surface it drew (R_RotateBmodel) and back again after it (two
+R_TransformFrustum calls, about 80 float operations each), and transformed
+the entity's origin each time. Nothing that draws spans reads the view
+planes, so the surfaces turn only the vectors and modelorg
+(R_QogRotateBmodelVecs) and the view planes are set back once at the end of
+D_DrawSurfaces from the same vectors and modelorg as id's last restore,
+which gives the same bits. The transformed origin is kept for the entity
+drawn last, from the same inputs (the vectors are the world's whenever it is
+made).
+*/
+extern void			R_QogRotateBmodelVecs (void);
+extern vec3_t		transformed_modelorg;
+static byte			d_qog_frustumdirty;
+static entity_t		*d_qog_xfent;
+static vec3_t		d_qog_xfmodelorg;
+
+static void D_QogSubmodelBegin (surf_t *s)
+{
+	vec3_t	local_modelorg;
+
+	currententity = SURF_ENTITY (s);
+	if (currententity != d_qog_xfent)
+	{
+		VectorSubtract (r_origin, currententity->origin, local_modelorg);
+		TransformVector (local_modelorg, d_qog_xfmodelorg);
+		d_qog_xfent = currententity;
+	}
+	VectorCopy (d_qog_xfmodelorg, transformed_modelorg);
+	R_QogRotateBmodelVecs ();
+	d_qog_frustumdirty = true;
+}
+#endif
 
 vec3_t		transformed_modelorg;
 
@@ -488,6 +524,19 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 	vec3_t			local_modelorg;
 
 	r_drawnpolycount++;
+	QOG_AQ (AQ_DSURF, 1);
+#ifdef QOG_AQ_STATS
+	{
+		static entity_t	*aqlast;
+
+		if (s->insubmodel)
+		{
+			QOG_AQ (AQ_DSUB, 1);
+			QOG_AQ (AQ_DSUBSAME, SURF_ENTITY (s) == aqlast);
+			aqlast = SURF_ENTITY (s);
+		}
+	}
+#endif
 
 	d_zistepu = s->d_zistepu;
 	d_zistepv = s->d_zistepv;
@@ -529,6 +578,9 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 		if (s->insubmodel)
 		{
+#ifdef QOG_DSURF_NOFRUSTUM
+			D_QogSubmodelBegin (s);	// QuakeOG (Agent AQ)
+#else
 		// FIXME: we don't want to do all this for every polygon!
 		// TODO: store once at start of frame
 			currententity = SURF_ENTITY (s);	//FIXME: make this passed in to
@@ -539,6 +591,7 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 			R_RotateBmodel ();	// FIXME: don't mess with the frustum,
 								// make entity passed in
+#endif
 		}
 
 		{
@@ -564,13 +617,18 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 			VectorCopy (base_vup, vup);
 			VectorCopy (base_vright, vright);
 			VectorCopy (base_modelorg, modelorg);
+#ifndef QOG_DSURF_NOFRUSTUM	// QuakeOG (Agent AQ): once at the end of D_DrawSurfaces
 			R_TransformFrustum ();
+#endif
 		}
 	}
 	else
 	{
 		if (s->insubmodel)
 		{
+#ifdef QOG_DSURF_NOFRUSTUM
+			D_QogSubmodelBegin (s);	// QuakeOG (Agent AQ)
+#else
 		// FIXME: we don't want to do all this for every polygon!
 		// TODO: store once at start of frame
 			currententity = SURF_ENTITY (s);	//FIXME: make this passed in to
@@ -580,6 +638,7 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 			R_RotateBmodel ();	// FIXME: don't mess with the frustum,
 								// make entity passed in
+#endif
 		}
 
 		D_QogDrawLitBody (s, SPAN_PTR (s->spans));	// QuakeOG (Agent AM): id's statements, below
@@ -598,7 +657,9 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 			VectorCopy (base_vup, vup);
 			VectorCopy (base_vright, vright);
 			VectorCopy (base_modelorg, modelorg);
+#ifndef QOG_DSURF_NOFRUSTUM	// QuakeOG (Agent AQ): once at the end of D_DrawSurfaces
 			R_TransformFrustum ();
+#endif
 		}
 	}
 }
@@ -994,6 +1055,10 @@ void D_DrawSurfaces (void)
 	currententity = &cl_entities[0];
 	TransformVector (modelorg, transformed_modelorg);
 	VectorCopy (transformed_modelorg, world_transformed_modelorg);
+#ifdef QOG_DSURF_NOFRUSTUM
+	d_qog_frustumdirty = false;	// QuakeOG (Agent AQ)
+	d_qog_xfent = NULL;
+#endif
 
 // TODO: could preset a lot of this at mode set time
 	if (r_drawflat.value)
@@ -1029,5 +1094,11 @@ void D_DrawSurfaces (void)
 		}
 #endif
 	}
+#ifdef QOG_DSURF_NOFRUSTUM
+	// QuakeOG (Agent AQ): id's last restore, from the world's vectors and
+	// base_modelorg, which every brush surface above put back
+	if (d_qog_frustumdirty)
+		R_TransformFrustum ();
+#endif
 }
 

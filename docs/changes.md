@@ -178,6 +178,71 @@ Not done, for later:
 - Measure pre on the board (the time from VID_Update to the view's first scan wait). The model's ranges come from guessing it.
 - Text drawn by the scanout covers Draw_Character only. Draw_Pic and Draw_TransPic over the view (the pause and loading plaques, the menu) still spread it.
 
+## 2026-11-25: Brush entities and the edge scan with fewer float calls, all exact (Agent AQ, PC and ARM build, registered data)
+
+The board's timedemo demo3 spends 6.9 ms a view in bmodels, 10.4 in world and 7.2 in edgescan (250 MHz, Fast), and none of it shrinks in Turbo mode. Counted on the PC (`QOG_AQ_STATS`, below), most of the float and double work left in these phases after Agents Z and AJ sat in brush entity code: the 1/z order of two brush surfaces in the edge scan, the brush polygons' clip against the world BSP, and the view planes turned for every brush surface drawn. Eight changes, each behind its own flag, all exact: r_fast 0, 1 and 2 give the same bits as before. Nothing ran on hardware. Every board saving below is an estimate from the Thumb code (objdump of `build-aq/arm`, ROM float calls at about 55 cycles, fdiv 75, f2d 22, dadd 115, dmul 150) and the PC's work counts.
+
+### Where the time went (PC, timedemo demo3, Fast, per view)
+
+| Work | Per view | Cost before |
+| --- | ---: | --- |
+| brush entities in the view list / rejected by their box / drawn (clipped to the BSP, in one leaf) | 20.7 / 15.2 / 5.4 (3.0, 2.4) | box test about 950 cycles a plane (two float dot products, four f2d, two dsub, two dcmp) |
+| brush surfaces tested for facing / facing | 65.0 / 34.2 | a float dot product, f2d and dcmp each |
+| R_RecursiveClipBPoly calls / edges tested / edges split | 108.8 / 425 / 28 | tplane 21 float calls a call, two float dot products and two compares an edge (about 730 cycles) |
+| planes of those calls that are axial | 99.9% | |
+| 1/z compares of two brush surfaces with one key in R_LeadingEdge | 283 | five f2d, four or five dmul, two dadd, two float multiplies and adds, a dcmp: about 1,350 cycles |
+| brush surfaces drawn by D_DrawSurfaces (of the same entity as the brush surface before) | 13.9 (11.6) | two R_TransformFrustum (80 float calls each) and a TransformVector each |
+| R_RotateBmodel in the bmodels phase | 5.4 entities | R_TransformFrustum to turn and again to put back |
+| Fast face gradients (world and brush) | 140 | 16 float calls each |
+| world nodes / faces / clip edges / emitted edges / projected points | 271 / 197 / 982 / 467 / 506 | integer already (Agent AJ) |
+| scan lines / edge visits in R_GenerateSpans | 152 / 4,152 | integer |
+
+### Changes
+
+| Change | Flag | Mode | What it does | Estimated board saving per view, demo3, 300 MHz |
+| --- | --- | --- | --- | --- |
+| 1/z order of brush surfaces in float | `QOG_LEADZ_FLOAT` (r_edge.c, R_QogZFront) | exact, all modes | id's newzi is a float part plus a product exact in double, scaled by the double 0.99 or 1.01. The float version is within 11.2 2^-24 of the sum of the four terms' sizes of id's difference, which is below 2^(e-17) for e the largest exponent, read from the bits. Outside that bound the float sign is id's, inside it id's double code runs (0.07% of the compares in demo3) | 283 x about 700 cycles, 0.66 ms of edgescan |
+| Brush clip sides by integer compares | `QOG_BPOLY_AXIAL` (r_bsp.c, R_QogAxPlane, R_QogAxSide) | exact, all modes | for an entity that does not turn, tplane's normal is id's identity product (R_QogIdentityRotate), and on an axial plane id's DotProduct is exactly plus or minus one coordinate (or a signed zero by round to nearest), so its bits need no float call. dist > 0 is then an integer compare of the float bits in real order. A split edge gets id's two dists by one float subtraction each. Values not finite, denormal or below 2^-100 take id's arithmetic | tplane 21 float calls to 1, an edge about 730 cycles to about 90: 0.37 M cycles, 1.24 ms of bmodels |
+| Brush surface facing without double | `QOG_BMODEL_FACING` (r_bsp.c, R_QogFacing) | exact | for a float x, x < -0.01 and x > 0.01 are x < -0.01f and x > 0.01f, and on an axial plane the dot product is the exact one above | 65 x about 250 cycles, 0.05 ms |
+| Brush box test in float compares | `QOG_BMODEL_BBOXF` (r_main.c, R_BmodelCheckBBox) | exact | id's double d is a float dot product less a float dist, exact in sign, so d <= 0 is dot <= dist (Agent Z's argument for the world nodes). Turned entities keep id's code | about 330 cycles a plane, 0.06 ms |
+| Brush view planes from the world's | `QOG_BMODEL_FRUSTUM` (r_main.c, R_QogFrustum) | exact | R_TransformFrustum's normals depend on the vectors alone. While view_clipplanes holds the normals of the world's vectors, an entity whose turned vectors have the same bits, and the planes put back after it, compute only the four dists. Anything else runs R_TransformFrustum. No copy of the planes is kept | 6.6 of 11 calls a view reuse the normals, about 3,300 cycles each, 0.07 ms of bmodels |
+| Brush surfaces draw without turning the view planes | `QOG_DSURF_NOFRUSTUM` (d_edge.c D_QogSubmodelBegin, r_bsp.c R_QogRotateBmodelVecs) | exact | nothing that draws spans reads view_clipplanes, so D_DrawSurfaces turns only the vectors and modelorg and sets the planes back once at its end, from the same vectors and modelorg as id's last restore. The entity's transformed origin is kept for the entity drawn last | 13.9 x about 9,000 cycles, 0.42 ms of edgescan |
+| Brush entity Fast setup made again only for its origin | `QOG_FX_REUSE` (r_draw.c R_QogFxSetup) | Fast and Turbo, the same values | when the vectors have the bits of the last complete setup (usually the world's), only org, the rounding constants cx, cy, cz and the view planes' origin terms are made again, by the same statements | about 7,500 cycles an entity, 0.14 ms of bmodels |
+| Face gradients with fewer float calls | `QOG_FGRAD_AXIAL` (r_draw.c R_QogFaceGradFast) | Fast and Turbo, the same values | an axial plane's dot product as above, and since gk is a power of two, g (distinv gk) rounds as (g gk) distinv, with g gk made by adding to the float's exponent | 140 x about 300 cycles, 0.15 ms (most of it world) |
+| Measurement | `QOG_AQ_STATS`, `QOG_LEADZ_CHECK`, `QOG_BPOLY_CHECK`, `QOG_BMODEL_FACING_CHECK`, `QOG_FGRAD_CHECK` | PC only | work counts every 100 views (`qog_aqstats`, engine/qog_aqstats.h), and both ways on every compare, side, dist and gradient with the mismatches counted | |
+
+Together, estimates at 300 MHz: bmodels about 1.6 ms, edgescan about 1.1 ms, world about 0.15 ms, about 2.8 ms a view (3.4 ms at 250 MHz). The board has run about twice the agents' estimates, so 2.8 to 5.6 ms is the range to expect. Turbo has the same counts (the brush and scan work does not depend on the width).
+
+Not done: the world phase is now mostly integer work and flash reads of the BSP data (271 nodes, 197 faces, about 1,300 plane distances and 500 projections a view, all integer since Agent AJ), which these flags cannot touch. The Fast clipped points (138 a view, 13 float calls each, about 0.35 ms) and an integer box test for brush entities (about 0.1 ms) are left, the first changes Fast pictures. R_GenerateSpans calls R_LeadingEdge for every leading edge (4,152 edge visits a view), and taking its first test (spanstate) into the loop would save the call on most of them, about 0.2 ms, but that loop is in Agent AM's edge scan work. The "brush entity in no visible leaf" reject the lead suggested only applies to 0.16 entities a view, since the server sends only entities in the PVS and the box test rejects 15 of 21.
+
+### Exact proof (hidden, `-nosound`, own `build-aq` folders, an untouched build of cd1e749 in `build-aq/ref`, own git-ignored data folder)
+
+Both PC builds carry the board's world flags (`QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT`) so the Fast front end runs too.
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc as pc/CMakeLists.txt builds it and with the world flags | ce86f894f9de both |
+| `qogtest_f_hash` | e92bc9e9650d |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), all 200 rows, against cd1e749 | r_fast 0 121 of 121 byte identical, r_fast 1 121 of 121, r_fast 2 (Turbo) 121 of 121 |
+| check build, timedemo demo1 (r_fast 0), demo2 (r_fast 1), demo3 (r_fast 1 and 2) | 1/z compares, clip planes, sides and dists, facing tests and face gradients both ways: about 710,000 compares, 2.75 million plane, side and dist tests, 160,000 facing tests and 410,000 gradients (counted to the last full 65,536 printed), 0 differ |
+
+### RAM and stack (board, the full configure line of docs/handoff.md with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own `build-aq/arm` and `build-aq/armref` of cd1e749)
+
+| | `end` | cd1e749 |
+| --- | --- | --- |
+| quake_display | 0x2003eaec | 0x2003ead8 (20 B more: the last entity and its transformed origin, three byte flags) |
+| quake_main | 0x2003f58c | 0x2003f58c |
+
+quake_display.bin 399,480 B (397,872 for cd1e749), so the display keeps about 3,350 B beside the 2 KB heap reserve. Stack: R_RecursiveClipBPoly 136 B a level as before (the axis rides in tplane.type), R_DrawBEntitiesOnList 120 B as before, new leaves R_QogZFront 48, R_QogAxSide 32, R_QogFacing 32, R_QogFrustum 32, D_QogSubmodelBegin 40, so no chain gets deeper.
+
+### For Agent AM
+
+- r_edge.c: R_QogZFront and R_QogZFrontDouble before R_LeadingEdge, and the two 1/z sites inside it. They read only the two surfaces, the edge and fv, so they run on either core.
+- d_edge.c: D_QogSubmodelBegin and three statics (the last entity, its transformed origin, a flag) used inside one D_DrawSurfaces call, which must stay on one core at a time. The view planes are set back at the end of D_DrawSurfaces.
+- r_main.c: R_QogFrustum before R_DrawBEntitiesOnList and its two calls, the box test's float compares, and the `qog_aqstats` print at the end of R_RenderView_ (PC measurement only).
+
+Files: engine/r_bsp.c, engine/r_edge.c, engine/d_edge.c, engine/r_main.c, engine/r_draw.c, engine/r_efrag.c (a count), engine/qog_aqstats.h (new), pc/CMakeLists.txt, apps/quake/CMakeLists.txt. Test scripts (git-ignored data folder): `qogtest_aq_td<1..3>_<0..2>.cfg` (timedemo with r_fast set), `qogtest_ai_turbo.cfg`.
+
 ## 2026-11-25: 300 MHz at 1.25 V, a flash check over every RX delay, die temperature lines, and a board PC-sampling profiler (Agent AN, ARM build, not run on hardware)
 
 The user approved 300 MHz. Both Quake apps now raise the core voltage to 1.25 V and then the clock to 300 MHz right after `board_init()`, extending Agent AB's run-time switch (port/rp2040/clock_rp2040.c). The BSP, its 200 MHz display bootloader and every other app are untouched. A new build option, `QOG_PROF`, adds a profiler that samples the interrupted PC on the board and prints each core's top 20 functions every 5 s. Nothing ran on hardware. Every board number below is an estimate.

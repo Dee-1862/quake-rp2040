@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
 #ifdef QOG_EDGES_IN_ZBUFFER
 #include "d_local.h"	// QuakeOG: d_pzbuffer, d_zwidth (R_QogScanRows)
 #endif
@@ -469,6 +470,133 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 
 #if	!id386
 
+#ifdef QOG_LEADZ_FLOAT
+/*
+==============
+R_QogZFront
+
+QuakeOG (Agent AQ): id's 1/z order of two brush entity surfaces that share
+a key, in float with id's doubles only near a tie. Returns 1 where id's
+code finds surf in front of surf2 (newzibottom >= testzi, or newzitop >=
+testzi and surf's d_zistepu >= surf2's), else 0.
+
+id computes newzi = (double)(zo + fv*zv) + fu*(double)zu, with the first
+part in float and the second product exact in double, then multiplies by
+the double 0.99 or 1.01 and compares with testzi made the same way. Here
+a = zo + fv*zv is id's own float, the rest is float: b = fu*zu, n = a + b,
+n*0.99f, n*1.01f and t the same for surf2. Each float step rounds by at
+most 2^-24 of its size and id's doubles by 2^-53, and 0.99f and 1.01f
+differ from id's doubles by less than 2^-24 of themselves, so the float
+difference d = n*0.99f - t is within 11.2 2^-24 S of id's (S the sum of
+|a| and |b| of both surfaces), which is below 2^(e-17) for e the largest
+exponent of the four. Only |d| below that (or anything not finite) takes
+id's double code. Under 2^-100 the bound is taken as 2^-100, so flushed
+denormal products cannot matter.
+==============
+*/
+#if defined(__GNUC__)
+typedef unsigned int __attribute__((may_alias))	r_qogbits_t;
+#else
+typedef unsigned int							r_qogbits_t;
+#endif
+#define QOG_FBITS(f)	(*(r_qogbits_t *)&(f))
+
+static int R_QogZFrontDouble (surf_t *surf, surf_t *surf2, edge_t *edge)
+{
+	double	fu, newzi, testzi, newzitop, newzibottom;
+
+	fu = (float)(edge->u - 0xFFFFF) * (1.0 / 0x100000);
+	newzi = surf->d_ziorigin + fv*surf->d_zistepv +
+			fu*surf->d_zistepu;
+	newzibottom = newzi * 0.99;
+
+	testzi = surf2->d_ziorigin + fv*surf2->d_zistepv +
+			fu*surf2->d_zistepu;
+
+	if (newzibottom >= testzi)
+		return 1;
+
+	newzitop = newzi * 1.01;
+	if (newzitop >= testzi)
+	{
+		if (surf->d_zistepu >= surf2->d_zistepu)
+			return 1;
+	}
+	return 0;
+}
+
+static int R_QogZFront (surf_t *surf, surf_t *surf2, edge_t *edge)
+{
+	float			fu, a1, b1, a2, b2, n, t, d;
+	unsigned int	e, ea, lim, db;
+
+	fu = (float)(edge->u - 0xFFFFF);
+	if (QOG_FBITS (fu) & 0x7FFFFFFF)
+		QOG_FBITS (fu) -= 20u << 23;		// times 2^-20, exact: id's fu
+	a1 = surf->d_ziorigin + fv*surf->d_zistepv;				// id's float part
+	b1 = fu*surf->d_zistepu;
+	a2 = surf2->d_ziorigin + fv*surf2->d_zistepv;
+	b2 = fu*surf2->d_zistepu;
+
+	// the largest biased exponent of the four
+	e = QOG_FBITS (a1) & 0x7F800000;
+	ea = QOG_FBITS (b1) & 0x7F800000;
+	if (ea > e) e = ea;
+	ea = QOG_FBITS (a2) & 0x7F800000;
+	if (ea > e) e = ea;
+	ea = QOG_FBITS (b2) & 0x7F800000;
+	if (ea > e) e = ea;
+	if (e == 0x7F800000)
+		goto ids;		// not finite
+	lim = e > (44u << 23) ? e - (17u << 23) : (27u << 23);	// 2^(e-17), at least 2^-100
+
+	n = a1 + b1;
+	t = a2 + b2;
+	d = n*0.99f - t;
+	db = QOG_FBITS (d) & 0x7FFFFFFF;
+	if (db > lim)
+	{
+		if (!(QOG_FBITS (d) & 0x80000000))
+			return 1;	// newzibottom >= testzi
+	}
+	else
+		goto ids;
+
+	d = n*1.01f - t;
+	db = QOG_FBITS (d) & 0x7FFFFFFF;
+	if (db <= lim)
+		goto ids;
+	if (QOG_FBITS (d) & 0x80000000)
+		return 0;		// newzitop < testzi
+	return surf->d_zistepu >= surf2->d_zistepu;
+
+ids:
+	QOG_AQ (AQ_LEADZFB, 1);
+	return R_QogZFrontDouble (surf, surf2, edge);
+}
+
+#ifdef QOG_LEADZ_CHECK
+// PC check build: both ways on every compare, mismatches counted
+unsigned	r_qog_leadzn, r_qog_leadzbad;
+
+static int R_QogZFrontCheck (surf_t *surf, surf_t *surf2, edge_t *edge)
+{
+	int	a = R_QogZFront (surf, surf2, edge);
+	int	b = R_QogZFrontDouble (surf, surf2, edge);
+
+	r_qog_leadzn++;
+	if (a != b)
+		r_qog_leadzbad++;
+	if ((r_qog_leadzn & 0xFFFF) == 0)
+		Sys_Printf ("qog_leadzcheck %u compares, %u differ\n", r_qog_leadzn, r_qog_leadzbad);
+	return b;
+}
+#define R_QOGZFRONT	R_QogZFrontCheck
+#else
+#define R_QOGZFRONT	R_QogZFront
+#endif
+#endif
+
 /*
 ==============
 R_LeadingEdge
@@ -479,7 +607,9 @@ void R_LeadingEdge (edge_t *edge)
 	espan_t			*span;
 	surf_t			*surf, *surf2;
 	int				iu;
+#ifndef QOG_LEADZ_FLOAT
 	double			fu, newzi, testzi, newzitop, newzibottom;
+#endif
 
 	if (edge->surfs[1])
 	{
@@ -504,6 +634,11 @@ void R_LeadingEdge (edge_t *edge)
 			if (surf->insubmodel && (surf->key == surf2->key))
 			{
 			// must be two bmodels in the same leaf; sort on 1/z
+				QOG_AQ (AQ_LEADZ, 1);
+#ifdef QOG_LEADZ_FLOAT
+				if (R_QOGZFRONT (surf, surf2, edge))	// QuakeOG (Agent AQ)
+					goto newtop;
+#else
 				fu = (float)(edge->u - 0xFFFFF) * (1.0 / 0x100000);
 				newzi = surf->d_ziorigin + fv*surf->d_zistepv +
 						fu*surf->d_zistepu;
@@ -525,6 +660,7 @@ void R_LeadingEdge (edge_t *edge)
 						goto newtop;
 					}
 				}
+#endif
 			}
 
 continue_search:
@@ -542,6 +678,11 @@ continue_search:
 					goto continue_search;
 
 			// must be two bmodels in the same leaf; sort on 1/z
+				QOG_AQ (AQ_LEADZ, 1);
+#ifdef QOG_LEADZ_FLOAT
+				if (R_QOGZFRONT (surf, surf2, edge))	// QuakeOG (Agent AQ)
+					goto gotposition;
+#else
 				fu = (float)(edge->u - 0xFFFFF) * (1.0 / 0x100000);
 				newzi = surf->d_ziorigin + fv*surf->d_zistepv +
 						fu*surf->d_zistepu;
@@ -563,6 +704,7 @@ continue_search:
 						goto gotposition;
 					}
 				}
+#endif
 
 				goto continue_search;
 			}
@@ -608,6 +750,7 @@ void R_GenerateSpans (void)
 	surf_t			*surf;
 
 	r_bmodelactive = 0;
+	QOG_AQ (AQ_SCANLINES, 1);
 
 // clear active surfaces to just the background surface
 	surfaces[1].next = surfaces[1].prev = SURF_REF(&surfaces[1]);	// QuakeOG
@@ -616,6 +759,7 @@ void R_GenerateSpans (void)
 // generate spans
 	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
+		QOG_AQ (AQ_SCANEDGES, 1);
 		if (edge->surfs[0])
 		{
 		// it has a left surface, so a surface is going away for this span
