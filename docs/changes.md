@@ -2,6 +2,112 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: 300 MHz at 1.25 V, a flash check over every RX delay, die temperature lines, and a board PC-sampling profiler (Agent AN, ARM build, not run on hardware)
+
+The user approved 300 MHz. Both Quake apps now raise the core voltage to 1.25 V and then the clock to 300 MHz right after `board_init()`, extending Agent AB's run-time switch (port/rp2040/clock_rp2040.c). The BSP, its 200 MHz display bootloader and every other app are untouched. A new build option, `QOG_PROF`, adds a profiler that samples the interrupted PC on the board and prints each core's top 20 functions every 5 s. Nothing ran on hardware. Every board number below is an estimate.
+
+### Clock and voltage
+
+| Option | Default | Step back |
+| --- | --- | --- |
+| `QOG_SYS_KHZ` | 300000 (VCO 1500 MHz over 5 and 1) | `-DQOG_SYS_KHZ=250000 -DQOG_SYS_MV=1200` is Agent AB's tested setting, `0` keeps the BSP's 200 MHz |
+| `QOG_SYS_MV` | 1250 | 1300 is the regulator's top step |
+| `QOG_FLASH_FAST` | ON | OFF keeps divider 4 |
+| `QOG_FLASH_MAX_KHZ` | 150000, so 300 MHz tries 150 MHz | 133000 keeps the W25Q128JV's rating (div 4, 75 MHz, at 300 MHz) |
+| `QOG_TEMP_S` | 5 | 0 for no temperature lines |
+
+Why 1.25 V: community reports put RP2040s at up to about 275 MHz on 1.20 V and up to about 350 MHz on 1.25 V, with 1.30 V the regulator's top step (rp2040-doom runs 270 MHz at 1.30 V). 300 MHz sits in the middle of the 1.25 V range, about 50 MHz below where parts start to fail at that voltage, while 1.20 V would leave no margin past about 275 MHz. 1.30 V buys more margin for about 8% more core power. If the board shows faults that a 250 MHz build does not, the first step is `-DQOG_SYS_MV=1300`, the second 250 MHz.
+
+### Flash divider and RX delay
+
+At 300 MHz the SSI divider can only be 2 (150 MHz, 13% above the part's 133 MHz) or 4 (75 MHz), because it must be even. The run-time switch keeps Agent AB's shape (RAM code, interrupts off, core 1 not started yet, the old setting back before an instruction is fetched from flash again). What changed:
+
+- Divider 2 is tried with every RX sample delay from 1 to 3 (`QOG_FLASH_DLY_MAX`), not only until the first one passes, and the middle of the run of passing delays is kept (2 when all three pass, the later one when two pass), so the sample point sits away from both edges of the data eye. Delay 1 is what boot2 writes. On the board at 125 MHz main once needed delay 2.
+- The check reads the whole app (up to `QOG_FLASH_CHECK_KB` 1024, so all 384 KB of the display app and the first 1 MB of main's) and 16 blocks of 4 KB spread over the data region (the display's at 0x10100000, main's at 0x10200000), in 16 KB chunks through the uncached alias. Each chunk is hashed at the old divider with interrupts on, then twice at every delay still in the running with interrupts off (about 2 ms at a time), and the old setting goes back after every chunk. The chosen setting is written only after the whole check. Boot takes about 0.2 s longer on the display and 0.4 s on main.
+- If no delay passes, the divider stays 4.
+- While the game runs, one 4 KB block of the app is read again every 5 s at the live setting and compared with its hash at the old divider. A miss is counted. Three in a row put the old divider back, with core 1 locked out on the display (core 1 has the SDK's lockout handler, main has no core 1).
+
+Disassembly of both ELFs (`flash_hash`, `ssi_set`, `flash_try.constprop.0`, at 0x200000c0 to 0x2000016e on the display and 0x20000120 to 0x200001ce on main, all RAM): between `cpsid i` and `msr PRIMASK` there are only `bl` to the other two RAM functions, stores to the SSI at 0x18000000 (SSIENR +8, BAUDR +0x14, RX_SAMPLE_DLY +0xF0), loads through the pointer into the 0x13xxxxxx alias, and the FNV constant in RAM. No load or branch reaches 0x10xxxxxx. The final switch, `qog_flash_fast_reapply` and the recheck's fallback call `ssi_set` through its flash veneer with interrupts already off, as before, and `ssi_set` turns the SSI on again before it returns to flash.
+
+The lines to read (COM8 display, COM7 main, about 6 s after boot):
+
+```
+[quake] clock 300000 kHz at 1250 mV (BSP 200000 kHz), clk_peri 300000 kHz
+[quake] flash 150.0 MHz ok (div 2 from 4, rx delay 2, delays passing 1,2,3 of 1 to 3, 448 KB checked, reapplied 0)
+[quake] temp 38.4 C, clock 300 MHz 1250 mV, flash 150 MHz div 2 dly 2, recheck ok 3 bad 0
+```
+
+A failed check prints `[quake] flash 75.0 MHz fallback (div 4, rx delay 1): read check FAILED at div 2 with every rx delay 1 to 3` and the game runs on at 75 MHz. A failed recheck prints `[quake] flash recheck FAILED on block N, back to div 4 rx delay 1`. `delays passing` shows how wide the eye is: a single passing delay means that chip is at the edge, and `-DQOG_FLASH_MAX_KHZ=133000` is the safe choice for it.
+
+### Everything derived from a clock, at 300 MHz
+
+| Item | At 300 MHz |
+| --- | --- |
+| Link UART, both apps | 300 MHz x 8 / 12.5 Mbaud = 192, IBRD 1 FBRD 32, 300 x 4 / 96 = exactly 12.5 Mbaud. The display bootloader stays at 200 MHz (IBRD 1 FBRD 0, also exact), so main's display update at boot, after main's boost, still talks to it |
+| LCD SPI | clk_peri 300 MHz, prescale 2 x postdiv 3 = **50 MHz** (62.5 would need 300 / 4.8). A full 200 row scanout about 22.4 ms (Agent V's figure at 200 MHz, the same SPI rate) instead of 18.3, 152 rows (HUD skip) about 17 ms instead of 13.9. The scanout race point moves on E1M1 (row 136) from 12.4 to about 15.2 ms after VID_Update, on demo3 (row 116) from 10.6 to about 13.0 ms |
+| clk_peri from another clock | looked at, not done. On the RP2040 clk_peri has no divider and comes from clk_sys, PLL_SYS, PLL_USB, the oscillators or GPIN. USB needs PLL_USB at a multiple of 48 MHz, 62.5 MHz SPI needs clk_peri at 125 or 250 MHz, an exact 12.5 Mbaud needs 3.125 MHz x N, and no multiple of 48 MHz meets either. The best mix is PLL_USB at 240 MHz (USB over 5), SPI 60 MHz (scanout about 19 ms) but the UART at 12.47 Mbaud (0.26% slow against main's exact 12.5), and reprogramming PLL_USB at run time drops the display's USB, which `fw.py bootsel --cpu display` needs on a CPU with no BOOTSEL button. Not worth that risk |
+| Speaker I2S PIO | `(clk * 4 / 11025) >> 8` = 425 (clk x 4 = 1.2e9 still fits 32 bits), 300 MHz / (64 x 425) = 11,029 Hz, 0.04% fast (11,035 at 250) |
+| WS2812 PIO | float divider from clock_get_hz at `ws2812_init`, after the boost |
+| I2C1, backlight PWM | set again after the switch (the SDK's I2C timing, PWM divider 117.2 for 10 kHz with wrap 255) |
+| FPGA clock on main | divider 12 set before the switch (16.7 MHz at 200 MHz), 300 / 12 = exactly 25 MHz after |
+| Timers, sleeps, hang detector, phase timing | the 1 MHz tick from clk_ref, unchanged |
+| USB, ADC | PLL_USB 48 MHz, unchanged |
+| Main's saves | the ROM's erase and program use their own slow SSI divider, then boot2 sets div 4 (75 MHz) and the FAT code reapplies the checked setting. Watch `reapplied` grow after a save |
+
+### 300 MHz against 266 MHz and others (estimates, demo3 at 13.6 fps is 73.5 ms a frame)
+
+| clk_sys | Flash | UART | LCD SPI | E1M1 race point | CPU time | Estimated demo3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 250 (today) | 125 MHz div 2 | 12.5 exact | 62.5 | 12.4 ms | 1.00 | 13.6 fps (measured) |
+| 266 (VCO 1596 / 6) | 133 MHz div 2, at the rating | 12.518 (+0.14%) | 44.3 (266 / 6) | 17.5 ms | 0.94 | about 13.5 to 14 fps, 4 ms of CPU saved against 2 to 5 ms more race wait |
+| 288 (VCO 1440 / 5) | 144 div 2 | 12.522 (+0.17%) | 48 | 16.2 ms | 0.87 | about 14.5 fps |
+| **300** (VCO 1500 / 5) | 150 div 2, or 75 div 4 | 12.5 exact | 50 | 15.2 ms | 0.83 | **about 15 to 15.5 fps** at div 2, about 14.8 to 15.3 at div 4 (11 ms of CPU saved, 2 to 4 ms more race wait, div 4 about 0.5 ms more XIP misses) |
+
+The panel's SPI prescaler decides the trade, not the flash: above 250 MHz the SPI drops from clk / 4 to clk / 6, so 266 MHz loses more to the scanout race than it gains in the CPU. The flash at exactly its rating is worth little, because Agent AH's XIP model puts the misses at about 0.5 ms a view at 125 MHz (150 against 133 MHz is about 0.05 ms). 275 MHz has no exact PLL setting. So 266 MHz is not recommended and is not an extra option. The lead chooses with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250` (default, 1300 for more margin) or `-DQOG_SYS_KHZ=250000 -DQOG_SYS_MV=1200`, and the flash at 150 MHz or `-DQOG_FLASH_MAX_KHZ=133000` (75 MHz at 300 MHz). Agent AO's Turbo mode removes the race, and with it 300 MHz keeps the whole 11 ms.
+
+### Current draw and temperature (estimates)
+
+Core dynamic power goes with f x V squared: 250 MHz at 1.20 V to 300 MHz at 1.25 V is 1.2 x 1.085 = +30%, the core current (f x V) +25%. Taking a busy RP2040 core at about 45 mA at 250 MHz and 1.20 V (scaled from about 25 mA at 125 MHz and 1.10 V), each chip draws about 57 mA, about 12 mA more per chip and 25 mA for both, from the 3.3 V rail through the on-chip linear regulator, about 0.08 W more, a few percent of the board's draw with the backlight on. Each chip then dissipates about 0.19 W (core and regulator drop), a few degrees above ambient. Each app prints `[quake] temp ...` every 5 s (ADC channel 4, 27 - (V - 0.706) / 0.001721, the average of 8 readings, uncalibrated so a few degrees either way). Expect 30 to 45 C at room temperature. A reading that keeps rising past 60 C, or faults that come as the board warms, are the signs to step back.
+
+### Board PC-sampling profiler (`QOG_PROF`, off by default)
+
+- Sampling: one hardware timer alarm per core, its TIMER IRQ enabled only in that core's NVIC, priority 0 (so it also samples the USB, DMA and link interrupts), `QOG_PROF_HZ` 4000 with the period jittered by up to 1/8 so it cannot lock onto a loop of the same period. The handler is in RAM. EXC_RETURN bit 2 picks the process stack (the game, `QOG_GAME_PSP`) or the main stack (inside another interrupt), and the stacked PC and LR are read. Core 1's interrupt is enabled once through the frame's core 1 job slot (`qog_video_core1_start`), so core 1's code is not changed (`QOG_PROF_CORE1`, on by default with `QOG_PROF`). `QOG_PROF_MAIN` samples main's core 0 too (main has no core 1).
+- Function table: `tools/prof_table.py` runs after each link. It reads the ELF's STT_FUNC symbols (flash and RAM resident, one name per address), makes sorted starts and ends, a name pool and a page index (the last function at or before each 1 KB of flash text, 2 KB on main), and writes it into `qog_prof_blob`, a fixed 96 KB const array (`QOG_PROF_TABLE_KB`) in the same image, patching the .elf, .bin and .uf2 in place. The array's size does not change, so no code moves. Checked: objcopy of the patched ELF gives the patched .bin byte for byte on both apps, picotool's uf2 of the patched main ELF equals the patched .uf2, and main's embedded display image carries the patched table. The display table has 1,336 functions (45 in RAM) in 37.9 KB, main's 3,103 (46 in RAM) in 69.7 KB. The SDK's .hex and .dis files are not patched.
+- Per sample: the page index is in RAM, so a flash PC costs one or two table reads and a RAM PC a binary search over the RAM functions. Counts go into an open addressed table per core (512 pairs on core 0, 256 on core 1), what does not fit is counted as `lost`. A PC in the boot ROM (the float routines) counts as `[rom]` and once more against the function in the stacked LR, so float work shows under its caller. About 150 cycles a sample, 0.2% of a core at 4 kHz.
+- Report every 5 s, with the sampling paused, per core:
+
+```
+[prof] core 0: 20014 samples in 5.0 s, 233 slots of 512 used, 0 lost
+[prof] c0  1  21.3%  4263 D_DrawSpans8 0x1004cde4
+...
+[prof] c0 rom   9.8%  1961 from R_AliasPreparePoints 0x10051234
+```
+
+  then the counts start again, so each window is the 5 s before it. Core 1's idle shows as `core1_main`. To add up a run (all of timedemo demo3) save the USB log and run `python tools/prof_resolve.py display.log` (`--from N --to M` picks windows). `python tools/prof_resolve.py --elf <elf> 0x...` names addresses, for example from a fault record.
+- Build it in a folder of its own: the full configure line plus `-DQOG_PROF=ON` (and `-DQOG_PROF_MAIN=ON` for main), for example `cmake -B build-prof --preset target <the usual options> -DQOG_PROF=ON -DQOG_PROF_MAIN=ON`, then `cmake --build build-prof --target quake_main`. Configure prints `qog: profiler build, quake_display hunk 72 KB less 3 KB is 69 KB`, the build `prof_table: ... functions` for each app. Flash it like the normal game.
+- RAM: 2 KB (core 0), 1 KB (core 1), up to 1 KB of page index. The profiler build takes 3 KB of the client hunk (69 KB, timedemo demo3's e1m6 needs about 66, `QOG_PROF_HUNK_KB`) and 4 KB of the server hunk (170 KB, e1m6 needs 138, but e1m3 163 and e2m7 172 do not fit, `QOG_PROF_SV_HUNK_KB`), so this build is for demo3 and the early levels.
+
+### RAM and size (`end`, arm-none-eabi-nm)
+
+| Build | quake_display `end` | spare beside the 2 KB heap | quake_main `end` | spare |
+| --- | --- | --- | --- | --- |
+| main fdfb9dd (250 MHz) | 0x2003ea28 | 3,544 B | 0x2003f544 | 700 B |
+| this branch (300 MHz, check, recheck, temperature) | 0x2003ea70 | 3,472 B | 0x2003f58c | 628 B |
+| profiler (`QOG_PROF=ON`, `QOG_PROF_MAIN=ON`) | 0x2003f18c | 1,652 B (hunk 69 KB) | 0x2003f468 | 920 B (hunk 170 KB) |
+
+quake_display.bin 392,784 B (493,896 with the profiler), quake_main.bin 1,336,556 B (1,538,492). The PC build compiles none of these files. It builds (build-pcan, quakeog_pc, quakeog_cl and quakeog_sv). The `qogtest_hash` run could not be made in this session (the test runner was not allowed to start), and with no PC source touched the hash cannot have changed.
+
+### What to look for on the board
+
+- Both chips: the clock line with `clk_peri 300000 kHz`, the flash line, `[lcd] spi 50000000 Hz (clk_peri 300000000 Hz)`, `[link] uart0 12500000 baud (requested 12500000), clk_peri 300000000`, and on main `[fpga] clk 25000000 Hz (clk_sys 300000000 / 12)`.
+- The temperature line every 5 s, `recheck ok` growing and `bad 0`.
+- Core voltage trouble: hard faults, `Sys_Error`s, hangs or a watchdog loop that a 250 MHz build does not show, more likely as the board warms. Try `-DQOG_SYS_MV=1300`, then 250 MHz.
+- Flash trouble: the fallback line (the game runs at 75 MHz), `bad` above 0, crashes or garbage textures only with div 2. Try `-DQOG_FLASH_MAX_KHZ=133000`.
+- A dark display or main reporting a failed display update would mean the link failed at boot. Both sides compute an exact 12.5 Mbaud, so it should not happen. The step back is 250 MHz.
+- Speed: the bench line should read `clock 300 MHz, flash 150 MHz`, and `race` in the `[time cl]` line grows by 2 to 4 ms.
+
+Files: port/rp2040/clock_rp2040.c, port/rp2040/qog_clock.h, port/rp2040/prof_rp2040.c, port/rp2040/prof_table_rp2040.c and port/rp2040/qog_prof.h (new), tools/prof_table.py and tools/prof_resolve.py (new), apps/quake/CMakeLists.txt (the clock and profiler block), README.md and docs/handoff.md (the configure line). sys_rp2040.c, vid_rp2040.c, qog_video.c and the engine are not touched: the temperature line, the recheck and the profiler run from `qog_clock_report_once`, which both main loops already call every frame.
+
 ## 2026-11-24: Board results of the speed round (lead, on hardware)
 
 All four speed agents (AK link and frame, AH spans, AJ front end, AI models) plus episodes 2 and 3 support, flashed with the episode 1 image.

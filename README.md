@@ -65,7 +65,7 @@ These are the steps of [docs/handoff.md](docs/handoff.md). Run them from the rep
 2. Build the game with every option given, since the build folder keeps old values (the main app carries the display app inside it):
 
    ```bash
-   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=250000 -DQOG_SYS_MV=1200 -DQOG_FLASH_FAST=ON -DQOG_FAT_FORMAT_IF_MISSING=ON
+   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FAT_FORMAT_IF_MISSING=ON
    cmake --build build --target quake_main
    ```
 
