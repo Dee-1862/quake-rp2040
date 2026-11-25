@@ -2,6 +2,97 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: Both cores draw the world's surfaces during the edge scan (Agent AM, PC and ARM build, registered data)
+
+Until now the display's core 1 drew every second span of a lit surface (Agent V) and half of an alias model's vertices (Agent Z), and waited through everything else of the view: world, bmodels, edgescan, lmap and grad, about 40 ms of a demo3 view on core 0's clock. Now core 1 draws whole lit world surfaces (light grid, gradients, spans and z) while core 0 is still scanning edges, and at every flush both cores share the remaining surfaces. Exact in both render modes: the same pixels as main in Exact and in Fast. Nothing ran on hardware, every board number below is an estimate.
+
+### The pipeline (`QOG_DRAW_CORE1`, board option `QOG_BOARD_DRAWCORE1`, on, needs `QOG_BOARD_CORE1`)
+
+- Before the first scan line R_ScanEdges gives every world surface the last scan line of its edges (one pass over the removeedges lists, each edge is in the list of its last line). On the board's 32-byte surfaces the line is kept in `entref`, which only brush entity surfaces use, so it costs no RAM (other builds use a byte table).
+- At the end of each scan line the lit world surfaces whose last line that was have their final span list (no later line can add a span), and if their spans' z rows lie above the edge table in the z-buffer they go to a 64-entry ring (surface index and span link). Core 1 takes them from the ring and draws them while core 0 goes on scanning.
+- At a flush (D_DrawSurfaces, span buffer full, before the edge rows, or the end) core 0 first draws the surfaces only it draws (sky, background, water and other turbulent surfaces, brush entity surfaces, whose transform changes core 0's view vectors), then both cores take the rest of the ring and the flush's remaining lit world surfaces from a shared cursor under one SIO spinlock, and core 0 waits until core 1 has finished its last surface before the span buffer is reused. The edge fallbacks keep working: a fallback that draws without z (Agent AC) first waits for core 1.
+- Core 1 runs id's drawing code unchanged, compiled a second time (engine/d_core1.c, d_core1s.c and d_core1e.c include d_scanlit.c, r_surf.c and d_edge.c) under engine/d_core1.h, which gives every variable the drawing writes and every function those files define a c1_ name: its own light grid, r_drawsurf, gradients, mip level, Fast drawer state, interpolator setup, and copies of the world's view vectors and currententity. So Agent AL's light grid code runs on core 1 as it is, and any change AL makes to r_surf.c or D_CalcGradients is compiled into both copies.
+- Core 1 waits for work in WFE, core 0 wakes it with SEV. The job starts at R_ScanEdges, after AK's race waits (the scanout is over by then), and returns at its end, before models, the view model and particles draw on the finished world z (their order is unchanged).
+- Agent V's span halving stays in the code for builds without the pipeline. With it, core 0 draws all spans of the surfaces it draws (core 1 is busy with surfaces of its own).
+- D_DrawOneSurface's lit branch moved unchanged into D_QogDrawLitBody, which both copies use.
+
+### Why it is exact
+
+- Every pixel and z of the view belongs to exactly one span, so the world's surfaces can be drawn in any order and on either core.
+- A surface handed on early has the very span list the flush would give it (same spans, same order, same head span), so Agent AH's Fast drawer takes its fixed point origin from the same span (D_LitFixSetup). Flush points are unchanged (an extra flush would split lists and change Fast pixels, lessons L150).
+- Its z rows lie above the edge table, which only moves to higher addresses (R_QogMoveEdges) or out of the z-buffer, so no edge is overwritten.
+- Each core draws with id's statements from values nothing writes while the scan runs, and its own copies of what the drawing writes. tools/core1_syms.py walks the board objects' relocations from core 1's job and fails on any variable it reaches that is neither core 1's own nor on a hand-checked list (frame and z-buffer pointers, the view's scale and centre, textures, light styles, dynamic lights, r_qogfast, the pipeline's locked state). It passes on the board build.
+- r_light.c's world dynamic light pass runs at the first R_DlightLit question of a frame, which either core could now ask, so core 0 runs it with Agent AL's R_QogDlightSettle before core 1 starts, after the brush entities as the first drawn surface would (lessons L152).
+- Agent AH's interpolator check runs on core 0 before core 1 starts, so a failed check turns Fast off for both copies.
+- The PC checks at every flush that core 1's copies of the view vectors and the transformed model origin equal what D_DrawSurfaces draws with (Sys_Error otherwise, never fired).
+
+### Exact proof (hidden, `-nosound`, own build folders in `build-am`, own git-ignored `data\id1` with a baked qogbake.bin, link port 27961, one run at a time)
+
+References are untouched builds of de58316 with the same flags. Each line is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same build flags and the same r_fast.
+
+References are untouched builds of main b3702b4 (after merging Agent AL's integer dynamic lights and Agent AN's profiler) with the same flags. Each row is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same flags and the same r_fast. The pipeline builds add `QOG_SPANS_CORE1 QOG_DRAW_CORE1`. Core 1 modes are the PC's second thread (thread), core 1's surfaces drawn on the game's thread as soon as they are handed on (`-core1first`) or at each flush after core 0's (`-core1last`).
+
+| Build (extra flags) | r_fast | core 1 mode | hash | fhash | 121 frames |
+| --- | --- | --- | --- | --- | --- |
+| default | 0 and 1 | thread, first, last | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all six runs |
+| board-like (`QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800 QOG_SURF_T_TINY QOG_LITSPAN_INTERP`, so the last lines in `entref` and the interpolators emulated) | 0 and 1 | thread both, first in 1, last in 0 | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all four runs |
+| many flushes (`QOG_ZEDGE_TEST_SPANS=400`, 1,280 edge moves and 129 stack fallbacks in the shot run) | 0 and 1 | thread both, first in 1, last in 0 | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all four runs |
+| the no-z fallback forced (`QOG_ZEDGE_TEST_SPANS=400 QOG_ZEDGE_FORCE_NOZ`, 129 flushes without z, 837 rows) | 0 and 1 | thread | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in both runs |
+
+The same default runs were also identical against de58316 before the merge. `tools/core1_syms.py --build build-am/arm` passes on the board build, and the PC's view check never fired.
+
+How much is handed on during the scan (PC, `-DQOG_PHASE=ON`, timedemo demo3, r_fast 1, per view): 56 lit world surfaces go through the pipeline, 41 of them during the scan with 55% of their 43,200 pixels (in the first 100 views 68 of 81 surfaces, 57% of the pixels). So on the board core 1 has more early work than the 7 ms of edgescan can take, and stays busy through the scan. On the PC's thread core 1 drew 38 of the 56.
+
+### Estimated board time, timedemo demo3, Fast, ms per view on core 0
+
+Before is the lead's board line. After is an estimate: the drawing of a view's surfaces is about 47 ms of work for one core (lmap 13.9 and grad 3.1 on core 0, the spans phase 16.9 is core 0's half of about 31 ms with its wait), of which about 4 ms is sky, water and brush entity surfaces that stay on core 0. Core 1 draws about 7 ms of surfaces during the edgescan (more than half the pixels are ready by then, above), the remaining 40 ms are shared, about 20 ms each plus about 1 ms for the last surface core 0 waits on (c0wait). The range allows core 1 to run up to 20% slower than core 0 while both cores' drawers compete for the XIP cache.
+
+| Phase | before | after (estimate) |
+| --- | ---: | ---: |
+| world | 10.4 | 10.4 |
+| bmodels | 6.9 | 6.9 |
+| edgescan (with c0wait) | 7.2 | 7.5 to 8.5 |
+| lmap, grad, spans (core 0's share) | 33.9 | 20 to 23 |
+| models, vmodel, parts | 9.7 | 9.7 |
+| other (setup, sky, turb, zspans) | 4.1 | 4.1 |
+| total view | 72.2 | 59 to 63 |
+| timedemo frame (13.6 fps, 73.5 ms) | 73.5 | 61 to 64 (15.6 to 16.4 fps) |
+
+Core 1's share of the frame: before about 15 ms of span halves, 1 to 2 ms of alias vertices and 14 to 18 ms of scanout in a 73.5 ms frame, about 45% busy. After about 27 ms of surfaces, 1 to 2 ms of alias vertices and the scanout in a frame of about 62 ms, about 70% busy. Core 1 still waits through the world front end after its scanout, bmodels, models, the view model and particles.
+
+### What to read on the board
+
+A new line on COM8 after the `[time cl]` lines every 2 s:
+
+```
+[time cl] core1 per frame ms scan <ms> jobs <ms> busy <ms> idle <ms>, per view pipe <ms> wait <ms> c0wait <ms> surfs <n> c1 <n> early <n>
+```
+
+- per frame: `scan` core 1's LCD scanouts, `jobs` every job core 0 gave it (the pipeline, Agent Z's alias vertices), `busy` both less the pipeline's waiting, `idle` the frame less busy. busy over the frame time is core 1's share.
+- per view: `pipe` core 1's time drawing surfaces, `wait` its time in the pipeline waiting for one, `c0wait` core 0's wait for core 1's last surface at a flush (it lands in the phase line's edgescan, lessons L153), `surfs` lit world surfaces drawn through the pipeline by either core, `c1` those core 1 drew, `early` those handed on during the scan.
+- The phase line's lmap, grad and spans are now core 0's share only. The sum to watch is edgescan + lmap + grad + spans (41.1 ms before).
+- A/B with `-DQOG_BOARD_DRAWCORE1=OFF` on the configure line (Agent V's span halving comes back).
+
+### RAM and stack
+
+| | `end` | free beside the 2 KB heap reserve |
+| --- | --- | ---: |
+| quake_display, main b3702b4 | 0x2003eab4 | 3,404 B |
+| quake_display, this branch | 0x2003f2c0 | 1,344 B |
+| quake_main, main b3702b4 | 0x2003f58c | 628 B |
+| quake_main, this branch | 0x2003f5b4 | 588 B |
+
+The display takes 2,060 B: core 1's light grid 1,296 B, the ring 256 B, core 1's r_drawsurf 48 B, its gradients, Fast drawer and surface state about 270 B, its copy of Agent AL's Fast gradient rows 76 B, the view copies 60 B, the counters and pipeline state about 60 B. The surfaces' last scan lines cost nothing on the board (entref). quake_main takes 40 B (the counters in the shared qog_phase.c). quake_display.bin is 420,120 B (396,000 on main b3702b4), the second copy of the drawing code is about 24 KB of flash. Core 1's stack (2 KB in scratch X): the deepest chain under its job is 632 B (tools/stack_chain.py, D_QogC1Worker to the exact drawer and its z span), against about 160 B for Agent Z's alias jobs.
+
+### For the lead and Agent AL
+
+- AL's builder and Fast gradients run on core 1 unchanged (each copy keeps its own rows, from core 1's copy of modelorg and the view vectors). A new global that AL's r_surf.c or D_CalcGradients writes needs a c1_ name in engine/d_core1.h (a new function defined in those files too), else both cores share it. Run `python tools/core1_syms.py --build <board build>` after a merge: it fails on any variable core 1 reaches that is not its own or on its list.
+- D_QogPipeBegin calls AL's R_QogDlightSettle before core 1 starts. Agent AN's profiler still starts its core 1 alarm through the qog_video job slot at start-up, which the pipeline does not change (the profiler then also samples core 1 inside the pipeline job).
+- Risk on the board: both cores now run their own copy of the drawers out of the shared 16 KB XIP cache. If the xip line shows many more misses in the scan, the copies compete for it.
+- Next steps from the research the coordinator forwarded: core 1 could run the alias front end and particle physics while core 0 draws its share of the surfaces, and the edge scan itself could be split (one core sorting and stepping edges, the other making spans a line behind, as frank-quake2 does).
+
+Files: engine/d_core1.c, d_core1.h, d_core1s.c, d_core1e.c (new), engine/d_edge.c (D_QogDrawLitBody, the pipeline), engine/r_edge.c (last lines, hand-on, the no-z wait), engine/d_local.h, engine/d_scanlit.c (D_QogLitCheck, no halving while the pipeline runs), engine/qog_phase.h, port/common/qog_phase.c (the core1 line), port/rp2040/vid_rp2040.c and port/pc/vid_pc.c (lock, wake, PC modes), platform/qog_video.c and .h (core 1's scanout and job times), apps/quake/CMakeLists.txt, tools/core1_syms.py (new).
+
 ## 2026-11-25: 300 MHz at 1.25 V, a flash check over every RX delay, die temperature lines, and a board PC-sampling profiler (Agent AN, ARM build, not run on hardware)
 
 The user approved 300 MHz. Both Quake apps now raise the core voltage to 1.25 V and then the clock to 300 MHz right after `board_init()`, extending Agent AB's run-time switch (port/rp2040/clock_rp2040.c). The BSP, its 200 MHz display bootloader and every other app are untouched. A new build option, `QOG_PROF`, adds a profiler that samples the interrupted PC on the board and prints each core's top 20 functions every 5 s. Nothing ran on hardware. Every board number below is an estimate.
