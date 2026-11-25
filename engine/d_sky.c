@@ -42,8 +42,22 @@ void D_Sky_uv_To_st (int u, int v, fixed16_t *s, fixed16_t *t)
 	else
 		temp = (float)r_refdef.vrect.height;
 
+#ifdef QOG_RTURBO
+	if (r_qog_turboview)
+	{
+		// QuakeOG (Agent AO): a Turbo view's pixels are twice as wide, so
+		// the sky is placed by the screen position 2u (vid.width is half)
+		temp = 2.0f * r_refdef.vrect.width >= r_refdef.vrect.height ?
+			2.0f * r_refdef.vrect.width : (float)r_refdef.vrect.height;
+		wu = 8192.0 * (float)(2 * u - (int)vid.width) / temp;
+		wv = 8192.0 * (float)(((int)vid.height>>1)-v) / temp;
+	}
+	else
+#endif
+	{
 	wu = 8192.0 * (float)(u-((int)vid.width>>1)) / temp;
 	wv = 8192.0 * (float)(((int)vid.height>>1)-v) / temp;
+	}
 
 	end[0] = 4096*vpn[0] + wu*vright[0] + wv*vup[0];
 	end[1] = 4096*vpn[1] + wu*vright[1] + wv*vup[1];

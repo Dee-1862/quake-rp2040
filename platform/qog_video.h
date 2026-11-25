@@ -58,6 +58,11 @@ bool qog_video_busy(void);
  * buffer's first `rows` rows (each row is read once, into a line buffer, so
  * the game may draw over them), or when no scanout runs. */
 void qog_video_present_rows(const uint8_t *fb, uint32_t rows);
+/* QuakeOG (Agent AO): as present_rows, and the frame's first `packed` rows
+ * are a Turbo view: row r holds src_w / 2 pixels at fb + r * src_w / 2, and
+ * each pixel goes to the panel twice side by side (no CPU on core 0). Only
+ * for a 320 wide frame whose rows and lines are one to one. */
+void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed);
 void qog_video_wait_rows(uint32_t rows);
 
 /* Optional work for core 1 to do while its line DMA runs (sound mixing in

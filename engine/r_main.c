@@ -1301,6 +1301,14 @@ void R_EdgeDrawing (void)
 	// all of it in this frame (a full-width view from the top, drawn in the
 	// frame buffer itself) and nothing on screen (the previous frame's
 	// scanout has ended, VID_Update waits for it)
+#ifdef QOG_RTURBO
+	// QuakeOG (Agent AO): a Turbo view places the caches itself, after its
+	// packed pixels when that saves the wait for the last scanout (r_qogturbo.c)
+	void	R_QogTurboCaches (void);
+
+	R_QogTurboCaches ();
+	if (!r_qog_turboview)
+#endif
 	if ((byte *)r_qog_edgecache == vid.buffer
 		&& (r_refdef.vrect.x || r_refdef.vrect.y || r_refdef.vrect.width != vid.width
 			|| r_refdef.vrect.height * (int)vid.rowbytes < r_qog_edgecachebytes
@@ -1408,7 +1416,11 @@ void R_RenderView_ (void)
 #ifdef QOG_WARP_INPLACE
 	// QuakeOG: underwater, the view is drawn into the frame buffer and
 	// D_WarpScreen distorts it in place, so no 64 KB warp buffer on the stack
-	if (vid.rowbytes != WARP_WIDTH)
+	if (vid.rowbytes != WARP_WIDTH
+#ifdef QOG_RTURBO
+		&& !r_qog_turboview	// QuakeOG (Agent AO): a Turbo view's rows are half as wide (r_qogturbo.c)
+#endif
+		)
 		Sys_Error ("R_RenderView: in-place underwater warp needs %d bytes per row", WARP_WIDTH);
 	r_warpbuffer = vid.buffer;
 #else
@@ -1565,7 +1577,17 @@ void R_RenderView (void)
 		Link_RxCheckIdle ();
 	}
 #endif
+#ifdef QOG_RTURBO
+	{	// QuakeOG (Agent AO): r_fast 2 draws the view at half width (r_qogturbo.c)
+		void	R_QogTurboBegin (void), R_QogTurboEnd (void);
+
+		R_QogTurboBegin ();
+		R_RenderView_ ();
+		R_QogTurboEnd ();
+	}
+#else
 	R_RenderView_ ();
+#endif
 
 #ifdef QOG_HUD_IN_ZBUFFER
 	// QuakeOG: the screen rows from r_zalias_row down (the status bar) share

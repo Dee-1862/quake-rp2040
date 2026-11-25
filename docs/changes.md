@@ -142,6 +142,51 @@ Not done: Fast mode shortcuts for the light grids themselves. After the exact ch
 
 ### Exact proof (hidden, `-nosound`, own `build-al/pc2` and an untouched build of de58316 in `build-al/ref`, own git-ignored data folder with a baked qogbake.bin)
 
+## 2026-11-25: Turbo render mode, the 3D view at half width doubled by the LCD scanout (Agent AO, PC and ARM build, registered data)
+
+The user approved a third render mode next to Exact and Fast. `r_fast 2` (Options, `Render  Exact / Fast / Turbo`, left and right or gray cycle it, archived) draws the 3D view at 160x152 with all of Fast mode's shortcuts, and the LCD scanout sends each of its pixels twice side by side, blocky like Doom's low detail. The status bar, menus, console, notify lines and centre prints stay at 320 and sharp. The Benchmark line and page say `render Turbo`. Exact and Fast are byte identical to main. Nothing ran on hardware, every board saving below is an estimate.
+
+### Layout and scanout
+
+| Frame buffer bytes (P = 152 view rows, W = 320) | In a Turbo frame |
+| --- | --- |
+| 0 to P x W/2 (24,320 B) | the view's pixels, row r at r x 160 (packed) |
+| P x W/2 to P x W (24,320 B) | the one-byte z-buffer while the view is drawn, before that the edge cache and vertex cache |
+| from P x W | the status bar rows and the z-buffer memory, as always |
+
+- `qog_video_present_packed(fb, rows, packed)` (platform/qog_video.c): core 1 reads a packed row and its `convert_line_double` writes each palette entry twice into the line buffer (two pixels a word store, in RAM like convert_line). Core 0 spends nothing on the doubling. The line buffers are now 4-byte aligned for the word stores.
+- 2D drawing into a packed row (Draw_Character, Draw_Pic, Draw_TransPic, Draw_TransPicTranslate, Draw_ConsoleBackground, Draw_TileClear, Draw_Fill, Draw_FadeScreen and the board menu's two direct drawers) first spreads the packed rows to full width in place (`R_QogTurboUnpack`, from the last row up, one word read and two written per four pixels, estimated 0.3 ms on the board), and the frame then goes out as a normal one. Frames with notify text or a menu pay that, plain play frames do not. The crosshair is drawn straight into the packed view (`R_QogTurboChar`), so it keeps the frame packed.
+- `r_qog_turbopacked` is the number of packed rows the frame holds. VID_Update hands it to the scanout with the frame, so the scanout in flight keeps its own copy while the next view starts (Agent AK's race).
+- The status bar skip (QOG_HUD_SKIP) is unchanged. Packed rows are view rows, the status bar rows are never packed.
+
+### How the view is made half as wide
+
+`R_QogTurboBegin` and `R_QogTurboEnd` (engine/r_qogturbo.c) wrap R_RenderView_ only (R_HudRepaint after it draws 2D at full width). For a Turbo view vid.width and vid.rowbytes become 160 and vid.aspect doubles, as id's own lcd_x mode does with rows, scr_vrect.width halves (for the in-place warp), and the one-byte z-buffer moves after the packed pixels. R_SetupFrame then calls R_ViewChanged and D_ViewChanged for a 160x152 view: xscale halves and pixelAspect doubles, so yscale and the field of view stay id's and the picture is not squashed. A change between Turbo and the other modes sets r_viewchanged, so every frame switch sets the view up again. Turbo needs the view full width from the top, which the board always has (QOG_EDGECACHE_FRAME keeps viewsize 100), else the frame is drawn as Fast.
+
+| Part | What Turbo does |
+| --- | --- |
+| spans, z, alias models, particles, sprites, view weapon | see an ordinary 160 wide view (screenwidth and d_zwidth 160) |
+| particles | d_y_aspect_shift becomes 1 (pixelAspect above 1.4, id's rule) and d_pix_shift one more, so a particle is half as many pixels wide and twice as many rows and keeps its size on the screen. The smallest particles are one Turbo pixel, 2x2 on the panel where Fast draws 1x1 |
+| sky (d_sky.c) | placed by the screen position 2u and the screen width, else it was stretched twice vertically |
+| underwater warp (in place) | D_SetupFrame and D_ViewChanged keep the 160-byte rows when warping, the R_RenderView_ check allows them |
+| turbulent water, lava, slime | texture space, unchanged |
+| mip levels | scale_for_mip is max(xscale, yscale), 133 not 160, so distant walls take the coarser mip a little sooner (fewer texels, faster) |
+
+### The caches
+
+The edge cache and the vertex cache (QOG_EDGECACHE_FRAME, R_QogVertCacheBegin) live in frame buffer bytes that the view draws over. In a Turbo view the view owns the first 48,640 bytes, half pixels and half z-buffer. `R_QogTurboCaches` places them each view, taking whichever place the scanout in flight lets go of soonest (`VID_QogScanNeed`, the race rule extended to packed rows):
+- a. both in the second half (the z-buffer's bytes, which only the spans write later), on into the z-buffer memory up to the edge table for a big map. A Turbo frame's scanout never reads the second half, so after a Turbo frame the view starts at once with no race wait.
+- b. the edge cache there and the smallest vertex cache (64 entries and the Fast header) at the frame's start, which a Turbo scanout sends in its first 15 rows (about 1.4 ms). For maps whose edge cache is too big for a.
+- c. both at the frame's start as in Fast, when the frame in flight was a normal one (after a menu or notify text, or the first frame after a switch from Exact or Fast).
+
+On the PC pair, E1M1, e1m3, e2m1 and e1m6 views after a Turbo frame waited 0 rows with a and 15 rows with b. The edge table in the z-buffer memory never meets a 160 wide z-buffer in the frame, so R_ScanEdges' waiting spans and edge moves do not happen in Turbo. R_EdgeDrawing's check that the view covers a frame buffer cache is kept for the other modes.
+
+### Pictures (PC, as the panel shows them)
+
+The PC builds the panel's picture in VID_Update (packed rows doubled) and shots and frame hashes come from it. Pairs, Turbo left and Fast right, 2x, are in the session scratchpad's `turbo` folder: the E1M1 start, demo1 with particles, demo2 under water, demo3, spawn views, sky views, a notify line and the main menu over a Turbo view, and the board-flag pair's E1M1 and E1M6 (Turbo, Fast, Exact). Side by side the Turbo picture has the same framing and field of view, with walls and models twice as coarse across.
+
+### Exact and Fast proof (hidden, `-nosound`, own `build-ao` folders, own git-ignored data folder with its own qogbake.bin, link port 27981)
+
 | Test | Result |
 | --- | --- |
 | `qogtest_hash`, quakeog_pc | ce86f894f9de |
@@ -166,6 +211,55 @@ The light changes are exact, so frames with rockets and explosions are the same 
 - To build on core 1 the builder needs its own grid (1,296 B, of the 3.5 KB free) and its own `r_drawsurf` and `lit_*` values passed in. R_QogDlightInt and the base loops already work only on the grid and their arguments, so passing a grid pointer is a small change. Not done here because the RAM is yours to place.
 
 Files: engine/r_surf.c, engine/r_light.c, engine/d_edge.c (D_CalcGradients only, inside `#ifdef` blocks), engine/model.h (one declaration), pc/CMakeLists.txt, apps/quake/CMakeLists.txt.
+
+| `qogtest_f_hash`, quakeog_pc r_fast 0, 1 and 2, the board-flag pair r_fast 1 and 2 | e92bc9e9650d each (Turbo does not touch game state) |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against an untouched build of fdfb9dd | 121 of 121 byte identical |
+| the same, r_fast 1 | 121 of 121 byte identical |
+| Turbo, quakeog_pc and the board-flag pair (Agent AK's pcb flags plus `QOG_SPANS_CORE1 QOG_ALIAS_CORE1 QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP`), the 121 frames | all drawn, no error, `qog_scanrace` 0 writes before the scanout passed in 4,410 checks, `qog_lockcheck` 0 of 3,551 scanouts changed |
+| `qogtest_ao_switch.cfg` on both (Exact, Turbo, Fast, Turbo with notify text and the menu, four maps) | no error, `qog_scanrace` 0 of 521 |
+| Agent AF's Benchmark with r_fast 2 on the pair | `[bench] timedemo demo3 1090 frames 17.8 seconds 61.4 fps, render Turbo, PC, view 100, 320x200` (PC pacing, not a speed), 0 race waits in 1,449 frames, the result page says render Turbo |
+
+The board numbers will come from the board. Before the crosshair went into the packed view, the PC test config's crosshair spread every Turbo frame and the same benchmark had 308 race waits.
+
+### Speed estimate (board, timedemo demo3, ms per view, from the lead's board numbers)
+
+| Phase | Now (Fast) | What scales with width | Turbo estimate |
+| --- | ---: | --- | ---: |
+| spans | 16.9 | the pixels (about half the phase) halve, span starts and surface setup do not, sub-spans cover more of the view | 10 to 12 |
+| edgescan | 7.2 | works per scan line and per edge, not per pixel. The z-buffer edge waits and moves go | 6 to 7 |
+| world | 10.4 | nothing (BSP walk, edge emission) | 10.4 |
+| lmap | 13.9 | nothing (lightmaps per surface) | 13.9 |
+| bmodels and grad | 10.0 | nothing | 10.0 |
+| models | 5.1 | raster pixels halve, vertices and gradients do not | 4.3 to 4.7 |
+| vmodel | 3.4 | its 2,772 pixels halve, clipping does not | 2.6 to 3.0 |
+| parts | 1.2 | particle pixels | 1.0 |
+| outside the view | about 8 | the race wait goes after a Turbo frame (E1M1 play showed race 6.0 ms), unpacking adds 0.3 ms in frames with text | 5 to 7 |
+| frame | 80.9 | | about 66 to 72 (14 to 15 fps) |
+
+So Turbo alone is worth about 9 to 15 ms of today's demo3 frame. The part that does not scale with width (lightmaps, world, brush models, gradients, about 44 ms) is what Agents AL and AM work on, and Turbo's share of the frame grows as they shrink it.
+
+### RAM and code (board, the full configure line)
+
+| | `end` | main fdfb9dd |
+| --- | --- | --- |
+| quake_display | 0x2003ea4c | 0x2003ea28 (36 B more, the Turbo state and the scanout's packed rows) |
+| quake_main | 0x2003f544 | 0x2003f544 |
+
+quake_display.bin 392,664 B, quake_main.bin 1,335,004 B. The display keeps about 3.4 KB beside the 2 KB heap reserve. convert_line_double runs from RAM with the scanout.
+
+### Files and lines for the lead
+
+New: engine/r_qogturbo.c. Mine: engine/menu.c (Render line, Benchmark mode, two hooks), port/rp2040/vid_rp2040.c, port/pc/vid_pc.c, platform/qog_video.c and .h, engine/vid.h, engine/draw.c (one hook line per drawer), engine/view.c (crosshair), engine/d_sky.c, engine/d_init.c and engine/d_modech.c (warp rows, particle shift), apps/quake/CMakeLists.txt (`QOG_BOARD_TURBO`, on, needs FAST, adds `QOG_RTURBO`), pc/CMakeLists.txt (`QOG_RTURBO` for quakeog_pc and the pair). Shared, each in an `#ifdef QOG_RTURBO` block, for the merge with Agent AM:
+- engine/r_main.c R_EdgeDrawing: `R_QogTurboCaches ()` before the frame buffer cache check, and the check skipped in a Turbo view (8 lines before `if ((byte *)r_qog_edgecache == vid.buffer`)
+- engine/r_main.c R_RenderView_: the in-place warp check allows a Turbo view's rows (3 lines)
+- engine/r_main.c R_RenderView: R_QogTurboBegin and R_QogTurboEnd around `R_RenderView_ ()` (10 lines)
+- engine/r_draw.c R_QogVertCacheBegin: the vertex cache's room from r_qog_turbocachelo and r_qog_turbocachehi when a Turbo view set them (11 lines before the QOG_EDGECACHE_FRAME branch)
+
+Test scripts (git-ignored data folder): `qogtest_ao_turbo.cfg`, `qogtest_ao_exact.cfg`, `qogtest_ao_fast.cfg`, `qogtest_ao_switch.cfg` (E1M1 Exact, Turbo, Fast, Turbo, a notify line, the menu, then e1m3, e2m1 and e1m6 switching between the modes), `qogtest_ao_sky.cfg`, `qogtest_ao_bench.cfg` (r_fast 2 and Agent AF's menu Benchmark).
+
+Not done, for later:
+- Notify text over a Turbo view spreads the whole view in every frame it shows (0.3 ms), and the next view then waits for the scanout as in Fast. Drawing only the text rows at full width, with the scanout told which rows are full, would keep the rest packed.
+- A map whose edge cache is bigger than about 29 KB takes way b with a 64-entry vertex cache, a little slower in its front end than way a.
 
 ## 2026-11-24: Board results of the speed round (lead, on hardware)
 

@@ -22,7 +22,7 @@ static qog_video_config_t s_cfg;
 static uint16_t s_y0;                       /* first panel line */
 static uint16_t s_xmap[QOG_LCD_W];
 static bool     s_x_identity;
-static uint16_t s_line[2][QOG_LCD_W];
+static uint16_t s_line[2][QOG_LCD_W] __attribute__((aligned(4)));   /* Agent AO: word stores (convert_line_double) */
 static int      s_dma = -1;
 
 static uint16_t s_pal[256];
@@ -34,6 +34,7 @@ static volatile bool     s_busy;
    reads each row once, into a line buffer), and how many it sends */
 static volatile uint32_t s_scan_row;
 static uint32_t          s_scan_rows;
+static uint32_t          s_scan_packed;   /* Agent AO: its first rows hold src_w / 2 pixels each, sent doubled */
 static volatile uint32_t s_frames;
 static volatile uint32_t s_last_scan_us;
 static uint32_t          s_last_wait_us;
@@ -59,6 +60,22 @@ static void __not_in_flash_func(convert_line)(uint16_t *dst, const uint8_t *src)
     } else {
         const uint16_t *xm = s_xmap;
         for (uint32_t i = 0; i < QOG_LCD_W; i++) dst[i] = pal[src[xm[i]]];
+    }
+}
+
+/* QuakeOG (Agent AO): a packed Turbo row, src_w / 2 pixels, each sent twice
+   (platform/qog_video.h, qog_video_present_packed). Two pixels a word. */
+static void __not_in_flash_func(convert_line_double)(uint16_t *dst, const uint8_t *src) {
+    const uint16_t *pal = s_pal;
+    const uint32_t *s4 = (const uint32_t *)src;
+    uint32_t *d = (uint32_t *)dst;
+    for (uint32_t i = 0; i < QOG_LCD_W / 8u; i++) {
+        const uint32_t w = s4[i];
+        d[0] = pal[w & 0xFFu] * 0x10001u;
+        d[1] = pal[(w >> 8) & 0xFFu] * 0x10001u;
+        d[2] = pal[(w >> 16) & 0xFFu] * 0x10001u;
+        d[3] = pal[w >> 24] * 0x10001u;
+        d += 4;
     }
 }
 
@@ -114,7 +131,10 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
             /* New source line: build it in the free buffer. The other one
                may still be on the wire. */
             cur ^= 1u;
-            convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
+            if ((uint32_t)sy < s_scan_packed)   /* Agent AO: a Turbo view's row, packed */
+                convert_line_double(s_line[cur], fb + (uint32_t)sy * (src_w / 2u));
+            else
+                convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
             last_sy = sy;
             __dmb();
             s_scan_row = (uint32_t)sy + 1u;   /* Agent AK: the game may draw over rows above this */
@@ -247,9 +267,15 @@ void qog_video_present(const uint8_t *fb) {
 }
 
 void qog_video_present_rows(const uint8_t *fb, uint32_t rows) {
+    qog_video_present_packed(fb, rows, 0);
+}
+
+void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed) {
     qog_video_wait();
     /* Agent AK: a part only when lines and rows are one to one */
     s_scan_rows = (rows && rows < s_cfg.out_h && s_cfg.src_h == s_cfg.out_h) ? rows : s_cfg.out_h;
+    /* Agent AO: packed rows only for a 320 wide frame, rows one to one */
+    s_scan_packed = (s_x_identity && s_cfg.src_h == s_cfg.out_h && packed <= s_cfg.src_h) ? packed : 0u;
     s_scan_row = 0;
     s_busy = true;
     __dmb();

@@ -102,5 +102,25 @@ void VID_HandlePause (qboolean pause);
 void VID_QogRaceBegin (void);
 void VID_QogScanFree (const void *lo, const void *hi);
 void VID_QogScanDone (void);
+// QuakeOG (Agent AO): how many rows of the scanout in flight read a byte of
+// [lo, hi), 0 for none (a Turbo frame's packed rows are half as wide)
+int VID_QogScanNeed (const void *lo, const void *hi);
+#endif
+
+#ifdef QOG_RTURBO
+// QuakeOG (Agent AO): the Turbo render mode (r_fast 2, engine/r_qogturbo.c).
+// The 3D view is drawn half as wide, its rows packed at the start of the
+// frame buffer (row r at vid.buffer + r * vid.width / 2), and the scanout
+// doubles each pixel sideways. r_qog_turbopacked is the number of such rows
+// the frame holds now, 0 when it holds none. Any 2D drawing into those rows
+// first spreads them to full width (R_QogTurboUnpack), so menus, the console
+// and text stay sharp.
+extern int	r_qog_turboview;	// a Turbo view is being drawn (vid is the half width one)
+extern int	r_qog_turbopacked;
+void R_QogTurboUnpack (void);
+void R_QogTurboChar (int x, int y, int num);	// the crosshair into a packed view
+#define QOG_TURBO_2D(y)	do { if (r_qog_turbopacked && (int)(y) < r_qog_turbopacked) R_QogTurboUnpack (); } while (0)
+#else
+#define QOG_TURBO_2D(y)	((void)0)
 #endif
 

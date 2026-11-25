@@ -332,6 +332,18 @@ void R_QogVertCacheBegin (void)
 	r_qog_vertcache = NULL;
 	if (!world || !r_qog_edgecache)
 		return;
+#ifdef QOG_RTURBO
+	extern byte	*r_qog_turbocachelo, *r_qog_turbocachehi;
+
+	// QuakeOG (Agent AO): a Turbo view placed the edge cache in the frame
+	// buffer and gives the vertex cache this room (r_qogturbo.c R_QogTurboCaches)
+	if (r_qog_turbocachehi)
+	{
+		lo = r_qog_turbocachelo;
+		hi = r_qog_turbocachehi;
+	}
+	else
+#endif
 #ifdef QOG_EDGECACHE_FRAME
 	if ((byte *)r_qog_edgecache == vid.buffer)
 	{

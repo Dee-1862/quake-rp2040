@@ -128,6 +128,7 @@ static bool s_scan_pending;
 #ifdef QOG_VID_SCANRACE
 static bool s_racing;           /* Agent AK: the 3D view runs beside the scanout */
 static uint8_t s_scan_rows;     /* rows the scanout in flight sends */
+static uint8_t s_scan_packed;   /* Agent AO: its first rows that hold a packed Turbo view */
 #endif
 
 void VID_LockBuffer(void) {
@@ -153,18 +154,31 @@ void VID_QogRaceBegin(void) {
     if (s_scan_pending) s_racing = true;
 }
 
+/* QuakeOG (Agent AO): the rows of the scanout in flight that read a byte of
+   [lo, hi). Rows below s_scan_packed read W / 2 bytes each from the start
+   of the frame (a Turbo view), the others their W bytes. */
+int VID_QogScanNeed(const void *lo, const void *hi) {
+    int l = (const byte *)lo - vid_buffer, h = (const byte *)hi - vid_buffer;
+    int p = s_scan_packed, end = s_scan_rows * W, need = 0;
+    if (!s_scan_pending || h <= 0 || h <= l) return 0;
+    if (l < 0) l = 0;
+    if (l < p * (W / 2)) need = ((h < p * (W / 2) ? h : p * (W / 2)) - 1) / (W / 2) + 1;
+    if (h > p * W && l < end && end > p * W) {
+        int r = ((h < end ? h : end) - 1) / W + 1;
+        if (r > need) need = r;
+    }
+    return need;
+}
+
 void VID_QogScanFree(const void *lo, const void *hi) {
-    const byte *b = vid_buffer;
-    int end = s_scan_rows * W;
-    int top;
-    if (!s_scan_pending || (const byte *)lo >= b + end || (const byte *)hi <= b) return;
-    top = (const byte *)hi - b;
-    if (top >= end) {
+    int need = VID_QogScanNeed(lo, hi);
+    if (!need) return;
+    if (need >= s_scan_rows) {
         VID_QogScanDone();
         return;
     }
     QOG_PH_T(hp_wait);
-    qog_video_wait_rows((uint32_t)(top + W - 1) / W);
+    qog_video_wait_rows((uint32_t)need);
     QOG_HP_ADD(QOG_HP_RACEWAIT, hp_wait);
 }
 
@@ -177,6 +191,14 @@ void VID_QogScanDone(void) {
 
 
 
+/* QuakeOG (Agent AO): the frame's first rows may hold a Turbo view packed
+   W / 2 bytes a row, which the scanout sends twice as wide (r_qogturbo.c) */
+#ifdef QOG_RTURBO
+#define TURBO_PACKED    r_qog_turbopacked
+#else
+#define TURBO_PACKED    0
+#endif
+
 void VID_Update(vrect_t *rects) {
     QOG_PH_T(hp_present);   /* QuakeOG (Agent V) */
     (void)rects;
@@ -188,9 +210,10 @@ void VID_Update(vrect_t *rects) {
         if (rows >= H) s_pal_changed = false;
         vid_qog_frames++;
         if (rows >= H) vid_qog_hudsent++;
-        qog_video_present_rows(vid_buffer, (uint32_t)rows);
+        qog_video_present_packed(vid_buffer, (uint32_t)rows, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
         s_scan_rows = (uint8_t)rows;
+        s_scan_packed = (uint8_t)TURBO_PACKED;
         s_racing = false;
 #endif
     }
@@ -198,9 +221,10 @@ void VID_Update(vrect_t *rects) {
 #ifdef QOG_HUD_IN_ZBUFFER
     R_HudFrameEnd();
 #endif
-    qog_video_present(vid_buffer);
+    qog_video_present_packed(vid_buffer, H, (uint32_t)TURBO_PACKED);
 #ifdef QOG_VID_SCANRACE
     s_scan_rows = H;
+    s_scan_packed = (uint8_t)TURBO_PACKED;
     s_racing = false;
 #endif
 #endif

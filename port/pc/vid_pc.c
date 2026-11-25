@@ -116,9 +116,34 @@ void VID_ShiftPalette(unsigned char *palette) { VID_SetPalette(palette); }
 static byte s_panel[QOG_PC_W * QOG_PC_H];
 static unsigned s_hud_frames, s_hud_skips, s_hud_bad;
 #define SHOT_PIXELS s_panel
+#elif defined(QOG_RTURBO)
+/* QuakeOG (Agent AO): a Turbo frame's packed rows as the panel shows them */
+static byte s_panel[QOG_PC_W * QOG_PC_H];
+static qboolean s_panel_turbo;   /* the last frame presented was a Turbo one */
+#define SHOT_PIXELS (s_panel_turbo ? s_panel : vid_buffer)
 #else
 #define SHOT_PIXELS vid_buffer
 #endif
+#ifdef QOG_RTURBO
+#define TURBO_PACKED r_qog_turbopacked
+#else
+#define TURBO_PACKED 0
+#endif
+
+/* QuakeOG (Agent AO): the panel's first rows, as the board's scanout sends
+   them: rows below `packed` hold QOG_PC_W / 2 pixels each from the start of
+   the frame (a Turbo view, engine/r_qogturbo.c), each sent twice */
+static void panel_rows(byte *panel, int rows, int packed) {
+    int r, x;
+    for (r = 0; r < rows; r++) {
+        byte *d = panel + r * QOG_PC_W;
+        if (r < packed) {
+            const byte *s = vid_buffer + r * (QOG_PC_W / 2);
+            for (x = 0; x < QOG_PC_W / 2; x++) d[2 * x] = d[2 * x + 1] = s[x];
+        } else
+            memcpy(d, vid_buffer + r * QOG_PC_W, QOG_PC_W);
+    }
+}
 
 static void update_title(void) {
     static double last;
@@ -192,14 +217,40 @@ static unsigned lockcheck_hash(void) {
    The PC checks the rule at every wait: no byte the scanout sends and has
    not released yet may have changed since VID_Update. */
 static byte s_sr_copy[QOG_PC_W * QOG_PC_H];
-static int s_sr_rel, s_sr_end;
+static int s_sr_relrow, s_sr_rows, s_sr_packed;   /* Agent AO: rows released, sent, packed (Turbo) */
 static unsigned s_sr_checks, s_sr_waits, s_sr_bad;
 static qboolean s_racing;
 
+/* the bytes scan row r reads: a packed Turbo row QOG_PC_W / 2 from the
+   frame's start, the others their own QOG_PC_W */
 static void scanrace_check(void) {
+    int r;
     s_sr_checks++;
-    if (memcmp(vid_buffer + s_sr_rel, s_sr_copy + s_sr_rel, (size_t)(s_sr_end - s_sr_rel)) && !s_sr_bad++)
-        Con_Printf("qog_scanrace: the frame changed before its scanout passed (frame %d)\n", host_framecount);
+    for (r = s_sr_relrow; r < s_sr_rows; r++) {
+        int ofs = r < s_sr_packed ? r * (QOG_PC_W / 2) : r * QOG_PC_W;
+        int len = r < s_sr_packed ? QOG_PC_W / 2 : QOG_PC_W;
+        if (memcmp(vid_buffer + ofs, s_sr_copy + ofs, (size_t)len)) {
+            if (!s_sr_bad++)
+                Con_Printf("qog_scanrace: the frame changed before its scanout passed (frame %d)\n", host_framecount);
+            break;
+        }
+    }
+}
+
+/* QuakeOG (Agent AO): the rows of the scanout in flight that read a byte of
+   [lo, hi), as port/rp2040/vid_rp2040.c */
+int VID_QogScanNeed(const void *lo, const void *hi) {
+    const int W = QOG_PC_W;
+    int l = (int)((const byte *)lo - vid_buffer), h = (int)((const byte *)hi - vid_buffer);
+    int p = s_sr_packed, end = s_sr_rows * W, need = 0;
+    if (!s_lk_pending || h <= 0 || h <= l) return 0;
+    if (l < 0) l = 0;
+    if (l < p * (W / 2)) need = ((h < p * (W / 2) ? h : p * (W / 2)) - 1) / (W / 2) + 1;
+    if (h > p * W && l < end && end > p * W) {
+        int r = ((h < end ? h : end) - 1) / W + 1;
+        if (r > need) need = r;
+    }
+    return need;
 }
 
 void VID_QogRaceBegin(void) {
@@ -207,17 +258,15 @@ void VID_QogRaceBegin(void) {
 }
 
 void VID_QogScanFree(const void *lo, const void *hi) {
-    int top;
-    if (!s_lk_pending || (const byte *)lo >= vid_buffer + s_sr_end || (const byte *)hi <= vid_buffer) return;
-    top = (int)((const byte *)hi - vid_buffer);
-    if (top >= s_sr_end) {
+    int need = VID_QogScanNeed(lo, hi);
+    if (!need) return;
+    if (need >= s_sr_rows) {
         VID_QogScanDone();
         return;
     }
     scanrace_check();
     s_sr_waits++;
-    top = (top + QOG_PC_W - 1) / QOG_PC_W * QOG_PC_W;
-    if (top > s_sr_rel) s_sr_rel = top;
+    if (need > s_sr_relrow) s_sr_relrow = need;
 }
 
 void VID_QogScanDone(void) {
@@ -308,9 +357,13 @@ void VID_Update(vrect_t *rects) {
             Con_Printf("qog_hudskip: the status bar rows not sent differ from the panel's (frame %d)\n", host_framecount);
 #endif
     }
-    memcpy(s_panel, vid_buffer, (size_t)(rows * QOG_PC_W));
+    panel_rows(s_panel, rows, TURBO_PACKED);   /* Agent AO: a Turbo view doubled as on the panel */
 #elif defined(QOG_HUD_IN_ZBUFFER)
     R_HudFrameEnd();
+#endif
+#if !defined(QOG_HUD_SKIP) && defined(QOG_RTURBO)
+    s_panel_turbo = TURBO_PACKED > 0;
+    if (s_panel_turbo) panel_rows(s_panel, QOG_PC_H, TURBO_PACKED);
 #endif
     if (rows >= QOG_PC_H) s_pal_changed = false;
 #ifdef QOG_VID_LOCKWAIT
@@ -319,8 +372,9 @@ void VID_Update(vrect_t *rects) {
 #endif
 #ifdef QOG_VID_SCANRACE
     memcpy(s_sr_copy, vid_buffer, (size_t)(rows * QOG_PC_W));
-    s_sr_rel = 0;
-    s_sr_end = rows * QOG_PC_W;
+    s_sr_relrow = 0;
+    s_sr_rows = rows;
+    s_sr_packed = TURBO_PACKED;
     s_racing = false;
 #endif
     if (s_framehash) framehash_print();
@@ -344,7 +398,12 @@ void VID_Update(vrect_t *rects) {
     RECT r;
     GetClientRect(s_wnd, &r);
     StretchDIBits(dc, 0, 0, r.right, r.bottom, 0, 0, QOG_PC_W, QOG_PC_H,
-                  vid_buffer, (BITMAPINFO *)&s_bmi, DIB_RGB_COLORS, SRCCOPY);
+#ifdef QOG_RTURBO
+                  SHOT_PIXELS,   /* Agent AO: what the panel shows */
+#else
+                  vid_buffer,
+#endif
+                  (BITMAPINFO *)&s_bmi, DIB_RGB_COLORS, SRCCOPY);
     ReleaseDC(s_wnd, dc);
     update_title();
 }
