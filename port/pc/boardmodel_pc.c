@@ -162,6 +162,9 @@ static void bm_open (void)
 #ifdef QOG_DRAW_CORE1
 		" QOG_DRAW_CORE1"
 #endif
+#ifdef QOG_PARTS_CORE1
+		" QOG_PARTS_CORE1"	/* Agent AM */
+#endif
 #ifdef QOG_LEADZ_FLOAT
 		" QOG_LEADZ_FLOAT"
 #endif

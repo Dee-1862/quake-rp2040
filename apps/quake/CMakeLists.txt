@@ -422,6 +422,12 @@ if(QOG_SPLIT)
     if(QOG_BOARD_CORE1 AND QOG_BOARD_DRAWCORE1)
         list(APPEND _cl_defs QOG_DRAW_CORE1)       # d_edge.c, d_core1.c, r_edge.c
     endif()
+    # QuakeOG (Agent AM): core 1 moves three of every five particles once
+    # core 0 has drawn them (exact)
+    option(QOG_BOARD_PARTSCORE1 "with DRAWCORE1, particle physics shared by both cores (exact)" ON)
+    if(QOG_BOARD_CORE1 AND QOG_BOARD_DRAWCORE1 AND QOG_BOARD_PARTSCORE1)
+        list(APPEND _cl_defs QOG_PARTS_CORE1)      # r_part.c
+    endif()
     if(QOG_BOARD_TIMING)
         list(APPEND _cl_defs QOG_PHASE_TIME)
     endif()
