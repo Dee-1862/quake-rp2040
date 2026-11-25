@@ -2,6 +2,51 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: Brush models, the edge scan and the light grid build, second round, all exact (Agent AQ, PC and ARM build, registered data)
+
+Attacks 6, 7 and 8 of docs/fps-board.md. Six flags, each exact: r_fast 0, 1 and 2 give the same bits as main dd273c4. Nothing ran on hardware. The numbers below are Agent AS's model (`tools\boardbench.ps1`), with the new paths priced from Thumb instruction counts of the hot loops before and after.
+
+### Boardbench (300 MHz, LCD by PIO at 60 MHz)
+
+| | Fast fps | Turbo fps | bmodels ms | edgescan ms | lmap ms (Fast / Turbo) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| main dd273c4 | 22.6 (21.4 to 23.5) | 26.5 (24.5 to 27.8) | 2.7 | 4.8 | 3.2 / 2.9 |
+| this branch | 23.2 (21.9 to 24.5) | 27.4 (25.4 to 28.7) | 2.0 | 4.0 | 3.0 / 2.7 |
+
+### What the model priced (Turbo, main, ms per view)
+
+edgescan: edge visits in R_GenerateSpans 2.69 (3,984 a view at 55 integer cycles), 1/z compares 0.87, scan lines 0.43. bmodels: brush clip edges 0.70, R_SplitEntityOnNode2 plane tests 0.41, brush clip calls 0.35, brush edges 0.55, box tests 0.22. lmap: integer dynamic light cells 0.74, the world's light marking 0.52, the base grid (cells and cell styles) 0.46 with its setup 0.26.
+
+### Changes
+
+| Change | Flag | What it does |
+| --- | --- | --- |
+| Span generation in one loop | `QOG_SCAN_FAST` (r_edge.c) | id's R_GenerateSpans, R_TrailingEdge and R_LeadingEdge as one loop with the same statements. The engine is built with -fno-strict-aliasing, so every store made GCC load r_edgebase, surfaces, r_spanbase, span_p and current_iv again, and each edge paid two calls. They are locals now, span_p and r_bmodelactive are written back before R_CleanupSpan. R_StepActiveU keeps r_edgebase and the sentinels in locals too. The surf half of a 1/z compare (its fu, a + b and exponent) is kept for the whole search of one leading edge: 62% of the compares come from that search and 16% of all reuse the half, 5 of 11 float calls. Priced at 0.7 of the integer cycles an edge |
+| Brush clip sides inline | `QOG_BPOLY_SIDES` (r_bsp.c) | R_RecursiveClipBPoly's axial sides without two nested calls a point, and a point that ends or starts the edge before keeps its side (statics reset per call, no recursion inside one call's edge loop). Priced at 0.5 of the integer cycles an edge |
+| Axial box tests in integers | `QOG_BMSPLIT_INT` (r_efrag.c) | R_SplitEntityOnNode2's two float compares on an axial plane as integer compares of the float bits in real order. Denormals and NaNs take the float compares. Counted as `bm_bmsplitint` (0 float calls, 40 cycles) |
+| Brush entity box test in integers first | `QOG_BMODEL_BBOXINT` (r_main.c, r_draw.c) | the corners in 1/4 unit and the world's view planes in 1/16384 (Agent AJ's, now kept through the brush entities), with a margin of 14,400 + 0.53 times the corner size, about 0.3 units. Only 0.06 plane tests a view in demo3 fell back to floats |
+| Fused light grid build | `QOG_LMAP_FUSE` (r_surf.c) | R_BuildLightMap's clear, per style passes and bound in one pass for surfaces of one or two styles without dynamic lights (the cell is an unsigned sum, the same in any order), two passes with dynamic lights. No new names, so core 1's copy (d_core1.h) needs none, and tools/core1_syms.py passes. Priced at 0.65 of the cell and cell style cycles |
+
+### Exact proof (hidden, `-nosound`, an untouched build of dd273c4 with the board's world flags)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, default quakeog_pc and with the world flags | ce86f894f9de |
+| `qogtest_f_hash` | e92bc9e9650d |
+| 121 shot frames, all 200 rows, r_fast 0, 1 and 2 | 121 of 121 byte identical in each |
+| check build (`QOG_LEADZ_CHECK QOG_BPOLY_CHECK QOG_BMODEL_BBOX_CHECK QOG_LMAP_FUSE_CHECK` and the earlier ones), timedemo demo1 r_fast 0, demo2 r_fast 1, demo3 r_fast 1 and 2 | about 590,000 1/z compares (with the cache), 2.75 M clip tests, 32,000 box tests, 160,000 light grids: 0 differ |
+| tools/core1_syms.py on the board build | every variable core 1 reaches is its own or on the list |
+
+### RAM (full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`)
+
+quake_display `end` 0x2003f5a0 against 0x2003f588 on dd273c4 (24 B, the clip side statics), about 600 B spare. quake_main 0x2003f5b4, unchanged. R_GenerateSpans' frame grows to 64 B but it calls nothing deeper than before (R_QogZFrontC is a leaf), R_RecursiveClipBPoly stays 136 B a level.
+
+### For Agent AM
+
+R_GenerateSpans is replaced under `QOG_SCAN_FAST` (the id version stays in the `#else`), the scan loop R_QogScanRows and the core 1 hooks are untouched, R_StepActiveU moved below R_GenerateSpans under the same flag.
+
+Files: engine/r_edge.c, engine/r_bsp.c, engine/r_efrag.c, engine/r_main.c, engine/r_draw.c, engine/r_surf.c, engine/qog_bmodel.h, engine/qog_aqstats.h, port/pc/boardmodel_pc.c, tools/boardmodel.py, pc/CMakeLists.txt, apps/quake/CMakeLists.txt.
+
 ## 2026-11-25: The board cost model sees the two-core surfaces, the PIO scanout, Turbo text and the exact float cuts (Agent AS, PC only, registered data)
 
 main 768c8a6 (Agents AM, AP and AQ) merged into agent-as, and the model extended so boardbench prices what they changed. Nothing ran on hardware.
