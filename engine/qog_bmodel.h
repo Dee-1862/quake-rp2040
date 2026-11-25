@@ -31,6 +31,7 @@ enum
 	QOG_BM_BMSPLIT,			/* R_SplitEntityOnNode2 plane tests */
 	QOG_BM_BPOLY,			/* R_RecursiveClipBPoly calls (brush polygons clipped to the world tree) */
 	QOG_BM_BPOLYEDGE,		/*   edges they clipped */
+	QOG_BM_BMSPLITINT,		/* R_SplitEntityOnNode2 axial plane tests in integers (Agent AQ, QOG_BMSPLIT_INT) */
 	QOG_BM_N
 };
 

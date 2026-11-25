@@ -1001,11 +1001,119 @@ void R_DrawViewModel (void)
 R_BmodelCheckBBox
 =============
 */
+#if defined(QOG_BMODEL_BBOXINT) && (!defined(QOG_WORLDNODE_INT) || !defined(QOG_BMODEL_BBOXF))
+#undef QOG_BMODEL_BBOXINT	// it needs the world's integer planes and the float compares
+#endif
+#ifdef QOG_BMODEL_BBOXINT
+/*
+QuakeOG (Agent AQ): R_BmodelCheckBBox's plane tests in integers first, as
+Agent AJ's node test (r_bsp.c R_QogCullNodeInt). A corner c in 1/4 unit
+(rounded from its float bits, |c| below 4096 units), the view plane's
+normal N and dist in 1/16384 (R_QogFxWorldPlanes, rounded), give I =
+c.N - 4 dist, within 14,190 + |c|/2 (the roundings, |c| the sum of the
+three) of 65536 (c.n - dist), id's float dot product within |c|/64 of the
+real one, and the planes made again after each brush entity within 130 of
+the planes the rounded ones came from. So where |I| reaches E = 14,400 +
+|c|/2 + |c|/32 + 64 its sign is the sign of id's float test, and only
+boxes within about 0.3 units of a plane take id's floats.
+*/
+const int *R_QogFxWorldPlanes (void);	// r_draw.c
+
+static int R_QogQ2 (float f, int *q)
+{
+	unsigned	b = *(unsigned *)&f, m;
+	int			e, v;
+
+	e = (int)((b >> 23) & 0xFF) - 127;	// |f| = 1.m 2^e
+	if (e < -3)
+		v = 0;							// |4 f| below 0.5
+	else if (e >= 12)
+		return 0;						// 4096 units or more
+	else
+	{
+		m = (b & 0x7FFFFF) | 0x800000;
+		v = (int)((m + (1u << (20 - e))) >> (21 - e));
+	}
+	*q = (b & 0x80000000) ? -v : v;
+	return 1;
+}
+
+static int R_QogBoxPlaneInt (const int *c, const int *pl)
+{
+	int		a0 = c[0] < 0 ? -c[0] : c[0];
+	int		a1 = c[1] < 0 ? -c[1] : c[1];
+	int		a2 = c[2] < 0 ? -c[2] : c[2];
+	int		s = a0 + a1 + a2;
+	int		e = 14400 + (s >> 1) + (s >> 5) + 64;
+	int		d = pl[0] * c[0] + pl[1] * c[1] + pl[2] * c[2] - 4 * pl[3];
+
+	if (d <= -e)
+		return -1;	// id's dot <= dist
+	if (d >= e)
+		return 1;	// id's dot > dist
+	QOG_AQ (AQ_BBOXFB, 1);
+	return 0;		// id's float compare decides
+}
+#endif
+
+#ifdef QOG_BMODEL_BBOX_CHECK
+/* PC check build: id's box test without the integer path */
+static int R_QogBBoxIds (float *minmaxs)
+{
+	int		i, *pindex, clipflags = 0;
+	vec3_t	acceptpt, rejectpt;
+	double	d;
+
+	for (i=0 ; i<4 ; i++)
+	{
+		pindex = pfrustum_indexes[i];
+		rejectpt[0] = minmaxs[pindex[0]];
+		rejectpt[1] = minmaxs[pindex[1]];
+		rejectpt[2] = minmaxs[pindex[2]];
+		d = DotProduct (rejectpt, view_clipplanes[i].normal);
+		d -= view_clipplanes[i].dist;
+		if (d <= 0)
+			return BMODEL_FULLY_CLIPPED;
+		acceptpt[0] = minmaxs[pindex[3+0]];
+		acceptpt[1] = minmaxs[pindex[3+1]];
+		acceptpt[2] = minmaxs[pindex[3+2]];
+		d = DotProduct (acceptpt, view_clipplanes[i].normal);
+		d -= view_clipplanes[i].dist;
+		if (d <= 0)
+			clipflags |= (1<<i);
+	}
+	return clipflags;
+}
+
+static int R_BmodelCheckBBox_ (model_t *clmodel, float *minmaxs);
+
+int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
+{
+	static unsigned	n, bad;
+	int				a = R_BmodelCheckBBox_ (clmodel, minmaxs);
+
+	if (!(currententity->angles[0] || currententity->angles[1] || currententity->angles[2]))
+	{
+		n++;
+		if (a != R_QogBBoxIds (minmaxs))
+			bad++;
+		if ((n & 0x3FFF) == 0)
+			Sys_Printf ("qog_bboxcheck %u boxes, %u differ\n", n, bad);
+	}
+	return a;
+}
+#define R_BmodelCheckBBox R_BmodelCheckBBox_
+#endif
+
 int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 {
 	int			i, *pindex, clipflags;
 	vec3_t		acceptpt, rejectpt;
 	double		d;
+#ifdef QOG_BMODEL_BBOXINT
+	const int	*pl = NULL;
+	int			mq[6], c[3], r;
+#endif
 
 	clipflags = 0;
 
@@ -1033,6 +1141,52 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 		// of the floating point values
 
 			pindex = pfrustum_indexes[i];
+
+#ifdef QOG_BMODEL_BBOXINT
+			if (i == 0 || !pl)
+			{
+				// once a box: the planes and the corners in integers, or not
+				if (i == 0)
+				{
+					pl = R_QogFxWorldPlanes ();
+					for (r=0 ; pl && r<6 ; r++)
+						if (!R_QogQ2 (minmaxs[r], &mq[r]))
+							pl = NULL;
+					for (r=0 ; pl && r<4 ; r++)
+						if (pl[r*4+3] > (1 << 27) || pl[r*4+3] < -(1 << 27))
+							pl = NULL;
+				}
+			}
+			if (pl)
+			{
+				c[0] = mq[pindex[0]];
+				c[1] = mq[pindex[1]];
+				c[2] = mq[pindex[2]];
+				r = R_QogBoxPlaneInt (c, pl + i*4);
+				if (r < 0)
+					return BMODEL_FULLY_CLIPPED;
+				if (r > 0)
+				{
+					c[0] = mq[pindex[3+0]];
+					c[1] = mq[pindex[3+1]];
+					c[2] = mq[pindex[3+2]];
+					r = R_QogBoxPlaneInt (c, pl + i*4);
+					if (r < 0)
+					{
+						clipflags |= (1<<i);
+						continue;
+					}
+					if (r > 0)
+						continue;
+					acceptpt[0] = minmaxs[pindex[3+0]];
+					acceptpt[1] = minmaxs[pindex[3+1]];
+					acceptpt[2] = minmaxs[pindex[3+2]];
+					if (DotProduct (acceptpt, view_clipplanes[i].normal) <= view_clipplanes[i].dist)
+						clipflags |= (1<<i);
+					continue;
+				}
+			}
+#endif
 
 			rejectpt[0] = minmaxs[pindex[0]];
 			rejectpt[1] = minmaxs[pindex[1]];
@@ -1071,6 +1225,9 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 
 	return clipflags;
 }
+#ifdef QOG_BMODEL_BBOX_CHECK
+#undef R_BmodelCheckBBox
+#endif
 
 
 #ifdef QOG_BMODEL_FRUSTUM

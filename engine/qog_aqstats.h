@@ -45,6 +45,8 @@ enum
 	AQ_BPOLYFB,		/* clip side tests that took id's floats */
 	AQ_BFRFULL,		/* brush entity view planes made by R_TransformFrustum */
 	AQ_BFRDIST,		/*   made from the world's normals, dists only */
+	AQ_LEADZ2,		/* 1/z compares inside R_LeadingEdge's search loop */
+	AQ_LEADZHIT,	/*   that found surf's half made for the edge already */
 	AQ_N
 };
 

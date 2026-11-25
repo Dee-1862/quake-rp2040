@@ -634,6 +634,11 @@ void R_QogFxSetup (void)
 #ifdef QOG_WORLDNODE_INT
 	// QuakeOG (Agent AJ): the world's view planes for R_QogCullNode, in
 	// both render modes (its integer tests decide only with a margin)
+#ifdef QOG_BMODEL_BBOXINT
+	// QuakeOG (Agent AQ): the world's planes stay for the brush entities'
+	// box tests (r_main.c R_QogBoxPlaneInt), only the world's setup sets them
+	if (!insubmodel)
+#endif
 	fx->plon = 0;
 	if (!insubmodel)
 	{
@@ -750,6 +755,16 @@ void R_QogFxSetup (void)
 #endif
 	fx->on = 1;
 }
+
+#ifdef QOG_BMODEL_BBOXINT
+/* the world's view planes in integers for the brush entities, or NULL */
+const int *R_QogFxWorldPlanes (void)
+{
+	if (!r_qog_vertcache || !R_QOGFX->plon)
+		return NULL;
+	return &R_QOGFX->pl[0][0];
+}
+#endif
 
 #ifdef QOG_WORLDNODE_INT
 /* the world's view planes in integers for R_QogCullNode, or NULL */

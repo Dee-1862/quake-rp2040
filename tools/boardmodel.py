@@ -65,6 +65,7 @@ WEIGHTS = {
         "bm_rotent": (200, 500),    # R_RotateBmodel with two R_TransformFrustum (80 float calls each) and R_QogFxSetup (about 7,500 cycles)
         "aq_bsurfs": (4, 30),       # brush surface facing test (a float dot product, f2d, dcmp)
         "bm_bmsplit": (6, 60),      # R_SplitEntityOnNode2 box against a world plane
+        "bm_bmsplitint": (0, 40),   #   the same on an axial plane by integer compares (Agent AQ, QOG_BMSPLIT_INT)
         "bm_bpoly": (20, 150),      # R_RecursiveClipBPoly: the world plane into model space
         "bm_bpolyedge": (8, 80),    #   an edge against it (more when split)
         "bm_bmfaces": (20, 400),    # brush faces not clipped to the world
@@ -152,6 +153,13 @@ FEATURE_SCALE = {
     # the particle kill checks as integer compares: 4 of about 16 float helper
     # calls a particle gone (two float to double conversions, two double compares)
     "QOG_PART_DIEBITS": {"am_parts": (0.75, 1.0)},
+    # Agent AQ's second round, the same counts with less integer work (Thumb
+    # instruction counts of the hot paths before and after, docs/changes.md)
+    "QOG_SCAN_FAST": {"bm_scanedges": (1.0, 0.7),           # one loop, no calls or global reloads per edge
+                      "aq_leadz": (0.93, 1.0)},             #   16% of the 1/z compares reuse surf's half (5 of 11 float calls)
+    "QOG_BPOLY_SIDES": {"bm_bpolyedge": (1.0, 0.5)},        # sides inline, a shared point's side kept
+    "QOG_LMAP_FUSE": {"lms_lux": (1.0, 0.65), "lms_stylelux": (1.0, 0.65)},  # the grid's passes fused
+    "QOG_BMODEL_BBOXINT": {"bm_bmcheck": (0.2, 1.0)},       # integer plane tests, floats only within 0.3 units of a plane
 }
 # Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either
 # core, core 1 during the edge scan, both at each flush

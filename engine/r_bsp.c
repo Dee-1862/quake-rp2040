@@ -427,6 +427,69 @@ static int R_QogAxPlane (mplane_t *splitplane, mplane_t *tp)
 	return k;
 }
 
+#ifdef QOG_BPOLY_SIDES
+/*
+QuakeOG (Agent AQ): the sides of one call's edges without a call per point.
+R_QogAxSidesBegin keeps the axis, the sign of tplane's normal there and
+tplane.dist's key in statics, R_QogAxEdgeSides decides a point as
+R_QogAxSide does (the same tests, inline), and a point that ends or starts
+the edge before has the side it got then (the same point against the same
+plane gives the same side, and no recursion runs inside one call's edge
+loop, so the statics belong to that loop).
+*/
+static mplane_t		*r_qog_axtp;
+static mvertex_t	*r_qog_axv0, *r_qog_axv1;	// the edge before
+static byte			r_qog_axs0, r_qog_axs1, r_qog_axk;
+static unsigned		r_qog_axsign;
+static int			r_qog_axtkey;
+
+static int R_QogAxSide (mvertex_t *pv, mplane_t *tp, float *pdist);
+
+static void R_QogAxSidesBegin (mplane_t *tp)
+{
+	r_qog_axtp = tp;
+	r_qog_axk = tp->type;
+	r_qog_axsign = QOG_FB (tp->normal[tp->type]) & 0x80000000;
+	r_qog_axtkey = R_QogFKey (QOG_FB (tp->dist));
+	r_qog_axv0 = r_qog_axv1 = NULL;
+}
+
+static int R_QogAxPointSide (mvertex_t *pv)
+{
+	const r_qogbits_t	*b = (const r_qogbits_t *)pv->position;
+	unsigned			e0 = b[0] & 0x7F800000, e1 = b[1] & 0x7F800000, e2 = b[2] & 0x7F800000, bk;
+
+	if (pv == r_qog_axv1)
+		return r_qog_axs1;
+	if (pv == r_qog_axv0)
+		return r_qog_axs0;
+	bk = b[r_qog_axk];
+	if (e0 == 0x7F800000 || e1 == 0x7F800000 || e2 == 0x7F800000 ||
+		(!e0 && (b[0] & 0x007FFFFF)) || (!e1 && (b[1] & 0x007FFFFF)) || (!e2 && (b[2] & 0x007FFFFF)) ||
+		((bk & 0x7FFFFFFF) && (bk & 0x7F800000) < (27u << 23)))
+		return R_QogAxSide (pv, r_qog_axtp, NULL);	// id's arithmetic
+	if (!(bk & 0x7FFFFFFF))
+		return 0 > r_qog_axtkey ? 0 : 1;
+	return R_QogFKey (bk ^ r_qog_axsign) > r_qog_axtkey ? 0 : 1;
+}
+
+/* the sides of an edge: bit 0 its first point's, bit 1 its second's */
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+static int R_QogAxEdgeSides (mvertex_t *pv0, mvertex_t *pv1)
+{
+	int		s0 = R_QogAxPointSide (pv0);
+	int		s1 = R_QogAxPointSide (pv1);
+
+	r_qog_axv0 = pv0;
+	r_qog_axs0 = (byte)s0;
+	r_qog_axv1 = pv1;
+	r_qog_axs1 = (byte)s1;
+	return s0 | (s1 << 1);
+}
+#endif
+
 /* id's side of a point (0 when dist > 0), and its dist when asked */
 static int R_QogAxSide (mvertex_t *pv, mplane_t *tp, float *pdist)
 {
@@ -528,6 +591,10 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 #ifdef QOG_BPOLY_CHECK
 	R_QogBpolyCheckPlane (splitplane, &tplane, tplane.type == 0xFF ? -1 : 0);
 #endif
+#ifdef QOG_BPOLY_SIDES
+	if (tplane.type != 0xFF)
+		R_QogAxSidesBegin (&tplane);
+#endif
 
 // clip edges to BSP plane
 	for ( ; pedges ; pedges = pnextedge)
@@ -545,8 +612,14 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 		{
 			// QuakeOG (Agent AQ): the sides by integer compares, the dists
 			// only for a split edge
+#ifdef QOG_BPOLY_SIDES
+			side = R_QogAxEdgeSides (plastvert, pvert);
+			lastside = side & 1;
+			side >>= 1;
+#else
 			lastside = R_QogAxSide (plastvert, &tplane, NULL);
 			side = R_QogAxSide (pvert, &tplane, NULL);
+#endif
 #ifdef QOG_BPOLY_CHECK
 			R_QogBpolyCheckSide (plastvert, &tplane, lastside);
 			R_QogBpolyCheckSide (pvert, &tplane, side);
