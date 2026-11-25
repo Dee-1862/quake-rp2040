@@ -163,6 +163,48 @@ void R_SplitEntityOnNode (mnode_t *node)
 }
 
 
+#ifdef QOG_BMSPLIT_INT
+/*
+QuakeOG (Agent AQ): BOX_ON_PLANE_SIDE on an axial plane compares two floats
+twice. For floats that are neither NaN nor denormal, a <= b is the integer
+compare of their bits mapped to the order of the real numbers (both zeros
+as 0), so no float call is needed. Denormals (the board's float routines
+take them as zero) and NaNs take the float compares.
+*/
+#if defined(__GNUC__)
+typedef unsigned int __attribute__((may_alias))	r_qogebits_t;
+#else
+typedef unsigned int							r_qogebits_t;
+#endif
+
+static int R_QogEKey (unsigned b)
+{
+	return (b & 0x80000000) ? -(int)(b & 0x7FFFFFFF) : (int)b;
+}
+
+static int R_QogEPlain (unsigned b)
+{
+	unsigned	e = b & 0x7F800000;
+
+	return e != 0x7F800000 && (e || !(b & 0x007FFFFF));
+}
+
+static int R_QogBoxAxialSides (mplane_t *p)
+{
+	unsigned	d = *(r_qogebits_t *)&p->dist;
+	unsigned	lo = *(r_qogebits_t *)&r_emins[p->type];
+	unsigned	hi = *(r_qogebits_t *)&r_emaxs[p->type];
+
+	if (!R_QogEPlain (d) || !R_QogEPlain (lo) || !R_QogEPlain (hi))
+		return BOX_ON_PLANE_SIDE (r_emins, r_emaxs, p);
+	if (R_QogEKey (d) <= R_QogEKey (lo))
+		return 1;
+	if (R_QogEKey (d) >= R_QogEKey (hi))
+		return 2;
+	return 3;
+}
+#endif
+
 /*
 ===================
 R_SplitEntityOnNode2
@@ -186,8 +228,21 @@ void R_SplitEntityOnNode2 (mnode_t *node)
 	}
 	
 	splitplane = node->plane;
+#ifdef QOG_BMSPLIT_INT
+	if (splitplane->type < 3)
+	{
+		QOG_BM (QOG_BM_BMSPLITINT, 1);	// QuakeOG (Agent AQ)
+		sides = R_QogBoxAxialSides (splitplane);
+	}
+	else
+	{
+		QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG (Agent AS)
+		sides = BoxOnPlaneSide (r_emins, r_emaxs, splitplane);
+	}
+#else
 	QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG (Agent AS)
 	sides = BOX_ON_PLANE_SIDE(r_emins, r_emaxs, splitplane);
+#endif
 	
 	if (sides == 3)
 	{

@@ -70,7 +70,7 @@ static const char	*const bm_asname[QAS_N] = { "check", "drawn", "trivial", "subd
 static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dlpair_flt", "dlcell_flt",
 	"dllit_flt", "reachup", "reachup_step", "grad_fast", "grad_idf", "grad_idd", "scanlines", "scanedges",
 	"surfdrawn", "bmsurf", "bmfaces", "bmemit", "bmclip", "bmmark", "bmcheck", "bmsplit", "bpoly",
-	"bpolyedge" };
+	"bpolyedge", "bmsplitint" };
 
 /* every count, as pointers, so one loop takes the differences */
 #define BM_MAXCOL	160
@@ -185,6 +185,21 @@ static void bm_open (void)
 #endif
 #ifdef QOG_FGRAD_AXIAL
 		" QOG_FGRAD_AXIAL"
+#endif
+#ifdef QOG_SCAN_FAST
+		" QOG_SCAN_FAST"
+#endif
+#ifdef QOG_BPOLY_SIDES
+		" QOG_BPOLY_SIDES"
+#endif
+#ifdef QOG_BMSPLIT_INT
+		" QOG_BMSPLIT_INT"
+#endif
+#ifdef QOG_LMAP_FUSE
+		" QOG_LMAP_FUSE"
+#endif
+#if defined(QOG_BMODEL_BBOXINT) && defined(QOG_WORLDNODE_INT)
+		" QOG_BMODEL_BBOXINT"
 #endif
 		"\n");
 	fprintf (bm_log, "frame,racerows,racepacked,rows,packed,rfast,vwidth");
