@@ -38,7 +38,7 @@ float		d_sdivzorigin, d_tdivzorigin, d_ziorigin;
 pixel_t		*cacheblock;
 int			cachewidth;
 entity_t	*currententity;
-vec3_t		vright, vup, vpn;
+vec3_t		vright, vup, vpn, modelorg;
 
 // id's TransformVector (r_misc.c) with core 1's view vectors
 void TransformVector (vec3_t in, vec3_t out)

@@ -148,6 +148,14 @@ list(APPEND QOG_ENGINE_DEFS
 # World and brush model front end, exact (Agent AJ), same as pc/CMakeLists.txt.
 list(APPEND QOG_ENGINE_DEFS
     QOG_BMODEL_ZEROANGLE)           # r_bsp.c R_RotateBmodel: zero angles without double trig or matrix products
+# Agent AL: lightmaps and dynamic lights, exact, same as pc/CMakeLists.txt (r_light.c, r_surf.c)
+list(APPEND QOG_ENGINE_DEFS
+    QOG_DLIGHT_AXIAL
+    QOG_DLIGHT_FACING
+    QOG_DLIGHT_INT
+    QOG_DLIGHT_REACHUP
+    QOG_GRAD_EXACTF
+    QOG_GRAD_FAST)
 # Agent AG: one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)
@@ -592,13 +600,18 @@ if(QOG_SPLIT)
     fwog_main_app(quake_main
         VERSION 001
         DESCRIPTION "QuakeOG: the Quake server half (QuakeC, physics, edicts) on the main RP2040, with the client half on the display")
-    # QuakeOG (Agent AB): faster clocks for both Quake apps only, set at run
-    # time right after board_init() (port/rp2040/clock_rp2040.c). The BSP, its
-    # display bootloader and every other app keep 200 MHz and flash CLKDIV 4.
-    # QOG_SYS_KHZ=0 keeps the BSP's clock, QOG_FLASH_FAST=OFF the flash divider.
-    set(QOG_SYS_KHZ 250000 CACHE STRING "clk_sys of the Quake apps in kHz, 0 keeps the BSP's 200 MHz")
-    set(QOG_SYS_MV 1200 CACHE STRING "core voltage in mV for QOG_SYS_KHZ (1150 to 1300), set before the clock")
+    # QuakeOG (Agents AB and AN): faster clocks for both Quake apps only, set
+    # at run time right after board_init() (port/rp2040/clock_rp2040.c). The
+    # BSP, its display bootloader and every other app keep 200 MHz and flash
+    # CLKDIV 4. QOG_SYS_KHZ=0 keeps the BSP's clock, QOG_FLASH_FAST=OFF the
+    # flash divider. Agent AN: 300 MHz at 1.25 V (the user approved it), the
+    # flash at clk_sys / 2 up to QOG_FLASH_MAX_KHZ with every RX delay checked.
+    # Step back with -DQOG_SYS_KHZ=250000 -DQOG_SYS_MV=1200.
+    set(QOG_SYS_KHZ 300000 CACHE STRING "clk_sys of the Quake apps in kHz, 0 keeps the BSP's 200 MHz")
+    set(QOG_SYS_MV 1250 CACHE STRING "core voltage in mV for QOG_SYS_KHZ (1150 to 1300), set before the clock")
     option(QOG_FLASH_FAST "Quake apps switch the QSPI flash to clk_sys / 2 at run time, checked, falling back to 4" ON)
+    set(QOG_FLASH_MAX_KHZ 150000 CACHE STRING "fastest flash clock in kHz the Quake apps try (the W25Q128JV is rated 133000)")
+    set(QOG_TEMP_S 5 CACHE STRING "seconds between the die temperature lines of both Quake apps, 0 for none")
     if(QOG_FLASH_FAST)
         set(_flash_fast 1)
     else()
@@ -607,8 +620,62 @@ if(QOG_SPLIT)
     foreach(_app quake_display quake_main)
         target_sources(${_app} PRIVATE ${QOG_ROOT}/port/rp2040/clock_rp2040.c)
         target_compile_definitions(${_app} PRIVATE QOG_CLOCK_BOOST
-            QOG_SYS_KHZ=${QOG_SYS_KHZ} QOG_SYS_MV=${QOG_SYS_MV} QOG_FLASH_FAST=${_flash_fast})
+            QOG_SYS_KHZ=${QOG_SYS_KHZ} QOG_SYS_MV=${QOG_SYS_MV} QOG_FLASH_FAST=${_flash_fast}
+            QOG_FLASH_MAX_KHZ=${QOG_FLASH_MAX_KHZ} QOG_TEMP_S=${QOG_TEMP_S})
+        target_link_libraries(${_app} hardware_adc)
     endforeach()
+
+    # QuakeOG (Agent AN): the board's PC-sampling profiler, off by default
+    # (port/rp2040/prof_rp2040.c). The display samples core 0 at QOG_PROF_HZ,
+    # with QOG_PROF_CORE1 core 1 too, and with QOG_PROF_MAIN main's core 0.
+    # After each link tools/prof_table.py writes the function table into the
+    # app's .elf, .bin and .uf2. The tables take QOG_PROF_HUNK_KB of the
+    # client hunk (75 less 3 less 3 leaves 69 KB, timedemo demo3's e1m6 needs
+    # about 66) and QOG_PROF_SV_HUNK_KB of the server hunk (e1m6 needs 138).
+    option(QOG_PROF "board PC-sampling profiler on the display (build for measuring only)" OFF)
+    option(QOG_PROF_CORE1 "the profiler samples the display's core 1 too" ON)
+    option(QOG_PROF_MAIN "the profiler samples main's core 0 too" OFF)
+    set(QOG_PROF_HZ 4000 CACHE STRING "profiler samples a second on each core")
+    set(QOG_PROF_HUNK_KB 3 CACHE STRING "KB of client hunk the profiler build gives to its tables")
+    set(QOG_PROF_SV_HUNK_KB 4 CACHE STRING "KB of server hunk the profiler build gives to its tables")
+    set(QOG_PROF_TABLE_KB 96 CACHE STRING "KB of flash reserved for the profiler's function table")
+    if(QOG_PROF)
+        set(_prof_apps quake_display)
+        if(QOG_PROF_MAIN)
+            list(APPEND _prof_apps quake_main)
+        endif()
+        foreach(_app ${_prof_apps})
+            target_sources(${_app} PRIVATE
+                ${QOG_ROOT}/port/rp2040/prof_rp2040.c
+                ${QOG_ROOT}/port/rp2040/prof_table_rp2040.c)
+            target_compile_definitions(${_app} PRIVATE QOG_PROF
+                QOG_PROF_HZ=${QOG_PROF_HZ} QOG_PROF_TABLE_KB=${QOG_PROF_TABLE_KB})
+            if(_app STREQUAL "quake_display")
+                set(_cut ${QOG_PROF_HUNK_KB})
+                if(QOG_PROF_CORE1)
+                    target_compile_definitions(${_app} PRIVATE QOG_PROF_CORE1)
+                endif()
+            else()
+                set(_cut ${QOG_PROF_SV_HUNK_KB})
+            endif()
+            get_target_property(_defs ${_app} COMPILE_DEFINITIONS)
+            foreach(_d ${_defs})
+                if(_d MATCHES "^QOG_HUNK_KB=([0-9]+)$")
+                    set(_was ${CMAKE_MATCH_1})
+                    math(EXPR _kb "${_was} - ${_cut}")
+                    list(TRANSFORM _defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${_kb}")
+                    message(STATUS "qog: profiler build, ${_app} hunk ${_was} KB less ${_cut} KB is ${_kb} KB")
+                endif()
+            endforeach()
+            set_property(TARGET ${_app} PROPERTY COMPILE_DEFINITIONS ${_defs})
+            add_custom_command(TARGET ${_app} POST_BUILD
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/prof_table.py
+                        --elf $<TARGET_FILE:${_app}>
+                        --bin $<TARGET_FILE_DIR:${_app}>/${_app}.bin
+                        --uf2 $<TARGET_FILE_DIR:${_app}>/${_app}.uf2
+                VERBATIM)
+        endforeach()
+    endif()
 
     add_custom_command(TARGET quake_main POST_BUILD
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_app_size.py

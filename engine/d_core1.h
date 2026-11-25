@@ -87,6 +87,7 @@ See the GNU General Public License for more details.
 #define R_GenTurbTile			c1_R_GenTurbTile
 #define R_GenTurbTile16			c1_R_GenTurbTile16
 #define R_GenTile				c1_R_GenTile
+#define qog_lms					c1_qog_lms		// Agent AL's PC light grid counts
 
 // d_edge.c
 #define D_DrawPoly				c1_D_DrawPoly
@@ -124,6 +125,7 @@ See the GNU General Public License for more details.
 #define vright					c1_vright
 #define vup						c1_vup
 #define vpn						c1_vpn
+#define modelorg				c1_modelorg		// Agent AL's Fast gradient rows read it once a view
 #define TransformVector			c1_TransformVector
 
 #endif

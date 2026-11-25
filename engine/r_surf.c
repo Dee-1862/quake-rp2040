@@ -53,6 +53,196 @@ static void	(*surfmiptable[4])(void) = {
 
 unsigned		blocklights[18*18];
 
+#ifdef QOG_LMAP_STATS
+/*
+QuakeOG (Agent AL): PC measurement only. Work counts of the light grid
+builder per view, printed every 100 views as sums since the start:
+qog_lmstats views, dlights alive, lightmap builds, distinct surfaces,
+builds of the surface built just before, luxels, luxel styles, builds with
+dlights, light and surface pairs, pairs past the minlight test, luxels of
+those pairs, luxels lit, rows lit, R_MarkLights nodes and surfaces marked.
+*/
+unsigned	qog_lms[16];
+enum { LMS_VIEWS, LMS_DLIGHTS, LMS_BUILDS, LMS_DISTINCT, LMS_REPEAT, LMS_LUX, LMS_STYLELUX,
+	LMS_DLBUILDS, LMS_PAIRS, LMS_PAIRSIN, LMS_PAIRLUX, LMS_LIT, LMS_ROWSLIT, LMS_NODES, LMS_MARKS };
+static int			lms_frame = -1;
+static msurface_t	*lms_last;
+static msurface_t	*lms_seen[4096];
+static int			lms_nseen;
+
+static void R_QogLmStatsBuild (msurface_t *surf, int size, int styles)
+{
+	int		i;
+
+	if (r_framecount != lms_frame)
+	{
+		lms_frame = r_framecount;
+		lms_nseen = 0;
+		lms_last = NULL;
+		qog_lms[LMS_VIEWS]++;
+		for (i=0 ; i<MAX_DLIGHTS ; i++)
+			if (cl_dlights[i].die >= cl.time && cl_dlights[i].radius)
+				qog_lms[LMS_DLIGHTS]++;
+		if (qog_lms[LMS_VIEWS] % 100 == 0)
+			Sys_Printf ("qog_lmstats %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u\n",
+				qog_lms[0], qog_lms[1], qog_lms[2], qog_lms[3], qog_lms[4], qog_lms[5], qog_lms[6],
+				qog_lms[7], qog_lms[8], qog_lms[9], qog_lms[10], qog_lms[11], qog_lms[12],
+				qog_lms[13], qog_lms[14], qog_lms[15]);
+	}
+	qog_lms[LMS_BUILDS]++;
+	if (surf == lms_last)
+		qog_lms[LMS_REPEAT]++;
+	lms_last = surf;
+	for (i=0 ; i<lms_nseen ; i++)
+		if (lms_seen[i] == surf)
+			break;
+	if (i == lms_nseen)
+	{
+		qog_lms[LMS_DISTINCT]++;
+		if (lms_nseen < 4096)
+			lms_seen[lms_nseen++] = surf;
+	}
+	qog_lms[LMS_LUX] += size;
+	qog_lms[LMS_STYLELUX] += size * styles;
+}
+#define LMS(c, n)	(qog_lms[c] += (unsigned)(n))
+#else
+#define LMS(c, n)
+#endif
+
+#if defined(QOG_DLIGHT_INT) && !defined(QUAKE2)
+#ifndef QOG_NOINLINE
+#if defined(__GNUC__)
+#define QOG_NOINLINE	__attribute__((noinline))
+#elif defined(_MSC_VER)
+#define QOG_NOINLINE	__declspec(noinline)
+#else
+#define QOG_NOINLINE
+#endif
+#endif
+/*
+===============
+R_QogDlightInt
+
+QuakeOG (Agent AL): one light's cells of R_AddDynamicLights in integers,
+with id's result to the bit. Returns 0, having changed nothing, when the
+values are outside the range the proof below covers, and id's float loop
+runs instead.
+
+id's cell loop, per cell, all in float: sd = (int)(local[0] - s*16)
+(truncated), the same for td, dist = sd + (td>>1) or td + (sd>>1) as a
+float, the test dist < minlight, and blocklights += (rad - dist)*256,
+which adds in float and truncates back to unsigned.
+
+- sd: with A = floor (local) and c = 1 when local is not a whole number,
+  local - 16s is A - 16s + frac. When |local - 16s| < 4096 its float
+  rounding error is at most 2^-13, and when the fraction is 0 or at least
+  2^-11 away from 0 and 1 the rounded value stays in the same open unit
+  interval as the exact one, so the truncation is A - 16s when that is
+  0 or more, else A - 16s + c, and sd is its magnitude.
+- The test: dist is a whole number, so dist < minlight is
+  dist < ceil (minlight).
+- The add: with 1 <= rad < 32768 the float rad - dist (0 <= dist < rad)
+  is exact, and so is its product with 256. With X = rad * 2^24 (a whole
+  number), 256 rad is (X >> 16) + F / 65536, F = X & 0xFFFF. The float sum
+  S = b + 256 rad - 256 dist with b the cell's value has the whole part
+  Si = b + (X >> 16) - 256 dist and the fraction F / 65536. Below 2^23 the
+  sum's float spacing u is at most 1/2, so the rounded sum truncates to
+  Si + 1 exactly when S is within u/2 of Si + 1 (a tie goes up, Si + 1 is
+  an even multiple of u), that is when 65536 - F <= 2^(k-8) with 2^k <= S,
+  and as F is the same for every cell of this light, when Si is at least
+  2^(8 + ceil (log2 (65536 - F))). A cell whose sum reaches 2^23 - 1 takes
+  id's float expression.
+===============
+*/
+static QOG_NOINLINE int R_QogDlightInt (const float *local, float rad, float minlight, int smax, int tmax)
+{
+	int			A[2], c[2], k, M, RI, thr, s, t, d, sd, td, dist, rowd;
+	float		f;
+	long long	X;
+	unsigned	*bl, Si, F, G;
+
+	if (!(rad >= 1.0f && rad < 32768.0f && minlight >= 0.0f))
+		return 0;
+	for (k=0 ; k<2 ; k++)
+	{
+		if (!(local[k] > -3800.0f && local[k] < 3800.0f))
+			return 0;
+		A[k] = (int)local[k];
+		if ((float)A[k] > local[k])
+			A[k]--;
+		f = local[k] - (float)A[k];		// exact, below 1
+		c[k] = f > 0.0f;
+		if (c[k] && (f < 1.0f / 2048 || f > 1.0f - 1.0f / 2048))
+			return 0;
+	}
+	M = (int)minlight;
+	if ((float)M < minlight)
+		M++;
+	X = (long long)(rad * 16777216.0f);	// exact, rad is a multiple of 2^-23
+	RI = (int)(X >> 16);
+	F = (unsigned)X & 0xFFFF;
+	G = 65536 - F;
+	for (k=0 ; (1u << k) < G ; k++)
+		;
+	thr = 1 << (8 + k);					// 2^24 when F is 0: never
+
+	bl = blocklights;
+	for (t = 0 ; t<tmax ; t++, bl += smax)
+	{
+		rowd = A[1] - t*16;
+		td = rowd >= 0 ? rowd : -rowd - c[1];
+		if (td >= M)
+			continue;		// dist >= td: no cell of this row
+		d = A[0];
+		for (s=0 ; s<smax ; s++, d -= 16)
+		{
+			sd = d >= 0 ? d : -d - c[0];
+			if (sd > td)
+				dist = sd + (td>>1);
+			else
+				dist = td + (sd>>1);
+			if (dist >= M)
+				continue;
+			Si = bl[s] + (unsigned)(RI - 256*dist);
+			if (bl[s] < (1u << 23) && Si < (1u << 23) - 1)
+				bl[s] = Si + (Si >= (unsigned)thr);
+			else
+				bl[s] += (rad - (float)dist)*256;	// id's float expression
+		}
+	}
+	return 1;
+}
+#endif
+
+#ifdef QOG_DLIGHT_CHECK
+/* QuakeOG (Agent AL): id's cell loop of one light, for the check build */
+static void R_QogDlightFloat (const float *local, float rad, float minlight, int smax, int tmax)
+{
+	int		s, t, sd, td;
+	float	dist;
+
+	for (t = 0 ; t<tmax ; t++)
+	{
+		td = local[1] - t*16;
+		if (td < 0)
+			td = -td;
+		for (s=0 ; s<smax ; s++)
+		{
+			sd = local[0] - s*16;
+			if (sd < 0)
+				sd = -sd;
+			if (sd > td)
+				dist = sd + (td>>1);
+			else
+				dist = td + (sd>>1);
+			if (dist < minlight)
+				blocklights[t*smax + s] += (rad - dist)*256;
+		}
+	}
+}
+#endif
+
 /*
 ===============
 R_AddDynamicLights
@@ -95,9 +285,12 @@ void R_AddDynamicLights (void)
 				SURF_PLANE (r_drawsurf.model, surf)->dist;
 		rad -= fabs(dist);
 		minlight = cl_dlights[lnum].minlight;
+		LMS (LMS_PAIRS, 1);
 		if (rad < minlight)
 			continue;
 		minlight = rad - minlight;
+		LMS (LMS_PAIRSIN, 1);
+		LMS (LMS_PAIRLUX, smax * tmax);
 
 		for (i=0 ; i<3 ; i++)
 		{
@@ -110,12 +303,42 @@ void R_AddDynamicLights (void)
 
 		local[0] -= surf->texturemins[0];
 		local[1] -= surf->texturemins[1];
+#if defined(QOG_DLIGHT_INT) && !defined(QUAKE2)
+#ifdef QOG_DLIGHT_CHECK
+		// QuakeOG (Agent AL): PC check build, both ways on every pair
+		{
+			static unsigned	qog_dlc_pairs, qog_dlc_bad, qog_dlc_int;
+			unsigned		save[18*18], intres[18*18];
+			int				ok, n = smax * tmax;
+
+			memcpy (save, blocklights, n * sizeof(unsigned));
+			ok = R_QogDlightInt (local, rad, minlight, smax, tmax);
+			memcpy (intres, blocklights, n * sizeof(unsigned));
+			memcpy (blocklights, save, n * sizeof(unsigned));
+			R_QogDlightFloat (local, rad, minlight, smax, tmax);
+			qog_dlc_pairs++;
+			if (ok)
+			{
+				qog_dlc_int++;
+				if (memcmp (intres, blocklights, n * sizeof(unsigned)))
+					qog_dlc_bad++;
+			}
+			if ((qog_dlc_pairs & 4095) == 0 || (ok && memcmp (intres, blocklights, n * sizeof(unsigned))))
+				Sys_Printf ("qog_dlcheck pairs %u int %u differ %u\n", qog_dlc_pairs, qog_dlc_int, qog_dlc_bad);
+			continue;
+		}
+#else
+		if (R_QogDlightInt (local, rad, minlight, smax, tmax))	// QuakeOG (Agent AL)
+			continue;
+#endif
+#endif
 		
 		for (t = 0 ; t<tmax ; t++)
 		{
 			td = local[1] - t*16;
 			if (td < 0)
 				td = -td;
+			LMS (LMS_ROWSLIT, td < minlight);
 			for (s=0 ; s<smax ; s++)
 			{
 				sd = local[0] - s*16;
@@ -125,6 +348,9 @@ void R_AddDynamicLights (void)
 					dist = sd + (td>>1);
 				else
 					dist = td + (sd>>1);
+#ifdef QOG_LMAP_STATS
+				LMS (LMS_LIT, dist < minlight);
+#endif
 				if (dist < minlight)
 #ifdef QUAKE2
 				{
@@ -204,9 +430,18 @@ void R_BuildLightMap (void)
 	}
 #endif
 
+#ifdef QOG_LMAP_STATS
+	for (t=0 ; t<MAXLIGHTMAPS && surf->styles[t] != 255 ; t++)
+		;
+	R_QogLmStatsBuild (surf, size, lightmap ? t : 0);
+#endif
+
 // add all the dynamic lights
 	if (SURF_DLIGHTFRAME_IS (r_drawsurf.model, surf, r_framecount))	// QuakeOG
+	{
+		LMS (LMS_DLBUILDS, 1);
 		R_AddDynamicLights ();
+	}
 
 // bound, invert, and shift
 	for (i=0 ; i<size ; i++)
