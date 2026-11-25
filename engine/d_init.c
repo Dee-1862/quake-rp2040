@@ -65,6 +65,12 @@ void D_Init (void)
 		Cmd_AddCommand ("qog_xipsim", XipSim_f);	// QuakeOG (Agent AH), PC measurement (d_xipsim.c)
 	}
 #endif
+#ifdef QOG_AR_DUMP
+	{
+		void D_QogArDump_f (void);
+		Cmd_AddCommand ("qog_ardump", D_QogArDump_f);	// QuakeOG (Agent AR), PC measurement (d_scanlit.c)
+	}
+#endif
 
 	r_drawpolys = false;
 	r_worldpolysbacktofront = false;
