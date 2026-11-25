@@ -36,9 +36,15 @@ the last scanout to pass those rows (QOG_VID_SCANRACE).
 
 int		r_qog_turboview;		// vid.h
 int		r_qog_turbopacked;		// vid.h
-byte	*r_qog_turbocachehi;	// r_draw.c: room for the vertex cache ends here, NULL outside a Turbo view
+byte	*r_qog_turbocachelo, *r_qog_turbocachehi;	// r_draw.c: room for the vertex cache, hi NULL outside a Turbo view
 
 extern vrect_t	scr_vrect;		// screen.c
+
+#ifdef QOG_VID_SCANRACE
+#define R_QogTurboNeed(lo, hi)	VID_QogScanNeed (lo, hi)	// rows the scanout in flight still has to send
+#else
+#define R_QogTurboNeed(lo, hi)	0
+#endif
 
 static byte				r_qog_turbolast;	// the last view was a Turbo one
 static unsigned short	r_qog_turbow;		// vid.width outside the view
@@ -116,16 +122,17 @@ R_QogTurboCaches
 
 R_EdgeDrawing in a Turbo view, when the world's edge cache lives in the
 frame buffer (r_qog_edgecache == vid.buffer): places the edge cache and
-the vertex cache after it for this view. The view owns the frame's first
-P full rows (P * W bytes): its packed pixels fill the first half, its
-z-buffer or nothing the second. Two places:
- a. the second half, on into the z-buffer memory up to the edge table when
-    a big map needs it (the status bar rows there are repainted after the
-    view, R_HudRepaint). A Turbo frame's scanout never reads the second
-    half, so the view starts at once after a Turbo frame.
- b. the start of the frame, as in the other modes, which the last scanout
-    reads first when it sent a normal frame.
-The one the scanout in flight lets go of sooner is taken.
+the vertex cache for this view. The view owns the frame's first P full
+rows (P * W bytes): its packed pixels fill the first half, its z-buffer
+or nothing the second. A Turbo frame's scanout never reads the second
+half, a normal frame's reads it last. Three ways:
+ a. both caches in the second half, on into the z-buffer memory up to the
+    edge table when a big map needs it (the status bar rows there are
+    repainted after the view, R_HudRepaint)
+ b. the edge cache there and the smallest vertex cache at the frame's
+    start, which a Turbo frame's scanout sends in its first 15 rows
+ c. both at the frame's start, as in the other modes
+The one the scanout in flight lets go of soonest is taken.
 ==============
 */
 #define QOG_TURBO_VERTMIN	(64 * 32 + 512)		// the smallest vertex cache and the Fast header (r_draw.c)
@@ -134,10 +141,7 @@ The one the scanout in flight lets go of sooner is taken.
 void R_QogTurboCaches (void)
 {
 	byte	*base = vid.buffer, *a, *end, *lim;
-	int		bytes = r_qog_edgecachebytes;
-#ifdef QOG_VID_SCANRACE
-	int		needa, needb;
-#endif
+	int		bytes = r_qog_edgecachebytes, need, n;
 
 	r_qog_turbocachehi = NULL;
 	if (!r_qog_turboview || (byte *)r_qog_turboedgecache != base)
@@ -149,18 +153,31 @@ void R_QogTurboCaches (void)
 	if (a + bytes + QOG_TURBO_VERTMIN > lim && end == r_ztemp_base && (byte *)r_edgesentinels > end)
 		lim = (byte *)r_edgesentinels;
 #endif
+	// c
 	r_qog_edgecache = (unsigned short *)base;
+	r_qog_turbocachelo = base + bytes;
 	r_qog_turbocachehi = end;
-	if (a + bytes + QOG_TURBO_VERTMIN > lim)
-		return;		// b
-#ifdef QOG_VID_SCANRACE
-	needa = VID_QogScanNeed (a, a + bytes + QOG_TURBO_VERTMIN);
-	needb = VID_QogScanNeed (base, base + bytes + QOG_TURBO_VERTFAST);
-	if (needa > needb)
-		return;		// b
-#endif
-	r_qog_edgecache = (unsigned short *)a;
-	r_qog_turbocachehi = lim;
+	need = R_QogTurboNeed (base, base + bytes + QOG_TURBO_VERTFAST);
+	if (a + bytes > lim)
+		return;
+	// b
+	n = R_QogTurboNeed (a, a + bytes);
+	if (n < R_QogTurboNeed (base, base + QOG_TURBO_VERTMIN))
+		n = R_QogTurboNeed (base, base + QOG_TURBO_VERTMIN);
+	if (n <= need)
+	{
+		need = n;
+		r_qog_edgecache = (unsigned short *)a;
+		r_qog_turbocachelo = base;
+		r_qog_turbocachehi = base + QOG_TURBO_VERTMIN;
+	}
+	// a
+	if (a + bytes + QOG_TURBO_VERTMIN <= lim && R_QogTurboNeed (a, a + bytes + QOG_TURBO_VERTMIN) <= need)
+	{
+		r_qog_edgecache = (unsigned short *)a;
+		r_qog_turbocachelo = a + bytes;
+		r_qog_turbocachehi = lim;
+	}
 }
 #endif
 
@@ -199,6 +216,42 @@ void R_QogTurboUnpack (void)
 			dst[2 * i] = lo * 0x101;
 			dst[2 * i + 1] = hi * 0x101;
 		}
+	}
+}
+
+/*
+==============
+R_QogTurboChar
+
+The crosshair over a packed Turbo view: each lit pixel of the character
+lands on the packed pixel under it, so the frame stays packed (no spread
+to full width every frame). Anywhere else Draw_Character draws it.
+==============
+*/
+void R_QogTurboChar (int x, int y, int num)
+{
+	extern byte	*draw_chars;	// draw.c
+	byte		*src, *dst;
+	int			r, c, half = vid.rowbytes >> 1;
+
+	if (y < 0 || y + 8 > r_qog_turbopacked || x < 0 || x + 8 > (int)vid.width)
+	{
+		Draw_Character (x, y, num);
+		return;
+	}
+#ifdef QOG_VID_SCANRACE
+	VID_QogScanDone ();
+#elif defined(QOG_VID_LOCKWAIT)
+	VID_LockBuffer ();
+#endif
+	num &= 255;
+	src = draw_chars + ((num >> 4) << 10) + ((num & 15) << 3);
+	for (r = 0 ; r < 8 ; r++, src += 128)
+	{
+		dst = vid.buffer + (y + r) * half;
+		for (c = 0 ; c < 8 ; c++)
+			if (src[c])
+				dst[(x + c) >> 1] = src[c];
 	}
 }
 

@@ -163,7 +163,7 @@ int VID_QogScanNeed(const void *lo, const void *hi) {
     if (!s_scan_pending || h <= 0 || h <= l) return 0;
     if (l < 0) l = 0;
     if (l < p * (W / 2)) need = ((h < p * (W / 2) ? h : p * (W / 2)) - 1) / (W / 2) + 1;
-    if (h > p * W && l < end) {
+    if (h > p * W && l < end && end > p * W) {
         int r = ((h < end ? h : end) - 1) / W + 1;
         if (r > need) need = r;
     }

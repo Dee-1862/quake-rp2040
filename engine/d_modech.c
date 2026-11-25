@@ -100,6 +100,10 @@ void D_ViewChanged (void)
 	d_pix_shift = 8 - (int)((float)r_refdef.vrect.width / 320.0 + 0.5);
 	if (d_pix_max < 1)
 		d_pix_max = 1;
+#ifdef QOG_RTURBO
+	if (r_qog_turboview)
+		d_pix_shift++;	// QuakeOG (Agent AO): particles half as many pixels wide, twice as many rows (d_y_aspect_shift), so their size on the screen stays
+#endif
 
 	if (pixelAspect > 1.4)
 		d_y_aspect_shift = 1;

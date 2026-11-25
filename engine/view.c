@@ -1095,6 +1095,12 @@ void V_RenderView (void)
 
 #ifndef GLQUAKE
 	if (crosshair.value)
+#ifdef QOG_RTURBO
+	if (r_qog_turbopacked)	// QuakeOG (Agent AO): into the packed Turbo view, which then stays packed
+		R_QogTurboChar (scr_vrect.x + scr_vrect.width/2 + cl_crossx.value,
+			scr_vrect.y + scr_vrect.height/2 + cl_crossy.value, '+');
+	else
+#endif
 		Draw_Character (scr_vrect.x + scr_vrect.width/2 + cl_crossx.value, 
 			scr_vrect.y + scr_vrect.height/2 + cl_crossy.value, '+');
 #endif

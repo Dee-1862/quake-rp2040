@@ -118,6 +118,7 @@ int VID_QogScanNeed (const void *lo, const void *hi);
 extern int	r_qog_turboview;	// a Turbo view is being drawn (vid is the half width one)
 extern int	r_qog_turbopacked;
 void R_QogTurboUnpack (void);
+void R_QogTurboChar (int x, int y, int num);	// the crosshair into a packed view
 #define QOG_TURBO_2D(y)	do { if (r_qog_turbopacked && (int)(y) < r_qog_turbopacked) R_QogTurboUnpack (); } while (0)
 #else
 #define QOG_TURBO_2D(y)	((void)0)

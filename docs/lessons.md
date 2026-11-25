@@ -225,3 +225,13 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L94. `git commit -F` needs an empty line after the title.** Without it the title and every bullet line become one long subject line.
 
 **L95. A file added to a data pak can move the baked image by 64 KB.** The image starts at the first 64 KB boundary after the pak, and main's episode 2 image has 28 KB to spare. Look at both `end` lines of mkboard after adding any file (qogboot.txt is 5 to 6 bytes and moved nothing).
+
+**L170. A half width render is id's lcd_x trick, and only around R_RenderView_.** Making vid.width and vid.rowbytes half and vid.aspect double for the length of the 3D view gives R_ViewChanged a view with the same field of view and pixels twice as wide, and every drawer follows screenwidth and d_zwidth. R_RenderView repaints the status bar (R_HudRepaint) after R_RenderView_, so a swap around R_RenderView would draw that 2D at the half width. Set r_viewchanged whenever the mode changes, or R_SetupFrame keeps the old width.
+
+**L171. id's particle size follows 1/z, not the view's scale.** D_DrawParticle's pix is izi >> d_pix_shift, the same number of pixels at 160 or 320 wide, and d_y_aspect_shift doubles the rows for wide pixels. A half width view drew particles four times too big until d_pix_shift went up by one.
+
+**L172. Word stores into a uint16_t array need it aligned.** The scanout's line buffers were uint16_t[2][320] with no alignment, and the Turbo doubling writes two pixels a word. The M0+ faults on an unaligned word store, so the buffers carry aligned(4). Check every array a new word loop writes.
+
+**L173. A crosshair in every frame can undo a whole frame layout.** The PC test config has crosshair 1, so every Turbo frame drew a character into the view, which spread the packed rows to full width and brought back the race wait. Count how often the fallback runs (here by logging each scan wait with its byte range) before trusting an estimate, and give such small every-frame overlays a path of their own.
+
+**L174. Do not rewrite a test runner script while a loop runs it.** A runner rewritten mid-run lost every line but its last (a Python filter dropped lines it should have kept), and the next runs printed nothing and produced no shots. Write a new file and switch to it between runs.
