@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 
 mnode_t	*r_pefragtopnode;
 #ifdef QOG_ENTITY_NOTOPNODE
@@ -183,6 +184,7 @@ void R_SplitEntityOnNode2 (mnode_t *node)
 	}
 	
 	splitplane = node->plane;
+	QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG (Agent AS)
 	sides = BOX_ON_PLANE_SIDE(r_emins, r_emaxs, splitplane);
 	
 	if (sides == 3)

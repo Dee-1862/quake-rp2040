@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 
 drawsurf_t	r_drawsurf;
 
@@ -329,10 +330,16 @@ void R_AddDynamicLights (void)
 		}
 #else
 		if (R_QogDlightInt (local, rad, minlight, smax, tmax))	// QuakeOG (Agent AL)
+		{
+			QOG_BM (QOG_BM_DLPAIR_INT, 1);	// QuakeOG (Agent AS)
+			QOG_BM (QOG_BM_DLCELL_INT, smax * tmax);
 			continue;
+		}
 #endif
 #endif
 		
+		QOG_BM (QOG_BM_DLPAIR_FLT, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_DLCELL_FLT, smax * tmax);
 		for (t = 0 ; t<tmax ; t++)
 		{
 			td = local[1] - t*16;
@@ -351,6 +358,7 @@ void R_AddDynamicLights (void)
 #ifdef QOG_LMAP_STATS
 				LMS (LMS_LIT, dist < minlight);
 #endif
+				QOG_BM (QOG_BM_DLLIT_FLT, dist < minlight);	// QuakeOG (Agent AS)
 				if (dist < minlight)
 #ifdef QUAKE2
 				{

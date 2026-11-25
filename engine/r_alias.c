@@ -44,6 +44,9 @@ void R_QogAliasStatsView (void)
 	}
 	if ((r_framecount - frame0) % 100 || r_framecount == frame0)
 		return;
+#ifdef QOG_BOARDMODEL
+	return;	// QuakeOG (Agent AS): the cost model reads the counts, and a console line would be notify text
+#endif
 	for (s=0 ; s<2 ; s++)
 	{
 		unsigned	*a = qog_astats[s];

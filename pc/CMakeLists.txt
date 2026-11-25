@@ -386,3 +386,32 @@ foreach(_t quakeog_sv quakeog_cl)
     target_link_options(${_t} PRIVATE /DYNAMICBASE:NO)
     set_target_properties(${_t} PROPERTIES WIN32_EXECUTABLE OFF)
 endforeach()
+
+# Board cost model (Agent AS), a measurement build only: tools/boardbench.ps1
+# makes it in its own folder. quakeog_pc gets the board client's render
+# flags (apps/quake/CMakeLists.txt, keep the two lists in step), the phase
+# times and every work count, and -bmlog <file> writes the counts of each
+# timedemo frame (port/pc/boardmodel_pc.c) for tools/boardmodel.py.
+# QOG_PC_REMOVE_DEFS takes flags out again, to measure a path a branch
+# replaced (for example the code before Agent AL with its six flags).
+option(QOG_PC_BOARDMODEL "quakeog_pc with the board client's render flags and the cost model's work counts" OFF)
+set(QOG_PC_REMOVE_DEFS "" CACHE STRING "compile definitions taken out of quakeog_pc (measurement builds)")
+if(QOG_PC_BOARDMODEL)
+    get_target_property(_bm_defs quakeog_pc COMPILE_DEFINITIONS)
+    list(TRANSFORM _bm_defs REPLACE "^QOG_NUMSTACKEDGES=[0-9]+$" "QOG_NUMSTACKEDGES=1800")
+    list(TRANSFORM _bm_defs REPLACE "^QOG_NUMSTACKSURFACES=[0-9]+$" "QOG_NUMSTACKSURFACES=600")
+    list(APPEND _bm_defs
+        QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_EDGECACHE_FRAME=152 QOG_DLIGHT_SURFS=256
+        QOG_SURF_T_TINY QOG_TRANSLATE_INLINE
+        QOG_VID_LOCKWAIT QOG_SPANS_CORE1 QOG_VID_SCANRACE QOG_HUD_SKIP
+        QOG_VERTCACHE QOG_WORLDNODE_FAST QOG_VERTCACHE_CLIPDIST QOG_ALIAS_CORE1
+        QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP
+        QOG_PHASE_TIME QOG_PHASE_XIP QOG_LMAP_STATS QOG_ALIAS_STATS QOG_BOARDMODEL)
+    set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_bm_defs}")
+    target_sources(quakeog_pc PRIVATE ${ROOT}/port/pc/boardmodel_pc.c)
+endif()
+if(QOG_PC_REMOVE_DEFS)
+    get_target_property(_rm_defs quakeog_pc COMPILE_DEFINITIONS)
+    list(REMOVE_ITEM _rm_defs ${QOG_PC_REMOVE_DEFS})
+    set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_rm_defs}")
+endif()

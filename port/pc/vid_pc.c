@@ -16,6 +16,7 @@
 #include "qog_input.h"
 #include "qog_mem.h"
 #include "qog_aim.h"
+#include "qog_bmodel.h"   /* QuakeOG (Agent AS) */
 
 #ifndef QOG_PC_W
 #define QOG_PC_W 320
@@ -259,6 +260,9 @@ void VID_QogRaceBegin(void) {
 
 void VID_QogScanFree(const void *lo, const void *hi) {
     int need = VID_QogScanNeed(lo, hi);
+#ifdef QOG_BOARDMODEL
+    qog_bm_scanfree((const byte *)lo - vid_buffer, (const byte *)hi - vid_buffer);   /* QuakeOG (Agent AS): the board waits for these bytes */
+#endif
     if (!need) return;
     if (need >= s_sr_rows) {
         VID_QogScanDone();
@@ -366,6 +370,9 @@ void VID_Update(vrect_t *rects) {
     if (s_panel_turbo) panel_rows(s_panel, QOG_PC_H, TURBO_PACKED);
 #endif
     if (rows >= QOG_PC_H) s_pal_changed = false;
+#ifdef QOG_BOARDMODEL
+    qog_bm_frame(rows, TURBO_PACKED);   /* QuakeOG (Agent AS): one line of work counts a frame */
+#endif
 #ifdef QOG_VID_LOCKWAIT
     s_lk_hash = lockcheck_hash();   /* QuakeOG (Agent V): the board's scanout starts here */
     s_lk_pending = true;

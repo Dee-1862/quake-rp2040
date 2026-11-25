@@ -251,3 +251,17 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L173. A crosshair in every frame can undo a whole frame layout.** The PC test config has crosshair 1, so every Turbo frame drew a character into the view, which spread the packed rows to full width and brought back the race wait. Count how often the fallback runs (here by logging each scan wait with its byte range) before trusting an estimate, and give such small every-frame overlays a path of their own.
 
 **L174. Do not rewrite a test runner script while a loop runs it.** A runner rewritten mid-run lost every line but its last (a Python filter dropped lines it should have kept), and the next runs printed nothing and produced no shots. Write a new file and switch to it between runs.
+
+**L180. A measurement print on the console changes what it measures.** QOG_ALIAS_STATS printed 15 console lines every 100 views. On the board a notify line makes SCR_SetUpToDrawConsole wait for the whole LCD scanout before the view, so those prints alone would have put most demo3 frames into that wait. Counts for a timed run go to stdout (Sys_Printf) or a file (`-bmlog`), never through Con_Printf.
+
+**L181. State that lasts a stretch of real time has to be replayed in board time.** Notify text shows for 3 s of realtime: 180 frames of the PC's 60 fps timedemo, about 41 of the board's 13.6 fps. The PC's own race and packed Turbo state (VID_QogScanNeed) therefore say nothing about the board. Log the events per frame (console lines, centre prints, the byte ranges handed to VID_QogScanFree) and work out the board's waits in a frame by frame simulation in board time (tools/boardmodel.py).
+
+**L182. Git Bash's `sed -i` rewrites a CRLF file with LF endings.** It did so to pc/CMakeLists.txt and port/pc/vid_pc.c, and a PowerShell ReadAllText and WriteAllText round trip did the same. Patch CRLF files with a script that reads and writes bytes, and check `git ls-files --eol` before committing (L111). Escapes such as `\n` and `\b` in text passed through the shell tool can also arrive as real control characters: check generated text for bytes below 0x20.
+
+**L183. The engine's paths are at most 128 characters.** A worktree in the session scratchpad (a 120 character path) made quakeog_pc stop silently right after adding the paks. Keep test worktrees at short paths such as `C:\Users\...\GitHub\qog-ref-xx`.
+
+**L184. At 300 MHz with the LCD at 50 MHz the world front end of a Fast view hides behind the scanout.** The view waits for the edge and vertex cache rows (about row 78, 8.8 ms after VID_Update) and then for the whole scanout (17 ms for 152 rows) after R_RenderWorld. Halving the world's 8.9 ms saves only 2.8 ms of frame until those waits go. Check a speed-up against the frame's critical path, not the phase's own time.
+
+**L185. Turbo moves the race wait, it does not remove it.** With the caches in the packed view's second half the view starts at once, but VID_QogScanDone after R_RenderWorld still waits for the whole last scanout, about 3.8 ms a view at 50 MHz by the model. Removing it needs a second packed buffer.
+
+**L186. On the board a float helper call costs about 1.6 times the 65 cycles the agents assumed, and integer code about 3.9 times their cycle reads.** A two factor fit over the nine phases of de58316 (20% rms) says so. Estimates for integer rewrites were the optimistic ones, so price integer work at about 4x the instruction count before claiming a saving.

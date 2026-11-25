@@ -1,0 +1,97 @@
+{
+ "e1m1_board": {
+  "frame": 55.2,
+  "lmap": 2.0,
+  "race": 6.0,
+  "view": 53.2
+ },
+ "e1m1_log": "tools/boardmodel_ref_e1m1.csv.gz",
+ "e1m1_skip": 100,
+ "features": [
+  "QOG_ALIAS_FAST",
+  "QOG_FRONT_FAST",
+  "QOG_LITSPAN_INTERP",
+  "QOG_RTURBO",
+  "QOG_SPANS_CORE1"
+ ],
+ "fit_rms_log": 0.17951454181270712,
+ "frame_model_ref": 79.55214036143362,
+ "keymult": {
+  "bm_dlcell_flt": 1.1142762539128037,
+  "bm_dlcell_int": 1.1142762539128037,
+  "bm_dllit_flt": 1.1142762539128037,
+  "bm_dlpair_int": 1.1142762539128037,
+  "bm_reachup": 1.1142762539128037,
+  "bm_reachup_step": 1.1142762539128037,
+  "lmap_marknodes": 1.1142762539128037,
+  "lms_builds": 0.35849220400145365,
+  "lms_dlbuilds": 0.35849220400145365,
+  "lms_lux": 0.35849220400145365,
+  "lms_marks": 1.1142762539128037,
+  "lms_pairs": 1.1142762539128037,
+  "lms_pairsin": 1.1142762539128037,
+  "lms_stylelux": 0.35849220400145365,
+  "lms_treenodes": 1.1142762539128037
+ },
+ "kf": 1.6133466704713346,
+ "ki": 3.866479181428185,
+ "log": "tools/boardmodel_ref.csv.gz",
+ "notify_frac_ref": 0.34400731930466605,
+ "pre_ms_250": 1.0773902893066407,
+ "pre_solved": true,
+ "r": {
+  "bmodels": 1.5037646381985765,
+  "edgescan": 0.842743492184445,
+  "grad": 0.9628793544611101,
+  "lmap": 0.9999999999999999,
+  "models": 1.1160709026422526,
+  "other": 0.9999999999999999,
+  "parts": 0.781405790533094,
+  "spans": 0.9411697062737424,
+  "vmodel": 1.0349041124910936,
+  "world": 1.0443346101150615
+ },
+ "recon": {
+  "compute": {
+   "cscale": 0.9003527164459229,
+   "post": 0.3,
+   "wscale": 1.0
+  },
+  "offset": {
+   "cscale": 1.0,
+   "post": -6.249388067855634,
+   "wscale": 1.0
+  },
+  "wait": {
+   "cscale": 1.0,
+   "post": 0.3,
+   "wscale": 0.3080620765686035
+  }
+ },
+ "ref": {
+  "commit": "de58316",
+  "frames": 1090,
+  "mhz": 250.0,
+  "phases": {
+   "bmodels": 6.9,
+   "edgescan": 7.2,
+   "grad": 3.1,
+   "lmap": 13.9,
+   "models": 5.1,
+   "parts": 1.2,
+   "spans": 16.9,
+   "vmodel": 3.4,
+   "world": 10.4
+  },
+  "seconds": 79.9,
+  "spi": 62.5,
+  "view_total": 72.2
+ },
+ "view_total_model": 72.20000667668259,
+ "waits_ref": {
+  "notify": 5.536219699195501,
+  "race_done": 0.3823624557214039,
+  "race_view": 4.098170590388034,
+  "race_world": 0.7385236962488616
+ }
+}

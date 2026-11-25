@@ -2,6 +2,46 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: A board cost model and tools/boardbench.ps1, the demo3 scoreboard (Agent AS, PC only, registered data)
+
+A way to measure board speed without the board. `powershell -File tools\boardbench.ps1` plays timedemo demo3 on the PC with the board client's render flags, counts the work of every code path in every frame, and predicts the board's ms per phase and fps for Fast and Turbo at any clock and LCD SPI rate. The scoreboard is docs/fps-board.md, the how-to docs/handoff.md. Nothing ran on hardware, nothing touched the board or a COM port.
+
+### Prediction for main cd1e749 (demo3, board, 10 to 90% range)
+
+| | 250 MHz, SPI 62.5 | 300 MHz, SPI 50 |
+| --- | ---: | ---: |
+| Fast | 16.2 fps (15.8 to 16.4) | 18.0 fps (17.2 to 18.9), 55.5 ms |
+| Turbo | 18.9 fps (18.1 to 19.4) | 20.6 fps (19.2 to 22.2), 48.5 ms |
+
+Per phase at 300 MHz, Fast: spans 14.1, world 8.9, edgescan 6.0, bmodels 5.7, models 4.3, lmap 3.1, vmodel 2.8, parts 1.0, grad 0.9. Turbo: spans 9.3, the rest as Fast less 0.7 in world and 1.4 in models and vmodel. Scanout waits: Fast 4.7 ms before the world, 0.9 after, 7.9 in notify frames; Turbo 1.5, 3.8 and 8.4 (the model's view, see the reconciliation below).
+
+### How it works
+
+- PC build option `QOG_PC_BOARDMODEL` (pc/CMakeLists.txt, measurement only): quakeog_pc with the board client's render flags (one-byte z-buffer, edge cache in the frame, 256 entry lit surface hash, scan race, status bar skip, both cores, Agent Z's and AJ's world flags, interpolators), the phase times and every work count. `QOG_PC_REMOVE_DEFS` takes flags out again.
+- `-bmlog <file>` (port/pc/boardmodel_pc.c, new) writes one line per timedemo frame: the rows and packed rows of the scanout the view raced, the byte ranges the view handed to VID_QogScanFree, console lines and centre prints, and the change of every count. `-bmall` logs every frame of a level instead.
+- New counts (engine/qog_bmodel.h, new, empty macros unless `QOG_BOARDMODEL`): dynamic light pairs and cells on the integer and float paths, lit float cells, R_QogLightReachesWorld calls and steps (r_surf.c, r_light.c), gradients by path (d_edge.c), scan lines and active edge visits (r_edge.c), surfaces and brush surfaces drawn (d_edge.c), brush entity faces, edges, clips, light marking, box tests, world splits, R_RecursiveClipBPoly calls and edges (r_main.c, r_bsp.c, r_efrag.c). QOG_ALIAS_STATS keeps its counts off the console in these builds (r_alias.c), because console lines are notify text (L180).
+- tools/boardmodel.py (new): float helper calls and integer cycles per unit of each path (a priori, from the agents' Thumb reads), two factors fitted to the board's nine de58316 phases (kf 1.61 for float calls, ki 3.87 for integer cycles, 20% rms), a residual per phase so the calibration run is exact, E1M1 standing (lmap 2.0) to split lmap into base grids and dynamic lights, and a frame by frame simulation in board time of the scanout (91.5 us a row at 62.5 MHz, 112 at 50), the waits at VID_QogScanFree, after R_RenderWorld and in notify frames, and Turbo's packed frames. Ranges come from refitting with every weight scaled at random and the time before the view and the clock scaling drawn at random. `--whatif` asks what a change would give.
+- Calibration data: tools/boardmodel_calib.json, the demo3 log tools/boardmodel_ref.csv.gz (main with Agent AL's six flags removed, whose per view counts equal an untouched de58316 build's within 0.3%: lit pixels 48,113 against 48,245, spans 1,448 against 1,452, nodes 265.2 against 266) and the E1M1 log tools/boardmodel_ref_e1m1.csv.gz. tools/boardbench_config.cfg is the fixed test config.
+
+### How well it reproduces the board
+
+- de58316 phases: exact by construction. Under it the two factor fit is within 12% on six phases, bmodels 33% under, parts 25% over, edgescan 18% over.
+- E1M1 standing, de58316: 56.3 ms against the board's 55.2, row race 4.9 ms plus the vertex cache wait against the board's race 6.0.
+- demo3 frame: the waits the code implies give 79.6 ms against the measured 73.3. Notify text shows in 34% of demo3's frames in board time and makes the whole view wait for the scanout, and frames after a status bar change wait for it at the edge table, while the board's own view total leaves only about 1 ms outside the view. The model keeps three reconciliations (a constant offset, all waits x 0.31, all phases x 0.90) and averages them. The `race` and `scanwait` fields of the `[time cl]` line during demo3 would settle it.
+
+### Findings for the next attacks (docs/fps-board.md has the ranked list)
+
+- Scanout waits are the largest item left: removing them all is worth 11.4 ms in Fast and 10.7 in Turbo at 300 MHz. An exact package (notify rows cleared after a ScanFree of those rows only, the edge table's status bar wait made a ScanFree as edges reach those rows, brush entities before the wait for the scanout's end) is worth 3.6 and 6.2 ms.
+- In Fast at 50 MHz the world hides behind the scanout: halving it saves 2.8 ms of frame, not 4.5 (L184).
+- Turbo's race wait moved behind R_RenderWorld rather than going away (L185).
+- 35 fps needs the scanout waits gone as well as cheaper phases: with world and bmodels halved and spans, edgescan and models 30% cheaper, Turbo reaches 30.0 fps, and 39.9 only with no waits on top.
+
+### Exact
+
+The normal PC build (`build-pc`, QOG_AOT) gives `qogtest_hash` ce86f894f9de. Every engine hook is inside `QOG_BOARDMODEL`, which only the measurement build defines.
+
+Files: engine/qog_bmodel.h, port/pc/boardmodel_pc.c, tools/boardmodel.py, tools/boardbench.ps1, tools/boardbench_config.cfg, tools/boardmodel_calib.json, tools/boardmodel_ref.csv.gz, tools/boardmodel_ref_e1m1.csv.gz, docs/fps-board.md (new), engine/r_surf.c, engine/r_light.c, engine/d_edge.c, engine/r_edge.c, engine/r_main.c, engine/r_bsp.c, engine/r_efrag.c, engine/r_alias.c, port/pc/vid_pc.c, pc/CMakeLists.txt, docs/handoff.md, docs/lessons.md (L180 to L186).
+
 ## 2026-11-25: 300 MHz at 1.25 V, a flash check over every RX delay, die temperature lines, and a board PC-sampling profiler (Agent AN, ARM build, not run on hardware)
 
 The user approved 300 MHz. Both Quake apps now raise the core voltage to 1.25 V and then the clock to 300 MHz right after `board_init()`, extending Agent AB's run-time switch (port/rp2040/clock_rp2040.c). The BSP, its 200 MHz display bootloader and every other app are untouched. A new build option, `QOG_PROF`, adds a profiler that samples the interrupted PC on the board and prints each core's top 20 functions every 5 s. Nothing ran on hardware. Every board number below is an estimate.

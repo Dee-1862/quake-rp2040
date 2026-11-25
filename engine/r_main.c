@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 
 //define	PASSAGES
 
@@ -1097,6 +1098,7 @@ void R_DrawBEntitiesOnList (void)
 						clmodel->maxs[j];
 			}
 
+			QOG_BM (QOG_BM_BMCHECK, 1);	// QuakeOG (Agent AS)
 			clipflags = R_BmodelCheckBBox (clmodel, minmaxs);
 
 			if (clipflags != BMODEL_FULLY_CLIPPED)
@@ -1364,7 +1366,13 @@ void R_EdgeDrawing (void)
 
 	{
 	QOG_PH_T (ph);	// QuakeOG
+#ifdef QOG_BOARDMODEL
+	qog_bm_bmodels (1);	// QuakeOG (Agent AS)
+#endif
 	R_DrawBEntitiesOnList ();
+#ifdef QOG_BOARDMODEL
+	qog_bm_bmodels (0);
+#endif
 #ifdef QOG_FRONT_FAST
 	// QuakeOG (Agent AJ): the Fast header after the cache serves the brush
 	// entities too (the cache itself is for world faces only)

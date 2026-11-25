@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
+#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
 
 //
 // current entity info
@@ -263,6 +264,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	mnode_t		*pn;
 
 	psideedges[0] = psideedges[1] = NULL;
+	QOG_BM (QOG_BM_BPOLY, 1);	// QuakeOG (Agent AS)
 
 	makeclippededge = false;
 
@@ -279,6 +281,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	for ( ; pedges ; pedges = pnextedge)
 	{
 		pnextedge = pedges->pnext;
+		QOG_BM (QOG_BM_BPOLYEDGE, 1);	// QuakeOG (Agent AS)
 
 	// set the status for the last point as the previous point
 	// FIXME: cache this stuff somehow?
