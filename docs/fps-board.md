@@ -1,29 +1,29 @@
 # FPS scoreboard, timedemo demo3 on the board
 
-Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchmark (timedemo demo3), a 28.5 ms frame. Board numbers are measured on hardware. Model numbers come from `tools/boardbench.ps1` (docs/handoff.md), which plays demo3 on the PC with the board client's render flags, counts the work of every code path per frame on both cores, and turns the counts into board milliseconds with `tools/boardmodel.py`. Since the f7d9450 board run the model is calibrated on that run (section 3).
+Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchmark (timedemo demo3), a 28.5 ms frame. Board numbers are measured on hardware. Model numbers come from `tools/boardbench.ps1` (docs/handoff.md), which plays demo3 on the PC with the board client's render flags, counts the work of every code path per frame on both cores, and turns the counts into board milliseconds with `tools/boardmodel.py`. Since the d31520e board run the model is calibrated on that run (section 3).
 
 ## 1. Measured on the board
 
 | Commit | Mode | Clock, flash, LCD | demo3 fps | frame ms | Notes |
 | --- | --- | --- | ---: | ---: | --- |
 | before the speed round | Fast | 250, 125, SPI 62.5 | 9.3 | 107.5 | view 75.7 ms (the earlier figures) |
-| de58316 | Fast | 250, 125, SPI 62.5 | 13.6 | 73.3 | 1090 frames in 79.9 s. E1M1 standing 18.0 fps (frame 55.2, view 53.2, race 6.0, lmap 2.0) |
-| **f7d9450** | **Fast** | 300, 150, PIO 60 | **20.0** | **49.9** | 1090 frames in 54.4 s |
-| **f7d9450** | **Turbo** | 300, 150, PIO 60 | **22.3** | **44.8** | 1090 frames in 48.8 s |
-| e38c9a4 | Fast | 300, 150, PIO 60 | 22.0 | 45.5 | 1090 frames in 49.6 s, log `run10_8.txt` |
-| e38c9a4 | Turbo | 300, 150, PIO 60 | 26.0 | 38.4 | 41.9 s, log `run10_8.txt` |
-| dd4bc39 + HOTTEXT | Turbo | 300, 150, PIO 60 | 27.1 | 36.9 | 40.2 s, log `run11_8.txt` |
-| f73166e + HOTTEXT | Turbo | 300, 150, PIO 60 | 27.8 | 36.0 | 39.2 s, log `run12_8.txt` |
-| 864bea5 + HOTTEXT | Exact | 300, 150, PIO 60 | 12.8 | 78.3 | 85.3 s, log `run13_8.txt` |
-| **864bea5 + HOTTEXT** | **Fast** | 300, 150, PIO 60 | **24.8** | **40.3** | 43.9 s, log `run13_8.txt` |
-| **864bea5 + HOTTEXT** | **Turbo** | 300, 150, PIO 60 | **27.8** | **36.1** | 39.3 s, log `run13_8.txt` |
-| 864bea5 + HOTTEXT + XIPSTATS | Fast | 300, 150, PIO 60 | 24.3 | 41.2 | cache counting build, log `run14_8.txt` |
+| b585365 | Fast | 250, 125, SPI 62.5 | 13.6 | 73.3 | 1090 frames in 79.9 s. E1M1 standing 18.0 fps (frame 55.2, view 53.2, race 6.0, lmap 2.0) |
+| **d31520e** | **Fast** | 300, 150, PIO 60 | **20.0** | **49.9** | 1090 frames in 54.4 s |
+| **d31520e** | **Turbo** | 300, 150, PIO 60 | **22.3** | **44.8** | 1090 frames in 48.8 s |
+| f4dfb75 | Fast | 300, 150, PIO 60 | 22.0 | 45.5 | 1090 frames in 49.6 s, log `run10_8.txt` |
+| f4dfb75 | Turbo | 300, 150, PIO 60 | 26.0 | 38.4 | 41.9 s, log `run10_8.txt` |
+| 5dc4518 + HOTTEXT | Turbo | 300, 150, PIO 60 | 27.1 | 36.9 | 40.2 s, log `run11_8.txt` |
+| f96f85f + HOTTEXT | Turbo | 300, 150, PIO 60 | 27.8 | 36.0 | 39.2 s, log `run12_8.txt` |
+| a95562b + HOTTEXT | Exact | 300, 150, PIO 60 | 12.8 | 78.3 | 85.3 s, log `run13_8.txt` |
+| **a95562b + HOTTEXT** | **Fast** | 300, 150, PIO 60 | **24.8** | **40.3** | 43.9 s, log `run13_8.txt` |
+| **a95562b + HOTTEXT** | **Turbo** | 300, 150, PIO 60 | **27.8** | **36.1** | 39.3 s, log `run13_8.txt` |
+| a95562b + HOTTEXT + XIPSTATS | Fast | 300, 150, PIO 60 | 24.3 | 41.2 | cache counting build, log `run14_8.txt` |
 
-Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. The history was rewritten in November 2026, so the f7d9450 above is 8155226 now, and e38c9a4 was 5bb769e.
+Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. Commit IDs are those of this repository.
 
-de58316 phases, ms per view, spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total view 72.2.
+b585365 phases, ms per view, spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total view 72.2.
 
-f7d9450, frame weighted means of the `[time cl]` lines during the demo (the window with the load left out, log `run9_8.txt`). lmap, grad and spans are core 0's share of the surfaces, `pipe` is core 1's drawing.
+d31520e, frame weighted means of the `[time cl]` lines during the demo (the window with the load left out, log `run9_8.txt`). lmap, grad and spans are core 0's share of the surfaces, `pipe` is core 1's drawing.
 
 | | Fast | Turbo |
 | --- | ---: | ---: |
@@ -48,12 +48,12 @@ What drives scanwait, windows with notify text (a pickup message in the last 3 s
 
 | Commit | Calibration | Fast | Turbo | Board |
 | --- | --- | ---: | ---: | --- |
-| cd1e749 | de58316 | 18.0 | 20.6 | not measured |
-| 768c8a6 + an earlier branch | de58316 | 22.6 | 26.5 | not measured |
-| f7d9450 | de58316 | 26.5 (24.9 to 27.4) | 30.4 (27.6 to 31.6) | **20.0 / 22.3, the model was 33% and 36% high** |
-| f7d9450 | f7d9450 Fast (now) | 20.0 (by construction) | **22.8** (board 22.3, 2% high) | |
+| dd0f819 | b585365 | 18.0 | 20.6 | not measured |
+| ff5bd24 + an earlier branch | b585365 | 22.6 | 26.5 | not measured |
+| d31520e | b585365 | 26.5 (24.9 to 27.4) | 30.4 (27.6 to 31.6) | **20.0 / 22.3, the model was 33% and 36% high** |
+| d31520e | d31520e Fast (now) | 20.0 (by construction) | **22.8** (board 22.3, 2% high) | |
 
-f7d9450 with the new calibration, ms per view (world with its race wait).
+d31520e with the new calibration, ms per view (world with its race wait).
 
 | Phase | Fast board | Fast model | Turbo board | Turbo model |
 | --- | ---: | ---: | ---: | ---: |
@@ -69,10 +69,10 @@ The Turbo column is a check, only the Fast run was used to calibrate.
 
 ## 3. What the board run changed in the model
 
-- The waits were right, the compute was too cheap. The scanout waits the code implies (row waits, the edge table at the status bar rows, the whole scanout after R_RenderWorld, notify frames) need a scale of only 1.05 to match the board's frame, so the three reconciliations of the de58316 calibration (waits x 0.31 and the others) are gone. The compute was underpriced for the later exact paths, residuals bmodels x 2.28, edgescan x 1.35, surface work x 1.30, world x 1.10, models x 1.12 against the de58316 fit, setup, sky and turb x 2.5. Core 1 draws at 0.98 of core 0's speed.
+- The waits were right, the compute was too cheap. The scanout waits the code implies (row waits, the edge table at the status bar rows, the whole scanout after R_RenderWorld, notify frames) need a scale of only 1.05 to match the board's frame, so the three reconciliations of the b585365 calibration (waits x 0.31 and the others) are gone. The compute was underpriced for the later exact paths, residuals bmodels x 2.28, edgescan x 1.35, surface work x 1.30, world x 1.10, models x 1.12 against the b585365 fit, setup, sky and turb x 2.5. Core 1 draws at 0.98 of core 0's speed.
 - The board's split of the waits is like the model's, scanwait holds notify frames, the edge table's wait at the status bar rows and the wait after the world, race only partial row waits.
 - The time around the view is measured now (input, link, read, sound 2.6 ms, present and status bar 0.5 ms), not fitted.
-- Ranges for f7d9450 itself are narrow by construction. For a branch they come from its changed work (weights scaled at random and refitted on both board runs).
+- Ranges for d31520e itself are narrow by construction. For a branch they come from its changed work (weights scaled at random and refitted on both board runs).
 - `python tools/boardmodel.py calibrate-board --calib tools/boardmodel_calib_de58316.json --log tools/boardmodel_f7d9450_fast.csv.gz -o tools/boardmodel_calib.json` makes the calibration again (`BOARD_F7` in the script holds the board numbers).
 
 ## 4. Remaining gap to 35 fps (28.5 ms) in Turbo
@@ -95,7 +95,7 @@ After the scanwait is fixed about 8.7 ms of core 0's compute remains to go, worl
 
 ## 5. Next attacks for 35 fps in Turbo, ranked by expected ms saved per unit of risk
 
-Model what-ifs on the f7d9450 calibration, 300 MHz, PIO 60 MHz, ms per frame (`tools\boardbench.ps1 -WhatIf "label=item,item;..."`). Risk, 1 low (exact, small code), 2 medium, 3 high.
+Model what-ifs on the d31520e calibration, 300 MHz, PIO 60 MHz, ms per frame (`tools\boardbench.ps1 -WhatIf "label=item,item;..."`). Risk, 1 low (exact, small code), 2 medium, 3 high.
 
 | Rank | Attack | Turbo ms | Fast ms | Risk | ms per risk |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -119,7 +119,7 @@ Rule for every claim, run `tools\boardbench.ps1` on the branch before and after,
 
 | Date | Who | Change |
 | --- | --- | --- |
-| 2026-11-25 | earlier work | First version, model calibrated on de58316, main cd1e749 predicted |
-| 2026-11-25 | earlier work | main 768c8a6 merged, the earlier pipeline, the earlier PIO scanout and Turbo text, the earlier paths in the model, attacks re-ranked |
-| 2026-11-25 | earlier work | Board run of f7d9450 (20.0 and 22.3 fps against the model's 26.5 and 30.4), model recalibrated on it, status bar cap what-if, attacks re-ranked for Turbo |
-| 2026-11-25 | earlier work | an earlier branch row race and edge cache tail, Fast 21.9 to 24.0, Turbo 26.6 to 27.5 predicted (board 22.0 and 26.0 on 5bb769e), the model keeps core 1 busy with the rest of the scanout |
+| 2026-11-25 | earlier work | First version, model calibrated on b585365, main dd0f819 predicted |
+| 2026-11-25 | earlier work | main ff5bd24 merged, the earlier pipeline, the earlier PIO scanout and Turbo text, the earlier paths in the model, attacks re-ranked |
+| 2026-11-25 | earlier work | Board run of d31520e (20.0 and 22.3 fps against the model's 26.5 and 30.4), model recalibrated on it, status bar cap what-if, attacks re-ranked for Turbo |
+| 2026-11-25 | earlier work | an earlier branch row race and edge cache tail, Fast 21.9 to 24.0, Turbo 26.6 to 27.5 predicted (board 22.0 and 26.0 on f4dfb75), the model keeps core 1 busy with the rest of the scanout |

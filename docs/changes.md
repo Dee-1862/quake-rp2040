@@ -4,12 +4,12 @@ Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
 ## 2026-11-25, The last two scanout waits, the row race and the edge cache tail, exact (PC and ARM build, registered data, not run on hardware)
 
-In run10_8 (5bb769e) timedemo demo3 still waits for the LCD. Turbo windows show up to 4.5 ms of `scanwait` a frame, mostly 0 to 3 (the wait for the end of the scan before R_ScanEdges). Fast windows show 3 to 6 ms of `race` (row waits for the edge cache in the first rows of the frame).
+In run10_8 (f4dfb75) timedemo demo3 still waits for the LCD. Turbo windows show up to 4.5 ms of `scanwait` a frame, mostly 0 to 3 (the wait for the end of the scan before R_ScanEdges). Fast windows show 3 to 6 ms of `race` (row waits for the edge cache in the first rows of the frame).
 
 - `QOG_BOARD_ROWRACE` (on), R_ScanEdges runs beside the last scanout. It first waits for the z-buffer region and the view's z-buffer, then each span flush and each surface sent to core 1 waits only for the rows down to the scan line reached (r_edge.c R_QogRowFree). The wait for the end of the scan moves after R_ScanEdges, before the models, particles and warp. Core 1 draws nothing until its scanout ends, so core 0 draws more surfaces itself at the start of the edge scan, and the gain is smaller than the wait it removes.
 - `QOG_BOARD_ECTAIL` (on, not in Turbo views), the world's edge cache goes to the end of the z-buffer region, which no scanout reads, while R_RenderWorld runs, and edge_max stops the edge table below it. A view whose world edges reach it moves the cache to the frame rows after the vertex cache (R_QogEdgeCacheOut), and the table gets its whole room back, so no view gets fewer edges. demo3 never moves it. `QOG_ECTAIL_TEST=300` forces the move for tests.
-- boardbench (300 MHz, PIO 60 MHz), main dd4bc39 to this, Fast 21.9 fps (21.6 to 21.8) to 24.0 (23.7 to 24.0), Turbo 26.6 (25.9 to 27.0) to 27.5 (26.7 to 27.9). The board measured 22.0 and 26.0 on 5bb769e. tools/boardmodel.py now keeps core 1 busy with the rest of the scanout in its pipeline (without that it overstates the row race).
-- Checks, qogtest_hash `ce86f894f9de`. Against builds of main dd4bc39, 121 shots each in Exact, Fast and Turbo are identical in the single process build, and in the split pair with the board flags in Exact and Fast, also with `QOG_ECTAIL_TEST=300` (the cache moved in more than 1,200 views a run). The Turbo split pair differs in 2 shots in status bar rows only (y 154 and below), which the 100 ms status bar cap sends by wall clock time. scanrace 0 writes before the scanout passed, lockcheck 0 changed while scanned. tools/core1_syms.py passes.
+- boardbench (300 MHz, PIO 60 MHz), main 5dc4518 to this, Fast 21.9 fps (21.6 to 21.8) to 24.0 (23.7 to 24.0), Turbo 26.6 (25.9 to 27.0) to 27.5 (26.7 to 27.9). The board measured 22.0 and 26.0 on f4dfb75. tools/boardmodel.py now keeps core 1 busy with the rest of the scanout in its pipeline (without that it overstates the row race).
+- Checks, qogtest_hash `ce86f894f9de`. Against builds of main 5dc4518, 121 shots each in Exact, Fast and Turbo are identical in the single process build, and in the split pair with the board flags in Exact and Fast, also with `QOG_ECTAIL_TEST=300` (the cache moved in more than 1,200 views a run). The Turbo split pair differs in 2 shots in status bar rows only (y 154 and below), which the 100 ms status bar cap sends by wall clock time. scanrace 0 writes before the scanout passed, lockcheck 0 changed while scanned. tools/core1_syms.py passes.
 - RAM (board build with Turbo at 300 MHz), quake_display `end` 0x2003f704 (252 B spare beside the 2 KB heap reserve), quake_main 0x2003f5b4.
 - What the board log should show in the demo3 windows, Fast `race` from 3 to 6 ms down to about 1 or less, Turbo `scanwait` near 0. Part of the wait moves into core 0's time in the edge scan (more `pipe` work on core 0, fewer `c1` surfaces), so judge by the Benchmark line.
 
@@ -73,22 +73,22 @@ Checks, qogtest_hash `ce86f894f9de` (PC build, hidden, `-nosound`). The PC engin
 
 Files, port/rp2040/ld_hottext/default_text_excludes.incl and tools/xip_sets.py (new), apps/quake/CMakeLists.txt (`QOG_BOARD_HOTTEXT`), port/common/qog_phase.c and engine/qog_phase.h (the FPCOUNT arrays only in that build), docs/lessons.md (L310 to L313).
 
-## 2026-11-25, The board cost model recalibrated on the board's run of f7d9450, the Turbo status bar cap what-if (PC only, registered data)
+## 2026-11-25, The board cost model recalibrated on the board's run of d31520e, the Turbo status bar cap what-if (PC only, registered data)
 
-The board measured main f7d9450 at 20.0 fps in Fast and 22.3 in Turbo (300 MHz, flash 150, LCD by PIO at 60 MHz), against boardbench's 26.5 and 30.4 from the de58316 calibration. Nothing ran on hardware here, the numbers come from the lead's log.
+The board measured main d31520e at 20.0 fps in Fast and 22.3 in Turbo (300 MHz, flash 150, LCD by PIO at 60 MHz), against boardbench's 26.5 and 30.4 from the b585365 calibration. Nothing ran on hardware here, the numbers come from the lead's log.
 
-- tools/boardmodel.py `calibrate-board` (new), from the de58316 calibration, each phase's residual set so that the Fast log of f7d9450 gives the board's phases (`BOARD_F7`, frame weighted means of the demo's `[time cl]` lines), the surface work scaled to core 0's share plus core 1's `pipe`, core 1's speed fitted to core 0's share (0.98), the time around the view taken from the board (2.6 ms before, 0.5 after) and one scale on the waits fitted to the frame (1.05, so the waits the code implies were right and the three reconciliations are gone). Every sample of the range is recalibrated the same way.
+- tools/boardmodel.py `calibrate-board` (new), from the b585365 calibration, each phase's residual set so that the Fast log of d31520e gives the board's phases (`BOARD_F7`, frame weighted means of the demo's `[time cl]` lines), the surface work scaled to core 0's share plus core 1's `pipe`, core 1's speed fitted to core 0's share (0.98), the time around the view taken from the board (2.6 ms before, 0.5 after) and one scale on the waits fitted to the frame (1.05, so the waits the code implies were right and the three reconciliations are gone). Every sample of the range is recalibrated the same way.
 - Check on the run not used to calibrate, Turbo 43.9 ms (22.8 fps) against the board's 44.8 (22.3), phases within 0.4 ms except vmodel (2.0 against 2.4).
 - The wait table splits like the board's counters, row waits, the whole scanout in status bar frames (the edge table's wait at those rows, which the board counts as scanwait), after the world and in notify frames.
 - `hudcap:N` what-if, in Turbo the status bar rows go out at most N times a second of board time, a change waits for the next allowed frame (the earlier cap). Turbo 0.9 ms alone (1.2 at 5 a second), 4.2 with the notify clear, 6.7 with the whole race package.
-- New files, tools/boardmodel_f7d9450_fast.csv.gz and _turbo.csv.gz (the PC logs of f7d9450), tools/boardmodel_calib.json is now the board calibration, the de58316 one is tools/boardmodel_calib_de58316.json.
+- New files, tools/boardmodel_f7d9450_fast.csv.gz and _turbo.csv.gz (the PC logs of d31520e), tools/boardmodel_calib.json is now the board calibration, the b585365 one is tools/boardmodel_calib_de58316.json.
 - docs/fps-board.md, the board row, the phase comparison, the gap to 35 fps in Turbo (16.3 ms on the board, about 8.7 ms of compute after the scanwait fix) and the re-ranked attacks. Lessons L260 to L262.
 
 ## 2026-11-25, The pipeline with Turbo checked, particle physics on both cores, and why the world front end does not split yet (PC and ARM build, registered data)
 
 Nothing ran on hardware.
 
-### The two-core pipeline together with Turbo, the PIO scanout and Turbo text, the cuts (main dd273c4)
+### The two-core pipeline together with Turbo, the PIO scanout and Turbo text, the cuts (main 9b0fef4)
 
 Hidden, `-nosound`, own build folders and data folder, link port 27961. The references are builds of the same tree without `QOG_DRAW_CORE1`, so they are main.
 
@@ -98,7 +98,7 @@ Hidden, `-nosound`, own build folders and data folder, link port 27961. The refe
 | the board-flag pair (the earlier pcb flags, one-byte z, 32-byte surfaces, interpolators, scan race, status bar skip, vertex cache) with and without `QOG_DRAW_CORE1`, r_fast 0, 1 and 2, and r_fast 2 with `-core1last` | 121 of 121 identical, f_hash e92bc9e9650d, `qog_scanrace` 0 writes before the scanout passed (4,409 and 3,512 checks in Turbo), `qog_lockcheck` 0 changed of 3,550 and 3,512 |
 | `qogtest_ao_switch.cfg` (Exact, Turbo, Fast, Turbo with notify text, the menu, e1m3, e2m1, e1m6) on the pair and on quakeog_pc | no error, scan race 0 of 521, lock check 0 of 317. 15 of 16 frames identical. sw_notify differs, but two runs of the reference also differ from each other there (the notify text times out in real time) |
 
-Core 1's copies and Turbo, core 1 keeps no copy of the view's size. The 160-wide rows (screenwidth, d_viewbuffer), the z-buffer Turbo moves into the frame buffer (d_pzbuffer, d_zwidth) and the doubled aspect (xscale, xscaleinv, xcenter) are values both cores read and nothing writes during the scan (tools/core1_syms.py lists them as shared), and core 1's copies of the view vectors, modelorg and the Fast gradient rows are made from the Turbo view's own values every view. The edge table is in the z-buffer memory and the Turbo z-buffer in the frame buffer, so every surface may go to core 1 early. the three statics in d_edge.c belong to the brush entity path and D_DrawSurfaces, which only core 0 runs, and the view planes are restored after the flush has waited for core 1. The board build with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON` links, display `end` 0x2003f588 on dd273c4.
+Core 1's copies and Turbo, core 1 keeps no copy of the view's size. The 160-wide rows (screenwidth, d_viewbuffer), the z-buffer Turbo moves into the frame buffer (d_pzbuffer, d_zwidth) and the doubled aspect (xscale, xscaleinv, xcenter) are values both cores read and nothing writes during the scan (tools/core1_syms.py lists them as shared), and core 1's copies of the view vectors, modelorg and the Fast gradient rows are made from the Turbo view's own values every view. The edge table is in the z-buffer memory and the Turbo z-buffer in the frame buffer, so every surface may go to core 1 early. the three statics in d_edge.c belong to the brush entity path and D_DrawSurfaces, which only core 0 runs, and the view planes are restored after the flush has waited for core 1. The board build with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON` links, display `end` 0x2003f588 on 9b0fef4.
 
 ### Particle physics on both cores (`QOG_PARTS_CORE1`, board option `QOG_BOARD_PARTSCORE1`, on)
 
@@ -108,7 +108,7 @@ Exact, quakeog_pc with it against main, r_fast 0, 1 and 2 (thread), r_fast 1 and
 
 boardbench (300 MHz, PIO 60 MHz), parts 0.8 to 0.5 ms, Fast 26.5 to 26.7 fps (37.7 to 37.4 ms), Turbo 30.4 to 30.7 fps (32.9 to 32.6 ms). The model counts the moving at half its old cost, core 1's three fifths of it (about 108,000 cycles) is longer than core 0's drawing and two fifths (about 90,000).
 
-Display `end` 0x2003f6ac on main f7d9450, 0x2003f6cc with this (308 B spare beside the 2 KB heap reserve). quake_main is unchanged.
+Display `end` 0x2003f6ac on main d31520e, 0x2003f6cc with this (308 B spare beside the 2 KB heap reserve). quake_main is unchanged.
 
 ### Why the world front end does not split onto core 1 yet (attack #2)
 
@@ -126,13 +126,13 @@ Files, engine/r_part.c, apps/quake/CMakeLists.txt, pc/CMakeLists.txt and port/pc
 
 ## 2026-11-25, World front end per call, fourth round, exact (PC and ARM build, registered data)
 
-The board's run (log run9_8.txt) puts world at 9 to 11 ms a view while standing (8.8 to 14.8 in the demo), against about 1 M cycles of work the agents count, so much of it is likely flash reads of the BSP data and code, with core 1's span texels through the same 16 KB XIP cache. That cannot be measured on the PC, and no RAM is left for code or data copies (about 340 B), so this round cut the per call work that can be counted. Two flags, exact, r_fast 0, 1 and 2 draw the same bits as main f7d9450. Nothing ran on hardware.
+The board's run (log run9_8.txt) puts world at 9 to 11 ms a view while standing (8.8 to 14.8 in the demo), against about 1 M cycles of work the agents count, so much of it is likely flash reads of the BSP data and code, with core 1's span texels through the same 16 KB XIP cache. That cannot be measured on the PC, and no RAM is left for code or data copies (about 340 B), so this round cut the per call work that can be counted. Two flags, exact, r_fast 0, 1 and 2 draw the same bits as main d31520e. Nothing ran on hardware.
 
 ### Boardbench (300 MHz, LCD by PIO at 60 MHz)
 
 | | Fast fps | Turbo fps | world ms (Fast / Turbo) |
 | --- | ---: | ---: | ---: |
-| main f7d9450 | 26.5 (24.6 to 28.0) | 30.4 (27.7 to 31.9) | 8.2 / 7.9 |
+| main d31520e | 26.5 (24.6 to 28.0) | 30.4 (27.7 to 31.9) | 8.2 / 7.9 |
 | this branch | 26.7 (24.8 to 28.1) | 30.6 (27.7 to 33.2) | 8.0 / 7.6 |
 
 ### What the model priced (Turbo, main, world, ms per view)
@@ -146,7 +146,7 @@ points projected 1.84 (506 a view), faces 1.78 (193), view plane distances 1.51 
 | A vertex's four view plane distances at its first need | `QOG_CLIPDIST_FILL4` (r_draw.c R_QogClipDistFx) | Fast and Turbo, when R_ClipEdge first asks a world vertex for one plane's distance, its position is already in 1/32 units, so the other unknown slots of its cache entry are filled with the same statement (three multiplies each). A vertex was asked about 2.8 times a view, so the distances computed in a demo3 view went from 1,337 to 843 (the rest of the old count are brush entity vertices, which have no cache entry) plus 437 fills. The same values, so the same pictures. New count `wc_clipfill` (50 cycles) |
 | Node side and facing by the float's bits | `QOG_NODESIDE_BITS` (r_bsp.c R_QogNodeSide) | R_RecursiveWorldNode's fdot >= 0, fdot < -0.01f and fdot > 0.01f by the bits of the finite float difference (both zeros are >= 0, and the magnitude's bits order like the values), in a helper that is not inlined so the recursion's frame stays 48 B. One float subtraction a node, no compares. Priced at 0.25 of the node's float calls |
 
-### Exact proof (hidden, `-nosound`, main f7d9450, which has the same tree as the third round's tested branch, with the board's world flags)
+### Exact proof (hidden, `-nosound`, main d31520e, which has the same tree as the third round's tested branch, with the board's world flags)
 
 | Test | Result |
 | --- | --- |
@@ -168,13 +168,13 @@ Files, engine/r_draw.c, engine/r_bsp.c, engine/qog_phase.h (one count), port/pc/
 
 ## 2026-11-25, Alias triangles, third round, all exact (PC and ARM build, registered data)
 
-Models (4.0 ms in Fast, 3.3 in Turbo by the model) and the view model (2.7 and 2.0). Three flags in d_polyse.c, on the rasterizer side only (r_alias.c and r_main.c, where earlier work moves the front end to core 1, are not touched). All exact, r_fast 0, 1 and 2 draw the same bits as main 4b0c98b. Nothing ran on hardware.
+Models (4.0 ms in Fast, 3.3 in Turbo by the model) and the view model (2.7 and 2.0). Three flags in d_polyse.c, on the rasterizer side only (r_alias.c and r_main.c, where earlier work moves the front end to core 1, are not touched). All exact, r_fast 0, 1 and 2 draw the same bits as main 2c4ba79. Nothing ran on hardware.
 
 ### Boardbench (300 MHz, LCD by PIO at 60 MHz)
 
 | | Fast fps | Turbo fps | models ms (Fast / Turbo) | vmodel ms (Fast / Turbo) |
 | --- | ---: | ---: | ---: | ---: |
-| main 4b0c98b | 26.1 (24.3 to 27.7) | 30.0 (27.1 to 31.9) | 4.2 / 3.5 | 2.8 / 2.1 |
+| main 2c4ba79 | 26.1 (24.3 to 27.7) | 30.0 (27.1 to 31.9) | 4.2 / 3.5 | 2.8 / 2.1 |
 | this branch | 26.5 (24.6 to 28.0) | 30.4 (27.6 to 31.9) | 3.7 / 3.1 | 2.7 / 2.0 |
 
 New counts per view (Fast / Turbo), 21.3 / 2.3 small triangles of 124.6 / 64.6 that used to take gradients, 259 / 249 subdivision leaves tested inline of 494 / 477 calls. The coordinator's main figure was 27.0 / 30.9 on another run, this machine gave 26.1 / 30.0 for the same commit, so compare the two rows above.
@@ -193,7 +193,7 @@ models, recursive subdivision calls 0.86 (495 a view drawing 29 points), gradien
 
 New counts for the model. `am_subleaf` and `am_smalltri` (and `vm_smalltri`), weights 25 and 150 integer cycles from the Thumb code. A small triangle is counted as `smalltri`, not `smooth`. `QOG_LEFTEDGE_LOCALS` scales the span row weight by 0.85.
 
-### Exact proof (hidden, `-nosound`, an untouched build of 4b0c98b with the board's world flags)
+### Exact proof (hidden, `-nosound`, an untouched build of 2c4ba79 with the board's world flags)
 
 | Test | Result |
 | --- | --- |
@@ -214,7 +214,7 @@ Files, engine/d_polyse.c, engine/r_qogalias.h, port/pc/boardmodel_pc.c, tools/bo
 
 The earlier board model ranks the scanout waits first (docs/fps-board.md). This branch removes most of them exactly, so the panel shows the same pixels. The biggest wait was not where the ranking put it. Nothing ran on hardware. The board numbers below come from two PC models, the boardbench, and the pair's `-scanmodel`.
 
-### Where a demo3 frame waited (main 768c8a6, PC pair with the board client's flags)
+### Where a demo3 frame waited (main ff5bd24, PC pair with the board client's flags)
 
 The pair now records, for every timedemo frame, how far into the scanout the next frame waited in each part of its work. `VID_QogRaceMark` marks the parts, before the view, the world's front end, after R_RenderWorld, after the brush entities. Each wait site was then tagged once by hand.
 
@@ -232,7 +232,7 @@ The pair now records, for every timedemo frame, how far into the scanout the nex
 | The brush entities' front end runs before the wait for the end of the scanout. It writes only the edge table (released before the world) and the brush clip buffers at the start of the z-buffer. The clip buffers get their own row wait (`VID_QogScanFree` of BMODEL_CLIP_BYTES). The wait for the end moves to just before R_ScanEdges | engine/r_main.c R_EdgeDrawing | QOG_VID_SCANRACE |
 | A scanout that sends the status bar rows sends them first, rows 152 to 199 in a window of their own, then rows 0 to 151. The scan position the game waits on counts rows in that order (`qog_video_set_first`, `VID_QogScanNeed` in send order). The edge table and clip buffers then wait for 48 rows (4.1 ms at 60 MHz) instead of 200 (17.1 ms) | platform/qog_video.c, port/rp2040/vid_rp2040.c, port/pc/vid_pc.c | `QOG_VID_HUDFIRST` (`QOG_BOARD_HUDFIRST`, on) |
 
-### boardbench (main 4b0c98b against this branch merged with it, 300 MHz, LCD by PIO at 60 MHz)
+### boardbench (main 2c4ba79 against this branch merged with it, 300 MHz, LCD by PIO at 60 MHz)
 
 The board model did not know these code paths, so it is taught them here.
 - The logger names `QOG_NOTIFY_COVERED`, `QOG_BMODELS_EARLY` and `QOG_VID_HUDFIRST` as features of the build.
@@ -251,7 +251,7 @@ The board model did not know these code paths, so it is taught them here.
 
 The notify waits go and part of them comes back as ordinary race waits, in Fast before the world (the edge cache rows at the top of the frame, 48 rows later when the status bar goes first), in Turbo after the brush entities (the wait for the end of a 13.4 ms packed scan).
 
-### The pair's own model (`-scanmodel`, demo3 frames, board ms at 60 MHz, world 8.6 and brush entities 5.7, pre 5 ms with 3 and 7 in brackets, main 768c8a6 against the branch before the merge)
+### The pair's own model (`-scanmodel`, demo3 frames, board ms at 60 MHz, world 8.6 and brush entities 5.7, pre 5 ms with 3 and 7 in brackets, main ff5bd24 against the branch before the merge)
 
 | Mode | main | branch |
 | --- | ---: | ---: |
@@ -273,7 +273,7 @@ This model has no calibration and a fixed world time, so where it disagrees with
 - So it fits in under half the frames, as a second path through the z-buffer layout, the edge fallback and the earlier two-core pipeline, for about 1.4 ms on average. That is not worth its risk now.
 - A cheaper attack on the same 3.3 ms, in a frame whose last scanout was packed, R_ScanEdges could wait per row instead of for the end, at each span flush and pipeline push, for the scan line it has reached. The edge scan runs top to bottom like the scanout. That is the next step for this wait.
 
-### What the board's first demo3 runs of main f7d9450 say (log run9_8.txt, read from the saved log)
+### What the board's first demo3 runs of main d31520e say (log run9_8.txt, read from the saved log)
 
 - Fast, 20.0 fps. Turbo, 22.3 fps.
 - During the demo `scanwait` (the waits for a whole scanout, VID_LockBuffer and VID_QogScanDone) is 5 to 16 ms a frame and `race` (row waits) 0 to 4 ms.
@@ -304,7 +304,7 @@ This model has no calibration and a fixed world time, so where it disagrees with
 | Check | Result |
 | --- | --- |
 | `qogtest_hash`, quakeog_pc | ce86f894f9de |
-| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against untouched builds of 768c8a6 (before the merge) and of 4b0c98b (after it) | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d. The race package is compiled only with QOG_VID_SCANRACE, which quakeog_pc does not have |
+| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against untouched builds of ff5bd24 (before the merge) and of 2c4ba79 (after it) | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d. The race package is compiled only with QOG_VID_SCANRACE, which quakeog_pc does not have |
 | the same 121 frames on the split pair with the board client's flags plus `QOG_VID_HUDFIRST` (the earlier list), r_fast 0, 1 and 2, against the pair of the same untouched trees | Fast and Turbo 121 of 121 identical, before and after the merge. Exact had one frame different in one run each time, d_demo3_24 before the merge, d_demo2_11 after it. Both differ only in the bottom view rows, 117 to 151 and 142 to 151, where the z-buffer meets the edge table. Three more runs of the branch before the merge gave 121 of 121. On the PC none of this branch's code changes a pixel below row 31, the waits do nothing there, and the skipped clear covers rows 0 to 31 at most. So these are the pair's run-to-run differences (the earlier core 1 thread, demo pipelining), but they are worth watching |
 | `qog_scanrace` and `qog_lockcheck` in every pair run (shots, fhash, Fast and Turbo Benchmark) | 0 writes before the scanout passed, 0 scanouts changed |
 | `tools/core1_syms.py`, board build | passes |
@@ -313,7 +313,7 @@ This model has no calibration and a fixed world time, so where it disagrees with
 
 | | quake_display `end` | quake_main `end` |
 | --- | --- | --- |
-| main 4b0c98b | 0x2003f6ac | 0x2003f5b4 |
+| main 2c4ba79 | 0x2003f6ac | 0x2003f5b4 |
 | this branch, race package | 0x2003f6b4 (8 B for the scan order) | 0x2003f5b4 |
 | this branch, with the Turbo status bar cap | 0x2003f6d4 (300 B spare beside the 2 KB heap) | 0x2003f5b4 |
 
@@ -366,33 +366,33 @@ The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, mod
 
 The low end is the model's cycles at the clock, the high end assumes the board's 2.3 times the model holds for what was removed. Code that used to be fetched through the XIP cache now runs from RAM, so the high end is the more likely while the cores share the cache.
 
-### After merging main dd273c4 (the earlier two-core surfaces, the PIO scanout, the float cuts, the board model)
+### After merging main 9b0fef4 (the earlier two-core surfaces, the PIO scanout, the float cuts, the board model)
 
 - Core 1 draws whole surfaces with its own compile of d_scanlit.c (`QOG_DRAW_CORE1`, d_core1.c). The Q drawer's state is per call and in that file's statics, so each core has its own. The assembly now takes the surface's values through a pointer in the span struct, not by the name `litq_surf`, which in core 1's copy would have been core 0's. The one shared value is `litq_asm_ok`, the start-up check's result, written once on core 0 at D_Init (on tools/core1_syms.py's reviewed list). D_QogLitQCheck and the PC measurement code are left out of core 1's copy. `tools/core1_syms.py --build build-ar/arm` passes.
 - RAM, main's display `end` is 0x2003f588 with 632 B spare, so the 1,268 B of assembly no longer fit in RAM. Scratch X holds the link rings and core 1's stack, scratch Y the command history and the interrupt stack. The routine now runs from flash, only the z run loop and its pixel slots (172 B) from RAM, and the 32-bit coefficients are read per call from the high words of the earlier 64-bit values instead of being kept (88 B less in both cores' copies). The cycle model does not see where code sits, so its savings stand. The XIP misses on the routine's code are what the RAM placement would have removed.
 - D_DrawSpans8LitQ and litq_span_c are out of line, so core 1's copy keeps main's deepest span chain (c1_D_DrawSpans8Lit 8 + 424 B).
 - The emulator replay through core 1's own entry (c1_D_DrawSpans8Lit, which runs its own D_LitFixSetup) gives the same pixels and z as core 0's drawer, with the assembly and with the C, in Fast and Turbo.
-- the board model (tools/boardbench.ps1) now builds with `QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT`, logs the new features and the Turbo tiny triangles (`am_tinytri`), and weights them (tools/boardmodel.py, the span counts at 0.64 of their cycles from the replay, a tiny triangle at a third of a smooth one, the particle kill checks as 4 of 16 float calls). Predicted demo3 at 300 MHz, LCD by PIO, main dd273c4 Fast 22.6 fps (44.3 ms), Turbo 26.5 (37.7 ms). This branch Fast **25.3 fps** (39.6 ms, 23.6 to 27.1), Turbo **29.0 fps** (34.5 ms, 26.4 to 31.3). Spans 25.0 to 16.3 ms in Fast and 16.3 to 10.7 in Turbo, parts 1.0 to 0.8.
+- the board model (tools/boardbench.ps1) now builds with `QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT`, logs the new features and the Turbo tiny triangles (`am_tinytri`), and weights them (tools/boardmodel.py, the span counts at 0.64 of their cycles from the replay, a tiny triangle at a third of a smooth one, the particle kill checks as 4 of 16 float calls). Predicted demo3 at 300 MHz, LCD by PIO, main 9b0fef4 Fast 22.6 fps (44.3 ms), Turbo 26.5 (37.7 ms). This branch Fast **25.3 fps** (39.6 ms, 23.6 to 27.1), Turbo **29.0 fps** (34.5 ms, 26.4 to 31.3). Spans 25.0 to 16.3 ms in Fast and 16.3 to 10.7 in Turbo, parts 1.0 to 0.8.
 
-Merged proof (hidden, `-nosound`, an untouched build of dd273c4 from `git archive`). `qogtest_hash` ce86f894f9de on quakeog_pc and on the board-flag build with `QOG_DRAW_CORE1` and the Q drawer, `qogtest_f_hash` e92bc9e9650d in every mode. The 121 frames, quakeog_pc r_fast 0 and 1 byte identical, r_fast 2 0.013% (the tiny triangles). The board-flag build with `QOG_DRAW_CORE1` against the same flags on dd273c4, r_fast 0 121 of 121 byte identical, Fast 0.258% (worst d_demo3_00 1.05%), Turbo 0.563% (worst d_demo3_03 2.56%).
+Merged proof (hidden, `-nosound`, an untouched build of 9b0fef4 from `git archive`). `qogtest_hash` ce86f894f9de on quakeog_pc and on the board-flag build with `QOG_DRAW_CORE1` and the Q drawer, `qogtest_f_hash` e92bc9e9650d in every mode. The 121 frames, quakeog_pc r_fast 0 and 1 byte identical, r_fast 2 0.013% (the tiny triangles). The board-flag build with `QOG_DRAW_CORE1` against the same flags on 9b0fef4, r_fast 0 121 of 121 byte identical, Fast 0.258% (worst d_demo3_00 1.05%), Turbo 0.563% (worst d_demo3_03 2.56%).
 
-### Exact and Fast proof before the merge (hidden, `-nosound`, own build-ar folders, untouched build of cd1e749 from `git archive` in build-ar/ref and build-ar/pcbref, own git-ignored data folder with its own qogbake.bin)
+### Exact and Fast proof before the merge (hidden, `-nosound`, own build-ar folders, untouched build of dd0f819 from `git archive` in build-ar/ref and build-ar/pcbref, own git-ignored data folder with its own qogbake.bin)
 
 | Test | Result |
 | --- | --- |
 | `qogtest_hash`, quakeog_pc of this tree (with `QOG_PART_DIEBITS` and `QOG_ALIAS_TURBOTINY`) | ce86f894f9de |
 | the same, the board-flag build with the Q drawer (`QOG_LITSPAN_INTERP QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800 QOG_SPANS_CORE1 QOG_ALIAS_CORE1` plus `QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT QOG_ALIAS_TURBOTINY`) | ce86f894f9de, and `qogtest_f_hash` e92bc9e9650d in every mode |
-| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, quakeog_pc against cd1e749 | 121 of 121 byte identical |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, quakeog_pc against dd0f819 | 121 of 121 byte identical |
 | the same, r_fast 1 (the PC has no INTERP, so this shows the particle change is exact) | 121 of 121 byte identical |
 | the same, r_fast 2 (the Turbo tiny triangles) | 0.013% of the view pixels, worst d_demo1_03 0.18% |
-| the board-flag build with the Q drawer against the same flags on cd1e749, r_fast 0 | 121 of 121 byte identical (a run without the stats build's notify lines, and with them all frames identical below the notify rows) |
+| the board-flag build with the Q drawer against the same flags on dd0f819, r_fast 0 | 121 of 121 byte identical (a run without the stats build's notify lines, and with them all frames identical below the notify rows) |
 | the same, r_fast 1 | 0.258% of the view pixels, worst d_demo3_00 1.05%, single pixels one colour map row apart (the 32-bit starts alone 0.023%) |
 | the same, r_fast 2 | 0.564% of the panel's view pixels, worst d_demo3_03 2.56% (the 32-bit starts and shared light 0.551%, the tiny triangles 0.013%) |
 | litq_span_asm against litq_span_c, the board's code in the emulator | 2,300 random spans and the replayed demo3 views, 0 differences, and D_QogLitQCheck run from quake_display.elf passes |
 
-### RAM and stack (board, the full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own build folder build-ar/arm, merged with dd273c4)
+### RAM and stack (board, the full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own build folder build-ar/arm, merged with 9b0fef4)
 
-| | main dd273c4 | merged |
+| | main 9b0fef4 | merged |
 | --- | --- | --- |
 | quake_display `end` | 0x2003f588 (632 B spare beside the 2 KB heap reserve) | 0x2003f694 (+268 B, the z run loop 172 B in RAM, the surface values and the check flag), 364 B spare |
 | quake_main `end` | 0x2003f5b4 | 0x2003f5b4 |
@@ -413,13 +413,13 @@ Not done, for later.
 
 ## 2026-11-25, Brush models, the edge scan and the light grid build, second round, all exact (PC and ARM build, registered data)
 
-Attacks 6, 7 and 8 of docs/fps-board.md. Six flags, each exact, r_fast 0, 1 and 2 give the same bits as main dd273c4. Nothing ran on hardware. The numbers below are the earlier model (`tools\boardbench.ps1`), with the new paths priced from Thumb instruction counts of the hot loops before and after.
+Attacks 6, 7 and 8 of docs/fps-board.md. Six flags, each exact, r_fast 0, 1 and 2 give the same bits as main 9b0fef4. Nothing ran on hardware. The numbers below are the earlier model (`tools\boardbench.ps1`), with the new paths priced from Thumb instruction counts of the hot loops before and after.
 
 ### Boardbench (300 MHz, LCD by PIO at 60 MHz)
 
 | | Fast fps | Turbo fps | bmodels ms | edgescan ms | lmap ms (Fast / Turbo) |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| main dd273c4 | 22.6 (21.4 to 23.5) | 26.5 (24.5 to 27.8) | 2.7 | 4.8 | 3.2 / 2.9 |
+| main 9b0fef4 | 22.6 (21.4 to 23.5) | 26.5 (24.5 to 27.8) | 2.7 | 4.8 | 3.2 / 2.9 |
 | this branch | 23.2 (21.9 to 24.5) | 27.4 (25.4 to 28.7) | 2.0 | 4.0 | 3.0 / 2.7 |
 
 ### What the model priced (Turbo, main, ms per view)
@@ -436,7 +436,7 @@ edgescan, edge visits in R_GenerateSpans 2.69 (3,984 a view at 55 integer cycles
 | Brush entity box test in integers first | `QOG_BMODEL_BBOXINT` (r_main.c, r_draw.c) | the corners in 1/4 unit and the world's view planes in 1/16384 (now kept through the brush entities), with a margin of 14,400 + 0.53 times the corner size, about 0.3 units. Only 0.06 plane tests a view in demo3 fell back to floats |
 | Fused light grid build | `QOG_LMAP_FUSE` (r_surf.c) | R_BuildLightMap's clear, per style passes and bound in one pass for surfaces of one or two styles without dynamic lights (the cell is an unsigned sum, the same in any order), two passes with dynamic lights. No new names, so core 1's copy (d_core1.h) needs none, and tools/core1_syms.py passes. Priced at 0.65 of the cell and cell style cycles |
 
-### Exact proof (hidden, `-nosound`, an untouched build of dd273c4 with the board's world flags)
+### Exact proof (hidden, `-nosound`, an untouched build of 9b0fef4 with the board's world flags)
 
 | Test | Result |
 | --- | --- |
@@ -448,7 +448,7 @@ edgescan, edge visits in R_GenerateSpans 2.69 (3,984 a view at 55 integer cycles
 
 ### RAM (full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`)
 
-quake_display `end` 0x2003f5a0 against 0x2003f588 on dd273c4 (24 B, the clip side statics), about 600 B spare. quake_main 0x2003f5b4, unchanged. R_GenerateSpans' frame grows to 64 B but it calls nothing deeper than before (R_QogZFrontC is a leaf), R_RecursiveClipBPoly stays 136 B a level.
+quake_display `end` 0x2003f5a0 against 0x2003f588 on 9b0fef4 (24 B, the clip side statics), about 600 B spare. quake_main 0x2003f5b4, unchanged. R_GenerateSpans' frame grows to 64 B but it calls nothing deeper than before (R_QogZFrontC is a leaf), R_RecursiveClipBPoly stays 136 B a level.
 
 ### For earlier work
 
@@ -458,7 +458,7 @@ Files, engine/r_edge.c, engine/r_bsp.c, engine/r_efrag.c, engine/r_main.c, engin
 
 ## 2026-11-25, The board cost model sees the two-core surfaces, the PIO scanout, Turbo text and the exact float cuts (PC only, registered data)
 
-main 768c8a6 merged into an earlier branch, and the model extended so boardbench prices what they changed. Nothing ran on hardware.
+main ff5bd24 merged into an earlier branch, and the model extended so boardbench prices what they changed. Nothing ran on hardware.
 
 ### Prediction (demo3, board, 300 MHz, 10 to 90% range)
 
@@ -490,7 +490,7 @@ Files, engine/d_core1.h, engine/qog_phase.h, engine/d_scanlit.c, engine/d_edge.c
 
 A way to measure board speed without the board. `powershell -File tools\boardbench.ps1` plays timedemo demo3 on the PC with the board client's render flags, counts the work of every code path in every frame, and predicts the board's ms per phase and fps for Fast and Turbo at any clock and LCD SPI rate. The scoreboard is docs/fps-board.md, the how-to docs/handoff.md. Nothing ran on hardware, nothing touched the board or a COM port.
 
-### Prediction for main cd1e749 (demo3, board, 10 to 90% range)
+### Prediction for main dd0f819 (demo3, board, 10 to 90% range)
 
 | | 250 MHz, SPI 62.5 | 300 MHz, SPI 50 |
 | --- | ---: | ---: |
@@ -504,13 +504,13 @@ Per phase at 300 MHz, Fast, spans 14.1, world 8.9, edgescan 6.0, bmodels 5.7, mo
 - PC build option `QOG_PC_BOARDMODEL` (pc/CMakeLists.txt, measurement only), quakeog_pc with the board client's render flags (one-byte z-buffer, edge cache in the frame, 256 entry lit surface hash, scan race, status bar skip, both cores, the earlier and the world flags, interpolators), the phase times and every work count. `QOG_PC_REMOVE_DEFS` takes flags out again.
 - `-bmlog <file>` (port/pc/boardmodel_pc.c, new) writes one line per timedemo frame, the rows and packed rows of the scanout the view raced, the byte ranges the view handed to VID_QogScanFree, console lines and centre prints, and the change of every count. `-bmall` logs every frame of a level instead.
 - New counts (engine/qog_bmodel.h, new, empty macros unless `QOG_BOARDMODEL`), dynamic light pairs and cells on the integer and float paths, lit float cells, R_QogLightReachesWorld calls and steps (r_surf.c, r_light.c), gradients by path (d_edge.c), scan lines and active edge visits (r_edge.c), surfaces and brush surfaces drawn (d_edge.c), brush entity faces, edges, clips, light marking, box tests, world splits, R_RecursiveClipBPoly calls and edges (r_main.c, r_bsp.c, r_efrag.c). QOG_ALIAS_STATS keeps its counts off the console in these builds (r_alias.c), because console lines are notify text (L180).
-- tools/boardmodel.py (new), float helper calls and integer cycles per unit of each path (a priori, from earlier Thumb reads), two factors fitted to the board's nine de58316 phases (kf 1.61 for float calls, ki 3.87 for integer cycles, 20% rms), a residual per phase so the calibration run is exact, E1M1 standing (lmap 2.0) to split lmap into base grids and dynamic lights, and a frame by frame simulation in board time of the scanout (91.5 us a row at 62.5 MHz, 112 at 50), the waits at VID_QogScanFree, after R_RenderWorld and in notify frames, and Turbo's packed frames. Ranges come from refitting with every weight scaled at random and the time before the view and the clock scaling drawn at random. `--whatif` asks what a change would give.
-- Calibration data, tools/boardmodel_calib.json, the demo3 log tools/boardmodel_ref.csv.gz (main with the earlier six flags removed, whose per view counts equal an untouched de58316 build's within 0.3%, lit pixels 48,113 against 48,245, spans 1,448 against 1,452, nodes 265.2 against 266) and the E1M1 log tools/boardmodel_ref_e1m1.csv.gz. tools/boardbench_config.cfg is the fixed test config.
+- tools/boardmodel.py (new), float helper calls and integer cycles per unit of each path (a priori, from earlier Thumb reads), two factors fitted to the board's nine b585365 phases (kf 1.61 for float calls, ki 3.87 for integer cycles, 20% rms), a residual per phase so the calibration run is exact, E1M1 standing (lmap 2.0) to split lmap into base grids and dynamic lights, and a frame by frame simulation in board time of the scanout (91.5 us a row at 62.5 MHz, 112 at 50), the waits at VID_QogScanFree, after R_RenderWorld and in notify frames, and Turbo's packed frames. Ranges come from refitting with every weight scaled at random and the time before the view and the clock scaling drawn at random. `--whatif` asks what a change would give.
+- Calibration data, tools/boardmodel_calib.json, the demo3 log tools/boardmodel_ref.csv.gz (main with the earlier six flags removed, whose per view counts equal an untouched b585365 build's within 0.3%, lit pixels 48,113 against 48,245, spans 1,448 against 1,452, nodes 265.2 against 266) and the E1M1 log tools/boardmodel_ref_e1m1.csv.gz. tools/boardbench_config.cfg is the fixed test config.
 
 ### How well it reproduces the board
 
-- de58316 phases, exact by construction. Under it the two factor fit is within 12% on six phases, bmodels 33% under, parts 25% over, edgescan 18% over.
-- E1M1 standing, de58316, 56.3 ms against the board's 55.2, row race 4.9 ms plus the vertex cache wait against the board's race 6.0.
+- b585365 phases, exact by construction. Under it the two factor fit is within 12% on six phases, bmodels 33% under, parts 25% over, edgescan 18% over.
+- E1M1 standing, b585365, 56.3 ms against the board's 55.2, row race 4.9 ms plus the vertex cache wait against the board's race 6.0.
 - demo3 frame, the waits the code implies give 79.6 ms against the measured 73.3. Notify text shows in 34% of demo3's frames in board time and makes the whole view wait for the scanout, and frames after a status bar change wait for it at the edge table, while the board's own view total leaves only about 1 ms outside the view. The model keeps three reconciliations (a constant offset, all waits x 0.31, all phases x 0.90) and averages them. The `race` and `scanwait` fields of the `[time cl]` line during demo3 would settle it.
 
 ### Findings for the next attacks (docs/fps-board.md has the ranked list)
@@ -551,9 +551,9 @@ Until now the display's core 1 drew every second span of a lit surface and half 
 
 ### Exact proof (hidden, `-nosound`, own build folders in `build-am`, own git-ignored `data\id1` with a baked qogbake.bin, link port 27961, one run at a time)
 
-References are untouched builds of de58316 with the same flags. Each line is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same build flags and the same r_fast.
+References are untouched builds of b585365 with the same flags. Each line is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same build flags and the same r_fast.
 
-References are untouched builds of main b3702b4 (after merging the earlier integer dynamic lights and the earlier profiler) with the same flags. Each row is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same flags and the same r_fast. The pipeline builds add `QOG_SPANS_CORE1 QOG_DRAW_CORE1`. Core 1 modes are the PC's second thread (thread), core 1's surfaces drawn on the game's thread as soon as they are handed on (`-core1first`) or at each flush after core 0's (`-core1last`).
+References are untouched builds of main ede79b2 (after merging the earlier integer dynamic lights and the earlier profiler) with the same flags. Each row is `qogtest_hash`, `qogtest_f_hash` and the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 frames and the 8 fhash frames) against the reference of the same flags and the same r_fast. The pipeline builds add `QOG_SPANS_CORE1 QOG_DRAW_CORE1`. Core 1 modes are the PC's second thread (thread), core 1's surfaces drawn on the game's thread as soon as they are handed on (`-core1first`) or at each flush after core 0's (`-core1last`).
 
 | Build (extra flags) | r_fast | core 1 mode | hash | fhash | 121 frames |
 | --- | --- | --- | --- | --- | --- |
@@ -562,7 +562,7 @@ References are untouched builds of main b3702b4 (after merging the earlier integ
 | many flushes (`QOG_ZEDGE_TEST_SPANS=400`, 1,280 edge moves and 129 stack fallbacks in the shot run) | 0 and 1 | thread both, first in 1, last in 0 | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in all four runs |
 | the no-z fallback forced (`QOG_ZEDGE_TEST_SPANS=400 QOG_ZEDGE_FORCE_NOZ`, 129 flushes without z, 837 rows) | 0 and 1 | thread | ce86f894f9de | e92bc9e9650d | 121 of 121 identical in both runs |
 
-The same default runs were also identical against de58316 before the merge. `tools/core1_syms.py --build build-am/arm` passes on the board build, and the PC's view check never fired.
+The same default runs were also identical against b585365 before the merge. `tools/core1_syms.py --build build-am/arm` passes on the board build, and the PC's view check never fired.
 
 How much is handed on during the scan (PC, `-DQOG_PHASE=ON`, timedemo demo3, r_fast 1, per view), 56 lit world surfaces go through the pipeline, 41 of them during the scan with 55% of their 43,200 pixels (in the first 100 views 68 of 81 surfaces, 57% of the pixels). So on the board core 1 has more early work than the 7 ms of edgescan can take, and stays busy through the scan. On the PC's thread core 1 drew 38 of the 56.
 
@@ -600,12 +600,12 @@ A new line on COM8 after the `[time cl]` lines every 2 s.
 
 | | `end` | free beside the 2 KB heap reserve |
 | --- | --- | ---: |
-| quake_display, main b3702b4 | 0x2003eab4 | 3,404 B |
+| quake_display, main ede79b2 | 0x2003eab4 | 3,404 B |
 | quake_display, this branch | 0x2003f2c0 | 1,344 B |
-| quake_main, main b3702b4 | 0x2003f58c | 628 B |
+| quake_main, main ede79b2 | 0x2003f58c | 628 B |
 | quake_main, this branch | 0x2003f5b4 | 588 B |
 
-The display takes 2,060 B, core 1's light grid 1,296 B, the ring 256 B, core 1's r_drawsurf 48 B, its gradients, Fast drawer and surface state about 270 B, its copy of the earlier Fast gradient rows 76 B, the view copies 60 B, the counters and pipeline state about 60 B. The surfaces' last scan lines cost nothing on the board (entref). quake_main takes 40 B (the counters in the shared qog_phase.c). quake_display.bin is 420,120 B (396,000 on main b3702b4), the second copy of the drawing code is about 24 KB of flash. Core 1's stack (2 KB in scratch X), the deepest chain under its job is 632 B (tools/stack_chain.py, D_QogC1Worker to the exact drawer and its z span), against about 160 B for the earlier alias jobs.
+The display takes 2,060 B, core 1's light grid 1,296 B, the ring 256 B, core 1's r_drawsurf 48 B, its gradients, Fast drawer and surface state about 270 B, its copy of the earlier Fast gradient rows 76 B, the view copies 60 B, the counters and pipeline state about 60 B. The surfaces' last scan lines cost nothing on the board (entref). quake_main takes 40 B (the counters in the shared qog_phase.c). quake_display.bin is 420,120 B (396,000 on main ede79b2), the second copy of the drawing code is about 24 KB of flash. Core 1's stack (2 KB in scratch X), the deepest chain under its job is 632 B (tools/stack_chain.py, D_QogC1Worker to the exact drawer and its z span), against about 160 B for the earlier alias jobs.
 
 ### For the lead and earlier work
 
@@ -680,8 +680,8 @@ The last scan is about 13.0 ms for 152 rows and 17.2 ms for 200 with PIO, about 
 | Check | Result |
 | --- | --- |
 | `qogtest_hash`, quakeog_pc | ce86f894f9de |
-| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against an untouched build of cd1e749 | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d |
-| `qogtest_ap_text.cfg` (E1M1 Turbo, six short notify lines, a long one, the crosshair, then Fast and Exact), 39 frame hashes, quakeog_pc and the board-flag pair against cd1e749 | identical, the pair drew 35 frames' characters from the list |
+| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against an untouched build of dd0f819 | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d |
+| `qogtest_ap_text.cfg` (E1M1 Turbo, six short notify lines, a long one, the crosshair, then Fast and Exact), 39 frame hashes, quakeog_pc and the board-flag pair against dd0f819 | identical, the pair drew 35 frames' characters from the list |
 | the same with the lists cut to 3 runs and 20 characters (`QOG_TURBO_RUNS`, `QOG_TURBO_CHARS`), every frame overflows | identical |
 | menu Benchmark on the pair, r_fast 1 and r_fast 2 | `qog_scanrace` 0 writes before the scanout passed, `qog_lockcheck` 0 of 1,449 changed |
 
@@ -689,7 +689,7 @@ The last scan is about 13.0 ms for 152 rows and 17.2 ms for 200 with PIO, about 
 
 | Build | quake_display `end` | spare beside the 2 KB heap | quake_main `end` |
 | --- | --- | --- | --- |
-| main cd1e749 | 0x2003ead8 | 3,368 B | 0x2003f58c |
+| main dd0f819 | 0x2003ead8 | 3,368 B | 0x2003f58c |
 | PIO scanout only | 0x2003eafc | 3,332 B | 0x2003f58c |
 | this branch | 0x2003ed68 | 2,712 B | 0x2003f58c |
 
@@ -738,7 +738,7 @@ Together, estimates at 300 MHz, bmodels about 1.6 ms, edgescan about 1.1 ms, wor
 
 Not done, the world phase is now mostly integer work and flash reads of the BSP data (271 nodes, 197 faces, about 1,300 plane distances and 500 projections a view, all integer since earlier work), which these flags cannot touch. The Fast clipped points (138 a view, 13 float calls each, about 0.35 ms) and an integer box test for brush entities (about 0.1 ms) are left, the first changes Fast pictures. R_GenerateSpans calls R_LeadingEdge for every leading edge (4,152 edge visits a view), and taking its first test (spanstate) into the loop would save the call on most of them, about 0.2 ms, but that loop is in the earlier edge scan work. The "brush entity in no visible leaf" reject the lead suggested only applies to 0.16 entities a view, since the server sends only entities in the PVS and the box test rejects 15 of 21.
 
-### Exact proof (hidden, `-nosound`, own `build-aq` folders, an untouched build of cd1e749 in `build-aq/ref`, own git-ignored data folder)
+### Exact proof (hidden, `-nosound`, own `build-aq` folders, an untouched build of dd0f819 in `build-aq/ref`, own git-ignored data folder)
 
 Both PC builds carry the board's world flags (`QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT`) so the Fast front end runs too.
 
@@ -746,17 +746,17 @@ Both PC builds carry the board's world flags (`QOG_VERTCACHE QOG_VERTCACHE_CLIPD
 | --- | --- |
 | `qogtest_hash`, quakeog_pc as pc/CMakeLists.txt builds it and with the world flags | ce86f894f9de both |
 | `qogtest_f_hash` | e92bc9e9650d |
-| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), all 200 rows, against cd1e749 | r_fast 0 121 of 121 byte identical, r_fast 1 121 of 121, r_fast 2 (Turbo) 121 of 121 |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), all 200 rows, against dd0f819 | r_fast 0 121 of 121 byte identical, r_fast 1 121 of 121, r_fast 2 (Turbo) 121 of 121 |
 | check build, timedemo demo1 (r_fast 0), demo2 (r_fast 1), demo3 (r_fast 1 and 2) | 1/z compares, clip planes, sides and dists, facing tests and face gradients both ways, about 710,000 compares, 2.75 million plane, side and dist tests, 160,000 facing tests and 410,000 gradients (counted to the last full 65,536 printed), 0 differ |
 
-### RAM and stack (board, the full configure line of docs/handoff.md with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own `build-aq/arm` and `build-aq/armref` of cd1e749)
+### RAM and stack (board, the full configure line of docs/handoff.md with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`, own `build-aq/arm` and `build-aq/armref` of dd0f819)
 
-| | `end` | cd1e749 |
+| | `end` | dd0f819 |
 | --- | --- | --- |
 | quake_display | 0x2003eaec | 0x2003ead8 (20 B more, the last entity and its transformed origin, three byte flags) |
 | quake_main | 0x2003f58c | 0x2003f58c |
 
-quake_display.bin 399,480 B (397,872 for cd1e749), so the display keeps about 3,350 B beside the 2 KB heap reserve. Stack, R_RecursiveClipBPoly 136 B a level as before (the axis rides in tplane.type), R_DrawBEntitiesOnList 120 B as before, new leaves R_QogZFront 48, R_QogAxSide 32, R_QogFacing 32, R_QogFrustum 32, D_QogSubmodelBegin 40, so no chain gets deeper.
+quake_display.bin 399,480 B (397,872 for dd0f819), so the display keeps about 3,350 B beside the 2 KB heap reserve. Stack, R_RecursiveClipBPoly 136 B a level as before (the axis rides in tplane.type), R_DrawBEntitiesOnList 120 B as before, new leaves R_QogZFront 48, R_QogAxSide 32, R_QogFacing 32, R_QogFrustum 32, D_QogSubmodelBegin 40, so no chain gets deeper.
 
 ### For earlier work
 
@@ -855,7 +855,7 @@ Core dynamic power goes with f x V squared, 250 MHz at 1.20 V to 300 MHz at 1.25
 
 | Build | quake_display `end` | spare beside the 2 KB heap | quake_main `end` | spare |
 | --- | --- | --- | --- | --- |
-| main fdfb9dd (250 MHz) | 0x2003ea28 | 3,544 B | 0x2003f544 | 700 B |
+| main 8511c77 (250 MHz) | 0x2003ea28 | 3,544 B | 0x2003f544 | 700 B |
 | this branch (300 MHz, check, recheck, temperature) | 0x2003ea70 | 3,472 B | 0x2003f58c | 628 B |
 | profiler (`QOG_PROF=ON`, `QOG_PROF_MAIN=ON`) | 0x2003f18c | 1,652 B (hunk 69 KB) | 0x2003f468 | 920 B (hunk 170 KB) |
 
@@ -904,7 +904,7 @@ Together, estimates, lmap from 13.9 ms to about 3 to 5 ms on the board (about 1.
 
 Not done, Fast mode shortcuts for the light grids themselves. After the exact changes a dynamic light costs about 40 cycles a cell and the base build about 30 cycles a cell, so coarser or skipped dynamic lights would save a few hundred microseconds at most for a visible change. A cache of built grids between frames needs RAM the display does not have (1,296 B a grid).
 
-### Exact proof (hidden, `-nosound`, own `build-al/pc2` and an untouched build of de58316 in `build-al/ref`, own git-ignored data folder with a baked qogbake.bin)
+### Exact proof (hidden, `-nosound`, own `build-al/pc2` and an untouched build of b585365 in `build-al/ref`, own git-ignored data folder with a baked qogbake.bin)
 
 ## 2026-11-25, Turbo render mode, the 3D view at half width doubled by the LCD scanout (PC and ARM build, registered data)
 
@@ -955,12 +955,12 @@ The PC builds the panel's picture in VID_Update (packed rows doubled) and shots 
 | --- | --- |
 | `qogtest_hash`, quakeog_pc | ce86f894f9de |
 | `qogtest_f_hash`, quakeog_pc | e92bc9e9650d |
-| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, all 200 rows | 121 of 121 byte identical with de58316 |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, all 200 rows | 121 of 121 byte identical with b585365 |
 | check build (`QOG_DLIGHT_CHECK`, hash cut to 64 entries so it overflows in most lit frames), timedemo demo1, demo2, demo3 | 45,056 light pairs and 52,224 lost questions, 0 differ |
 
 ### Fast pictures
 
-The light changes are exact, so frames with rockets and explosions are the same in both modes. Only `QOG_GRAD_FAST` changes Fast pictures, against de58316 with r_fast 1, 0.45% of the view pixels of the 121 frames, worst d_demo2_18 1.38%, demo3 frames up to 1.04% (d_demo3_15). The changed pixels are single texels scattered over world surfaces, sub-texel shifts of the texture coordinate, and side by side the frames look the same. Pairs (Fast reference, Fast new, changed pixels red) and the per-frame list are kept locally in a `fast3/light` folder.
+The light changes are exact, so frames with rockets and explosions are the same in both modes. Only `QOG_GRAD_FAST` changes Fast pictures, against b585365 with r_fast 1, 0.45% of the view pixels of the 121 frames, worst d_demo2_18 1.38%, demo3 frames up to 1.04% (d_demo3_15). The changed pixels are single texels scattered over world surfaces, sub-texel shifts of the texture coordinate, and side by side the frames look the same. Pairs (Fast reference, Fast new, changed pixels red) and the per-frame list are kept locally in a `fast3/light` folder.
 
 ### RAM and stack (board, full configure line)
 
@@ -977,7 +977,7 @@ The light changes are exact, so frames with rockets and explosions are the same 
 Files, engine/r_surf.c, engine/r_light.c, engine/d_edge.c (D_CalcGradients only, inside `#ifdef` blocks), engine/model.h (one declaration), pc/CMakeLists.txt, apps/quake/CMakeLists.txt.
 
 | `qogtest_f_hash`, quakeog_pc r_fast 0, 1 and 2, the board-flag pair r_fast 1 and 2 | e92bc9e9650d each (Turbo does not touch game state) |
-| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against an untouched build of fdfb9dd | 121 of 121 byte identical |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against an untouched build of 8511c77 | 121 of 121 byte identical |
 | the same, r_fast 1 | 121 of 121 byte identical |
 | Turbo, quakeog_pc and the board-flag pair (the earlier pcb flags plus `QOG_SPANS_CORE1 QOG_ALIAS_CORE1 QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP`), the 121 frames | all drawn, no error, `qog_scanrace` 0 writes before the scanout passed in 4,410 checks, `qog_lockcheck` 0 of 3,551 scanouts changed |
 | `qogtest_ao_switch.cfg` on both (Exact, Turbo, Fast, Turbo with notify text and the menu, four maps) | no error, `qog_scanrace` 0 of 521 |
@@ -1004,7 +1004,7 @@ So Turbo alone is worth about 9 to 15 ms of today's demo3 frame. The part that d
 
 ### RAM and code (board, the full configure line)
 
-| | `end` | main fdfb9dd |
+| | `end` | main 8511c77 |
 | --- | --- | --- |
 | quake_display | 0x2003ea4c | 0x2003ea28 (36 B more, the Turbo state and the scanout's packed rows) |
 | quake_main | 0x2003f544 | 0x2003f544 |
@@ -1066,9 +1066,9 @@ Estimated board saving per view of demo3 at 250 MHz (cycle counts from the objdu
 
 Fast pictures (quakeog_pc, the 121 shot frames, view rows, against main with r_fast 1, so only this change), 0.315% of the pixels differ, 114 frames, worst d_demo1_12 1.26%. The fight shots (fhash) 0.29 to 0.59%. The changed pixels are on models and the view weapon, light steps of one colour map row and texels moved by one at triangle edges. Side by side the models look the same. All of Fast mode against Exact is now 3.19% (main's Fast spans alone 2.88%). On the board-flag split pair (one-byte z-buffer, both cores as threads, `QOG_ALIAS_CORE1`) the 94 frames it reaches differ by 0.47% from the same pair without the change. Pairs (Fast reference, Fast new, changed pixels red, 2x) are kept locally in a `fast2\models` folder.
 
-Exact proof (hidden, `-nosound`, own data folder, link ports 27921 and 27922), quakeog_pc `qogtest_hash` ce86f894f9de, `qogtest_f_hash` e92bc9e9650d, the 121 shot frames byte identical (all 200 rows) with an untouched build of main, before and after each merge of main (the last full run on a29cbce, the hashes again on 97f9a75). The split pair with the board client flags (`QOG_ZBUFFER8_NEAR`, `QOG_SPANS_CORE1`, `QOG_ALIAS_CORE1`, the earlier flags) against the same pair of 85a3d22, 94 frames (it stops loading e2m3 in both builds, L113), 93 byte identical and one differing only in rows 1 to 23 (the statehash notify text, which appears a frame apart from run to run). That pair is what exercises the one-byte z per span piece.
+Exact proof (hidden, `-nosound`, own data folder, link ports 27921 and 27922), quakeog_pc `qogtest_hash` ce86f894f9de, `qogtest_f_hash` e92bc9e9650d, the 121 shot frames byte identical (all 200 rows) with an untouched build of main, before and after each merge of main (the last full run on db9d0c9, the hashes again on a44b819). The split pair with the board client flags (`QOG_ZBUFFER8_NEAR`, `QOG_SPANS_CORE1`, `QOG_ALIAS_CORE1`, the earlier flags) against the same pair of dd17213, 94 frames (it stops loading e2m3 in both builds, L113), 93 byte identical and one differing only in rows 1 to 23 (the statehash notify text, which appears a frame apart from run to run). That pair is what exercises the one-byte z per span piece.
 
-RAM and stack (board, merged with main 97f9a75), quake_display `end` 0x2003ea28, main's 0x2003ea84, so 92 B less (96 B of matrices freed, one 4 B pointer to the model's transform). quake_main `end` 0x2003f544, unchanged code. quake_display.bin 390,048 B. Stack, R_AliasDrawModel 9,256 to 9,392 B (the 112 B transform), D_PolysetDrawSpans8 96 to 104, so the deepest alias chain (R_AliasDrawModel, R_AliasPreparePoints, R_AliasClipTriangle, D_PolysetDraw, D_RasterizeAliasPolySmooth, D_PolysetDrawSpans8) grows by 144 B. Side branches stay below it, R_QogAliasCheckBBoxFast 520 B beside R_AliasCheckBBox 824 B (832 before), R_QogAliasXform 184 B, R_DrawParticles 80 to 152 B. Core 1's alias job about 100 B. The SIO interpolators are not used, so nothing collides with the earlier `QOG_LITSPAN_INTERP`.
+RAM and stack (board, merged with main a44b819), quake_display `end` 0x2003ea28, main's 0x2003ea84, so 92 B less (96 B of matrices freed, one 4 B pointer to the model's transform). quake_main `end` 0x2003f544, unchanged code. quake_display.bin 390,048 B. Stack, R_AliasDrawModel 9,256 to 9,392 B (the 112 B transform), D_PolysetDrawSpans8 96 to 104, so the deepest alias chain (R_AliasDrawModel, R_AliasPreparePoints, R_AliasClipTriangle, D_PolysetDraw, D_RasterizeAliasPolySmooth, D_PolysetDrawSpans8) grows by 144 B. Side branches stay below it, R_QogAliasCheckBBoxFast 520 B beside R_AliasCheckBBox 824 B (832 before), R_QogAliasXform 184 B, R_DrawParticles 80 to 152 B. Core 1's alias job about 100 B. The SIO interpolators are not used, so nothing collides with the earlier `QOG_LITSPAN_INTERP`.
 
 `QOG_ALIAS_STATS` (PC measurement only, `-DQOG_PC_EXTRA_DEFS=QOG_ALIAS_STATS`) prints `qog_aliasstats ents ...` and `qog_aliasstats vm ...` every 100 views, the sums since the level started. Test scripts `qogtest_ai_fast.cfg`, `qogtest_ai_exact.cfg` and `qogtest_ai_td3.cfg` (timedemo demo3 with `qog_quitafter`) are in the branch's git-ignored data folder.
 
@@ -1093,17 +1093,17 @@ The display's world front end (world 13.7 ms, bmodels 4.3 ms a view in the board
 
 Together, estimates, Exact about 2.3 ms a view, Fast about 8 ms plus the shorter race wait, of the 18 ms of world and bmodels.
 
-Fast picture (113 `qogtest_d_shots` frames and the 8 `qogtest_f_hash` shots, view rows, against a build of 85a3d22 with r_fast 1, so only this change is counted).
+Fast picture (113 `qogtest_d_shots` frames and the 8 `qogtest_f_hash` shots, view rows, against a build of dd17213 with r_fast 1, so only this change is counted).
 
 | Build | Pixels changed | Worst frame |
 | --- | ---: | --- |
 | integer front end with the exact spans (measurement build `QOG_FRONT_FAST_ALWAYS`) | 0.07% | d_spawn_dm6 0.33% |
-| Fast mode, integer front end, against Fast mode of 85a3d22 | 0.21% | d_demo2_12 0.65% |
+| Fast mode, integer front end, against Fast mode of dd17213 | 0.21% | d_demo2_12 0.65% |
 | Fast mode against Exact (the earlier spans and this) | 2.88% | d_demo3_15 9.4% (the earlier alone 2.75%, 9.2%) |
 
-The changed pixels are edge and span ends one pixel over where id's value lies within about 0.02 pixel (the mean point error) of a pixel boundary, and single texels where the face gradients differ in their last bits. Side by side the frames look the same. Pairs and marked differences (`<shot>_a.png` 85a3d22 Fast, `_b.png` this, `_diff.png` changed pixels red, 2x) are kept locally in a `fast2/world` folder. A first version stepped the first scan line's u with 1/256 of its slope and changed 1.2% of the pixels, the PC check build (`QOG_FRONT_FAST_CHECK`, every point projected both ways, error statistics on the console) found it.
+The changed pixels are edge and span ends one pixel over where id's value lies within about 0.02 pixel (the mean point error) of a pixel boundary, and single texels where the face gradients differ in their last bits. Side by side the frames look the same. Pairs and marked differences (`<shot>_a.png` dd17213 Fast, `_b.png` this, `_diff.png` changed pixels red, 2x) are kept locally in a `fast2/world` folder. A first version stepped the first scan line's u with 1/256 of its slope and changed 1.2% of the pixels, the PC check build (`QOG_FRONT_FAST_CHECK`, every point projected both ways, error statistics on the console) found it.
 
-Exact proof (hidden, `-nosound`, `+_cl_color 0`, own folders `build-aj`, own git-ignored `data\id1`, one run at a time), the PC build with the board's world flags (`QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT`, plus `QOG_BMODEL_ZEROANGLE` from pc/CMakeLists.txt) against an untouched build of 85a3d22, r_fast 0. `qogtest_hash` ce86f894f9de, `qogtest_f_hash` e92bc9e9650d, the 121 shot frames byte identical. The Fast runs keep both hashes (rendering does not touch game state). After merging main with earlier work (f730af5) the same holds, and Fast mode with the earlier fixed point spans changes 2.99% of the pixels against Exact (worst d_demo3_15 9.4%).
+Exact proof (hidden, `-nosound`, `+_cl_color 0`, own folders `build-aj`, own git-ignored `data\id1`, one run at a time), the PC build with the board's world flags (`QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST QOG_WORLDNODE_FAST QOG_FRONT_FAST QOG_WORLDNODE_INT`, plus `QOG_BMODEL_ZEROANGLE` from pc/CMakeLists.txt) against an untouched build of dd17213, r_fast 0. `qogtest_hash` ce86f894f9de, `qogtest_f_hash` e92bc9e9650d, the 121 shot frames byte identical. The Fast runs keep both hashes (rendering does not touch game state). After merging main with earlier work (f353858) the same holds, and Fast mode with the earlier fixed point spans changes 2.99% of the pixels against Exact (worst d_demo3_15 9.4%).
 
 RAM and stack, no static RAM, quake_display `end` equals main's after each merge (0x2003ea84 with the earlier merge). The Fast constants (284 B) sit after the vertex cache entries in the frame buffer rows, inside the earlier scan wait. Stack, the Fast face chain is 56 B deeper at its end (R_QogClipEdgeFast 48 B a clip level, R_QogEmitEdgeFast 72, R_QogProjectFast 48, the float fallback 56), the node test adds R_QogCullNodeInt's 64 B once at the deepest node, R_QogFxSetup 128 B from R_RenderWorld and R_DrawBEntitiesOnList only.
 
@@ -1115,7 +1115,7 @@ Not done, for later.
 - The world's vertex positions converted once per frame into the cache entries would save the three conversions of each repeated distance.
 ## 2026-11-24, Episodes 2 and 3 on the board, the boot level from the data image, missing levels, the load buffer off the server hunk (PC and ARM build, registered data)
 
-One board app now runs any episode's data image, mkboard writes the level to start in into the image and the board client starts there. Episodes 2 and 3 with start fit both chips, a level exit or a save of a level the image does not hold no longer stops the game, and every level of episodes 1 to 3 runs in the server's 174 KB hunk with sound after one exact cut (the load's line buffer moved from the hunk to the stack). Nothing ran on hardware. Merged with main f484aef before the last builds and hashes.
+One board app now runs any episode's data image, mkboard writes the level to start in into the image and the board client starts there. Episodes 2 and 3 with start fit both chips, a level exit or a save of a level the image does not hold no longer stops the game, and every level of episodes 1 to 3 runs in the server's 174 KB hunk with sound after one exact cut (the load's line buffer moved from the hunk to the stack). Nothing ran on hardware. Merged with main d8f2f9e before the last builds and hashes.
 
 Boot level (`QOG_BOOT_ENTRY`, engine/common.c COM_BootMap, engine/host_cmd.c `qog_boot`, port/rp2040/sys_rp2040.c).
 - `mkboard.py --boot-map NAME` writes `qogboot.txt` (the name and a newline) into the display's pak and main's, just before the maps. The default is start when `--maps` has it, else the first of `--maps`.
@@ -1177,7 +1177,7 @@ Tests (hidden, `+_cl_color 0`, own build folders `build-ag`, own git-ignored dat
 | --- | --- |
 | `qogtest_hash`, quakeog_pc, default pair, board-flag pair, `-nosound` | ce86f894f9de, ce86f894f9de, ce86f894f9de |
 | `qogtest_f_hash` quakeog_pc, `qogtest_r_fhash` default and board-flag pairs | e92bc9e9650d, e92bc9e9650d, e92bc9e9650d |
-| 121 shot frames (113 of `qogtest_d_shots` after `qogtest_k_quiet`, 8 of `qogtest_f_hash`) against an untouched build of main f484aef | 121 of 121 byte identical |
+| 121 shot frames (113 of `qogtest_d_shots` after `qogtest_k_quiet`, 8 of `qogtest_f_hash`) against an untouched build of main d8f2f9e | 121 of 121 byte identical |
 | `qogtest_j_ep1.cfg` board-flag pair, full paks and the episode 1 image | 9 hashes d4361b206cac, the same |
 | `qogtest_ag_j_ep2.cfg` (start, e2m1 to e2m7, a hash and shots per level), full paks and the episode 2 image | 8 hashes 202904569395, the same |
 | `qogtest_ag_j_ep3.cfg`, full paks and the episode 3 image | 8 hashes 7b5ac000f4fe, the same |
@@ -1188,7 +1188,7 @@ Tests (hidden, `+_cl_color 0`, own build folders `build-ag`, own git-ignored dat
 
 Board link (`cmake -B build-ag/arm --preset target` with the full configure line of docs/handoff.md).
 
-| | at main 4a787a9 plus this branch | after merging main f484aef |
+| | at main 6205974 plus this branch | after merging main d8f2f9e |
 | --- | --- | --- |
 | quake_display `end` | 0x2003f7f0, unchanged | 0x2003ea84 (main's own changes) |
 | quake_main `end` | 0x2003f520, unchanged | 0x2003f544 |
@@ -1244,13 +1244,13 @@ Total about 3.9 M cycles a view of span work, 15.5 ms of one core at 250 MHz. Th
 
 Frame estimate, timedemo demo3 took 107.5 ms a frame (1090 frames in 117.2 s). 7.7 ms less is about 10.0 fps, 15 ms less about 10.8 fps, before the other earlier work. The miss model assumes about 0.26 us a line at 125 MHz flash (0.1 to 0.5 us brackets it), the cycle counts about 55 cycles per ROM float call with its wrapper.
 
-### Exact proof (hidden, `-nosound`, own `build-ah/pc` and `build-ah/pc-ref` (untouched 85a3d22), own git-ignored `data\id1`)
+### Exact proof (hidden, `-nosound`, own `build-ah/pc` and `build-ah/pc-ref` (untouched dd17213), own git-ignored `data\id1`)
 
 | Test | Result |
 | --- | --- |
 | `qogtest_hash`, quakeog_pc | ce86f894f9de |
 | `qogtest_f_hash`, quakeog_pc, r_fast 0 and r_fast 1 | e92bc9e9650d, e92bc9e9650d |
-| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against 85a3d22 | 121 of 121 byte identical |
+| 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` 113 and the 8 fhash frames), r_fast 0, against dd17213 | 121 of 121 byte identical |
 | the same with `QOG_LITSPAN_INTERP` (emulated), r_fast 1, against r_fast 1 without it | 121 of 121 byte identical |
 | one-byte z (`QOG_ZBUFFER8 QOG_ZBUFFER8_NEAR=7 QOG_NUMSTACKEDGES=1800`), the far-z loop against `QOG_ZSPAN8_SLOW`, r_fast 0 and 1 | 121 of 121 byte identical in each mode |
 
@@ -1258,11 +1258,11 @@ Fast pictures, Exact and Fast pairs of all 121 frames with the changed pixels in
 
 ### Board link
 
-| | before (85a3d22) | after |
+| | before (dd17213) | after |
 | --- | --- | --- |
-| quake_display `end` | 0x2003f7f0 at 85a3d22, 16 B free | 0x2003ea84 after merging main b59bcd1 (main alone 0x2003f610, 496 B free), 3,452 B free beside the 2 KB heap reserve |
-| quake_main `end` | 0x2003f520 (0x2003f544 on main b59bcd1) | 0x2003f544, unchanged from main |
-| quake_display.bin | 366,456 B | 374,600 B (main b59bcd1 plus about 4 KB, the integer drawer and the interpolator loop) |
+| quake_display `end` | 0x2003f7f0 at dd17213, 16 B free | 0x2003ea84 after merging main aec5274 (main alone 0x2003f610, 496 B free), 3,452 B free beside the 2 KB heap reserve |
+| quake_main `end` | 0x2003f520 (0x2003f544 on main aec5274) | 0x2003f544, unchanged from main |
+| quake_display.bin | 366,456 B | 374,600 B (main aec5274 plus about 4 KB, the integer drawer and the interpolator loop) |
 
 The configure line is the lead's (`-DQOG_CL_HUNK_KB=75` and the rest), the display's hunk is then 72 KB.
 
@@ -1320,7 +1320,7 @@ The biggest remaining item outside the view is the race wait, a cache placement 
 
 ### PC verification (hidden, `-nosound`, own build folders in `build-ak`, own git-ignored `data\id1`, link ports 27941 to 27951, one run at a time)
 
-References are untouched 85a3d22 builds. `build-ak/pc-ref` (default) and `build-ak/pcb-ref` (the earlier board-flag pair flags). `build-ak/pcb` adds `QOG_LINK_OVERLAP QOG_LINK_TXRINGSEND QOG_LINK_LISTEN_GAP=10 QOG_LINK_PIPELINE_DEMO QOG_VID_SCANRACE QOG_HUD_SKIP QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST` to the client and `QOG_LINK_TXASYNC QOG_LINK_LISTEN_GAP=10` to the server (link_pc.c holds each frame for its wire time and sends it at the end, as the DMA would), `build-ak/pcbk` the same plus `QOG_HUD_SKIP_CHECK`. With `QOG_HUD_SKIP` the PC keeps the panel's picture (VID_Update copies the rows it sends) and shots and frame hashes are taken from it, so they show what the LCD shows.
+References are untouched dd17213 builds. `build-ak/pc-ref` (default) and `build-ak/pcb-ref` (the earlier board-flag pair flags). `build-ak/pcb` adds `QOG_LINK_OVERLAP QOG_LINK_TXRINGSEND QOG_LINK_LISTEN_GAP=10 QOG_LINK_PIPELINE_DEMO QOG_VID_SCANRACE QOG_HUD_SKIP QOG_VERTCACHE QOG_VERTCACHE_CLIPDIST` to the client and `QOG_LINK_TXASYNC QOG_LINK_LISTEN_GAP=10` to the server (link_pc.c holds each frame for its wire time and sends it at the end, as the DMA would), `build-ak/pcbk` the same plus `QOG_HUD_SKIP_CHECK`. With `QOG_HUD_SKIP` the PC keeps the panel's picture (VID_Update copies the rows it sends) and shots and frame hashes are taken from it, so they show what the LCD shows.
 
 | Test | Result |
 | --- | --- |
@@ -1370,7 +1370,7 @@ On the board, step by step.
 6. The result page stays until gray or green + blue, the demo name, frames and seconds, the fps in the big font, the render mode, clock, flash clock, view size and screen size. Either button goes back to the Single Player menu with Benchmark selected. The game is over (id's timedemo ended it), so New Game, Levels or Load go on from there.
 7. A demo stopped before its end (a level started from the menu during the run) prints `[bench] timedemo demo3 stopped after N frames ... no result` and the page says "stopped before the end" with no fps. Opening the menu during the run is allowed and slows that run.
 
-RAM, none. The display's `end` is 0x2003f7f0, the same as main 4a787a9, main's 0x2003f520. The result is kept in fields that nothing reads once a timedemo is over, frames and seconds in `cls.td_startframe` and `cls.td_starttime` (set by `CL_FinishTimeDemo`), how it ended in `cls.td_lastframe`, the demo's name in `cls.mapstring` (id's map command writes it, nothing reads it). The page is a menu state (`m_bench`), its strings are in flash. quake_display is 366,456 B of its 913,408 B slot.
+RAM, none. The display's `end` is 0x2003f7f0, the same as main 6205974, main's 0x2003f520. The result is kept in fields that nothing reads once a timedemo is over, frames and seconds in `cls.td_startframe` and `cls.td_starttime` (set by `CL_FinishTimeDemo`), how it ended in `cls.td_lastframe`, the demo's name in `cls.mapstring` (id's map command writes it, nothing reads it). The page is a menu state (`m_bench`), its strings are in flash. quake_display is 366,456 B of its 913,408 B slot.
 
 The data image needs the demos. mkboard leaves them out unless `--demos` is given, and the earlier episode 1 command did not give it. Built from the merged tree with `--demos` (`python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --exe build-pc-dev\Release\quakeog_pc.exe --stub-maps --main --display-no-sounds --display-no-progs --demos -o build-board\qb_ep1`).
 
@@ -1382,7 +1382,7 @@ The data image needs the demos. mkboard leaves them out unless `--demos` is give
 
 So only the display's data UF2 changes, main's stays. Flash it as step 3 of the episode 1 flashing in docs/handoff.md. With the demos in the image the board still boots into e1m1 (`+map e1m1` runs before quake.rc's `startdemos`, which then sees a running server and starts no loop), checked on the PC pair from the image.
 
-PC checks (hidden, `-nosound`, own build folders `build-af/pc`, `build-af/pc-ref` (untouched 4a787a9) and `build-af/pcb` (the split pair with the board client flags of the earlier list, `QOG_RFAST_ON`, `QOG_BOARD_MENU`, `QOG_AOT`, the server's board flags), own git-ignored `data\id1`, link ports 27661 to 27669, one run at a time).
+PC checks (hidden, `-nosound`, own build folders `build-af/pc`, `build-af/pc-ref` (untouched 6205974) and `build-af/pcb` (the split pair with the board client flags of the earlier list, `QOG_RFAST_ON`, `QOG_BOARD_MENU`, `QOG_AOT`, the server's board flags), own git-ignored `data\id1`, link ports 27661 to 27669, one run at a time).
 
 | Test | Result |
 | --- | --- |
@@ -1405,7 +1405,7 @@ Files, engine/menu.c (Benchmark line, prompt text, result page, all under `QOG_B
 
 ## 2026-11-24, Episode 1 on the board, the new flash map, the server stack and the edge fallback (PC and ARM build, registered data)
 
-Start and all of episode 1 now fit both chips, with sound. The display's data moved from 0x10400000 to 0x10100000 and main's from 0x10300000 to 0x10200000 (the earlier proposal), the server's stack went from 35 to 21 KB after measuring its deepest chain in board bytes, which gives the server hunk 174 KB (160 before), and the one-byte z-buffer's edge fallback draws one view without z instead of stopping the game. Nothing ran on hardware. Merged with main 34e03d2 before the final numbers, and with c42be89 (the save volume format, the full view) for the last board link and hashes.
+Start and all of episode 1 now fit both chips, with sound. The display's data moved from 0x10400000 to 0x10100000 and main's from 0x10300000 to 0x10200000 (the earlier proposal), the server's stack went from 35 to 21 KB after measuring its deepest chain in board bytes, which gives the server hunk 174 KB (160 before), and the one-byte z-buffer's edge fallback draws one view without z instead of stopping the game. Nothing ran on hardware. Merged with main 801a6b9 before the final numbers, and with 1610f89 (the save volume format, the full view) for the last board link and hashes.
 
 Flash map (platform/qog_flashmap.h, the one source, tools/mkdata.py reads it, mkboard and mkpak use mkdata's values, check_app_size.py reads it, the PC maps its packs at `QOG_DATA_XIP_ADDR`).
 
@@ -1443,7 +1443,7 @@ The static chain (tools/stack_chain.py) cuts recursion, so the PC now measures t
 
 - `SV_PushMove` held two lists of 600 entries on its frame, 9,768 B. `QOG_PUSHMOVE_ALLOCA` (engine/sv_phys.c, both flag lists, exact) takes them from the stack for `sv.max_edicts` entries, the loop adds at most one entry per edict below `sv.num_edicts`, which never passes `sv.max_edicts` even when QuakeC spawns during the loop. The most in episode 1 is e1m3, 416 edicts, 6,656 B. Same moves, the state hashes below are unchanged.
 - The recursion the measurement found is bounded by the map. `tools/hull_depth.py` reads the depth of each hull's tree. Episode 1's deepest is hull 0 (points) of e1m3, 85 levels, then e1m4 71. The worst chain I can construct is a point entity (a grenade) pushed by a plat on e1m3's deepest leaf, 752 B down to the clip, the lists 6,656 B, 86 levels at 104 B, about 16.4 KB, and an error path through a QuakeC runtime error in a blocked function (`PR_RunError` > `Host_Error` > `Con_Printf` 4,120 B) about 16.1 KB. Neither ran in any test.
-- The lead's format of a missing save volume (main c42be89) puts a 4 KB work buffer on this stack in `fat_ready` (4,128 B frame), reached from a save at about 2 KB deep, so about 6.5 KB plus FatFs, far below the deepest chain.
+- The lead's format of a missing save volume (main 1610f89) puts a 4 KB work buffer on this stack in `fat_ready` (4,128 B frame), reached from a save at about 2 KB deep, so about 6.5 KB plus FatFs, far below the deepest chain.
 - 21 KB is 21,504 B, 10.3 KB above the measured worst (10,984 B plus up to 0.5 KB of newlib that the PC does not see), and 5.1 KB above the constructed bound, so at least 4 KB of margin either way. The mixer needs 1,816 B above its 6,144 B of paint buffer and ring at the bottom of the stack (7,960 B). Main's `stack free` on COM7 shows what the board uses.
 
 Server hunk (`QOG_SV_HUNK_KB` 160 to 174, the 14 KB the stack gave). Smallest `-heapsize` of the server half that runs `qogtest_y_mem_<map>.cfg` from the episode 1 images, sound on for both halves (the split pair never opens an audio device, the client's output is snd_link_pc.c's counter), against the earlier numbers without sound.
@@ -1472,7 +1472,7 @@ On the board the one-byte z-buffer leaves the edge table so little room that a f
 | --- | --- |
 | Views that reach the fallback | the episode 1 fight tour (split pair with the board client flags, full paks or the images), frames 1500, 1501, 8348, 8349 (4, earlier work saw 4). Another run of the same tour with sound and the board hunk sizes, 937, 1491, 1492, 8344, 8345 (the split tour does not repeat exactly) |
 | Before and after, same state | `QOG_ZEDGE_COMPARE` (PC test builds) draws each such view a second time with the graceful path after putting the particles and dynamic lights back, 193, 183, 164 and 145 pixels differ (0.30, 0.29, 0.26, 0.23% of the frame), in rows 87 to 136, all models and particles behind a ledge showing through |
-| Views that never reach it | byte identical, the 113 `qogtest_d_shots` frames and the 8 `qogtest_f_hash` frames of the merged build against an untouched build of main 34e03d2 |
+| Views that never reach it | byte identical, the 113 `qogtest_d_shots` frames and the 8 `qogtest_f_hash` frames of the merged build against an untouched build of main 801a6b9 |
 
 Screenshots (`frame_<n>_before_exact.png`, `frame_<n>_after_noz.png`, `frame_<n>_diff_marked.png` with the changed pixels in red, 2x) are kept locally in a `zedge` folder.
 
@@ -1483,7 +1483,7 @@ Tests (hidden, `+_cl_color 0`, own build folders `build-ac`, own git-ignored `da
 | `qogtest_hash`, quakeog_pc and split pair, `-nosound` | ce86f894f9de, ce86f894f9de |
 | `qogtest_f_hash` (md5 of 32 statehash lines), quakeog_pc | e92bc9e9650d |
 | `qogtest_r_fhash`, default split pair and board-flag split pair | e92bc9e9650d, e92bc9e9650d |
-| 121 shot frames against main 34e03d2 | 121 of 121 byte identical |
+| 121 shot frames against main 801a6b9 | 121 of 121 byte identical |
 | `qogtest_j_ep1.cfg` board-flag pair, full paks and the episode 1 images | 9 hashes d4361b206cac, the same |
 | `qogtest_j_menu.cfg`, full paks and images | runs to the end, no error |
 | `qogtest_ad_chg.cfg` from the images, sound on, 174 and 75 KB | runs, 1 hash |
@@ -1495,8 +1495,8 @@ Board link (`cmake --preset target -B build-ac/arm` with the configure line in d
 
 | | `end` | Free beside the 2 KB heap reserve |
 | --- | --- | ---: |
-| quake_display | 0x2003f7e8, the same as main 34e03d2 | 24 B |
-| quake_main (hunk 174 KB, stack 21 KB) | 0x2003f520 after merging main c42be89, 0x2003f51c before it, the same as with 160 and 35 | 736 B |
+| quake_display | 0x2003f7e8, the same as main 801a6b9 | 24 B |
+| quake_main (hunk 174 KB, stack 21 KB) | 0x2003f520 after merging main 1610f89, 0x2003f51c before it, the same as with 160 and 35 | 736 B |
 
 Files, platform/qog_flashmap.h, tools/mkdata.py, tools/mkboard.py, tools/check_app_size.py, tools/stack_chain.py (`--su-table`), tools/hull_depth.py (new), tools/tests/test_mkdata.py, port/pc/sys_pc.c, port/pc/stackprobe_pc.c (new), port/pc/vid_pc.c (`-zedgeshots`, compare shots, exit counts), port/rp2040/sys_rp2040.c (FAT check), port/rp2040/link_rp2040.c (diag), engine/sv_phys.c, engine/r_edge.c, engine/view.c (compare mode only), engine/r_local.h (one extern), pc/CMakeLists.txt, apps/quake/CMakeLists.txt, apps/qogbench/display/main.c (the data address), README.md. Shared with earlier work, none of r_bsp.c, r_draw.c, r_main.c, d_scanlit.c. r_edge.c and view.c are touched in their own blocks.
 
@@ -1512,14 +1512,14 @@ Read from the board's USB logs (display COM8, main COM7) with QOG_PHASE_TIME and
 
 | Build | fps | Frame ms | View ms | world | spans | vmodel | edgescan | Server frame ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 200 MHz, flash 50 MHz, sound (f75051b) | 7.5 | 132 | 109 | 38.3 | 43.2 | 7.6 | 7.9 | 17.2 |
-| 250 MHz at 1.20 V, flash 125 MHz (c5fa930) | 10.4 | 96 | 78 | 26.3 | 30.7 | 4.9 | 5.8 | 11.8 |
+| 200 MHz, flash 50 MHz, sound (e2854de) | 7.5 | 132 | 109 | 38.3 | 43.2 | 7.6 | 7.9 | 17.2 |
+| 250 MHz at 1.20 V, flash 125 MHz (259905d) | 10.4 | 96 | 78 | 26.3 | 30.7 | 4.9 | 5.8 | 11.8 |
 | 250 MHz plus Fast mode (an earlier branch merge) | 10.9 | 91 | 71 | 22.5 | 29.8 | 4.6 | 6.1 | not read |
 
 - The clock log lines read "clock 250000 kHz at 1200 mV" and "flash 125.0 MHz ok (div 2 from 4, rx delay 1, 128 KB checked)". No fault, hang or error line on either chip in any of these runs.
 - Fast mode cut the span arithmetic by about 2.9 M cycles a view (the earlier estimate) but spans fell only 0.9 ms, so the span time looks bound by XIP misses rather than compute. The earlier XIP counter build is meant to confirm it.
-- Stack free on the board with sound and the 73 KB client hunk (9192bc9), display 4,192 B, main 19,204 B.
-- Sound through the speaker was heard by the user on f75051b. The game has run 15 minutes in E1M1 without a restart since the strict aliasing fix. Saving on the board has not been tried. Update, November 2026, saving and loading were later tried on the board and work.
+- Stack free on the board with sound and the 73 KB client hunk (76d0172), display 4,192 B, main 19,204 B.
+- Sound through the speaker was heard by the user on e2854de. The game has run 15 minutes in E1M1 without a restart since the strict aliasing fix. Saving on the board has not been tried. Update, November 2026, saving and loading were later tried on the board and work.
 ## 2026-11-24, XIP and float counters, world front end and alias vertices faster, same pixels (PC and ARM build, registered data)
 
 A measurement build that tells whether a render phase waits on flash or on float helpers, and four exact speed-ups of the display chip's 3D view, all with the same pixels as main. Nothing ran on hardware. The savings are estimates from the PC's work counts and the Thumb code at 250 MHz, the lead measures them.
@@ -1562,7 +1562,7 @@ RAM, the XIPSTATS build ends at 0x2003f7f0 (16 B above the 2 KB heap reserve), t
 
 PC verification, hidden and silent, against a build of the same tree with the flags off (`build-pc-mbase`, which gives main's hashes). `qogtest_hash` (`ce86f894f9de`), `qogtest_f_hash` (`e92bc9e9650d`) and its 8 shots, `qogtest_k_quiet` + `qogtest_d_shots` 113 frames, all identical, and the split pair's `qogtest_hash`, `qogtest_r_fhash` and `qogtest_d_shots` identical to the single process. With `QOG_SPANS_CORE1` the PC runs the core 1 job on a second thread, first or last (`-core1first`, `-core1last`), identical in all three. With `+r_fast 1` (main's Fast mode, whose 113 frames differ from r_fast 0) the 113 frames and the fhash shots are identical to the flags-off build with r_fast 1 too. A build with the cache cut to 64 entries (`QOG_VERTCACHE_MAX=64`, many collisions) is identical too. An integer FloorDivMod was checked against id's double version over 3.8 M pairs (0 differences) and then dropped, since main's `QOG_FLOAT_EXACT` has the same change.
 
-Board RAM (`arm-none-eabi-nm`, merged with main 9192bc9), quake_display `end` 0x2003f650 with the four flags off, 0x2003f660 on (16 B), quake_main 0x2003f51c (unchanged), 416 B above the display's 2 KB heap reserve. Stack, R_RecursiveWorldNode 48 B a level less, R_EmitEdge with R_QogProject 144 B against 96 B at the chain's end, R_ClipEdge 80 to 56 B (up to 4 deep).
+Board RAM (`arm-none-eabi-nm`, merged with main 76d0172), quake_display `end` 0x2003f650 with the four flags off, 0x2003f660 on (16 B), quake_main 0x2003f51c (unchanged), 416 B above the display's 2 KB heap reserve. Stack, R_RecursiveWorldNode 48 B a level less, R_EmitEdge with R_QogProject 144 B against 96 B at the chain's end, R_ClipEdge 80 to 56 B (up to 4 deep).
 
 ### Flash misses in the spans
 
@@ -1594,7 +1594,7 @@ Cuts (all on the board client list in apps/quake/CMakeLists.txt, each behind a f
 | Menu pic names point into the mapped pack's directory (as the mixer's sound names do), 12 bytes a slot, not 32. A pic not in the pack stops with id's "failed to load" | `QOG_CACHEPIC_NAMEPTR` (draw.c, common.c, common.h) | 1,120 B static |
 | Light style values are shorts ((char - 'a') * 22 or 256 fits) | `QOG_LIGHTSTYLE_SHORT` (r_shared.h, r_main.c) | 512 B static |
 
-Client hunk per level (hunk low at the end of each level of a `qog_tour_fight`, PC split pair with the board client flags, on that episode's board image `mkboard.py --stub-maps --main --display-no-sounds --display-no-progs`, KB). Before is main 9192bc9's client with the fixed server. The tour now takes out level exits and the two dead teleporters first (L72). Tour numbers move by a block of entities from run to run (L64).
+Client hunk per level (hunk low at the end of each level of a `qog_tour_fight`, PC split pair with the board client flags, on that episode's board image `mkboard.py --stub-maps --main --display-no-sounds --display-no-progs`, KB). Before is main 76d0172's client with the fixed server. The tour now takes out level exits and the two dead teleporters first (L72). Tour numbers move by a block of entities from run to run (L64).
 
 | Map | Before | After | | Map | Before | After | | Map | Before | After |
 | --- | ---: | ---: | --- | --- | ---: | ---: | --- | --- | ---: | ---: |
@@ -1616,7 +1616,7 @@ Exactness (hidden, `-nosound`, `+_cl_color 0`, own data folder and link ports), 
 
 Board links (`cmake -B build-ad/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=160`, free is beside the 2 KB heap reserve).
 
-| | main 9192bc9, 73 KB | cuts, 73 KB | cuts, 75 KB (the new default) |
+| | main 76d0172, 73 KB | cuts, 73 KB | cuts, 75 KB (the new default) |
 | --- | --- | --- | --- |
 | quake_display `end` | 0x2003f650, 432 B free | 0x2003efd8, 2,088 B free | 0x2003f7d8, 40 B free |
 | quake_main `end` | 0x2003f51c | 0x2003f51c | 0x2003f51c |
@@ -1663,12 +1663,12 @@ Variants measured on the PC (each its own build, `-DQOG_PC_EXTRA_DEFS`, 113 qogt
 
 `LITSPAN_FAST_ZREL`, `LITSPAN_FAST_LRUN` (0 keeps the exact light), `LITSPAN_FAST_SUB` and `LITSPAN_FAST_RECIP` are compile-time knobs in d_litspan.h.
 
-Exact mode proof (hidden, `-nosound`, `+_cl_color 0`, own folders `build-aa-pc` and `build-aa-ref`, own git-ignored `data\id1`), against an untouched build of 876d2fe, `qogtest_hash` gives `ce86f894f9de` (MD5 of its two lines), `qogtest_f_hash` 32 hashes with MD5 `e92bc9e9650d`, and the 113 `qogtest_d_shots` frames and the 8 fhash frames are byte identical. The Fast runs keep the same `qogtest_f_hash` (rendering does not touch game state). A PC build with `QOG_SPANS_CORE1` draws the same Fast frames as one without, so the second core's half is right.
+Exact mode proof (hidden, `-nosound`, `+_cl_color 0`, own folders `build-aa-pc` and `build-aa-ref`, own git-ignored `data\id1`), against an untouched build of 8a3e4d8, `qogtest_hash` gives `ce86f894f9de` (MD5 of its two lines), `qogtest_f_hash` 32 hashes with MD5 `e92bc9e9650d`, and the 113 `qogtest_d_shots` frames and the 8 fhash frames are byte identical. The Fast runs keep the same `qogtest_f_hash` (rendering does not touch game state). A PC build with `QOG_SPANS_CORE1` draws the same Fast frames as one without, so the second core's half is right.
 
 Code and RAM.
 - d_scanlit.c. `D_DrawSpans8LitFast` is a function of its own. Both cores pick the drawer before the call (`D_LITSTEP`), so the Fast frame (376 B) never stacks on the exact one (432 B, unchanged). Core 1's chain grows by nothing.
 - r_main.c. `r_fast` and `r_qogfast`, an int set once per view in R_RenderView_, so both cores and every surface of a view use one mode. r_local.h, two externs.
-- quake_display after merging main (c5fa930). `end` 0x2003ee74, 20 B above main's 0x2003ee60 (the cvar 24 B and the int, less padding). text 362,836 B, the Fast drawer 3.3 KB. quake_main `end` 0x2003f564, unchanged (the server half gets neither flag's code).
+- quake_display after merging main (259905d). `end` 0x2003ee74, 20 B above main's 0x2003ee60 (the cvar 24 B and the int, less padding). text 362,836 B, the Fast drawer 3.3 KB. quake_main `end` 0x2003f564, unchanged (the server half gets neither flag's code).
 - qogbench (apps/qogbench) prints a third line every 2 s for the lead. `[bench] rfast p2 exact=<us> rfast=<us> | short exact=<us> rfast=<us> | floor exact=<us> rfast=<us> | fdiv=<ns> frecip=<ns>`, the shipped exact drawer and the Fast drawer on the slanted plane, on game-like spans, on a floor seen level (where Fast takes 32), and one float divide against `litspan_frecip`.
 - `QOG_RFAST_STATS` (PC measurement only) and `qog_rfaststats` print the Fast drawer's sub-spans by length, pixels, spans and the exact drawer's runs of 8 for the same spans. `data\id1\qogtest_aa_stats.cfg` in the branch's own data folder runs it over 400 fly-through views of E1M1.
 
@@ -1712,11 +1712,11 @@ Client hunk per level (split PC pair, board client flags plus `QOG_CL_PEAKS`, fr
 
 At `-heapsize 73` all nine scripts and the whole fight tour of start to e1m8 run.
 
-Exactness (hidden, `-nosound`, `+_cl_color 0`, against untouched builds of f75051b in the same worktree, and again after merging main c5fa930). `qogtest_hash` ce86f894f9de and `qogtest_f_hash` e92bc9e9650d (md5 of the statehash lines) on quakeog_pc, on the default split pair and on the split pair with the board client flags. `qogtest_r_fhash` 32 hashes on both pairs. 121 frames (113 of `qogtest_d_shots` after `qogtest_k_quiet` and the 8 fhash frames) byte identical, quakeog_pc against its base and the board-flag client against its base (one run showed a notify line in rows 1 to 23 of f_e1m3 at another moment, the rerun was identical). `qogtest_j_ep1.cfg` (9 hashes), `qogtest_j_menu.cfg` and the e1m3 script give the same hashes from the image with sounds and progs.dat and from the image without them. The receive buffer check never fired.
+Exactness (hidden, `-nosound`, `+_cl_color 0`, against untouched builds of e2854de in the same worktree, and again after merging main 259905d). `qogtest_hash` ce86f894f9de and `qogtest_f_hash` e92bc9e9650d (md5 of the statehash lines) on quakeog_pc, on the default split pair and on the split pair with the board client flags. `qogtest_r_fhash` 32 hashes on both pairs. 121 frames (113 of `qogtest_d_shots` after `qogtest_k_quiet` and the 8 fhash frames) byte identical, quakeog_pc against its base and the board-flag client against its base (one run showed a notify line in rows 1 to 23 of f_e1m3 at another moment, the rerun was identical). `qogtest_j_ep1.cfg` (9 hashes), `qogtest_j_menu.cfg` and the e1m3 script give the same hashes from the image with sounds and progs.dat and from the image without them. The receive buffer check never fired.
 
-Board links (`cmake -B build-y/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`, merged with main c5fa930).
+Board links (`cmake -B build-y/arm --preset target -DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`, merged with main 259905d).
 
-| | main c5fa930 | this branch |
+| | main 259905d | this branch |
 | --- | --- | --- |
 | quake_display `end` | 0x2003ee60, 2,464 B free | 0x2003f63c with a 73 KB hunk, 452 B free |
 | quake_main `end` | 0x2003f564, 668 B free | 0x2003f51c with a 160 KB hunk, 740 B free |
@@ -1835,7 +1835,7 @@ No menu left takes typed text, so no letter picker was needed. The chat line (`m
 
 RAM. Leaving out the network menus (multiplayer, setup, net, serial, modem, LAN, game options, search, server list) and id's key binding page takes their tables with them, the mission pack level tables, the episode tables, the quit jokes, the bind names, the player colour tables (512 B) and the name fields. The kept level table and every new table are const, in flash. The new state is two ints (Levels cursor, which menu asked to confirm).
 
-| quake_display (`-DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`) | Before (f75051b) | After |
+| quake_display (`-DQOG_AOT=ON -DQOG_SOUND=ON -DQOG_CL_STACK_KB=32`) | Before (e2854de) | After |
 | --- | ---: | ---: |
 | `end` (arm-none-eabi-nm) | 0x2003f5a0 | 0x2003ed7c (2,084 B lower) |
 | menu.c RAM (nm, B and D symbols) | 2,657 B | 592 B |
@@ -1883,13 +1883,13 @@ PC verification (silent mixing only, `-hidden`, no audio device opened. `qog_snd
 | the same with the earlier pipelined client (`QOG_LINK_PIPELINE`, 2,832 updates queued, 0 sound starts queued) | | identical |
 | `qogtest_w_demo.cfg` (map start, demo1, demo2, demo3. 2,509,289 samples) | 4 hashes, the same on two runs | identical |
 
-The default builds of this branch, sound off, against an untouched build of main (abd47a2), hidden, `-nosound`, `+_cl_color 0`, `qogtest_hash` 2 state hashes, `qogtest_f_hash` 32 hashes, `qogtest_d_shots` after `qogtest_k_quiet` 113 frames plus the 8 fhash frames, all identical, and the split pair (`-ServerExe`) gives the same 2 hashes and 32 `qogtest_r_fhash` hashes as the single process.
+The default builds of this branch, sound off, against an untouched build of main (9e41be9), hidden, `-nosound`, `+_cl_color 0`, `qogtest_hash` 2 state hashes, `qogtest_f_hash` 32 hashes, `qogtest_d_shots` after `qogtest_k_quiet` 113 frames plus the 8 fhash frames, all identical, and the split pair (`-ServerExe`) gives the same 2 hashes and 32 `qogtest_r_fhash` hashes as the single process.
 
 Server hunk with sound, from the board images, the board's server flags and compiled QuakeC (`qogtest_t_mem_*.cfg`, fight, save, load), e1m1 needs 120 KB (116 fails, 116 runs without sound), start runs in 100 KB. Sound adds 5.5 KB of hunk (channels 5,408 B, the name pool, headers) plus up to 8.4 KB of sound headers in the cache, which the hunk gives back under pressure. `QOG_SV_HUNK_KB` stays 156.
 
 Board links (`cmake --preset target -B build-final -DQOG_AOT=ON`, everything else default, `-DQOG_CL_STACK_KB=32` is the new default with sound).
 
-| | Before (main abd47a2) | With sound |
+| | Before (main 9e41be9) | With sound |
 | --- | ---: | ---: |
 | quake_display RAM free (less the 2 KB heap reserve) | 344 B | 628 B |
 | quake_display stack array | 34 KB | 32 KB |
@@ -1939,7 +1939,7 @@ How each works.
 - Core 1 spans. D_DrawSurfaces sets a lit surface up on core 0 as before, then core 1 draws spans 2, 4, 6 and core 0 spans 1, 3, 5, and core 0 waits for core 1 before the next surface. A span writes only its own pixels and z, and the drawer reads only the surface's state, which nothing changes until both are done. platform/qog_video.c runs the job in core 1's idle loop between scanouts (spans are drawn only after the lock wait). A future core 1 hook (sound) must return quickly or each surface waits for it. On the PC the half runs on a real second thread (default), or on the game's thread before (`-core1first`) or after (`-core1last`) core 0's half, 113 qogtest_d_shots frames byte identical in each mode, three thread runs in a row.
 - Pipeline. A frame of play (signed on, not a demo, key_game, no intermission, pause or loading plaque) leaves SCR_UpdateScreen, S_Update and CL_DecayLights pending. The next frame takes its input, sends its tick and pushes it onto the wire (Link_ClientTick, qog_link_push), runs the pending update while the main chip runs its server frame, then waits for the answer (Link_ClientDone). The update runs with the realtime, host_frametime, host_framecount, cl.viewangles and key_dest of its own frame. V_DriftPitch, the only part of the update that changes what the next input sends, runs at the frame's end (V_CalcRefdef skips it in the update). A console line other than `wait` runs the pending update first (Cbuf_QogIdle), so qog_shot, server commands and level changes keep id's order. The render calls no rand(). Key presses on the board are read before the update, but key_dest is restored for it, so a menu appears in the same frame as before. While the client draws, the server's answer waits in the UART flow control, and a short answer may be resent once or twice by the link's timeout (harmless duplicates).
 
-PC verification (hidden, `-nosound`, own basedir, against a build of bbcb5ff in `build-pc-base`).
+PC verification (hidden, `-nosound`, own basedir, against a build of 1371717 in `build-pc-base`).
 
 | Run | Result |
 | --- | --- |
@@ -1981,7 +1981,7 @@ Looked at and left.
 - Hot loops in RAM. The benchmark found no gain for the span loop, and the display chip has 344 B left.
 - Faster scanout without a clock change, chaining the line DMA across two channels would remove the gaps between lines, at most about 1.9 ms of the 22.4 ms (the wire alone is 20.5 ms at 50 MHz).
 - The RP2040 interpolator could compute the texel address in the lit span loop (masked shift and add), exact, not tried.
-- Unrelated finding, on the PC without `id1/qogbake.bin` in the basedir, quakeog_pc of bbcb5ff crashes in Cache_Free while loading e1m1's sprites.
+- Unrelated finding, on the PC without `id1/qogbake.bin` in the basedir, quakeog_pc of 1371717 crashes in Cache_Free while loading e1m1's sprites.
 
 Clock options (report only, nothing enabled).
 
@@ -2022,7 +2022,7 @@ Server RAM.
 - `quake_main` (`-DQOG_AOT=ON`, stand-in display image `qog_display` while `quake_display` does not link), .data 8,144 + .bss 249,964 + heap 2,048 B, 1,796 B of RAM left, SCRATCH_X 4,096 B, app 960,828 B (30.5% of the 3 MB slot). The FAT library adds about 8.9 KB of static RAM (FatFs volume and file sector buffers, its long file name buffer). Before the hunk and ring changes it overflowed RAM by 7,420 B.
 - Stack, the deepest chain from `server_main` is 18,544 B of the 24 KB array (`tools/stack_chain.py --app quake_main --lib apps/quake/libqog_engine_sv.a --root server_main`). The save path from `Host_Savegame_f` is 5,072 B plus newlib's `fprintf`, which has no `.su` line.
 
-PC verification (hidden, silent, `-nosound`, `+_cl_color 0`, against an untouched build of f6ce8fd, `build-pc-base`, on the full registered paks).
+PC verification (hidden, silent, `-nosound`, `+_cl_color 0`, against an untouched build of 7d619f3, `build-pc-base`, on the full registered paks).
 
 | Test | Base, single process | Split pair from the two images (`build-board\qb`, `build-board\qb_main`) |
 | --- | --- | --- |
@@ -2051,7 +2051,7 @@ How the split works (engine/net_link.c, flag `QOG_NET_LINK` with `QOG_SPLIT_SERV
 
 Transport (port/common/qog_link.c, port/pc/link_pc.c, port/rp2040/link_rp2040.c), a reliable byte stream over the BSP's link frames `[0x7E][len16][payload][crc16]` with the BSP's CRC, Quake types 0x40 DATA, 0x41 ACK, 0x42 HELLO and 0x43 HELLOK (0x01 to 0x1F stay the bootloader's, 0x20 to 0x22 the breakout I/O's, which the display hands to `fwog_ioexp_link_handle`). One frame in flight, resent after a timeout with back off, duplicates acknowledged again, the decoder resynchronizes after a bad CRC, and a full receive ring sends no ack so the sender waits (with the UART's RTS/CTS below it). Board sizes 512-byte frames and 2 KB rings on both chips. On the main chip every wait kicks the watchdog, on the display every wait keeps `fwog_power_poll` running.
 
-PC results (hidden and silent with `-nosound`, against an untouched build of eb5c08d, `build-pc-base`, link rate limited to 300,000 bytes per second).
+PC results (hidden and silent with `-nosound`, against an untouched build of 1c85a91, `build-pc-base`, link rate limited to 300,000 bytes per second).
 
 | Test | Single process (base) | Split pair |
 | --- | --- | --- |
@@ -2111,7 +2111,7 @@ Pixel differences of the approximate drawers over the 113 `qogtest_d_shots` fram
 
 - Work counts (PC, `QOG_PHASE_TIME`), E1M1 fly-through (1,618 frames 0.1 s apart) per frame 71 lit surfaces, 2,769 light cells built, 1,622 lit spans, 48,363 lit pixels (39 on the any-size path), 6,811 runs of up to 8 pixels, 45 sky and 224 turbulent pixels. timedemo demo1 per frame 60 lit surfaces, 3,346 light cells, 1,509 spans, 46,506 lit pixels (1,564 any-size), 6,514 runs. Per lit pixel the float work is about 60 cycles (a run's 3 adds, divide, 2 multiplies and 2 conversions plus each span's start), the light grid build about 0.4 ms a frame.
 - PC speed, no measurable change. timedemo demo1 runs at the 60 fps cap with every build, and the `-qogfly` wall time over 8,000 frames varied by 30% between runs of the same build. On x86 the modulos and floats this work removes are cheap. On the PC the phase split of the E1M1 fly-through is 0.24 of 0.43 ms in lit spans.
-- Verification, hidden and silent, against an untouched build of 1f2afb6 (`build-pc-base`), each run with `+_cl_color 0` and the frame-compared scripts after `qogtest_k_quiet.cfg`, `qogtest_hash` state hashes identical, 113 `qogtest_d_shots` and 64 `qogtest_e_shots` frames byte-identical (the 8 files `qogtest_e_shots1` to `7` are chained by `qogtest_e_shots.cfg` and are not meant to run alone), `qogtest_n_flyg` 400 view hashes and 4 shots identical. Per-frame hashes. `qogtest_h_demos` 3,610 frames and `qogtest_h_fight1` to `4` 37,159 frames equal except runs of at most 10 frames at startup and at each map load. Frames 700 to 715 of fight 1 were dumped from both builds, the differing ones differ only in one 6-row console text line scrolling up (the load timing), the 3D view is identical.
+- Verification, hidden and silent, against an untouched build of 4626b83 (`build-pc-base`), each run with `+_cl_color 0` and the frame-compared scripts after `qogtest_k_quiet.cfg`, `qogtest_hash` state hashes identical, 113 `qogtest_d_shots` and 64 `qogtest_e_shots` frames byte-identical (the 8 files `qogtest_e_shots1` to `7` are chained by `qogtest_e_shots.cfg` and are not meant to run alone), `qogtest_n_flyg` 400 view hashes and 4 shots identical. Per-frame hashes. `qogtest_h_demos` 3,610 frames and `qogtest_h_fight1` to `4` 37,159 frames equal except runs of at most 10 frames at startup and at each map load. Frames 700 to 715 of fight 1 were dumped from both builds, the differing ones differ only in one 6-row console text line scrolling up (the load timing), the 3D view is identical.
 - On the board, `apps/qogbench` now includes `engine/d_litspan.h` and checks the new drawer against the old code byte for byte at every mip level, on a power-of-two and a 320×200 texture, full and ragged spans (`chk_p2`, `chk_any`), and the z start against id's double expression over 2 span sets (`chk_z`). Each should print 0.
 - Engine files changed. `engine/d_scanlit.c`, `engine/d_scan.c` (D_QogZiFixed, D_QogZSpan), `engine/d_edge.c` (phase hooks, the z skip), `engine/r_main.c` (phase hooks only). New. `engine/d_litspan.h`, `engine/qog_phase.h`, `port/common/qog_phase.c`. One new block at the end of each flag list.
 - Looked at and left, placing the span code in RAM (the earlier benchmark showed no gain and RAM is short, the new D_DrawSpans8Lit is 9.5 KB of flash code but one mip variant plus the float part, about 2 KB, is hot per surface), R_BuildLightMap (about 0.4 ms a frame on E1M1, fusing its three passes would save about 0.15 ms), exact replacements of the per-run float divide (the ROM routines are already the fast path, any fixed-point form changes s and t).
@@ -2146,7 +2146,7 @@ Times are means per frame over the 2 s. scan includes the surface drawing (lmap,
 
 `quake_display` (the split game's client half, `QOG_SPLIT`) now links, a 68 KB hunk, a 34 KB stack and the one-byte depth buffer the user approved, with 1,104 bytes of RAM free beside the 2 KB heap reserve. Before, it overflowed by 118,024 bytes with E1M1's hunk. 68 KB is the smallest PC hunk of the split client with these flags that runs E1M1 with a fight, a save and a load. The other start to e1m4 maps need up to 85 KB and do not fit yet, and the earlier edge fallback, which the one-byte z-buffer reaches now and then, stops the game on the board (both below). Every other change is exact. Nothing ran on hardware.
 
-Merges first, an earlier branch (demo player) and an earlier branch (renderer speed, exact flags) into an earlier branch. Conflicts only in the flag lists (`apps/quake/CMakeLists.txt`, `pc/CMakeLists.txt`, `tools/ram_meter.py`, every block kept, an earlier branch's before the split block so both halves get them) and in this log (every entry kept). The split PC client stubs the demo host's PC commands like the other single-process tools (`port/pc/split_cl_pc.c`). Against a build of f6ce8fd (an earlier branch, scratch copy), the merged single-process game and the merged split pair gave the same `qogtest_hash` (2) and `qogtest_r_fhash` (32) state hashes, the same 8 fhash frames and the same 113 `qogtest_d_shots` frames after `qogtest_k_quiet`. That merged tree is `build-pc-base`.
+Merges first, an earlier branch (demo player) and an earlier branch (renderer speed, exact flags) into an earlier branch. Conflicts only in the flag lists (`apps/quake/CMakeLists.txt`, `pc/CMakeLists.txt`, `tools/ram_meter.py`, every block kept, an earlier branch's before the split block so both halves get them) and in this log (every entry kept). The split PC client stubs the demo host's PC commands like the other single-process tools (`port/pc/split_cl_pc.c`). Against a build of 7d619f3 (an earlier branch, scratch copy), the merged single-process game and the merged split pair gave the same `qogtest_hash` (2) and `qogtest_r_fhash` (32) state hashes, the same 8 fhash frames and the same 113 `qogtest_d_shots` frames after `qogtest_k_quiet`. That merged tree is `build-pc-base`.
 
 Board client settings (`apps/quake/CMakeLists.txt`, the client library `qog_engine_cl` and `quake_display` only, never the PC game list). Savings are RAM of the link at the same hunk unless marked hunk.
 
@@ -2212,7 +2212,7 @@ How the split works (engine/net_link.c, flag `QOG_NET_LINK` with `QOG_SPLIT_SERV
 
 Transport (port/common/qog_link.c, port/pc/link_pc.c, port/rp2040/link_rp2040.c), a reliable byte stream over the BSP's link frames `[0x7E][len16][payload][crc16]` with the BSP's CRC, Quake types 0x40 DATA, 0x41 ACK, 0x42 HELLO and 0x43 HELLOK (0x01 to 0x1F stay the bootloader's, 0x20 to 0x22 the breakout I/O's, which the display hands to `fwog_ioexp_link_handle`). One frame in flight, resent after a timeout with back off, duplicates acknowledged again, the decoder resynchronizes after a bad CRC, and a full receive ring sends no ack so the sender waits (with the UART's RTS/CTS below it). Board sizes 512-byte frames and 2 KB rings on both chips. On the main chip every wait kicks the watchdog, on the display every wait keeps `fwog_power_poll` running.
 
-PC results (hidden and silent with `-nosound`, against an untouched build of eb5c08d, `build-pc-base`, link rate limited to 300,000 bytes per second).
+PC results (hidden and silent with `-nosound`, against an untouched build of 1c85a91, `build-pc-base`, link rate limited to 300,000 bytes per second).
 
 | Test | Single process (base) | Split pair |
 | --- | --- | --- |
@@ -2292,7 +2292,7 @@ Sound (computed from the structures, the mixer was not run), channels 6,672, pai
 
 Input, the IN_ path is Sys_SendKeyEvents in `port/rp2040/vid_rp2040.c`, which turns `qog_input` actions into key events bound by id's default.cfg (arrows, CTRL fire or ENTER in menus, SPACE jump, c down, / next weapon, ESCAPE menu). Previous weapon pressed backslash, which id binds to +mlook. It now sends `impulse 12` (fixed in the PC board mode too).
 
-- Verification, hidden and silent with `-nosound` and `+_cl_color 0`, against an untouched build of 1f2afb6 (`build-pc-base`). `qogtest_hash` state hashes identical on the interpreted build, the QOG_AOT build and a QOG_AOT build with the board-only flags. `qogtest_q_fhash.cfg` (a copy of `qogtest_f_hash` with its own save name, 8 maps, fight, save and load) 32 hashes and 8 end frames identical on the same three. `qogtest_d_shots` with `qogtest_k_quiet.cfg` 113 frames byte-identical on the interpreted and the board-flag builds (without it the notify line shows the shot path, which names the build folder). `qogtest_reg` ran its 32 maps with no errors on the interpreted and the board-flag builds. `qogfly_main` links with the values the board run used (`QOGFLY_HUNK_KB` 18, `QOGFLY_STACK_KB` 34).
+- Verification, hidden and silent with `-nosound` and `+_cl_color 0`, against an untouched build of 4626b83 (`build-pc-base`). `qogtest_hash` state hashes identical on the interpreted build, the QOG_AOT build and a QOG_AOT build with the board-only flags. `qogtest_q_fhash.cfg` (a copy of `qogtest_f_hash` with its own save name, 8 maps, fight, save and load) 32 hashes and 8 end frames identical on the same three. `qogtest_d_shots` with `qogtest_k_quiet.cfg` 113 frames byte-identical on the interpreted and the board-flag builds (without it the notify line shows the shot path, which names the build folder). `qogtest_reg` ran its 32 maps with no errors on the interpreted and the board-flag builds. `qogfly_main` links with the values the board run used (`QOGFLY_HUNK_KB` 18, `QOGFLY_STACK_KB` 34).
 - What is left is not a matter of exact cuts. The whole engine outside the video needs about 340 KB on E1M1 with 116 KB of RAM left beside the video. The options with real size are per-class edicts with compiled QuakeC (edicts and edcold 64.8 KB now), a sparse client entity table (26 KB), message buffers in the z-buffer between frames (about 17 KB, needs proof they are empty at R_RenderView), the 18 KB particle block (changes the picture), or the two-chip split in docs/plans/fit-plan.md.
 - Edits outside the earlier files. `engine/host.c`, `engine/snd_dma.c`, `engine/host_cmd.c`, `engine/cl_parse.c`, `engine/sv_main.c`, `engine/keys.c` (each behind its flag), `port/pc/vid_pc.c` (board mode input), one new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`, and the hunk and stack sizes of `quake_display`.
 ## 2026-11-23, Demo playback on the board (PC and ARM build, registered data)
@@ -2340,7 +2340,7 @@ Verification, hidden and silent.
 - Host against game, full paks. `qogtest_o_ref1.cfg` to `_ref3.cfg` (`qog_demoloop 0 demoN`, `con_notifytime -1`, `crosshair 0`, `qog_quitafter`) against `-qogdemo -demos demoN -demohash`, 1,486, 1,399 and 1,647 host frames, each run found as one contiguous run in the game's frame hashes (pixels and palette). `qogtest_o_loop.cfg` (the three demo loop) against `-qogdemo`, 4,532 host frames, the three demos contiguous, the game has one more frame between demos (the loading plaque, which the host does not draw).
 - Board data layout (`build-board\qogdemo`) against the game on the full paks, the same three results with the normal build and with a PC build of the board settings that keep the picture (`-DQOG_PC_DEMO_BOARD=ON`, entity slots, temp entities, lit surface hash, cached pics, command buffer, edge cache flag).
 - One-byte z-buffer (`-DQOG_PC_DEMO_Z8=ON` as well) against that build, every 50th frame of the loop, 91 frames, 13 identical, 0.073% of view pixels differ on average, at most 126 pixels (far models and particle edges), status bar rows identical. With `QOG_ZBUFFER8` alone it was 0.81%, at most 1,144 pixels (the weapon). No edge moves or stack fallbacks of the edges in the z-buffer in any run.
-- Normal game against a build of 1f2afb6 (`build-pc-base`). `qogtest_hash.cfg` state hashes identical, 113 frames of `qogtest_d_shots.cfg` byte-identical (run after `qogtest_k_quiet.cfg`, as two base runs differ in the notify rows otherwise).
+- Normal game against a build of 4626b83 (`build-pc-base`). `qogtest_hash.cfg` state hashes identical, 113 frames of `qogtest_d_shots.cfg` byte-identical (run after `qogtest_k_quiet.cfg`, as two base runs differ in the notify rows otherwise).
 - `apps/qogfly` still links.
 
 Lessons from the PC comparison, the host's own `rand()` call is MSVC's or newlib's, because only engine files are built with `-Drand=qog_rand` (it now calls `qog_rand`), `sv_gravity` is a server cvar the client's particles read, and a script's waits hold back the "bf" a demo stuffs (docs/lessons.md L46 to L48).
@@ -2383,7 +2383,7 @@ Pixel differences of the approximate drawers over the 113 `qogtest_d_shots` fram
 
 - Work counts (PC, `QOG_PHASE_TIME`), E1M1 fly-through (1,618 frames 0.1 s apart) per frame 71 lit surfaces, 2,769 light cells built, 1,622 lit spans, 48,363 lit pixels (39 on the any-size path), 6,811 runs of up to 8 pixels, 45 sky and 224 turbulent pixels. timedemo demo1 per frame 60 lit surfaces, 3,346 light cells, 1,509 spans, 46,506 lit pixels (1,564 any-size), 6,514 runs. Per lit pixel the float work is about 60 cycles (a run's 3 adds, divide, 2 multiplies and 2 conversions plus each span's start), the light grid build about 0.4 ms a frame.
 - PC speed, no measurable change. timedemo demo1 runs at the 60 fps cap with every build, and the `-qogfly` wall time over 8,000 frames varied by 30% between runs of the same build. On x86 the modulos and floats this work removes are cheap. On the PC the phase split of the E1M1 fly-through is 0.24 of 0.43 ms in lit spans.
-- Verification, hidden and silent, against an untouched build of 1f2afb6 (`build-pc-base`), each run with `+_cl_color 0` and the frame-compared scripts after `qogtest_k_quiet.cfg`, `qogtest_hash` state hashes identical, 113 `qogtest_d_shots` and 64 `qogtest_e_shots` frames byte-identical (the 8 files `qogtest_e_shots1` to `7` are chained by `qogtest_e_shots.cfg` and are not meant to run alone), `qogtest_n_flyg` 400 view hashes and 4 shots identical. Per-frame hashes. `qogtest_h_demos` 3,610 frames and `qogtest_h_fight1` to `4` 37,159 frames equal except runs of at most 10 frames at startup and at each map load. Frames 700 to 715 of fight 1 were dumped from both builds, the differing ones differ only in one 6-row console text line scrolling up (the load timing), the 3D view is identical.
+- Verification, hidden and silent, against an untouched build of 4626b83 (`build-pc-base`), each run with `+_cl_color 0` and the frame-compared scripts after `qogtest_k_quiet.cfg`, `qogtest_hash` state hashes identical, 113 `qogtest_d_shots` and 64 `qogtest_e_shots` frames byte-identical (the 8 files `qogtest_e_shots1` to `7` are chained by `qogtest_e_shots.cfg` and are not meant to run alone), `qogtest_n_flyg` 400 view hashes and 4 shots identical. Per-frame hashes. `qogtest_h_demos` 3,610 frames and `qogtest_h_fight1` to `4` 37,159 frames equal except runs of at most 10 frames at startup and at each map load. Frames 700 to 715 of fight 1 were dumped from both builds, the differing ones differ only in one 6-row console text line scrolling up (the load timing), the 3D view is identical.
 - On the board, `apps/qogbench` now includes `engine/d_litspan.h` and checks the new drawer against the old code byte for byte at every mip level, on a power-of-two and a 320×200 texture, full and ragged spans (`chk_p2`, `chk_any`), and the z start against id's double expression over 2 span sets (`chk_z`). Each should print 0.
 - Engine files changed. `engine/d_scanlit.c`, `engine/d_scan.c` (D_QogZiFixed, D_QogZSpan), `engine/d_edge.c` (phase hooks, the z skip), `engine/r_main.c` (phase hooks only). New. `engine/d_litspan.h`, `engine/qog_phase.h`, `port/common/qog_phase.c`. One new block at the end of each flag list.
 - Looked at and left, placing the span code in RAM (the earlier benchmark showed no gain and RAM is short, the new D_DrawSpans8Lit is 9.5 KB of flash code but one mip variant plus the float part, about 2 KB, is hot per surface), R_BuildLightMap (about 0.4 ms a frame on E1M1, fusing its three passes would save about 0.15 ms), exact replacements of the per-run float divide (the ROM routines are already the fast path, any fixed-point form changes s and t).
@@ -2440,7 +2440,7 @@ R_EdgeDrawing's stack frame on the ARM build 84,768 to 36,184 bytes (−48,584).
 - Z-buffer use in one frame, byte offsets in the 97,280 bytes, R_RenderWorld, edge cache at 0 (up to 33,846) and edge table at 49,184 to the end. R_DrawBEntitiesOnList, brush clip buffers at 0 (4,608) and the edge table. R_ScanEdges, z rows from the top down to the used edge table packed at the end, which shrinks as edges die. After the last flush, all z. Between frames, the first 15,360 bytes hold the status bar rows (QOG_HUD_IN_ZBUFFER) and the rest is free.
 - Temp region for later changes (not used yet, the message buffers are the earlier). `r_ztemp_base` and `r_ztemp_bytes` (r_shared.h) describe the whole z-buffer. Free for anything short-lived from the end of R_RenderView to the start of the next R_RenderView, bytes 15,360 to 97,280 (81,920 bytes) while the status bar and the scanout use the first 15,360, and the whole buffer between R_RenderView's start and R_EdgeDrawing. Not across R_RenderView, and not while the board scans out the status bar rows.
 - Looked at and left, the PVS row (`decompressed` in Mod_DecompressVis, 1 KB) is shared with the server's fatpvs and checkpvs and lives in model.c, and the node and leaf visframe stamps must persist between frames (R_MarkLeaves only runs when the view leaf changes). Both belong to earlier work.
-- Verification, hidden and silent, against a build of c97750d, state hashes in `qogtest_hash`, `qogtest_f_hash` and `qogtest_e_shots`, 195 shots (`qogtest_d_shots`, `qogtest_e_shots`, `qogtest_f_hash`, `qogtest_demo`, `qogtest_sky`) byte-identical, and 44,529 frame hashes (`qogtest_h_demos`, `qogtest_h_tour`, `qogtest_h_fight1` to `4`) equal except console frames at startup and at map loads, which show the build time or the "server frames so far" timing (dumped and checked). Each flag was checked on its own commit, the edge table also with the span room cut to 330 and 700 spans, the edge cache also forced onto the hunk. The new `qogtest_k_quiet.cfg` sets `con_notifytime -1` for these runs, without it the notify line follows real time and two runs of the untouched build differ on a few frames.
+- Verification, hidden and silent, against a build of 23a89cb, state hashes in `qogtest_hash`, `qogtest_f_hash` and `qogtest_e_shots`, 195 shots (`qogtest_d_shots`, `qogtest_e_shots`, `qogtest_f_hash`, `qogtest_demo`, `qogtest_sky`) byte-identical, and 44,529 frame hashes (`qogtest_h_demos`, `qogtest_h_tour`, `qogtest_h_fight1` to `4`) equal except console frames at startup and at map loads, which show the build time or the "server frames so far" timing (dumped and checked). Each flag was checked on its own commit, the edge table also with the span room cut to 330 and 700 spans, the edge cache also forced onto the hunk. The new `qogtest_k_quiet.cfg` sets `con_notifytime -1` for these runs, without it the notify line follows real time and two runs of the untouched build differ on a few frames.
 - Edits outside the earlier files. `engine/model.c` (the edge cache allocation only, behind `QOG_EDGECACHE_ZBUFFER`), and one new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`.
 - The bake layout hash did not change (no baked structure changed), so the shared `data/id1/qogbake.bin` still loads.
 
@@ -2463,7 +2463,7 @@ The map's hunk block (the per-frame arrays `Mod_FinishBrushModel` allocates next
 - `QOG_DLIGHT_SPARSE`, the dlightframe stamp is one bit per surface (as above) and the bits of the lit surfaces sit in a 1,024 entry open hash (`QOG_DLIGHT_SURFS`, 2-byte surface number and 4-byte bits, emptied with the bits). `R_PushDlights` only notes the world pass. It runs at the first question about a lit surface in the frame (`R_DlightLit`, behind `SURF_DLIGHTFRAME_IS`), after `R_RenderWorld` has stamped the visible surfaces, and marks only world surfaces visible in this frame, no other world surface is drawn (`R_RecursiveWorldNode` tests the same stamp). The brush model pass in `R_DrawBEntitiesOnList` marks as before. A second world pass for the same counter before the first ran (only when no view was drawn in between) runs the first one in full, as id's marks add up. If the hash fills, the lost lights are remembered and `R_DlightBits` finds their bits by walking the world tree and the drawn brush model's tree with `R_MarkLights`' arithmetic.
 - Peaks over the full-game fight tour (`qogtest_h_fight1` to `4`, rockets, explosions, muzzle flashes), at most 573 lit visible surfaces in one frame (e1m6), so the hash is at most 56% full. Marking every surface in reach, as id does, gave 1,918 on e3m6, which is why the world pass is deferred.
 - `QOG_LEAF16`, leaf keys are 16-bit (a frame's keys count nodes, leafs and drawn surfaces, `LEAF_KEY_SET` stops with an error rather than cut one). A leaf's efrag list head is one of 256 world heads selected by a byte per leaf, so `LEAF_EFRAGS` stays a pointer lvalue (`R_NewMap` in r_main.c is unchanged). Once the heads run out further leafs share the last one and `R_StoreLeafEfrags` skips the efrags of other leafs in it, which keeps id's order per leaf. Most heads in use over the fight tour, 191 including the NULL head 0 (e1m4).
-- Verification, hidden and silent, against a build of c97750d (`build-pc-base`), state hashes identical in `qogtest_hash.cfg`, `qogtest_f_hash.cfg` (32), `qogtest_e_shots*.cfg` (base and new build run side by side, as the shared data folder made base's own hashes drift between runs). 177 frames of `qogtest_d_shots.cfg` and `qogtest_e_shots*.cfg` and the 8 `qogtest_f_hash` frames byte-identical. With `-nobake` `qogtest_hash` and the 113 demo frames identical. `qog_bake check` 0 differences, "Baked models, 133". Per-frame hashes over the demos and the four fight tours (`qogtest_l_demos.cfg`, `qogtest_l_fight1..4.cfg`, copies of the earlier scripts) were compared by dumping every frame of fight tours 1 and 4 from both builds, of 2,847 frames of tour 4, 2,801 are identical, 40 differ only in the notify rows 0 to 31 and 6 are the startup console with the build time. Of 5,913 frames of tour 1, 5,800 are identical, 71 differ only in rows 0 to 31, and the other 42 differ only in console text (build time, "7.7 megabyte data cache" for 7.6, the server time of the `qog_mem` report at each map change). The other differing hashes are notify lines in rows 0 to 31 that show for a real-time span and differ between two runs of the base build too (45 of 2,845 frames of fight tour 4 between two base runs).
+- Verification, hidden and silent, against a build of 23a89cb (`build-pc-base`), state hashes identical in `qogtest_hash.cfg`, `qogtest_f_hash.cfg` (32), `qogtest_e_shots*.cfg` (base and new build run side by side, as the shared data folder made base's own hashes drift between runs). 177 frames of `qogtest_d_shots.cfg` and `qogtest_e_shots*.cfg` and the 8 `qogtest_f_hash` frames byte-identical. With `-nobake` `qogtest_hash` and the 113 demo frames identical. `qog_bake check` 0 differences, "Baked models, 133". Per-frame hashes over the demos and the four fight tours (`qogtest_l_demos.cfg`, `qogtest_l_fight1..4.cfg`, copies of the earlier scripts) were compared by dumping every frame of fight tours 1 and 4 from both builds, of 2,847 frames of tour 4, 2,801 are identical, 40 differ only in the notify rows 0 to 31 and 6 are the startup console with the build time. Of 5,913 frames of tour 1, 5,800 are identical, 71 differ only in rows 0 to 31, and the other 42 differ only in console text (build time, "7.7 megabyte data cache" for 7.6, the server time of the `qog_mem` report at each map change). The other differing hashes are notify lines in rows 0 to 31 that show for a real-time span and differ between two runs of the base build too (45 of 2,845 frames of fight tour 4 between two base runs).
 - Fallbacks checked with a build using `QOG_DLIGHT_SURFS=4` and `QOG_EFRAG_HEADS=4` (the hash overflows in nearly every lit frame, most leafs share a head), the same per-frame hashes as the normal build over the demos and all four fight tours, apart from the same noise. Builds with `QOG_FRAMEBITS` alone and with `QOG_DLIGHT_SPARSE` added ran the demos and fight tours with the same kind of differences only (not dumped frame by frame), and the first gave `qogtest_hash` state hashes equal to base run next to it.
 - Speed on the PC (timedemo demo1, two runs each, noisy machine), base 18.2 to 19.1 s for 970 frames over five runs, new build 17.5 to 20.1 s, no difference above the noise. Per frame the new work is one memset of the surface bits, a hash probe per lit drawn surface and the deferred world pass, which visits the same nodes as before.
 - Edits outside the earlier files. `engine/r_bsp.c`, three lines in `R_RecursiveWorldNode` (the surface visframe write through `SURF_VISFRAME_SETNUM`, the efrag store through `R_StoreLeafEfrags`, the key through `LEAF_KEY_SET`). One new block each at the end of the lists in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`.
@@ -2488,7 +2488,7 @@ Verification (hidden and silent).
 - `-qogfly` against `qog_fly` in the full game after `map e1m1` (new `qogtest_n_flyg.cfg`), 400 frames 0.4 s apart, all view hashes identical, with the full paks and with the board layout.
 - `qog_fly_ref` (new `qogtest_n_ref.cfg`), the player stands at each of the 79 route points (noclip, god, notarget, not solid so it picks nothing up, not on ground), looking the way the path does there as the protocol rounds the angles, with `r_drawentities 0`, `r_drawviewmodel 0`, `crosshair 0` and light styles `m`. After the game has drawn the spot through V_RenderView, the host draws it at the same cl.time. 79 of 79 views identical, with the full paks and with the board layout. Two earlier differences were in the test, not the host, the console still scrolling up on the first spot, and a quad damage picked up on the way, whose light brightened the game's view.
 - Board layout (`build-board\qogfly`, below) against the full paks, 2,400 standalone frames identical.
-- Normal game unchanged against a build of c97750d. `qogtest_hash.cfg` state hashes identical, `qogtest_d_shots.cfg` 113 frames byte-identical.
+- Normal game unchanged against a build of 23a89cb. `qogtest_hash.cfg` state hashes identical, `qogtest_d_shots.cfg` 113 frames byte-identical.
 
 Hunk, the host's whole hunk is 98,112 bytes on the PC (zone 3 KB, of which 1.3 KB used, 92,128 bytes of E1M1 per-level arrays, the route 1.4 KB, the rest command and cvar blocks). The route work space (6 KB) is on the stack, which is idle at that depth then. R_Init's 18 KB of particles are given back. `-heapsize 96` runs, 95 stops with Hunk_Alloc failed. The board uses `QOGFLY_HUNK_KB` 97.
 
@@ -2541,7 +2541,7 @@ Hunk low (PC, `qog_mem`) on E1M1 364.0 to 325.9 KB, on e4m7 (largest) 472.5 to 4
 - Board-only flags are set in `apps/quake/CMakeLists.txt` and `tools/ram_meter.py` only. The PC keeps 8 KB and 24 KB, which the long test scripts need. A 12 KB zone failed at startup from fragmentation (8,744 B used, 3,512 B free in pieces of at most 152 B), 16 KB ran every test. A PC build with both board values gave the base state hashes (`qogtest_hash`, the 8-map fight with save and load, save and load) and the base status bar frames.
 - `QOG_TRANSLATE_ONDRAW`, before the first colour update the table is all zero, as id's untouched hunk was. The new 16 KB frame sits under `R_DrawEntitiesOnList`, beside R_EdgeDrawing (84.8 KB) and not under it, the alias chain is about 32 KB on the ARM build. It costs a 16 KB copy from the colormap per drawn player-coloured model, which only chase view (or a copy of the player's body) draws. The scores entry also explains why the earlier idea of pointing at the colormap is not exact, colours 0 0 still remap ranges 16 to 31 and 96 to 111, only colours 1 6 give the identity.
 - `QOG_EDICT_REUSE` was checked with a 167-slot test build on e1m1 under super nailgun fire, the fallback ran 97 times and the run finished. A full array of live edicts still stops with id's error. `QOG_EDICT_MARGIN` stays 128, the fallback only helps when free slots exist, and a long fight can fill the array with live gibs and backpacks.
-- Verification, hidden and silent, against a build of c97750d (`+_cl_color 0` on every run), identical state hashes in `qogtest_hash`, the 8-map fight with save and load and `qogtest_m_save` (copies with their own save names), also with `-DQOG_AOT=ON` against the interpreted base. Byte-identical shots, 113 `qogtest_d_shots`, 8 fight end frames, 10 new chase view frames (`qogtest_mm_chase.cfg`, four colour pairs, two maps), 12 menu pics apart from the blinking cursor cell. Per-frame hashes of `qogtest_h_hud.cfg` (997 frames) and the chase script match one of two base runs on every frame except the startup console (build time) and frames that show a notify line or a map load, which also differ between two base runs. `qogtest_reg.cfg` logs equal apart from memory lines and the render peaks, which also differ between two base runs (the turning in that script follows real time).
+- Verification, hidden and silent, against a build of 23a89cb (`+_cl_color 0` on every run), identical state hashes in `qogtest_hash`, the 8-map fight with save and load and `qogtest_m_save` (copies with their own save names), also with `-DQOG_AOT=ON` against the interpreted base. Byte-identical shots, 113 `qogtest_d_shots`, 8 fight end frames, 10 new chase view frames (`qogtest_mm_chase.cfg`, four colour pairs, two maps), 12 menu pics apart from the blinking cursor cell. Per-frame hashes of `qogtest_h_hud.cfg` (997 frames) and the chase script match one of two base runs on every frame except the startup console (build time) and frames that show a notify line or a map load, which also differ between two base runs. `qogtest_reg.cfg` logs equal apart from memory lines and the render peaks, which also differ between two base runs (the turning in that script follows real time).
 - Shared config. `data/id1/config.cfg` is saved by every run. A chase test that changed the player colours left `_cl_color` non-zero there, which changes the player's edict (team) and therefore every state hash. All my runs now pass `+_cl_color 0`. Other agents comparing hashes across time should do the same or check the saved colour.
 - Looked at and left. `leafnums` (recomputing PVS leafs per frame would cost a BSP walk per entity on the M0+), `sv.signon` (6.5 KB static, worst map still needs 5 KB, and a late makestatic would overflow an exactly sized copy), `client_t.message` (datagrams are appended to the client buffer before the reliable message, so the two cannot share it), `MSG_ReadString`'s 2 KB buffer, `cl_lightstyle`, the particle count.
 - Edit outside the earlier files. `engine/r_alias.c` (`R_AliasDrawTranslated` and the branch to it in `R_AliasDrawModel`).
@@ -2559,7 +2559,7 @@ Start plus episode 1 (`start`, `e1m1` to `e1m8`) in the board's data region, 20,
 
 - Layout for start plus episode 1, pak with stubs 6,577,520 bytes at `0x10400000`, 41,616 bytes of padding, `qogbake.bin` 10,226,672 bytes at `0x10A50000` (81 models), end at `0x11410BF0`.
 - How it stays exact. `mkpak --maps-last` puts the maps after every other file, the bake runs on that full pak for the address after the pak with stubs (`-bakebase` may lie inside the full pak with `-bakestubs`, and any pack pointer past it makes the model unbakeable), and `mkboard` checks that no other file moves and that every map is in the image against its stub. The full pak is kept as `<out>\src.pak` for `qog_bake check -bakesrc`.
-- Verification, hidden and silent, against a build of c92533c with the full paks, the new `qogtest_j_ep1.cfg` (then `_ep1b`, `_ep1c`) visits `start` and `e1m1` to `e1m8` with `host_framerate 0.05`, 2 frames and a state hash per map. All 9 hashes and 18 frames identical on the board layout and on the full paks with the new build. `qogtest_hash` identical on all three and with `-nobake`. `qog_bake check -bakesrc` 0 differences over 81 models. The same tour with the mixer on (`-silentsound +volume 0`, no audio device opened) and the new `qogtest_j_menu.cfg` (every menu) show no load error on the board layout and the same 9 hashes as the full paks. `start` to `e1m4` checked the same way.
+- Verification, hidden and silent, against a build of 466cff4 with the full paks, the new `qogtest_j_ep1.cfg` (then `_ep1b`, `_ep1c`) visits `start` and `e1m1` to `e1m8` with `host_framerate 0.05`, 2 frames and a state hash per map. All 9 hashes and 18 frames identical on the board layout and on the full paks with the new build. `qogtest_hash` identical on all three and with `-nobake`. `qog_bake check -bakesrc` 0 differences over 81 models. The same tour with the mixer on (`-silentsound +volume 0`, no audio device opened) and the new `qogtest_j_menu.cfg` (every menu) show no load error on the board layout and the same 9 hashes as the full paks. `start` to `e1m4` checked the same way.
 - What is left needs the user. Exact sizes in docs/game-data.md. `QOG_DATA_OFFSET` to 0x200000 gives 2,097,152 bytes (app area 1.87 MB), to 0x180000 2,621,440 bytes (app area 1.37 MB, too small for compiled QuakeC), 4-bit ADPCM about 1,284,085 bytes, alias model stubs up to 182,596 bytes, `progs.dat` without statements 167,520 bytes. All five give at most 4,255,641 bytes, still short of 4,328,432. With the offset at 0x200000 alone `start` to `e1m5` fits (13.37 MB of 13.94).
 - Edits outside the earlier files. `engine/host_cmd.c` (the demo loop, behind `QOG_DEMOS_OPTIONAL`), one declaration in `engine/common.h` (`COM_HasFile`), and one new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`.
 - The shared `data/id1/qogbake.bin` needs no rebuild, the layout hash did not change, and without `-bakestubs` the bake writes what it wrote before.
@@ -2590,7 +2590,7 @@ Part B, off by default and not in the shipped flag lists (built with extra `-D` 
 | `QOG_ZBUFFER8`, one byte of depth, id's 16-bit value shifted right by 3 and clamped to 255 | 97,280 B (−48,640) | 24 of 177 frames identical, 0.39% of view pixels differ, objects nearer than about 16 units tie, so the weapon covers its own muzzle flash, and models close to walls show coarser depth steps |
 | Both | 76,000 B (−69,920) | As both above |
 
-Verification (hidden and silent, against a build of 2c6c10f with the same test tooling). `qogtest_d_shots.cfg` (113 frames, demos 1 to 3 including the underwater demo2, every map's spawn view), `qogtest_e_shots*.cfg` (64), `qogtest_sky.cfg`, `qogtest_demo.cfg`, `qogtest_f_hash.cfg` all byte-identical, state hashes identical in `qogtest_hash.cfg`, `qogtest_e_shots*.cfg` and `qogtest_f_hash.cfg`, no Short messages. New per-frame hashes (`qog_framehash`, new `qogtest_h_*.cfg` scripts) over the three demos, `qog_tour_fight` on every map of the full game (the e4m5 run stops at a QuakeC teleport error in both builds), `qog_tour e1m1 e3m6 e4m7` with edge and surface reports, and a status bar script (console, menu, pause, viewsize 80, scoreboard, death, intermission), 45,525 frames. Every frame equals a base run except the console frames at startup and at each map change, which show the build time or the `qog_mem` video figure. Those were dumped from both builds and differ only in those text cells (checked for every such frame in the first 4,000 of each run, and they fall in the same places later). Two runs of the same build differ on a few frames around map loads, so each frame is compared against two base runs.
+Verification (hidden and silent, against a build of 8dc10b6 with the same test tooling). `qogtest_d_shots.cfg` (113 frames, demos 1 to 3 including the underwater demo2, every map's spawn view), `qogtest_e_shots*.cfg` (64), `qogtest_sky.cfg`, `qogtest_demo.cfg`, `qogtest_f_hash.cfg` all byte-identical, state hashes identical in `qogtest_hash.cfg`, `qogtest_e_shots*.cfg` and `qogtest_f_hash.cfg`, no Short messages. New per-frame hashes (`qog_framehash`, new `qogtest_h_*.cfg` scripts) over the three demos, `qog_tour_fight` on every map of the full game (the e4m5 run stops at a QuakeC teleport error in both builds), `qog_tour e1m1 e3m6 e4m7` with edge and surface reports, and a status bar script (console, menu, pause, viewsize 80, scoreboard, death, intermission), 45,525 frames. Every frame equals a base run except the console frames at startup and at each map change, which show the build time or the `qog_mem` video figure. Those were dumped from both builds and differ only in those text cells (checked for every such frame in the first 4,000 of each run, and they fall in the same places later). Two runs of the same build differ on a few frames around map loads, so each frame is compared against two base runs.
 
 ## 2026-11-23, Model table in flash, server tables, board data image (PC and ARM build, registered data)
 
@@ -2608,7 +2608,7 @@ Engine static RAM on the ARM meter 202.8 to 124.5 KB. Board link overflow (`quak
 - The most models one level used was 187 (e3m4), inside the 192-entry table. The table is emptied at every level change. In the normal path (`-nobake`) an alias model is now loaded again on each level, as its `model_t` is freed with the hunk.
 - `tools/mkboard.py` builds the board's data image, a trimmed pak (mkpak now takes several paks, later ones winning), `qog_bake` run on the PC with that pak alone so the addresses are the board's, and the image at the next 64 KB boundary. `start e1m1 e1m2` is 9.03 MB of pak plus 1.30 MB of image, 10.36 MB of the 11.94 MB region. A whole episode does not fit, its trimmed pak alone is 16.5 MB. The PC ran that layout (`-basedir build-board\qogboard`) with the same state hashes as the full paks and `qog_bake check` 0 differences, also with the image moved to `0x10E00000` by `--bake-base`.
 - `port/rp2040/sys_rp2040.c` serves the image as `id1/qogbake.bin` from the first 64 KB boundary after the pak. The board CMake has `-DQOG_AOT=ON` (with `QOG_AOT_PAK`, off by default) and a `QOG_HUNK_KB` cache value. Compiled QuakeC links on the board, 500 KB of flash, no change to static RAM. With a realistic hunk (about 393 KB for E1M1) the overflow would be about 435 KB.
-- Verification against a build of 4e5dc15, hidden and silent, the same state hashes in `qogtest_hash`, `qogtest_f_hash` (8 maps, fight, save and load) and `qogtest_m_save`, 113 `qogtest_d_shots` frames, 64 `qogtest_e_shots` frames and 8 `qogtest_f_hash` frames byte-identical, the 32-map `qogtest_reg` and the `e1m1 e3m6 e4m7` tour logs equal apart from the model counts and times. With `-nobake` the hashes and the 113 demo frames are identical too.
+- Verification against a build of c22ca4b, hidden and silent, the same state hashes in `qogtest_hash`, `qogtest_f_hash` (8 maps, fight, save and load) and `qogtest_m_save`, 113 `qogtest_d_shots` frames, 64 `qogtest_e_shots` frames and 8 `qogtest_f_hash` frames byte-identical, the 32-map `qogtest_reg` and the `e1m1 e3m6 e4m7` tour logs equal apart from the model counts and times. With `-nobake` the hashes and the 113 demo frames are identical too.
 - Edits outside the earlier files, one line each in `engine/r_bsp.c` and `engine/r_draw.c` (the per-frame arrays through `MODFRAME`), two loop bounds and `checkpvs` in `engine/pr_cmds.c`, and the model and precache lines in `port/common/qog_mem.c`.
 - Main must regenerate `data/id1/qogbake.bin` after the merge (the layout hash changed, the old image is refused and models load the normal way until then).
 
@@ -2696,7 +2696,7 @@ Frames from `tools/arm_report.py` with the worktree's 1,600 edges, 640 surfaces,
 - Deepest render chain is about 29 KB shorter. With main's 2,000 edges and 800 surfaces R_EdgeDrawing should be about 2,000 × 24 + 800 × 40 + 96 ≈ 80 KB instead of 105,712.
 - Static RAM about −0.9 KB (16-bit edge lists, no static sentinels). Board overflow 187,256 to 186,296 bytes.
 - Limits checked at R_NewMap, at most 2,725 edges for 16-bit links, fewer than 65,535 map edges (largest registered map e3m5 has 16,923), fewer than 65,536 surfaces. Spans are checked at compile time (8,191).
-- Verified hidden and silent against a build of 89a587a after each change, 113 shots (demo1 to demo3 every 40 frames, and the spawn view of every registered map) byte-identical, the same state hashes, and the same `qog_tour e1m1 e2m6 e3m6 e4m7` peaks. The near-plane alias clip path ran about 95,000 times in the shot run.
+- Verified hidden and silent against a build of 51e9d75 after each change, 113 shots (demo1 to demo3 every 40 frames, and the spawn view of every registered map) byte-identical, the same state hashes, and the same `qog_tour e1m1 e2m6 e3m6 e4m7` peaks. The near-plane alias clip path ran about 95,000 times in the shot run.
 - The largest registered alias model is boss.mdl with 325 vertices, so `QOG_MAXALIASVERTS` 328 would save another 56 × 28 B on R_AliasDrawModel's stack. Not changed here (shared build line).
 - Not measured, speed on the board. Each link now costs an add (edges, spans) or a multiply (surfaces) to decode.
 
