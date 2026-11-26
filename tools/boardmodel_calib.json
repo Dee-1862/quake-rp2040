@@ -1,4 +1,47 @@
 {
+ "board": {
+  "commit": "f7d9450",
+  "fast": {
+   "frame": 49.908256880733944,
+   "phases": {
+    "bmodels": 3.35,
+    "edgescan": 6.48,
+    "models": 3.99,
+    "other": 0.77,
+    "parts": 0.9,
+    "surfaces": 10.82,
+    "vmodel": 2.69,
+    "world": 9.08
+   },
+   "pipe": 15.5,
+   "post": 0.52,
+   "pre": 2.5799999999999996,
+   "race": 1.74,
+   "scanwait": 6.24
+  },
+  "lcd": "pio",
+  "mhz": 300.0,
+  "spi": 60.0,
+  "turbo": {
+   "frame": 44.77064220183486,
+   "phases": {
+    "bmodels": 3.38,
+    "edgescan": 6.13,
+    "models": 3.5,
+    "other": 0.6100000000000001,
+    "parts": 0.9,
+    "surfaces": 7.300000000000001,
+    "vmodel": 2.4,
+    "world": 8.65
+   },
+   "pipe": 11.8,
+   "post": 0.56,
+   "pre": 2.46,
+   "race": 0.0,
+   "scanwait": 7.32
+  }
+ },
+ "board_log": "tools/boardmodel_f7d9450_fast.csv.gz",
  "e1m1_board": {
   "frame": 55.2,
   "lmap": 2.0,
@@ -37,22 +80,30 @@
  "kf": 1.5220251608220137,
  "ki": 4.098467932313876,
  "log": "tools/boardmodel_ref.csv.gz",
+ "modes": [
+  "board"
+ ],
  "notify_frac_ref": 0.3458371454711802,
- "pre_ms_250": 1.035680389404297,
+ "pre_ms_250": 3.095999999999999,
  "pre_solved": true,
  "r": {
-  "bmodels": 1.3725262902715691,
-  "edgescan": 0.8272851209083926,
-  "grad": 1.0071140480371341,
-  "lmap": 1.0,
-  "models": 1.0550320654228469,
-  "other": 1.0,
-  "parts": 0.7995827266238082,
-  "spans": 0.8882638276916216,
-  "vmodel": 0.9772181141768899,
-  "world": 1.0067418680008666
+  "bmodels": 2.2841582372881013,
+  "edgescan": 1.35447080199631,
+  "grad": 1.3078587593009308,
+  "lmap": 1.298620312019228,
+  "models": 1.123792363342,
+  "other": 2.533241912151636,
+  "parts": 0.8682123915833734,
+  "spans": 1.1535174490722873,
+  "vmodel": 0.9598602965530674,
+  "world": 1.1027847276392322
  },
  "recon": {
+  "board": {
+   "cscale": 1.0,
+   "post": 0.624,
+   "wscale": 1.052871197462082
+  },
   "compute": {
    "cscale": 0.9006540775299072,
    "post": 0.3,
@@ -88,6 +139,7 @@
   "spi": 62.5,
   "view_total": 72.2
  },
+ "s1": 0.9839773178100587,
  "view_total_model": 72.20003654376157,
  "waits_ref": {
   "c0wait": 0.0,

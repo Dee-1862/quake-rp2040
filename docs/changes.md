@@ -2,6 +2,17 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: The board cost model recalibrated on the board's run of f7d9450, the Turbo status bar cap what-if (Agent AS, PC only, registered data)
+
+The board measured main f7d9450 at 20.0 fps in Fast and 22.3 in Turbo (300 MHz, flash 150, LCD by PIO at 60 MHz), against boardbench's 26.5 and 30.4 from the de58316 calibration. Nothing ran on hardware here, the numbers come from the lead's log.
+
+- tools/boardmodel.py `calibrate-board` (new): from the de58316 calibration, each phase's residual set so that the Fast log of f7d9450 gives the board's phases (`BOARD_F7`, frame weighted means of the demo's `[time cl]` lines), the surface work scaled to core 0's share plus core 1's `pipe`, core 1's speed fitted to core 0's share (0.98), the time around the view taken from the board (2.6 ms before, 0.5 after) and one scale on the waits fitted to the frame (1.05, so the waits the code implies were right and the three reconciliations are gone). Every sample of the range is recalibrated the same way.
+- Check on the run not used to calibrate: Turbo 43.9 ms (22.8 fps) against the board's 44.8 (22.3), phases within 0.4 ms except vmodel (2.0 against 2.4).
+- The wait table splits like the board's counters: row waits, the whole scanout in status bar frames (the edge table's wait at those rows, which the board counts as scanwait), after the world and in notify frames.
+- `hudcap:N` what-if: in Turbo the status bar rows go out at most N times a second of board time, a change waits for the next allowed frame (Agent AP's cap). Turbo 0.9 ms alone (1.2 at 5 a second), 4.2 with the notify clear, 6.7 with the whole race package.
+- New files: tools/boardmodel_f7d9450_fast.csv.gz and _turbo.csv.gz (the PC logs of f7d9450), tools/boardmodel_calib.json is now the board calibration, the de58316 one is tools/boardmodel_calib_de58316.json.
+- docs/fps-board.md: the board row, the phase comparison, the gap to 35 fps in Turbo (16.3 ms on the board, about 8.7 ms of compute after the scanwait fix) and the re-ranked attacks. Lessons L260 to L262.
+
 ## 2026-11-25: Alias triangles, third round, all exact (Agent AQ, PC and ARM build, registered data)
 
 Models (4.0 ms in Fast, 3.3 in Turbo by the model) and the view model (2.7 and 2.0). Three flags in d_polyse.c, on the rasterizer side only (r_alias.c and r_main.c, where Agent AM moves the front end to core 1, are not touched). All exact: r_fast 0, 1 and 2 draw the same bits as main 4b0c98b. Nothing ran on hardware.

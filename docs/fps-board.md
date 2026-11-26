@@ -1,97 +1,114 @@
 # FPS scoreboard: timedemo demo3 on the board
 
-Kept by Agent AS, the benchmark referee. Goal: 35 fps in the board's Benchmark (timedemo demo3), a 28.5 ms frame. Board numbers are measured on hardware. Model numbers come from `tools/boardbench.ps1` (docs/handoff.md), which plays demo3 on the PC with the board client's render flags, counts the work of every code path per frame on both cores, and turns the counts into board milliseconds with `tools/boardmodel.py`, calibrated on the board's own run of de58316.
+Kept by Agent AS, the benchmark referee. Goal: 35 fps in the board's Benchmark (timedemo demo3), a 28.5 ms frame. Board numbers are measured on hardware. Model numbers come from `tools/boardbench.ps1` (docs/handoff.md), which plays demo3 on the PC with the board client's render flags, counts the work of every code path per frame on both cores, and turns the counts into board milliseconds with `tools/boardmodel.py`. Since the f7d9450 board run the model is calibrated on that run (section 3).
 
 ## 1. Measured on the board
 
 | Commit | Mode | Clock, flash, LCD | demo3 fps | frame ms | Notes |
 | --- | --- | --- | ---: | ---: | --- |
 | before the speed round | Fast | 250, 125, SPI 62.5 | 9.3 | 107.5 | view 75.7 ms (Agent AK's figures) |
-| de58316 | Fast | 250, 125, SPI 62.5 | **13.6** | **73.3** | 1090 frames in 79.9 s. Phases below. E1M1 standing 18.0 fps (frame 55.2, view 53.2, race 6.0, lmap 2.0) |
+| de58316 | Fast | 250, 125, SPI 62.5 | 13.6 | 73.3 | 1090 frames in 79.9 s. E1M1 standing 18.0 fps (frame 55.2, view 53.2, race 6.0, lmap 2.0) |
+| **f7d9450** | **Fast** | 300, 150, PIO 60 | **20.0** | **49.9** | 1090 frames in 54.4 s |
+| **f7d9450** | **Turbo** | 300, 150, PIO 60 | **22.3** | **44.8** | 1090 frames in 48.8 s |
 
 de58316 phases, ms per view: spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total view 72.2.
 
-Not measured yet: anything after de58316. The next board log should give `race`, `scanwait` and the core 1 line (`pipe`, `wait`, `c0wait`, `early`) of `[time cl]` during demo3, and `last scan ... us for 152 rows`.
+f7d9450, frame weighted means of the `[time cl]` lines during the demo (the window with the load left out, log `run9_8.txt`). lmap, grad and spans are core 0's share of the surfaces, `pipe` is core 1's drawing:
 
-## 2. Model predictions per commit (demo3, board fps, 10 to 90% range)
+| | Fast | Turbo |
+| --- | ---: | ---: |
+| frame | 49.5 | 44.3 |
+| input, link, read, sound | 2.6 | 2.5 |
+| view (V_RenderView) | 41.5 | 35.9 |
+| scanwait (whole scanout waits) | 6.2 | 7.3 |
+| race (row waits) | 1.7 | 0.0 |
+| world | 9.08 | 8.65 |
+| bmodels | 3.35 | 3.38 |
+| edgescan (with c0wait) | 6.48 | 6.13 |
+| lmap + grad + spans, core 0 | 1.53 + 1.15 + 8.14 | 1.13 + 0.89 + 5.28 |
+| models, vmodel, parts | 3.99, 2.69, 0.90 | 3.50, 2.40, 0.90 |
+| setup, sky, turb, zspans | 0.77 | 0.61 |
+| core 1: pipe, wait, c0wait | 15.5, 2.3, 0.5 | 11.8, 1.8, 0.2 |
+| status bar rows sent | 22% of frames | 22% of frames |
+| scan, 152 rows / 200 rows | 13.05 / 17.15 ms | the same |
 
-| Commit | What it adds | Fast 300 MHz | Turbo 300 MHz | LCD |
+What drives scanwait: windows with notify text (a pickup message in the last 3 s) show 9 to 13 ms of scanwait a frame, windows with status bar frames and no notify text 0 to 1 ms. The late windows with every frame's status bar resent also had "You got the silver runekey" on screen.
+
+## 2. Model predictions per commit (demo3, board fps at 300 MHz)
+
+| Commit | Calibration | Fast | Turbo | Board |
 | --- | --- | ---: | ---: | --- |
-| de58316 | calibration run (13.6 at 250 MHz by construction) | 15.3 (15.0 to 15.8) | | SPI 50 |
-| cd1e749 | AL integer lights and Fast gradients, AN 300 MHz, AO Turbo | 18.0 (17.2 to 18.9) | 20.6 (19.2 to 22.2) | SPI 50 |
-| 768c8a6 + agent-as | AM two-core surfaces, AP PIO scanout and Turbo text list, AQ exact float cuts | **22.6 (21.4 to 23.4)** | **26.5 (24.5 to 27.7)** | PIO 60 |
-| the same, `-DQOG_LCD_PIO=OFF` | | 21.2 | 24.6 | SPI 50 |
+| cd1e749 | de58316 | 18.0 | 20.6 | not measured |
+| 768c8a6 + agent-as | de58316 | 22.6 | 26.5 | not measured |
+| f7d9450 | de58316 | 26.5 (24.9 to 27.4) | 30.4 (27.6 to 31.6) | **20.0 / 22.3: the model was 33% and 36% high** |
+| f7d9450 | f7d9450 Fast (now) | 20.0 (by construction) | **22.8** (board 22.3, 2% high) | |
 
-What the last three merges are worth by the model (300 MHz, ms per frame, Fast / Turbo): AM's pipeline 3.9 / 3.6 (what-if `nopipe`), AP's PIO scanout 2.8 / 3.0, AQ's cuts about 4 (bmodels 5.7 to 2.7, edgescan 6.0 to 4.8 before the pipeline). The agents estimated AM 9 to 12 ms at 250 MHz, AP about 4 ms and AQ 2.8 to 5.6 ms.
+f7d9450 with the new calibration, ms per view (world with its race wait):
 
-768c8a6 + agent-as at 300 MHz, LCD by PIO at 60 MHz, ms per view:
+| Phase | Fast board | Fast model | Turbo board | Turbo model |
+| --- | ---: | ---: | ---: | ---: |
+| world | 9.08 | 9.0 | 8.65 | 8.6 |
+| bmodels | 3.35 | 3.4 | 3.38 | 3.4 |
+| edgescan | 6.48 | 6.2 + 0.3 c0wait | 6.13 | 6.2 + 0.2 |
+| surfaces on core 0 | 10.82 | 10.8 | 7.30 | 6.9 |
+| models, vmodel, parts | 3.99, 2.69, 0.90 | 4.0, 2.7, 0.9 | 3.50, 2.40, 0.90 | 3.3, 2.0, 0.9 |
+| scanout waits | 8.0 (race + scanwait) | 8.3 | 7.3 | 8.6 |
+| frame | 49.9 | 49.9 | 44.8 | 43.9 |
 
-| Phase | de58316 board (250 MHz) | Fast | Turbo | Confidence |
-| --- | ---: | ---: | ---: | --- |
-| world (with its race wait) | 10.4 | 8.3 | 7.9 | high |
-| bmodels | 6.9 | 2.7 (2.0 to 3.3) | 2.7 | medium: AQ's cuts priced from AQ's cycle reads |
-| edgescan | 7.2 | 4.8 (4.0 to 5.6) | 4.8 | medium (AQ) |
-| lmap, work of both cores | 13.9 | 3.2 (2.4 to 3.9) | 2.9 | medium |
-| grad, work of both cores | 3.1 | 1.0 (0.6 to 2.0) | 0.9 | medium |
-| spans, work of both cores (one core's whole surfaces) | 16.9 (core 0's half) | 25.0 | 16.3 (14.9 to 18.0) | Fast high, Turbo medium |
-| surfaces after the scan, on core 0's clock | | 13.4 | 8.6 | **low to medium**: core 1's speed beside core 0 (0.8 to 1.0) and the early share are modelled, not measured |
-| core 0's wait for core 1's last surface | | 0.4 | 0.3 | low |
-| models | 5.1 | 4.3 | 3.6 | high |
-| vmodel | 3.4 | 2.8 | 2.1 | high |
-| parts | 1.2 | 1.0 | 1.0 | high |
-| scanout waits: before the world, after it, notify frames | about 1 to 4 (not split out) | 3.1, 0.4, 7.0 | 1.0, 1.8, 7.7 | **low**: see section 3 |
-| frame | 73.3 | 44.3 (42.6 to 46.6) | 37.7 (35.9 to 40.3) | |
+The Turbo column is a check: only the Fast run was used to calibrate.
 
-The pipeline in the model: core 1 draws whole lit world surfaces while core 0 scans edges, up to the pixels handed on early (the PC counts 49% of the pipelined pixels early in Fast, 61% in Turbo), then both share the rest after core 0 has drawn the sky, water and brush surfaces, and core 0 waits on average half of core 1's last surface.
+## 3. What the board run changed in the model
 
-## 3. How well the model reproduces de58316
+- The waits were right, the compute was too cheap. The scanout waits the code implies (row waits, the edge table at the status bar rows, the whole scanout after R_RenderWorld, notify frames) need a scale of only 1.05 to match the board's frame, so the three reconciliations of the de58316 calibration (waits x 0.31 and the others) are gone. The compute was underpriced for the later exact paths: residuals bmodels x 2.28, edgescan x 1.35, surface work x 1.30, world x 1.10, models x 1.12 against the de58316 fit, setup, sky and turb x 2.5. Core 1 draws at 0.98 of core 0's speed.
+- The board's split of the waits is like the model's: scanwait holds notify frames, the edge table's wait at the status bar rows and the wait after the world, race only partial row waits.
+- The time around the view is measured now (input, link, read, sound 2.6 ms, present and status bar 0.5 ms), not fitted.
+- Ranges for f7d9450 itself are narrow by construction. For a branch they come from its changed work (weights scaled at random and refitted on both board runs).
+- `python tools/boardmodel.py calibrate-board --calib tools/boardmodel_calib_de58316.json --log tools/boardmodel_f7d9450_fast.csv.gz -o tools/boardmodel_calib.json` makes the calibration again (`BOARD_F7` in the script holds the board numbers).
 
-- Per phase: exact by construction (a residual per phase). The two factors underneath (float helper calls x 1.52, integer cycles x 4.10 against the a priori weights) explain the nine phases with a 17% rms error: bmodels 27% under, edgescan 20% over, parts 25% over, the others within 11%.
-- E1M1 standing (another scene, same build): 53.6 ms against the board's 55.2 (3% under), row race 4.8 ms plus the vertex cache wait against the board's race 6.0.
-- The demo3 frame: the scanout waits the code implies give 79.5 ms against the measured 73.3 (8% over), because notify text (35% of demo3's frames in board time at 13.6 fps) and status bar frames wait for the whole scanout while the board's own view total leaves about 1 ms outside the view. Three reconciliations (a constant offset, every wait x 0.31, every phase x 0.90) are averaged and their spread is in every range. The `race` and `scanwait` fields of the next demo3 log settle it.
-- The reference log is now the merged tree with Agent AL's six flags, Agent AQ's eight and `QOG_DRAW_CORE1` taken out: every count equals the first reference's (de58316 equivalent) within 1%.
+## 4. Remaining gap to 35 fps (28.5 ms) in Turbo
 
-## 4. Remaining gap to 35 fps (28.5 ms)
+Turbo is 44.8 ms on the board, 16.3 ms to go (the model's 43.9, 15.4 to go).
 
-Turbo at 300 MHz with the PIO scanout is 37.7 ms, 9.2 ms to go. A budget that adds up to 28.5 ms:
-
-| Item on core 0's clock | Turbo now | budget at 35 fps | gap |
+| Item on core 0's clock | Turbo now | after the scanwait fix (race package with the status bar cap) | budget at 35 fps |
 | --- | ---: | ---: | ---: |
-| scanout waits and the time around the view (central) | 6.5 | 3.5 | 3.0 |
-| world | 7.9 | 5.0 | 2.9 |
-| surfaces after the scan and the last-surface wait | 8.9 | 7.5 | 1.4 |
-| models + vmodel | 5.7 | 4.5 | 1.2 |
-| edgescan | 4.8 | 4.8 | 0 |
-| bmodels | 2.7 | 2.2 | 0.5 |
-| parts, other | 1.2 | 1.0 | 0.2 |
-| frame | 37.7 | 28.5 | 9.2 |
+| scanout waits | 8.6 | about 1.9 | 1.5 |
+| input, link, read, sound, present, status bar | 3.0 | 3.0 | 3.0 |
+| world | 8.6 | 8.6 | 5.5 |
+| edgescan and c0wait | 6.4 | 6.4 | 4.3 |
+| surfaces on core 0 | 6.9 | 6.9 | 6.0 |
+| bmodels | 3.4 | 3.4 | 2.2 |
+| models + vmodel | 5.3 | 5.3 | 4.5 |
+| parts, other | 1.5 | 1.5 | 1.5 |
+| frame | 43.9 | 37.2 | 28.5 |
 
-Fast is 44.3 ms, 15.8 to go: the same items plus about 5 ms more of surfaces (twice the pixels).
+After the scanwait is fixed about 8.7 ms of core 0's compute remains to go: world and the edge scan are the two biggest items (15 ms together), then the surfaces core 0 draws, models and brush models.
 
-Combined cases (model what-ifs, Turbo / Fast fps): the race package with world x 0.5 and spans x 0.7 gives 34.8 / 28.8, adding models x 0.7 gives **37.0 / 30.6**. So Turbo can reach 35 fps with the exact race package, a cheaper world front end, faster span pixels and alias models on core 1. Fast needs about 6 ms more than that.
+## 5. Next attacks for 35 fps in Turbo, ranked by expected ms saved per unit of risk
 
-## 5. Next attacks, ranked by expected ms saved per unit of risk
+Model what-ifs on the f7d9450 calibration, 300 MHz, PIO 60 MHz, ms per frame (`tools\boardbench.ps1 -WhatIf "label=item,item;..."`). Risk: 1 low (exact, small code), 2 medium, 3 high.
 
-Savings are the model's what-ifs at 300 MHz with the PIO scanout, central, ms per frame (`powershell -File tools\boardbench.ps1 -WhatIf "label=item,item;..."`). Risk: 1 low (exact, small code), 2 medium, 3 high (RAM, hardware or picture).
+| Rank | Attack | Turbo ms | Fast ms | Risk | ms per risk |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 | **Exact race package**: SCR_SetUpToDrawConsole clears the notify rows after a ScanFree of those rows only (not the whole scanout), the status bar cap, the edge table's status bar wait as a row wait, R_DrawBEntitiesOnList before the scanout-end wait | 6.7 (notify alone 1.9, notify with the cap 4.2) | 4.4 | 1 | 6.7 |
+| 2 | World front end x 0.5 (BSP walk on core 1, which idles after its scanout) | 2.6 (2.4 more after 1) | 3.4 | 2 | 1.2 |
+| 3 | Brush models x 0.5 | 1.6 | 1.6 | 1.5 | 1.1 |
+| 4 | Edge scan x 0.5 (the scan split over both cores, a sorter and a span maker a line behind) | 1.8 (1.9 more after 1 and 2) | 1.9 | 2 | 0.95 |
+| 5 | Span pixels x 0.7 | 1.9 (2.1 more after 1, 2, 4) | 3.0 | 2 | 0.95 |
+| 6 | Turbo status bar cap at 10 a second alone (approved, Agent AP building it) | 0.9 (5 a second 1.2) | 0 | 1 | 0.9 |
+| 7 | Alias front end and particles on core 1 (models + vmodel x 0.7) | 1.5 | 1.9 | 2 | 0.75 |
+| 8 | No scanout waits at all (two packed views, a home for the Turbo z-buffer) | 1.9 after 1 (8.6 alone) | n/a | 3 | 0.6 |
+| 9 | lmap + grad x 0.5 | 1.1 | 1.3 | 2 | 0.55 |
 
-| Rank | Attack | Fast ms | Turbo ms | Risk | ms per risk (Turbo) | Why |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | **Race package, exact**: notify rows cleared after a VID_QogScanFree of those rows only (not VID_QogScanDone), the edge table's status bar wait made a ScanFree as edges reach those rows, R_DrawBEntitiesOnList before the wait for the scanout's end | 2.9 | 4.9 | 1 | 4.9 | notify frames (about half of them now, the frames got faster) and status bar frames wait for the whole scanout |
-| 2 | World front end x 0.5 (BSP walk handed to core 1, which idles through the world after its scanout, or the edge scan split as frank-quake2 does) | 3.0 (2.7 more after 1) | 2.6 (1.6 more after 1) | 2 | 1.3 | the biggest single core 0 phase left. Agent AQ found it mostly integer and flash reads now |
-| 3 | Span pixels x 0.7 (both cores' drawer: the per span start, the interpolator loop) | 3.8 | 2.4 | 2 | 1.2 | the pipeline's critical share |
-| 4 | Turbo with no scanout wait at all (two packed views alternating, a home for the Turbo z-buffer) | n/a (no RAM) | 3.2 after 1 (8.1 alone) | 3 | 1.1 | |
-| 5 | Alias front end and particle physics on core 1 while core 0 draws its share (models and vmodel x 0.7) | 2.0 | 1.6 | 2 | 0.8 | core 1 idles through models, vmodel and parts |
-| 6 | Brush models x 0.5 more (Fast integer clip points, box test) | 1.3 | 1.2 | 1.5 | 0.8 | AQ took most of the float work |
-| 7 | Edge scan x 0.7 (R_LeadingEdge's first test into the loop, about 0.2 ms by AQ) | 0.8 | 0.8 | 2 | 0.4 | |
-| 8 | lmap x 0.5 more | 0.8 | 0.7 | 2 | 0.35 | mostly gone |
+Combined, Turbo / Fast fps: 1 alone 26.9 / 22.0. 1 + 2: 28.7 / 23.6. 1 + 2 + 4: 30.4 / 24.8. 1 + 2 + 4 + 5: 32.5 / 26.9. 1, 2, 3, 4, 5 and 7: **34.9 / 29.4**. With no waits at all on top: 42.1 / 36.4. So 35 fps in Turbo needs the race package and about 8.7 ms of compute from world, edge scan, spans, brush models and models together, or a second packed buffer on top of fewer of them.
 
-The ranking changed: the brush models (rank 2 before) mostly went with Agent AQ, the PIO scanout (rank 5 before) is in, and the world front end now pays without the race package first, because the faster scanout leaves less to hide behind (Agent AP's point).
+The status bar cap alone is small because status bar frames mostly coincide with notify frames (a pickup prints and flashes the status bar together), and a notify frame waits for the whole scanout either way. Its value comes with the notify fix: notify alone 1.9 ms, the cap alone 0.9, both 4.2.
 
-Rule for every claim: run `tools\boardbench.ps1` on the branch before and after, and quote its fps and range. The agents' own estimates ran about 2x optimistic, and the model is calibrated on the board, so it is the number to beat.
+Rule for every claim: run `tools\boardbench.ps1` on the branch before and after, and quote its fps and range.
 
 ## 6. History of this scoreboard
 
 | Date | Who | Change |
 | --- | --- | --- |
 | 2026-11-25 | Agent AS | First version: model calibrated on de58316, main cd1e749 predicted |
-| 2026-11-25 | Agent AS | main 768c8a6 merged: Agent AM's pipeline, Agent AP's PIO scanout and Turbo text, Agent AQ's paths in the model, new reference log, attacks re-ranked |
+| 2026-11-25 | Agent AS | main 768c8a6 merged: Agent AM's pipeline, Agent AP's PIO scanout and Turbo text, Agent AQ's paths in the model, attacks re-ranked |
+| 2026-11-25 | Agent AS | Board run of f7d9450 (20.0 and 22.3 fps against the model's 26.5 and 30.4): model recalibrated on it, status bar cap what-if, attacks re-ranked for Turbo |

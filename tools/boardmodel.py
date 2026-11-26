@@ -44,6 +44,22 @@ BOARD_REF = {
 # the dynamic light work, and its frame checks the race model.
 BOARD_E1M1 = {"lmap": 2.0, "frame": 55.2, "view": 53.2, "race": 6.0}
 LMAP_BASE = ("lms_builds", "lms_lux", "lms_stylelux", "lms_dlbuilds")
+# main f7d9450 on the board (300 MHz, flash 150, LCD by PIO at 60 MHz), the
+# frame weighted means of the [time cl] lines during timedemo demo3 (the
+# window with the demo's load left out), docs/fps-board.md. The phases are
+# core 0's: lmap, grad and spans are core 0's share of the surfaces, core 1's
+# drawing is "pipe" of the core1 line.
+BOARD_F7 = {
+    "commit": "f7d9450", "mhz": 300.0, "spi": 60.0, "lcd": "pio",
+    "fast": {"frame": 54.4 * 1000 / 1090, "phases": {"world": 9.08, "bmodels": 3.35, "edgescan": 6.48,
+             "surfaces": 1.53 + 1.15 + 8.14, "models": 3.99, "vmodel": 2.69, "parts": 0.90,
+             "other": 0.20 + 0.05 + 0.05 + 0.47}, "pipe": 15.5, "race": 1.74, "scanwait": 6.24,
+             "pre": 0.65 + 0.68 + 1.14 + 0.11, "post": 0.13 + 0.39},
+    "turbo": {"frame": 48.8 * 1000 / 1090, "phases": {"world": 8.65, "bmodels": 3.38, "edgescan": 6.13,
+              "surfaces": 1.13 + 0.89 + 5.28, "models": 3.50, "vmodel": 2.40, "parts": 0.90,
+              "other": 0.20 + 0.03 + 0.04 + 0.34}, "pipe": 11.8, "race": 0.0, "scanwait": 7.32,
+              "pre": 0.60 + 0.62 + 1.12 + 0.12, "post": 0.14 + 0.42},
+}
 PHASES = ["world", "bmodels", "edgescan", "lmap", "grad", "spans", "models", "vmodel", "parts"]
 OTHER = "other"             # setup, zspans, sky, turb: in the view total, not in the board's list
 FCALL = 65.0                # a priori cycles of one float helper call through the ROM (55 to 75)
@@ -314,11 +330,13 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
     opts = opts or {}
     rms = row_ms(spi, mhz, opts.get("lcd", "pl022"))
     pipe, text, s1 = opts.get("pipe", False), opts.get("text", False), opts.get("s1", CORE1_SPEED)
+    hudcap = opts.get("hudcap", 0.0) if turbo else 0.0
+    last_hud, hud_pending, sent_prev = -1.0, False, None
     t_now = 0.0
     notes = []          # board times of console lines and centre prints
     prev_packed = 0
     total = []
-    waits = {"race_view": 0.0, "race_world": 0.0, "race_done": 0.0, "notify": 0.0, "c0wait": 0.0,
+    waits = {"race_view": 0.0, "race_world": 0.0, "race_done": 0.0, "notify": 0.0, "hud_whole": 0.0, "c0wait": 0.0,
              "surf_c0": 0.0}
     notify_frames = 0
     for fr, m in zip(frames, ms):
@@ -328,7 +346,7 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             notes.append((t_now, CENTER_S))
         notes = [n for n in notes if t_now - n[0] < n[1]]
         notify = bool(notes) and "nonotify" not in whatif
-        rows_prev = int(fr.get("racerows", 200))
+        rows_prev = int(fr.get("racerows", 200)) if sent_prev is None else sent_prev
         t_scan = rows_prev * rms
         t = pre_ms
         if "norace" in whatif:
@@ -354,6 +372,8 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
                 if ready > t:
                     # the vertex cache's wait (the last range) is inside the world phase timer
                     key = "race_world" if j == len(ranges) - 1 and len(ranges) >= 3 else "race_view"
+                    if need >= rows_prev:   # the board counts it as scanwait: the edge table at the status bar rows
+                        key = "hud_whole"
                     waits[key] += (ready - t) * wscale
                     t += (ready - t) * wscale
             t += m["world"]
@@ -379,6 +399,14 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             else:
                 packed = VIEW_ROWS
         prev_packed = packed
+        rows = int(fr.get("rows", VIEW_ROWS))
+        if hudcap:      # Agent AP's Turbo cap: a change waits until 1 / hudcap s after the last full scan
+            want = rows > VIEW_ROWS or hud_pending
+            if want and (last_hud < 0 or t_now - last_hud >= 1.0 / hudcap):
+                rows, hud_pending, last_hud = 200, False, t_now
+            else:
+                rows, hud_pending = VIEW_ROWS, want
+        sent_prev = rows
         total.append(t)
         t_now += t / 1000.0
     n = len(frames)
@@ -496,10 +524,69 @@ def calibrate(frames, feats, scale=None, pre=None, e1m1=None):
     return cal
 
 
-def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=(), lcd="pl022"):
+def calibrate_board(cal, frames, feats, board=None):
+    """Second calibration on a board run of the same commit as the log: every
+    phase residual, the surface work, core 1's speed, the time around the
+    view (measured) and one scale on the waits, so the Fast run comes out
+    as the board's. Mutates and returns cal."""
+    b = board or BOARD_F7["fast"]
+    mhz, spi, lcd = BOARD_F7["mhz"], BOARD_F7["spi"], BOARD_F7["lcd"]
+    f = 250.0 / mhz
+    cal["pre_ms_250"] = b["pre"] / f
+    cal["recon"]["board"] = {"post": b["post"] / f, "wscale": 1.0, "cscale": 1.0}
+    cal["modes"] = ["board"]
+    pipe = "QOG_DRAW_CORE1" in feats
+    w = weights_for(feats, cal.get("_scale"), cal.get("keymult"))
+    parts = frame_parts(frames, w, pipe)
+    opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats}
+    for _ in range(3):
+        ms = to_ms(parts, cal, mhz)
+        mp = mean_ms(ms)
+        _, waits, _ = simulate(frames, ms, False, mhz, spi, cal["pre_ms_250"] * f, 0.0, 1.0, (), dict(opts, s1=cal.get("s1", CORE1_SPEED)))
+        for ph in ("bmodels", "models", "vmodel", "parts"):
+            cal["r"][ph] *= b["phases"][ph] / mp[ph]
+        cal["r"][OTHER] *= b["phases"]["other"] / mp[OTHER]
+        cal["r"]["world"] *= max(0.5, b["phases"]["world"] - waits["race_world"]) / mp["world"]
+        work = mp["lmap"] + mp["grad"] + mp["spans"]
+        ks = (b["phases"]["surfaces"] + b["pipe"]) / work
+        for ph in ("lmap", "grad", "spans"):
+            cal["r"][ph] *= ks
+        ms = to_ms(parts, cal, mhz)
+        # core 1's speed: core 0's share of the surfaces as the board's
+        lo, hi = 0.3, 1.5
+        for _ in range(20):
+            s1 = (lo + hi) / 2
+            c0 = statistics.mean(pipeline(fr, m, s1)[2] for fr, m in zip(frames, ms))
+            if c0 > b["phases"]["surfaces"]:
+                lo = s1
+            else:
+                hi = s1
+        cal["s1"] = (lo + hi) / 2
+        ewait = statistics.mean(pipeline(fr, m, cal["s1"])[1] for fr, m in zip(frames, ms))
+        cal["r"]["edgescan"] *= max(0.5, b["phases"]["edgescan"] - ewait) / mean_ms(ms)["edgescan"]
+    ms = to_ms(parts, cal, mhz)
+    o = dict(opts, s1=cal["s1"])
+    lo, hi = 0.0, 3.0
+    for _ in range(24):
+        ws = (lo + hi) / 2
+        t, _, _ = simulate(frames, ms, False, mhz, spi, cal["pre_ms_250"] * f, b["post"], ws, (), o)
+        if statistics.mean(t) > b["frame"]:
+            hi = ws
+        else:
+            lo = ws
+    cal["recon"]["board"]["wscale"] = (lo + hi) / 2
+    return cal
+
+
+def predict(frames, feats, cal, mhz, spi, modes=None, whatif=(), lcd="pl022"):
     turbo = statistics.mean(fr.get("rfast", 1) for fr in frames) >= 1.5
     pipe = "QOG_DRAW_CORE1" in feats and "nopipe" not in whatif
-    opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats, "s1": cal.get("_s1", CORE1_SPEED)}
+    opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats,
+            "s1": cal.get("_s1", cal.get("s1", CORE1_SPEED))}
+    for wi in whatif:
+        if wi.startswith("hudcap:"):    # status bar rows sent at most this many times a second (Turbo)
+            opts["hudcap"] = float(wi.split(":")[1])
+    modes = tuple(modes or cal.get("modes", RECON))
     parts = frame_parts(frames, weights_for(feats, cal.get("_scale"), cal.get("keymult")), pipe)
     ms = to_ms(parts, cal, mhz)
     for wi in whatif:           # phase*factor: a phase made that much cheaper or dearer
@@ -511,11 +598,7 @@ def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=(), lcd="pl022"):
         ms = [{ph: v * (a + (1 - a) * mhz / 250.0) for ph, v in m.items()} for m in ms]
     f = 250.0 / mhz
     res = {"turbo": turbo, "modes": {}}
-    if "offset" not in modes:
-        modes = ("offset",) + tuple(modes)
-        keep = modes[1:]
-    else:
-        keep = modes
+    keep = modes
     for mode in modes:
         rc = cal["recon"][mode]
         c = rc["cscale"]
@@ -523,7 +606,7 @@ def predict(frames, feats, cal, mhz, spi, modes=RECON, whatif=(), lcd="pl022"):
         total, waits, nf = simulate(frames, msc, turbo, mhz, spi, cal["pre_ms_250"] * f * c,
                                     rc["post"] * f, rc["wscale"], whatif, opts)
         res["modes"][mode] = statistics.mean(total)
-        if mode == "offset":    # phases and waits as the code implies, for the tables
+        if mode == modes[0]:    # phases and waits for the tables
             mp = mean_ms(ms)
             mp["world"] += waits["race_world"]      # as the board's world timer shows it
             res.update({"phases": mp, "waits": waits, "notify_frac": nf})
@@ -586,14 +669,20 @@ def do_predict(a):
         c = calibrate(rframes, rfeats, scale, rng.uniform(0.8, 4.0), e1m1)
         c["_scale"] = scale
         c["_clock"] = rng.uniform(0.94, 1.0)
-        c["_s1"] = rng.uniform(0.8, 1.0)
+        if cal.get("board_log"):
+            if "_board" not in cal:
+                cal["_board"] = load_log(cal["board_log"])
+            calibrate_board(c, *cal["_board"])
+        else:
+            c["_s1"] = rng.uniform(0.8, 1.0)
         samples.append(c)
     out = {"mhz": a.mhz, "spi": a.spi, "lcd": a.lcd, "runs": {}}
     for name, path in zip(names, a.log):
         frames, feats = load_log(path)
         frames = frames[a.skip:]
         point = predict(frames, feats, cal, a.mhz, a.spi, lcd=a.lcd)
-        sp = [predict(frames, feats, c, a.mhz, a.spi, (RECON[i % 3],), lcd=a.lcd) for i, c in enumerate(samples)]
+        sp = [predict(frames, feats, c, a.mhz, a.spi, (c["modes"][0],) if c.get("modes") else (RECON[i % 3],),
+                      lcd=a.lcd) for i, c in enumerate(samples)]
         rng_ = {}
         for key in list(point["phases"]) + ["frame_ms", "fps"]:
             vals = sorted(s["phases"][key] if key in s["phases"] else s[key] for s in sp)
@@ -637,8 +726,9 @@ def print_table(out, cal):
             lo, hi = r["range"][ph]
             line += " %8.1f (%4.1f to %4.1f)" % (r["phases"][ph], lo, hi)
         print(line)
-    for key, label in (("race_view", "race wait before the world"), ("race_done", "race wait after the world"),
-                       ("notify", "whole scanout waits (notify text)"),
+    for key, label in (("race_view", "row waits before the world"), ("race_world", "row waits in the world timer"),
+                       ("hud_whole", "whole scanout, status bar frames"), ("race_done", "whole scanout after the world"),
+                       ("notify", "whole scanout, notify text"),
                        ("surf_c0", "surfaces after the scan, core 0 clock"),
                        ("c0wait", "core 0 waits for core 1's last surface")):
         line = "%-34s %8s" % (label, "")
@@ -664,7 +754,7 @@ def print_table(out, cal):
     line = "%-34s %8s" % ("fps by reconciliation (off/wait/cmp)", "")
     for n in names:
         md = out["runs"][n]["modes"]
-        line += " %22s" % ("/".join("%.1f" % (1000.0 / md[m]) for m in RECON))
+        line += " %22s" % ("/".join("%.1f" % (1000.0 / v) for v in md.values()))
     print(line)
     for n in names:
         r = out["runs"][n]
@@ -680,6 +770,10 @@ def main():
     c.add_argument("-o", "--out", required=True)
     c.add_argument("--e1m1", help="log of E1M1 standing at the start (-bmall), same build as --log")
     c.add_argument("--e1m1-skip", type=int, default=100)
+    cb = sub.add_parser("calibrate-board", help="recalibrate on the board's f7d9450 run (BOARD_F7)")
+    cb.add_argument("--calib", required=True, help="the de58316 calibration to start from")
+    cb.add_argument("--log", required=True, help="the Fast log of the board's commit")
+    cb.add_argument("-o", "--out", required=True)
     p = sub.add_parser("predict")
     p.add_argument("--calib", required=True)
     p.add_argument("--ref", help="the calibration log (default: the path in the calibration file)")
@@ -696,6 +790,18 @@ def main():
     a = ap.parse_args()
     if a.cmd == "calibrate":
         do_calibrate(a)
+    elif a.cmd == "calibrate-board":
+        with open(a.calib) as f:
+            cal = json.load(f)
+        frames, feats = load_log(a.log)
+        calibrate_board(cal, frames, feats)
+        cal["board_log"] = a.log
+        cal["board"] = BOARD_F7
+        with open(a.out, "w") as f:
+            json.dump(cal, f, indent=1, sort_keys=True)
+        print("recalibrated on %s (%s): core 1 speed %.2f, waits x %.2f, residuals %s"
+              % (a.log, BOARD_F7["commit"], cal["s1"], cal["recon"]["board"]["wscale"],
+                 " ".join("%s %.2f" % (k, v) for k, v in sorted(cal["r"].items()))))
     else:
         do_predict(a)
 
