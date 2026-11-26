@@ -87,6 +87,12 @@ void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed)
  * are until the present after that one. */
 void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font);
 void qog_video_wait_rows(uint32_t rows);
+/* QuakeOG (Agent AP): from the next present on, a scanout of every row of
+ * a frame whose rows and lines are one to one sends rows [first, src_h)
+ * first, then [0, first) (0: top to bottom). qog_video_wait_rows then
+ * counts rows in that order: it returns once the scanout has read as many
+ * rows as asked, in the order it sends them. */
+void qog_video_set_first(uint32_t first);
 
 /* Optional work for core 1 to do while its line DMA runs (sound mixing in
  * Phase 5). Must return quickly: one line is ~100 us on the wire. */

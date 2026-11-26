@@ -329,3 +329,13 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L252. Fewer stores do not shrink a stack frame on the M0+.** Moving D_PolysetScanLeftEdge's state into locals grew its frame from 120 to 144 B, because GCC spills the extra live values. Read the `.su` line of every changed function on the deepest chain (here under R_AliasDrawModel) before calling a locals rewrite free.
 
 **L253. A slow shared machine stretches every test run.** With other agents' games running, one 113-shot run took 25 minutes against 7 before, close to pctest's 900 s timeout. Check the log for `TIMEOUT` and the shot count of every run before comparing folders, and do not start a second game while a verification runs.
+
+**L210. Tag every wait site before believing a ranking of waits.** In demo3, 898 of 1,094 frames waited for the whole scanout in SCR_SetUpToDrawConsole, clearing notify rows that the 3D view then drew over. Neither the board timers (which fold it into the view) nor a model that counted waits by kind showed it. Record per frame how far into the scan each part of the frame waited (vid_pc.c `-scanmodel` with `VID_QogRaceMark`), then tag the sites once by hand.
+
+**L211. A clear that the coming view draws over is dead in a racing frame.** Before the race, a full-width clear of rows the view covers cost only its own time. With the scanout still running it costs the wait for the scan's end, and in Turbo it also spreads the packed view. Skip it when the view is sure to run (V_RenderView returns early only with con_forcedup) and covers the rows (in Turbo, only the rows its packed pixels reach).
+
+**L212. A scanout may send its rows in any order if the released count follows that order.** Sending the status bar rows first frees the start of the z-buffer (edge table, brush clip buffers) after 48 rows instead of 200. The game asks for a place in the send order (VID_QogScanNeed), not a row, and the latest place of a byte range is not always that of its last row.
+
+**L213. A change that keeps frames in a cheap state can make a later step pay for leaving it.** The Turbo text list kept notify frames packed, so the next frame's notify clear spread the packed view and waited for the scan's end, in almost every frame with text. Look at what the frame after the changed one does.
+
+**L214. Copy the reference binaries again after merging main.** After merging 4b0c98b the 121 Turbo shots showed 33 differing frames against a reference that was still the build of 768c8a6: the reference folder held a copy of the old executable, not a link to the rebuilt one. Rebuild and recopy the reference with every merge, and check its timestamp before reading a difference.

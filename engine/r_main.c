@@ -61,6 +61,25 @@ typedef struct
 
 static r_hudstate_t	r_hudshot;
 static qboolean		r_hudshot_valid;
+#if defined(QOG_HUD_CAP) && defined(QOG_HUD_SKIP) && defined(QOG_RFAST)
+#define QOG_HUD_CAP_ON
+/*
+QuakeOG (Agent AP): in Turbo (r_fast 2) the status bar rows go to the panel
+at most once every r_hudcap ms (0: every change, as in the other modes).
+A change in between, of the status bar or of the palette, leaves the panel
+showing the last status bar sent, and the first frame after the gap sends
+the newest one, so the last state always shows. The gap counts from the
+last frame that sent the rows, in real time. Exact and Fast are untouched.
+*/
+cvar_t			r_hudcap = {"r_hudcap", "100"};
+static double	r_hud_lastsend = -1.0;	// realtime of the last frame that sent the rows
+
+static qboolean R_QogHudCapHold (void)
+{
+	return r_fast.value >= 2 && r_hudcap.value > 0 && r_hud_lastsend >= 0
+		&& realtime >= r_hud_lastsend && realtime - r_hud_lastsend < r_hudcap.value * 0.001;
+}
+#endif
 static int			r_hud_sbbefore = -1;	// sb_updates when this frame's view was done
 
 static void R_HudStateGet (r_hudstate_t *s)
@@ -192,7 +211,11 @@ int R_HudFrameEndRows (qboolean palette_same)
 
 	if (r_hud_skipnow)
 	{
-		if (palette_same)
+		if (palette_same
+#ifdef QOG_HUD_CAP_ON
+			|| R_QogHudCapHold ()	// QuakeOG (Agent AP): the new palette's rows wait for the next slot
+#endif
+			)
 			rows = r_zalias_row;
 		else
 		{
@@ -201,6 +224,10 @@ int R_HudFrameEndRows (qboolean palette_same)
 		}
 	}
 	R_HudFrameEnd ();
+#ifdef QOG_HUD_CAP_ON
+	if (rows >= vid.height)
+		r_hud_lastsend = realtime;	// QuakeOG (Agent AP)
+#endif
 	return rows;
 }
 #endif
@@ -403,6 +430,9 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_aliastransadj);
 #ifdef QOG_RFAST
 	Cvar_RegisterVariable (&r_fast);	// QuakeOG (Agent AA)
+#endif
+#ifdef QOG_HUD_CAP_ON
+	Cvar_RegisterVariable (&r_hudcap);	// QuakeOG (Agent AP)
 #endif
 #ifdef QOG_RFAST_STATS
 	{
@@ -1504,6 +1534,9 @@ void R_EdgeDrawing (void)
 							  SPAN_RESERVE_EDGES);
 #endif
 	// id's sentinels were zeroed statics, and R_ScanEdges sets only some fields
+#ifdef QOG_VID_SCANRACE
+	VID_QogRaceMark (1);	// QuakeOG (Agent AP): the world's front end
+#endif
 #if defined(QOG_VID_SCANRACE) && defined(QOG_EDGES_IN_ZBUFFER)
 	// QuakeOG (Agent AK): the last frame's scanout may still read the start
 	// of the z-buffer (the status bar rows), which a big edge table reaches
@@ -1591,14 +1624,27 @@ void R_EdgeDrawing (void)
 	}
 
 #ifdef QOG_VID_SCANRACE
-	// QuakeOG (Agent AK): from here on the view draws anywhere in the frame
-	// and the z-buffer (brush clip buffers, spans): the last frame's scanout
-	// has to be over. The world's front end above is what it overlapped.
+	VID_QogRaceMark (2);	// QuakeOG (Agent AP): after the world's front end
+	// QuakeOG (Agent AP): the brush entities' front end overlaps the last
+	// frame's scanout too. Of the frame and the z-buffer it writes only the
+	// edge table (released above) and the brush clip buffers at the start
+	// of the z-buffer, which hold the status bar rows a scanout may still
+	// send. The wait for the scanout's end is before R_ScanEdges, which
+	// draws anywhere in the frame and the z-buffer.
+#if defined(QOG_EDGES_IN_ZBUFFER)
+	VID_QogScanFree (r_ztemp_base, r_ztemp_base + BMODEL_CLIP_BYTES);
+#else
 	VID_QogScanDone ();
+#endif
 #endif
 
 	if (r_drawculledpolys)
+	{
+#ifdef QOG_VID_SCANRACE
+		VID_QogScanDone ();
+#endif
 		R_ScanEdges ();
+	}
 
 // only the world can be drawn back to front with no z reads or compares, just
 // z writes, so have the driver turn z compares on now
@@ -1626,6 +1672,13 @@ void R_EdgeDrawing (void)
 #endif
 	QOG_PH_ADD (QOG_PH_BMODELS, ph);
 	}
+#ifdef QOG_VID_SCANRACE
+	VID_QogRaceMark (3);	// QuakeOG (Agent AP): after the brush entities
+	// QuakeOG (Agent AK): from here on the view draws anywhere in the frame
+	// and the z-buffer (spans): the last frame's scanout has to be over. The
+	// front end above (world and, Agent AP, brush entities) overlapped it.
+	VID_QogScanDone ();
+#endif
 
 	if (r_dspeeds.value)
 	{
@@ -1881,8 +1934,15 @@ void R_RenderView (void)
 		// r_hudshot and nothing else will draw there: leave the rows
 		r_hud_viewed = true;
 		r_hud_quiet = SCR_QogHudQuiet ();
-		if (r_hud_quiet && sb_updates >= vid.numpages && !cl.intermission && r_hudshot_valid
-			&& r_hudpanel_gen == r_hudshot_gen)
+		if (r_hud_quiet && !cl.intermission && r_hudshot_valid
+			&& ((sb_updates >= vid.numpages && r_hudpanel_gen == r_hudshot_gen)
+#ifdef QOG_HUD_CAP_ON
+				// QuakeOG (Agent AP): in Turbo a changed status bar waits for the
+				// next slot while the panel shows an earlier one. Sbar_Draw still
+				// draws it this frame and R_HudFrameEnd keeps its state
+				|| (r_hudpanel_gen >= 0 && R_QogHudCapHold ())
+#endif
+				))
 		{
 			r_hud_sbbefore = sb_updates;
 			r_hud_skipnow = true;
