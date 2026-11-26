@@ -156,7 +156,7 @@ Using main for game logic changes the headline from "Quake on one RP2040" to "**
 | USB CDC, PC → RP2040 | **300 KB/s – 1 MB/s**; plan for about 500 KB/s | USB FS bulk ceiling is about 1.2 MB/s. Published full-speed CDC measurements are 200–350 KB/s on other MCUs and depend heavily on the host OS and transfer size. No reliable RP2040 measurement was found. **Benchmark it on our board** (TinyUSB with 64-byte packets, big host writes). |
 | Flash erase + program, W25Q128JV | **~4 s/MB typical** with 64 KB block erase (16 × 150 ms + 4096 pages × 0.4 ms). **~13 s/MB** with 4 KB sector erase (256 × 45 ms + 1.6 s). Worst case is about 44 s/MB. | Datasheet figures quoted in `bsp/main_cpu/fs/fs_geom.h`. Block-erase figures are from the W25Q128JV datasheet. Use 64 KB erases for bulk level slots. |
 | One level (BSP 0.5–2 MB, converted) | **about 3–15 s** (2 MB: about 4 s USB + about 8 s flash, partly overlapped) | Above |
-| A whole converted episode (~14.9 MB, per `docs/fit-plan.md`) | **about 1.5–3.5 minutes** | Above |
+| A whole converted episode (~14.9 MB, per `docs/plans/fit-plan.md`) | **about 1.5–3.5 minutes** | Above |
 
 - **XIP stalls during writes.** While the display CPU erases or programs its own flash, XIP reads stop, so nothing can run from flash. Show a "Loading" screen drawn from RAM code.
   - The display CPU has no watchdog, so long writes are safe there.
@@ -253,7 +253,7 @@ Local (authoritative for the OG):
 - `third_party/wiliOGbsp/bsp/main_cpu/fpga/ice40.h`, `fpga_bitstream.h`, `io_dir.h`, `fpga_clk.h` (FPGA policy and path)
 - `third_party/wiliOGbsp/bsp/main_cpu/fs/fs_geom.h`, `fwog_fs.h` (flash timing, FAT layout, core1 hazard)
 - `third_party/wiliOGbsp/bsp/main_cpu/display_update/display_update.h`, `main_cpu/platform/board.h`, `display_cpu/platform/board.h`, `display_cpu/io_expander/ioexp_link.h`, `main_cpu/radio/cc1101.h`
-- `docs/fit-plan.md`, `docs/game-data.md` (this repo)
+- `docs/plans/fit-plan.md`, `docs/game-data.md` (this repo)
 
 Web:
 - [FREE-WILi OG product page (freewili.com)](https://freewili.com/freewili-og.html)

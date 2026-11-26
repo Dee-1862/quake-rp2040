@@ -28,7 +28,7 @@ See the GNU General Public License for more details.
  *
  * Hunk size: QOG_HUNK_KB. The engine does not fit in RAM yet; this layer
  * is built to measure code size, static RAM and stack frames on the target
- * (docs/fit-plan.md).
+ * (docs/plans/fit-plan.md).
  *
  * QuakeOG (Agent R): built with QOG_SYS_MAIN it is the main CPU's layer for
  * the split game's server half (apps/quake/main): the pack and the baked

@@ -2,7 +2,7 @@
 
 Date: 2026-11-22. Scope: published, documented techniques that apply to the remaining RAM items (map structures 781 KB, edicts 513 KB, static tables 478 KB, particles 88 KB, net buffers 81 KB, gfx.wad 110 KB) and to frame time (target 240x150, 10-15 fps, so 66-100 ms per frame).
 
-Already done, so not proposed again: BSP, textures, alias models, sounds and progs read in place from flash; no surface cache (per-pixel texture x lightmap bilinear lookup); QuakeC compiled to C. MG24Quake's own techniques are already written up in `docs/phase1-mg24quake-notes.md`. This document only repeats them where a new detail or a different RP2040 angle adds something.
+Already done, so not proposed again: BSP, textures, alias models, sounds and progs read in place from flash; no surface cache (per-pixel texture x lightmap bilinear lookup); QuakeC compiled to C. MG24Quake's own techniques are already written up in `docs/research/phase1-mg24quake-notes.md`. This document only repeats them where a new detail or a different RP2040 angle adds something.
 
 How to read the tables:
 - **Benefit** is either RAM saved or ms/frame saved at 200 MHz on 240x150 = 36,000 pixels. The rule of thumb is 1 ms = 200,000 cycles, so 1 cycle/pixel = 0.18 ms/frame.

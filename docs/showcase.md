@@ -13,9 +13,9 @@ This page is the story for people who know microcontrollers but not this repo. E
 | Board | FREE-WILi OG, two RP2040s (Cortex-M0+), 264 KB SRAM and 16 MB QSPI flash per chip |
 | Game | id's WinQuake source, the registered game's data supplied by the user |
 | Picture | 320x200 at 8 bits a pixel, a 320x152 3D view, on a 320x240 ST7789 LCD |
-| Speed, E1M1, on the board | 7.5 fps at the stock 200 MHz, 10.4 fps at 250 MHz with 125 MHz flash, 10.9 fps with the Fast render mode |
+| Benchmark on the board, `timedemo demo3` | 12.8 fps Exact, 24.8 fps Fast, 27.8 fps Turbo (300 MHz, overclocked) |
 | Exactness | Same game state hashes as one-process WinQuake. Exact render mode byte-identical to id's renderer on 121 PC test frames |
-| On the board today | Start and E1M1. Episode 1 is in progress |
+| On the board today | Episode 1, with sound and saving |
 
 ## The challenge
 
@@ -72,6 +72,8 @@ Both chips build the same engine source. The server half (`QOG_SPLIT_SERVER`) ha
 
 ## Key techniques
 
+Some clock and timing figures below were measured during earlier stages at 200 or 250 MHz.
+
 **QuakeC compiled ahead of time.** Quake's game logic is QuakeC bytecode in `progs.dat`, run by an interpreter that keeps all of its globals in RAM. `tools/qc2c.py` translates all 2,091 functions of the user's own `progs.dat` into C at build time. Constants become C literals and most temporaries become C locals, so the RAM globals went from 45,904 to 7,280 bytes. The compiled code is 496 KB of flash on the main chip. The translation is never committed, since it is derived from id's data. E1M1 state hashes matched id's interpreter exactly.
 
 **Baked flash images, read in place.** id's loader builds every map's planes, nodes, leafs, surfaces and texture headers in RAM at each level load, and then only reads them. `tools/mkboard.py` runs id's own loader on the PC (the `qog_bake` command) and writes what it builds into a flash image, with every pointer already resolved for the flash address the image will sit at. On the board a map load copies one `model_t` and allocates only the arrays that play writes. This cut E1M1's map hunk from 473.6 KB to 90.0 KB. Light, visibility, texture pixels and geometry are read in place from the pak through XIP, and textures shared between maps are stored once. A layout hash in the image's header makes a build refuse an image written by a build with other structure layouts (this caught real bugs, see lessons L46 on enum sizes). The server gets its own smaller image with only what physics needs.
@@ -106,27 +108,29 @@ The board's default render mode trades a small picture difference for speed, in 
 
 On the board Fast mode took E1M1 from 10.4 to 10.9 fps.
 
-## Where the time goes
+## Where the speed came from
 
-Measured on the board with Fast mode at 250 MHz: a frame of about 91 ms (10.9 fps), of which the 3D view is about 71 ms. The rest of the frame is the status bar, the 2D overlay, input, the link wait and message parsing.
+All figures are the board's `timedemo demo3`.
 
-| Step | Change | E1M1 fps |
-| --- | --- | ---: |
-| Stock clocks | 200 MHz, flash at 50 MHz | 7.5 |
-| Faster clocks | 250 MHz at 1.20 V, flash at 125 MHz | 10.4 |
-| Fast render mode | on (the board default) | 10.9 |
+| Step | Fast fps | Turbo fps |
+| --- | ---: | ---: |
+| 250 MHz, first full speed round | 13.6 | |
+| 300 MHz, both cores drawing, faster screen link | 20.0 | 22.3 |
+| Fewer waits for the screen | 22.0 | 26.0 |
+| Related code placed together in flash | | 27.1 |
+| Further screen wait and drawing work | 24.8 | 27.8 |
 
-More speed work is in progress.
+The goal was 35 fps and it was not reached. A cache measurement showed that waiting for code and data to arrive from flash is now a large part of each frame.
 
 ## Board features used
 
 | Feature | Chip | Used for |
 | --- | --- | --- |
-| ST7789 320x240 LCD over SPI | display | the 320x200 picture, scanned out by DMA (62.5 MHz SPI at 250 MHz) |
+| ST7789 320x240 LCD | display | the 320x200 picture, sent by PIO at 60 MHz and DMA |
 | Five buttons (gray, yellow, green, blue, red) | display | game and menu controls, with combos |
 | I2S amplifier and speaker | display | sound, by PIO and chained DMA |
 | WS2812 LED bar | display | the red countdown while red is held for power off |
-| Both cores | display | core 0 runs the client, core 1 draws half the spans and drives the scanout |
+| Both cores | display | core 0 runs the client, core 1 draws lit surfaces, moves particles and drives the screen |
 | Inter-chip UART, 12.5 Mbaud with RTS/CTS | both | the client and server link, sound calls and samples |
 | 16 MB QSPI flash each, read through XIP | both | apps and the baked level images, read in place |
 | FAT volume in main's flash | main | saved games |
@@ -142,31 +146,30 @@ A web search in November 2026 found no other Quake port on the RP2040, and none 
 
 | Port | Chip | FPU | RAM | External memory | Reported speed | Content | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **QuakeOG** (this) | 2x RP2040, Cortex-M0+, 250 MHz | no | 264 KB per chip | none (16 MB flash per chip) | 10.4 fps exact, 10.9 fps Fast, E1M1, measured on the board | start and E1M1 today, episode 1 in progress | this repo |
+| **QuakeOG** (this) | 2x RP2040, Cortex-M0+, 300 MHz | no | 264 KB per chip | none (16 MB flash per chip) | 24.8 fps Fast, 27.8 fps Turbo (half width), demo3, measured on the board | episode 1 | this repo |
 | MG24Quake (Nicola Wrachien, next-hack) | EFR32MG24, Cortex-M33 overclocked to about 136 MHz | yes | 276 KB | two 32 MB SPI flash chips plus an SD card | about 27 to 29 fps | full retail game | [github.com/next-hack/MG24Quake](https://github.com/next-hack/MG24Quake), [Habr article](https://habr.com/en/articles/848396) |
 | RP2350-Quake (zenodante) | RP2350, Cortex-M33 | yes | 520 KB | none | not published, full playthrough unverified | | [github.com/zenodante/RP2350-Quake](https://github.com/zenodante/RP2350-Quake) |
 | Quake-ESP32S3 (recrof) | ESP32-S3, 240 MHz | yes | | 8 MB PSRAM | 37 to 42 fps | | [github.com/recrof/Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) |
 | esp32-quake (Espressif) | ESP32-P4, dual RISC-V | yes | | 32 MB PSRAM | about 20 to 25 fps at 512x300 | | [github.com/espressif/esp32-quake](https://github.com/espressif/esp32-quake) |
 | rp2040-doom (Graham Sanderson), Doom not Quake | one RP2040, 270 MHz | no | 264 KB | none | 30 to 35+ fps | full shareware DOOM1.WAD | [github.com/kilograham/rp2040-doom](https://github.com/kilograham/rp2040-doom), [design notes](https://kilograham.github.io/rp2040-doom/) |
 
-Empty cells are figures we did not find. MG24Quake's speed comes partly from its FPU and from approximations such as a perspective divide every 32 pixels, which on our test shots changes 14% of the pixels. rp2040-doom is the closest relative in hardware and the best study of fitting an id engine into RP2040 RAM, and it influenced several techniques here. More detail on each port is in [research-open-source-quake-bases.md](research-open-source-quake-bases.md) and [phase1-mg24quake-notes.md](phase1-mg24quake-notes.md).
+Empty cells are figures we did not find. MG24Quake's speed comes partly from its FPU and from approximations such as a perspective divide every 32 pixels, which on our test shots changes 14% of the pixels. rp2040-doom is the closest relative in hardware and the best study of fitting an id engine into RP2040 RAM, and it influenced several techniques here. More detail on each port is in [research-open-source-quake-bases.md](research/research-open-source-quake-bases.md) and [phase1-mg24quake-notes.md](research/phase1-mg24quake-notes.md).
 
 ## Honest limits
 
-- **Speed.** About 10 to 11 fps on E1M1. Playable, but well below MG24Quake's 27 to 29 fps on a chip with an FPU.
-- **Not the whole game.** The display data of the whole game is about 38 MB, and both chips together have 32 MB of flash. Only one episode can be on the board at a time, or levels must come from a PC over USB. Today the board holds start and E1M1. The episode 1 images and the new flash layout they need are in progress.
-- **RAM is nearly all used.** The display client has a 73 KB hunk with about 452 bytes to spare, enough for every episode 1 level on the PC. The whole game would need about 82 KB. The server's 160 KB hunk is short for e1m3 with sound (about 170 KB needed, PC measurement).
+- **Speed.** About 25 fps at full detail. MG24Quake reports about 29 on a chip with an FPU.
+- **Not the whole game.** The display data of the whole game is about 38 MB, and both chips together have 32 MB of flash. Only one episode can be on the board at a time.
+- **RAM is nearly all used.** The display chip has a few hundred bytes spare.
 - **The one-byte depth buffer's fallback** stops the game in rare views (see above).
-- **Saving** to main's FAT volume is exact on the PC and not yet tried on the board. Sound through the speaker works on the board.
-- **Overclock.** 250 MHz at 1.20 V is above the RP2040's rated 200 MHz point. The flash switch checks itself and falls back, the core clock does not. Builds can keep the stock clock (`-DQOG_SYS_KHZ=0`).
-- **Fast mode is not exact.** It is the board default. Exact mode is one menu switch away.
+- Sound and saving work on the board.
+- **Overclock.** 300 MHz at 1.25 V with flash at 150 MHz is above the RP2040's and the flash chip's ratings. The game checks flash reads and falls back, the core clock is not checked.
+- **Fast and Turbo are not exact.** Fast is the board default. Exact mode is one menu switch away.
 - No multiplayer, no CD music, no console keyboard.
 - **Publishing.** The engine is GPL and the board's BSP is under the FreeWili Hardware License. Whether they can be combined is an open question for FREE-WILi, so nothing is published yet. The game data is never in the repo.
 
 ## What is next
 
-1. Episode 1 on the board: the new flash layout (data offsets moved on both chips) and the episode 1 images, already built and checked on the PC.
-2. More speed. The view is about 71 ms of a 91 ms frame. Ideas recorded in [changes.md](changes.md) include a coarser mip level in Fast mode and a cheaper front end (the BSP walk and edge setup). None of these is done.
-3. Close the one-byte depth buffer's fallback case.
-4. Check saves on the board.
-5. Beyond episode 1: one episode at a time, or a PC companion that streams the next level over USB. Estimates in [changes.md](changes.md) put a level swap at about 6 to 9 s.
+1. One shared copy of the drawing code for both cores, so they stop competing for the flash cache.
+2. The busiest small routines in RAM.
+3. Try the episode 2 and 3 images on the board.
+4. Close the one-byte depth buffer's fallback case.

@@ -465,7 +465,7 @@ include `quakedef.h`, which picks `extMemoryWin32.h` or `extMemory.h` (`quakedef
   `Sys_Init()` under `#if WIN32`, `src/main.c:376`, but no `sys_*.c` defines it), the `Sys_File*`
   implementations, the code that loads the converted PAK into `ext_memory`, and SDL2 headers and libs.
   (inferred) Upstream builds it from a private SDLQuake tree; the makefile references
-  `C:\Users\niwrachi\Documents\GitHub\SDLQuake\SDLQuake\QuakeMG24\linkerfile.ld`.
+  `<the upstream author>\SDLQuake\QuakeMG24\linkerfile.ld`.
   To build on a PC we would need to write a small SDL2 host layer (main loop, file loading,
   `Sys_*`) and a CMake file, with `WIN32=1`. Note that much code is guarded by `#if WIN32`, not
   `_WIN32`, and assumes 32-bit pointers (16-bit short pointers, `STATIC_ASSERT`s on struct sizes),

@@ -347,8 +347,8 @@ Only M4's per-class variant and M9's AOT variant need licensed data; the engine-
   - `src/pico/i_video.c`, `src/pico/i_picosound.c`, `src/pico/memmap_doom.ld`
   - `src/doom/p_mobj.h`, `src/doom/d_think.h`, `src/doom/p_tick.c`, `src/doom/r_defs.h`, `src/doom/r_state.h`, `src/doom/r_main.c`, `src/doom/p_setup.c`, `src/doom/p_spec.c`, `src/doom/p_saveg.c`, `src/doom/g_game.c`
   - `src/whd_gen/whd_gen.cpp`
-- [MG24-habr] next-hack, Quake port to Arduino Nano Matter (276 KB). https://habr.com/en/articles/848396 ; Hackaday, *Quake In 276 KB Of RAM*. https://hackaday.com/2024/10/05/quake-in-276-kb-of-ram ; local notes in `docs/phase1-mg24quake-notes.md`
-- RP2350-Quake (zenodante). https://github.com/zenodante/RP2350-Quake ; local notes in `docs/research-embedded-techniques.md` (addendum) and `docs/research-open-source-quake-bases.md`
+- [MG24-habr] next-hack, Quake port to Arduino Nano Matter (276 KB). https://habr.com/en/articles/848396 ; Hackaday, *Quake In 276 KB Of RAM*. https://hackaday.com/2024/10/05/quake-in-276-kb-of-ram ; local notes in `docs/research/phase1-mg24quake-notes.md`
+- RP2350-Quake (zenodante). https://github.com/zenodante/RP2350-Quake ; local notes in `docs/research/research-embedded-techniques.md` (addendum) and `docs/research/research-open-source-quake-bases.md`
 - [NRF-DOOM] next-hack, *Doom on an nRF52840-based USB Bluetooth dongle*. https://hackaday.io/project/181224-doom-on-an-nrf52840-based-usb-bluetooth-dongle/details
 - [WOLF48] S. Germino, *Wolfenstein 3D in 48 KB of RAM*. https://hackaday.io/project/181407-wolfenstein-3d-in-48-kb-of-ram/details
 - [MURM] rh1tech murmduke3d / frank-duke3d (RP2350 + PSRAM). https://github.com/rh1tech/murmduke3d ; Hackaday *Does It Run… Duke Nukem 3D?* https://hackaday.com/?p=1240415

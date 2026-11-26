@@ -1,60 +1,170 @@
 # QuakeOG
 
-id Software's WinQuake, ported to the FREE-WILi OG board, whose two RP2040 microcontrollers (Cortex-M0+, no FPU, 264 KB of RAM each, no external RAM) run the game between them. The main chip runs id's server, the display chip runs id's client and renderer, and the two talk over the board's inter-chip UART the way id's client and server talk over a network.
+id Software's Quake, running on two RP2040 microcontrollers that have no floating point unit and no external RAM.
+
+The board is the FREE-WILi OG, a handheld with two RP2040s. One chip runs Quake's **server** (the game world) and the other runs the **client** (the picture, the menus and the buttons). They talk over a wire the same way Quake talks over a network.
 
 <!-- Photo: replace this line with a picture of the board running E1M1, for example ![QuakeOG on the FREE-WILi OG](docs/img/board-e1m1.jpg) -->
 
-For the full story (why it is hard, how it works, how it compares with other ports) see [docs/showcase.md](docs/showcase.md).
+New here? [docs/showcase.md](docs/showcase.md) explains why this is hard and how it works.
 
-## Headline facts
+## At a glance
 
 | | |
 | --- | --- |
-| Hardware | FREE-WILi OG: two RP2040s, 264 KB SRAM and 16 MB QSPI flash each, 320x240 ST7789 LCD, five buttons, I2S speaker, WS2812 LED bar |
-| Split | Main chip: server, QuakeC compiled to C, id's sound mixer. Display chip: client, renderer, status bar, menus, buttons, I2S output |
-| Link | UART at 12.5 Mbaud with RTS/CTS flow control, a reliable stream carrying id's own client and server messages |
-| Picture | 320x200, 8-bit palette, a 320x152 3D view, a one-byte depth buffer (user approved) |
-| Speed, E1M1 on the board | 7.5 fps at 200 MHz with flash at 50 MHz. 10.4 fps at 250 MHz (1.20 V) with flash at 125 MHz. 10.9 fps with the Fast render mode |
-| Exactness | The split game gives the same state hashes as one-process WinQuake on the PC. The Exact render mode is byte-identical to id's renderer over 121 PC test frames. Fast mode (the board default) changes about 2.8% of pixels on average, about 9% in the worst frame |
-| Level data | Baked on the PC by `tools/mkboard.py` into flash images that the chips read in place through XIP |
+| Chips | Two RP2040 (Cortex-M0+, 2 cores each), 264 KB RAM and 16 MB flash per chip |
+| Screen | 320x240 LCD. Quake draws 320x200, of which 320x152 is the 3D view |
+| Sound | Quake's own mixer, played through the board's speaker |
+| Controls | Five buttons |
+| Saves | Save and load work, stored in flash |
+| Content | Episode 1 on the board |
+| Benchmark | 24.8 fps (Fast) and 27.8 fps (Turbo), `timedemo demo3` |
 
-As far as our search found (November 2026), this is the first Quake port to the RP2040 we know of, and the first we know of split across two microcontrollers. Other ports are faster: see the comparison in [docs/showcase.md](docs/showcase.md#other-ports).
+## How it works
 
-## Status and limits
+```mermaid
+flowchart LR
+  subgraph MAIN["Main chip: the server"]
+    SV["Game logic and physics"]
+    QC["QuakeC compiled to C"]
+    MIX["Sound mixer"]
+    SAVE[("Saves")]
+  end
+  subgraph DISP["Display chip: the client"]
+    C0["Core 0: game client and 3D front end"]
+    C1["Core 1: drawing help and screen output"]
+    LCD["LCD"]
+    SPK["Speaker"]
+    BTN["Buttons"]
+  end
+  BTN --> C0
+  C0 -- "your input" --> SV
+  SV -- "what changed in the world" --> C0
+  SV --- QC
+  SV --- SAVE
+  C0 <--> C1
+  C1 --> LCD
+  MIX -- "mixed audio" --> SPK
+```
 
-- **Running on the board:** the split game on E1M1 at the speeds above. Earlier board apps: the demo player (`apps/qogdemo`, 3 to 7 fps before the speed work), the renderer-only E1M1 fly-through (`apps/qogfly`) and a span benchmark (`apps/qogbench`).
-- **In progress:** the display client now holds every episode 1 level in RAM (73 KB hunk, PC measured). The episode 1 flash images and the new flash layout they need are not on the board yet. More speed work is under way.
-- **The whole game does not fit:** its display data is about 38 MB against 32 MB of flash on both chips together. The options are one episode at a time, or streaming levels from a PC.
-- **Server RAM:** the server's 160 KB hunk covers most of episode 1, but e1m3 needs about 170 KB with sound (PC measurement).
-- **One-byte depth buffer:** in rare views it needs an edge fallback that the board has no stack for, and the game stops with an error there (4 times in a PC fight tour of episode 1). Open.
-- **Sound** plays through the board's speaker (heard by the user). **Saving** to the main chip's flash runs exactly on the PC and is not yet tried on the board.
-- No multiplayer, no CD music, no keyboard console.
+The wire between the chips is a UART at 12.5 Mbaud.
 
-Details: [docs/handoff.md](docs/handoff.md) and [docs/changes.md](docs/changes.md).
+### One frame
+
+```mermaid
+sequenceDiagram
+  participant B as Buttons
+  participant D as Display chip
+  participant M as Main chip
+  participant S as Screen
+  B->>D: pressed keys
+  D->>M: input for the next frame
+  par Server works ahead
+    M->>M: run physics and game logic
+  and Client draws the current frame
+    D->>D: find visible walls
+    D->>D: draw walls, models and particles
+  end
+  D->>S: send finished lines
+  M->>D: world update and sound
+```
+
+### Where the data lives
+
+Quake normally loads a level into RAM. Here there is too little RAM, so a PC tool prepares each level in advance and the chips read it straight from flash.
+
+```mermaid
+flowchart LR
+  PAK["Your own pak0.pak and pak1.pak"] --> TOOL["tools/mkboard.py on your PC"]
+  TOOL --> D["Display image: textures, light, level shapes, models"]
+  TOOL --> S["Server image: game code, collision, visibility, sounds"]
+  D --> DF[("Display chip flash")]
+  S --> SF[("Main chip flash")]
+```
+
+## Speed
+
+All figures were measured on the board with Quake's `timedemo demo3` benchmark.
+
+```mermaid
+xychart-beta
+  title "Benchmark fps as the work progressed (Turbo)"
+  x-axis ["Turbo added", "Screen waits cut", "Flash layout", "Current"]
+  y-axis "fps" 0 --> 35
+  bar [22.3, 26.0, 27.1, 27.8]
+```
+
+```mermaid
+xychart-beta
+  title "Benchmark fps in Fast mode"
+  x-axis ["250 MHz start", "300 MHz and 2 cores", "Screen waits cut", "Current"]
+  y-axis "fps" 0 --> 35
+  bar [13.6, 20.0, 22.0, 24.8]
+```
+
+### Picture modes
+
+Choose them in **Options, Render**.
+
+| Mode | What you get | Benchmark |
+| --- | --- | --- |
+| Exact | The same pixels id's own renderer draws | 12.8 fps |
+| Fast (default) | Full detail with small shortcuts, about 3.4% of pixels differ in PC tests | 24.8 fps |
+| Turbo | 3D view drawn at half width, visibly blockier | 27.8 fps |
+
+### Compared with other ports
+
+| Port | Chip | Floating point unit | Reported speed |
+| --- | --- | --- | --- |
+| **QuakeOG** | 2x RP2040 | no | 24.8 fps (Fast), 27.8 fps (Turbo, half width) |
+| [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24, Cortex-M33 | yes | about 29 fps |
+| [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
+
+QuakeOG is **not** the fastest. What sets it apart is the hardware: no floating point unit, no external RAM, and the game split across two chips. A search in November 2026 found no other Quake port on the RP2040, which does not prove there is none.
+
+The numbers are not perfectly like for like. Each project chooses its own picture shortcuts. QuakeOG's Fast picture stays closer to the original than MG24Quake's method does on our test frames.
+
+## Limits
+
+- Only one episode fits on the board at a time. The whole game's data is larger than both flash chips together.
+- Episode 1 is what runs on the board. Images for episodes 2 and 3 can be built but have not been tried on the board.
+- No multiplayer, CD music or keyboard console.
+- In rare views the small depth buffer cannot cope and the game stops with an error.
+- 35 fps was the goal and was not reached.
+
+## Overclocking warning
+
+The speeds above use **300 MHz at 1.25 V with flash at 150 MHz**. That is above the RP2040's rating, and above the flash chip's 133 MHz rating. The game checks the flash at start and falls back if reads fail, but you run it at your own risk.
+
+To stay within the flash rating add `-DQOG_FLASH_MAX_KHZ=133000`. To keep the stock clock use `-DQOG_SYS_KHZ=0`.
 
 ## Game data
 
-Quake's game data belongs to id Software. **It is never in this repository, and nothing made from it is committed** (`data/`, `*.pak`, `qogbake.bin` and board images are git-ignored). You supply your own copy and the tools convert it on your PC.
+Quake's game data belongs to id Software. **None of it is in this repository, and nothing made from it should ever be committed.** `data/`, `*.pak` and board images are git-ignored. You supply your own copy and the tools convert it on your PC.
 
-For the board use the registered or retail data (Steam or GOG, `id1\pak0.pak` and `id1\pak1.pak` in `data\id1\`). The shareware licence forbids modified or derived versions of its data, and the board images are derived (see [docs/lessons.md](docs/lessons.md), L39). Where to find the files and how to check them: [docs/game-data.md](docs/game-data.md).
+Use the registered game (Steam or GOG): put `id1\pak0.pak` and `id1\pak1.pak` in `data\id1\`. The shareware licence does not allow modified or derived copies of its data, and board images are derived. See [docs/game-data.md](docs/game-data.md).
 
-## Setup
+## Build it
 
-Needs the Raspberry Pi Pico VS Code extension's toolchain under `~/.pico-sdk` (SDK 2.3.0, GCC `15_2_Rel1`, ninja 1.13.2, picotool 2.3.0), CMake 3.21 or newer and Python 3. The PC build (needed to bake the board images) uses MSVC (VS Build Tools 2022).
+You need:
+- the toolchain of the Raspberry Pi Pico VS Code extension (`~/.pico-sdk`: SDK 2.3.0, GCC `15_2_Rel1`, ninja 1.13.2, picotool 2.3.0);
+- CMake 3.21 or newer and Python 3;
+- Visual Studio Build Tools 2022, for the PC version used to prepare level data.
 
 ```bash
 git clone https://github.com/freewili/wiliOGbsp third_party/wiliOGbsp
-git clone https://github.com/next-hack/MG24Quake third_party/MG24Quake   # reference only
-python -m pip install pyserial    # for fw.py flash/console; use a venv if you prefer
+python -m pip install pyserial
 ```
 
-If the board has never had the BSP's display bootloader, install it once from the BSP tree (`fw bootloader`, see its README). A board whose USB product strings start with `FWOG display` already has it (lessons L17).
+The board support package is a separate project with its own licence. It is cloned next to this code and is not part of this repository.
 
-## Build and flash the split game
+If your board has never had the BSP's display bootloader, install it once (`fw bootloader`, see the BSP's README).
 
-These are the steps of [docs/handoff.md](docs/handoff.md). Run them from the repo root, and put only one CPU in BOOTSEL at a time (both chips show the same USB serial).
+### Flash the game
 
-1. Build the PC version of the engine and record the asset manifests with it ([docs/game-data.md](docs/game-data.md)). Then build both data images in one run: `qb.uf2` for the display (written at 0x10100000), `qb_main.uf2` for the server (0x10200000). Start and all of episode 1 fit both chips:
+Run these from the repo root. Put only one chip in BOOTSEL at a time. **Read [docs/lessons.md](docs/lessons.md) before your first flash.**
+
+1. Build the PC version and record the asset lists ([docs/game-data.md](docs/game-data.md)). Then make both data images:
 
    ```powershell
    python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
@@ -62,73 +172,60 @@ These are the steps of [docs/handoff.md](docs/handoff.md). Run them from the rep
        --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
    ```
 
-2. Build the game with every option given, since the build folder keeps old values (the main app carries the display app inside it):
+2. Build the game. Give every option each time, because the build folder remembers old values:
 
    ```bash
-   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FAT_FORMAT_IF_MISSING=ON
+   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON
    cmake --build build --target quake_main
    ```
 
-3. With the game running as it is, write the display's data: `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display`, then copy `build-board\qb.uf2` to the RPI-RP2 drive. The display then waits in its bootloader.
-4. Flash the game: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2`. Main reports a missing server data image until the next step.
+   `QOG_FAT_FORMAT_IF_MISSING` formats the save area on the main chip if it finds none.
+
+3. Write the display's data: `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display`, then copy `build-board\qb.uf2` to the RPI-RP2 drive.
+4. Flash the game: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2`
 5. Write the server's data: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build-board\qb_main.uf2`
 
-The order and why are in [docs/handoff.md](docs/handoff.md).
-
-Never flash the stand-in display image as the game. Read the consoles on the two chips' USB serial ports (main COM7 and display COM8 on the development PC), DTR on. Every 2 s they print frame timing lines (`[time cl]`, `[time sv]`).
-
-Never UF2-copy a display *application* by hand (lessons L4). Read [docs/lessons.md](docs/lessons.md) before flashing.
+Never copy a display *application* by hand ([lessons](docs/lessons.md), L4). Both chips print timing lines over USB serial.
 
 ## Controls
 
-From the game's button mapping (`platform/qog_input.c`, v4):
-
 | In the game | Button |
 | --- | --- |
-| Fire (tap one shot, hold keeps firing) | Gray |
+| Fire (tap for one shot, hold to keep firing) | Gray |
 | Forward | Yellow |
-| Turn left | Green |
-| Turn right | Blue |
-| Next weapon | Red, tapped |
+| Turn left / right | Green / Blue |
+| Next / previous weapon | Red tapped / Red + gray |
 | Back | Red + yellow |
 | Jump | Red + green |
 | Swim down | Red + blue |
-| Previous weapon | Red + gray |
 | Menu | Green + blue |
-| Power off | Red held alone for 6 s (the LED bar counts down in red). A combo with red never powers off |
+| Power off | Hold red alone for 6 s |
 
 | In menus | Button |
 | --- | --- |
-| Up, down | Yellow, blue |
-| Left, right | Green, red |
-| Enter, yes | Gray |
+| Up / down | Yellow / Blue |
+| Left / right | Green / Red |
+| Select, yes | Gray |
 | Back, no | Green + blue |
-
-The board menus drop Multiplayer and anything that needs a keyboard, and add a Controls page, a Levels page that lists the maps in the flash image, a Render Exact / Fast switch in Options, and yes/no prompts answered by buttons.
 
 ## Repository layout
 
 ```
-engine/      id's WinQuake, imported unmodified, then changed in small single-purpose commits behind QOG_ flags
-port/        id's Sys_/VID_/IN_/SNDDMA_ interfaces: pc/, rp2040/, common/
-platform/    board drivers (video, input, data) built on the BSP
-apps/        quake (the split game), qogdemo, qogfly, qogbench, qog (platform test)
-pc/          the Windows build, for development and the exactness tests
-tools/       mkboard.py, mkpak.py, qc2c.py (QuakeC to C), stack_chain.py, ram_meter.py, pctest.ps1
+engine/      id's WinQuake source, changed behind QOG_ build flags (GPL, see engine/COPYING)
+port/        the layer Quake needs from a system: rp2040/, pc/, common/
+platform/    board drivers for video, input and data
+apps/        quake (the game) and smaller test apps
+pc/          Windows build, for development and picture tests
+tools/       level data preparation, tests, speed model
+docs/        documentation, see docs/README.md
 ```
 
-## Docs
+## Documentation
 
-- [docs/showcase.md](docs/showcase.md): the project explained for people new to it
-- [docs/handoff.md](docs/handoff.md): where things stand and the flash steps
-- [docs/changes.md](docs/changes.md): what changed, why, and what was measured
-- [docs/lessons.md](docs/lessons.md): mistakes not to repeat. **Read before flashing**
-- [docs/structure.md](docs/structure.md): rules that keep the tree small
-- [docs/game-data.md](docs/game-data.md): getting the data and building the board images
-- [docs/ram-meter.md](docs/ram-meter.md): measuring static and dynamic RAM
-- [docs/current-plan.md](docs/current-plan.md): the original one-chip plan and its tiers
-- Research: [hardware](docs/research-freewili-hardware.md), [embedded techniques](docs/research-embedded-techniques.md), [open source Quake bases](docs/research-open-source-quake-bases.md), [RP2040 games](docs/research-rp2040-games.md), [MG24Quake notes](docs/phase1-mg24quake-notes.md)
+Start with [docs/README.md](docs/README.md).
 
 ## Licences
 
-QuakeOG's engine code will be GPL (from id Software's GPL release and MG24Quake, GPL-3.0). The BSP is under the FreeWili Hardware License, which is not open source. Whether the two can be combined is an open question for FREE-WILi, and nothing will be published until it is answered. Quake's game data belongs to id Software. Never commit it. The tools convert your own copy.
+- `engine/` comes from id Software's GPL release of Quake and stays under the GNU GPL, version 2 or later ([engine/COPYING](engine/COPYING), [engine/PROVENANCE.md](engine/PROVENANCE.md)). It is not affiliated with or endorsed by id Software.
+- The board support package is under the FreeWili Hardware License, which is not an open source licence. Whether it can be combined with GPL code is an **open question**.
+- Quake's game data and trademarks belong to their owners.

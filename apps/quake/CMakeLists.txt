@@ -1,7 +1,7 @@
 # Quake on the FREE-WILi OG display CPU.
 #
 # Not part of the default build yet: the engine still needs ~1.8 MB of RAM
-# (docs/fit-plan.md), so quake_display cannot link into 264 KB. Build the
+# (docs/plans/fit-plan.md), so quake_display cannot link into 264 KB. Build the
 # pieces to measure them:
 #
 #   cmake --build build --target qog_engine      # engine for Cortex-M0+, with stack reports

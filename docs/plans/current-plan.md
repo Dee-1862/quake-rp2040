@@ -1,6 +1,6 @@
 # Current plan
 
-The full plan with its reasoning is [../QuakeOG Port Plan.html](../QuakeOG%20Port%20Plan.html) (version 2, Nov 22 2026). This page tracks where we are against it and records any change to it. When the plan changes, update this page and log the change in [changes.md](changes.md).
+The full plan with its reasoning is ../QuakeOG Port Plan.html (kept locally, not in the repository) (version 2, Nov 22 2026). This page tracks where we are against it and records any change to it. When the plan changes, update this page and log the change in [changes.md](../changes.md).
 
 ## Goal
 
@@ -33,9 +33,9 @@ Done means:
 
 1. ~~Flash `qog` and measure all three resolutions~~ Done (changes.md). **Proposed: develop at 240×150, fall back to 160×100.**
 2. **On the board:** write `build/qogdata_test.uf2` to the display CPU, press green at the bootloader screen, and check that the still image shows and the console reports `data=ok`. Hold green during boot to time a full CRC.
-3. Settle the red-button conflict (see [lessons.md](lessons.md), L6) before the controls are final.
+3. Settle the red-button conflict (see [lessons.md](../lessons.md), L6) before the controls are final.
 4. Finish Phase 1: choose the engine base and the resolution, and replace the plan's RAM estimates with measured ones.
-5. Start Phase 3 with a **PC build first** of the trimmed engine (see [structure.md](structure.md)).
+5. Start Phase 3 with a **PC build first** of the trimmed engine (see [structure.md](../structure.md)).
 
 ## Open questions
 
