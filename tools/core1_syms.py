@@ -11,6 +11,12 @@ names, the statics of the d_core1 objects) nor on the list below of values
 nothing writes while the view's surfaces are drawn. It exits 1 if there is
 any. Indirect calls are not followed (the drawing makes none).
 
+With QOG_DRAW_SHARED (engine/d_drawctx.h) the same functions serve both
+cores, and what they write is in qog_drawctx, one entry a core. The names
+picked by the core number or kept to core 0 are listed in PER_CORE. A static
+variable of the d_core1 objects would be shared there, so it is listed too,
+unless it is in STATIC_OK.
+
     python tools/core1_syms.py --build build
 
 Standard library only.
@@ -54,6 +60,16 @@ SHARED = {
     "litq_asm_ok",
     "litq_wrap_ok",  # the same for the span loop (D_QogLitWrapCheck)
 }
+
+# QOG_DRAW_SHARED, reached by both cores' drawing and safe, the contexts
+# (indexed by the core number), core 0's view values and light grid beside
+# core 1's own (picked by the core number), the phase sums (core 0 only)
+PER_CORE = {
+    "qog_drawctx", "blocklights", "currententity", "vright", "vup", "vpn", "modelorg",
+    "transformed_modelorg", "qog_ph_time", "qog_ph_count", "qog_ph_xacc", "qog_ph_xhit",
+    "qog_ph_fcalls", "qog_ph_dcalls", "qog_fpc",
+}
+STATIC_OK = {"liti_state"}  # written only by the start-up check, which the copy never runs
 
 
 def run(tool, *args):
@@ -117,6 +133,8 @@ def main():
             else:
                 edges[cur].add((None, sym, gtype.get(sym, "U")))
     c1objs = {o for o in objs if re.search(r"d_core1[se]?\.c\.obj$", o)}
+    shared = "qog_drawctx" in gtype    # QOG_DRAW_SHARED
+    allowed = SHARED | PER_CORE if shared else SHARED
     seen, todo, data = set(), [a.root], defaultdict(set)
     shared_funcs = set()
     while todo:
@@ -131,15 +149,15 @@ def main():
                 if not o and not sym.startswith("c1_"):
                     shared_funcs.add(sym)
             elif t.upper() in "BDCSG":
-                if sym.startswith("c1_") or (o in c1objs):
+                if sym.startswith("c1_") or (o in c1objs and (not shared or sym in STATIC_OK)):
                     continue
                 data[sym].add(f if isinstance(f, str) else f[1])
-    bad = sorted(s for s in data if s not in SHARED)
+    bad = sorted(s for s in data if s not in allowed)
     print("core 1 reaches %d functions; shared (not c1_) ones:" % len(seen))
     print("  " + " ".join(sorted(shared_funcs)))
     print("shared variables on the list:")
     for s in sorted(data):
-        if s in SHARED:
+        if s in allowed:
             print("  %s (%s)" % (s, ", ".join(sorted(data[s]))))
     if bad:
         print("NOT on the list, check each:")

@@ -88,21 +88,7 @@ static __inline int litq_sdiv (int a, int b)
 #endif
 #endif
 
-// The surface's values, written on core 0 by D_SetupLitSurface and
-// D_LitFixSetup before the spans are shared, read by both cores. The
-// layout is the assembly's.
-typedef struct
-{
-	const unsigned	*lbase;		// 0, blocklights moved back by the origin's cells
-	int				lrowbytes;	// 4
-	int				mip;		// 8
-	int				tshift;		// 12
-	const int		*recip;		// 16, litspan_recip
-	int				ssw, tsw;	// 20, 24, litfix_sw, litfix_tw
-	int				exts, extt;	// 28, 32, bbextents, bbextentt
-	int				soff16;		// 36, lit_soff16
-	int				toff16;		// 40, lit_toff16
-} litq_surf_t;
+// litq_surf_t, the surface's values, is in d_drawctx.h.
 
 // One span for litq_span, its start values, its pixels and z. The layout
 // is the assembly's, which also keeps its own values at the end.
@@ -121,7 +107,9 @@ typedef struct
 	int				own[22];	// 56, the assembly's (s, t, the next ones, steps, the runs' light)
 } litq_span_t;
 
+#ifndef QOG_DC_NAMES	// QuakeOG, else in the core's context
 static litq_surf_t	litq_surf;
+#endif
 
 
 // id's four-sample light at S, T (with the origin added), every mip level
