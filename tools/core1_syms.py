@@ -164,6 +164,8 @@ def main():
         if f in seen:
             continue
         seen.add(f)
+        if f == "Sys_Error":    # a stop, never in a running view, what it reaches differs by compiler
+            continue
         for (o, sym, t) in edges.get(f, ()):
             if t.upper() in "TW":
                 nxt = (o, sym) if o else sym
