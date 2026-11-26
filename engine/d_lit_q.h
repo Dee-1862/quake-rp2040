@@ -328,7 +328,6 @@ extern int	litq_asm_ok;
 #else
 int			litq_asm_ok;
 #endif
-#define LITQ_SPAN(c)	(litq_asm_ok ? litq_span_asm (c) : litq_span_c (c))
 
 #ifndef QOG_C1_COPY
 
@@ -410,8 +409,6 @@ void D_QogLitQCheck (void)
 		Con_Printf ("Fast spans in C: the assembly check failed %d times\n", bad);
 }
 #endif	// !QOG_C1_COPY
-#else
-#define LITQ_SPAN(c)	litq_span_c (c)
 #endif
 
 // Agent AH's span start (D_LITSPANS_FIX_BODY), for the rare span that
@@ -445,27 +442,273 @@ static QOG_NOINLINE void litq_start64 (int du_, int dv_, litq_span_t *c)
 	c->TU = (int)(litfix_tu >> b_);
 }
 
+#ifdef QOG_ESPAN_T_PACKED
+#define LITQ_SPANPTR(w, r)	((espan_t *)((w)->spanbase + (r)))
+#define LITQ_SPANBASE		r_spanbase
+#else
+#define LITQ_SPANPTR(w, r)	(r)
+#define LITQ_SPANBASE		NULL
+#endif
+
+// The values one surface's span loop needs, in the order the assembly
+// (litq_wrap_asm) reads them. All of them come in through this pointer, so
+// each core's copy of this file has its own (lessons L245).
+typedef struct
+{
+	int				d0, du, dv;		// 0, 4, 8: the 32-bit coefficients
+	int				s0, su, sv;		// 12, 16, 20
+	int				t0, tu, tv;		// 24, 28, 32
+	int				uref, vref;		// 36, 40
+	unsigned		zmax;			// 44: D from here up gives izi 0x7FFFFFFF
+	int				zl, zr;			// 48, 52: else izi is D << zl >> zr
+	int				zfast;			// 56: the z step allows the pixel loop's z
+	int				rowbytes;		// 60
+	unsigned char	*vbuf;			// 64
+	d_zval_t		*zbuf;			// 68
+	int				zwidth;			// 72
+	unsigned char	*spanbase;		// 76
+	int				step;			// 80
+	void			(*start64) (int du_, int dv_, litq_span_t *c);	// 84
+	void			(*zspan) (espan_t *pspan, int izi, int izistep);	// 88
+	void			(*span) (litq_span_t *c);						// 92
+} litq_wrap_t;
+
+/*
+================
+litq_wrap_c
+
+QuakeOG (Agent AR): every step-th span from pspan (1, or 2 with both cores):
+the 32-bit start, the z, then the span. The board's assembly (litq_wrap_asm)
+does the same.
+================
+*/
+static LITQ_RAM QOG_NOINLINE void litq_wrap_c (const litq_wrap_t *w, litq_span_t *c, espan_t *pspan)
+{
+	for (;;)
+	{
+		int		du_ = pspan->u - w->uref, dv_ = pspan->v - w->vref, count = pspan->count, izi, D;
+
+		c->count = count;
+		c->pd = w->vbuf + w->rowbytes * pspan->v + pspan->u;
+		D = (int)((unsigned)w->d0 + (unsigned)du_ * (unsigned)w->du + (unsigned)dv_ * (unsigned)w->dv);
+		if (D >= LITQ_DMIN && (int)((unsigned)D + (unsigned)(count - 1) * (unsigned)w->du) >= LITQ_DMIN)
+		{
+			c->D = D;
+			c->Ns = (int)((unsigned)w->s0 + (unsigned)du_ * (unsigned)w->su + (unsigned)dv_ * (unsigned)w->sv);
+			c->Nt = (int)((unsigned)w->t0 + (unsigned)du_ * (unsigned)w->tu + (unsigned)dv_ * (unsigned)w->tv);
+			c->DU = w->du;
+			c->SU = w->su;
+			c->TU = w->tu;
+			izi = (unsigned)D >= w->zmax ? 0x7FFFFFFF : (int)(((unsigned)D << w->zl) >> w->zr);
+		}
+		else
+		{
+			w->start64 (du_, dv_, c);	// Agent AH's exact 64-bit start
+			izi = c->izi;
+			if (c->D < 1)
+				c->D = 1;
+		}
+
+		// the z: by the pixel loop when every pixel's is z >> 3 (D_QogZSpanI's
+		// far case), else by D_QogZSpanI
+		c->izi = izi;
+		if (w->zfast && (unsigned)izi < (1024u << 16) &&
+			(unsigned)izi + (unsigned)c->izistep * (unsigned)(count - 1) < (1024u << 16))
+			c->pz = w->zbuf + w->zwidth * pspan->v + pspan->u;
+		else
+		{
+			c->pz = NULL;
+			w->zspan (pspan, izi, c->izistep);
+		}
+		w->span (c);
+
+		// the next span of this core
+		{
+			int		k = w->step;
+			do
+			{
+				if (pspan->pnext == SPAN_NONE)
+					return;
+				pspan = LITQ_SPANPTR (w, pspan->pnext);
+			} while (--k > 0);
+		}
+	}
+}
+
+#if defined(QOG_LITQ_ASM) && !defined(_WIN32) && defined(QOG_ESPAN_T_PACKED) && \
+	defined(QOG_ZBUFFER8) && defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
+#define QOG_LITQ_WRAPASM
+#endif
+
+#ifdef QOG_LITQ_WRAPASM
+// port/rp2040/d_litq_rp2040.S, shared by both cores
+void litq_wrap_asm (const litq_wrap_t *w, litq_span_t *c, espan_t *pspan);
+// D_QogLitWrapCheck found it equal to litq_wrap_c (one flag, as litq_asm_ok)
+#ifdef QOG_C1_COPY
+extern int	litq_wrap_ok;
+#else
+int			litq_wrap_ok;
+
+// stand-ins for the three calls: they add what they were given to a sum,
+// and the span one then spoils the values the loop must write again
+static unsigned	litq_wsum;
+
+static void litq_wput (unsigned v)
+{
+	litq_wsum = (litq_wsum ^ v) * 16777619u;
+}
+
+static void litq_wstart64 (int du_, int dv_, litq_span_t *c)
+{
+	litq_wput ((unsigned)du_);
+	litq_wput ((unsigned)dv_);
+	c->D = du_ * 3 - 5;
+	c->Ns = dv_ + 7;
+	c->Nt = du_ - dv_;
+	c->DU = du_ ^ 1;
+	c->SU = dv_ ^ 2;
+	c->TU = du_ + 3;
+	c->izi = (du_ + dv_) * 1234567;
+}
+
+static void litq_wzspan (espan_t *pspan, int izi, int izistep)
+{
+	litq_wput ((unsigned)(size_t)pspan);
+	litq_wput ((unsigned)izi);
+	litq_wput ((unsigned)izistep);
+}
+
+static void litq_wspan (litq_span_t *c)
+{
+	litq_wput (c->D); litq_wput (c->Ns); litq_wput (c->Nt);
+	litq_wput (c->DU); litq_wput (c->SU); litq_wput (c->TU);
+	litq_wput (c->count); litq_wput ((unsigned)(size_t)c->pd);
+	litq_wput ((unsigned)(size_t)c->pz); litq_wput (c->izi);
+	c->D = c->Ns = c->Nt = c->DU = c->SU = c->TU = c->izi = 0x55AA55AA;
+	c->pd = NULL;
+	c->pz = NULL;
+}
+
+/*
+================
+D_QogLitWrapCheck
+
+QuakeOG (Agent AR): once at start-up, the span loop's assembly runs made-up
+surfaces and span lists next to litq_wrap_c, with stand-ins for the calls.
+Nothing is drawn, the values handed to the calls must be the same.
+================
+*/
+void D_QogLitWrapCheck (void)
+{
+	unsigned		seed = 0x6C078965u;
+	espan_t			sp[9];
+	litq_wrap_t		w;
+	litq_span_t		c;
+	unsigned		sum[2];
+	int				i, trial, pass, bad = 0;
+
+	for (trial = 0 ; trial < 48 ; trial++)
+	{
+		int		*v = &w.d0, zsh = trial % 6 == 5 ? 31 : (trial % 6) * 4 - 8;
+
+		for (i = 0 ; i < 11 ; i++)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			v[i] = (int)(seed >> 12) - 0x80000;
+		}
+		w.d0 = (int)(seed >> 4);		// both sides of LITQ_DMIN
+		if (trial & 1)
+			w.d0 &= 0x01FFFFFF;
+		w.uref &= 255;
+		w.vref &= 255;
+		w.zmax = zsh >= 31 ? 1 : zsh >= 0 ? 0x80000000u >> zsh : 0xFFFFFFFFu;
+		w.zl = zsh >= 0 && zsh < 31 ? zsh : 0;
+		w.zr = zsh >= 0 ? 0 : -zsh;
+		w.zfast = (trial % 5) != 4;
+		w.rowbytes = 320;
+		w.vbuf = (unsigned char *)0x20000000;	// addresses only, never read
+		w.zbuf = (d_zval_t *)0x20010000;
+		w.zwidth = 320;
+		w.spanbase = (unsigned char *)sp - sizeof(espan_t);
+		w.step = 1 + ((trial >> 1) & 1);
+		w.start64 = litq_wstart64;
+		w.zspan = litq_wzspan;
+		w.span = litq_wspan;
+		for (i = 0 ; i < 9 ; i++)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			sp[i].u = (seed >> 8) & 255;
+			sp[i].v = (seed >> 16) & 127;
+			sp[i].count = 1 + ((seed >> 24) & 63);
+			sp[i].pnext = i < 8 ? (espanref_t)((i + 2) * sizeof(espan_t)) : SPAN_NONE;
+		}
+		for (pass = 0 ; pass < 2 ; pass++)
+		{
+			memset (&c, 0, sizeof(c));
+			c.izistep = (trial % 3) ? (w.dv & 0x3FFF) - 0x2000 : w.dv * 32;
+			litq_wsum = 2166136261u;
+			if (pass)
+				litq_wrap_asm (&w, &c, sp);
+			else
+				litq_wrap_c (&w, &c, sp);
+			sum[pass] = litq_wsum;
+		}
+		if (sum[0] != sum[1])
+			bad++;
+	}
+	litq_wrap_ok = !bad;
+	if (bad)
+		Con_Printf ("Fast span loop in C: the assembly check failed %d of 48\n", bad);
+}
+#endif	// !QOG_C1_COPY
+#elif defined(QOG_LITQ_ASM) && !defined(_WIN32) && !defined(QOG_C1_COPY)
+void D_QogLitWrapCheck (void) {}	// no span loop assembly in this build
+#endif	// QOG_LITQ_WRAPASM
+
 /*
 ================
 D_DrawSpans8LitQ
 
 QuakeOG (Agent AR): every step-th span from pspan (1, or 2 with both cores):
-the 32-bit start, the z, then litq_span.
+the surface's values, then the span loop.
 ================
 */
-static LITQ_RAM QOG_NOINLINE void D_DrawSpans8LitQ (espan_t *pspan, int step)	// out of line: its frame never under Agent AH's drawer
+static QOG_NOINLINE void D_DrawSpans8LitQ (espan_t *pspan, int step)	// out of line: its frame never under Agent AH's drawer
 {
-	// the surface's 32-bit coefficients: the high words of Agent AH's 64-bit
-	// values (D_LitFixSetup), so D is 2^28 to 2^29 at the nearest point
-	const int		d0 = (int)(litfix_d0 >> 32), du = (int)(litfix_du >> 32), dv = (int)(litfix_dv >> 32);
-	const int		s0 = (int)(litfix_s0 >> 32), su = (int)(litfix_su >> 32), sv = (int)(litfix_sv >> 32);
-	const int		t0 = (int)(litfix_t0 >> 32), tu = (int)(litfix_tu >> 32), tv = (int)(litfix_tv >> 32);
 	const int		zsh = 32 - litfix_zsh;	// 1/z * 2^31 is D << zsh, or D >> -zsh (litfix_zsh is k - 31)
-	const int		uref = litfix_uref, vref = litfix_vref;
 	int				izistep = (int)(d_zistepu * 0x8000 * 0x10000);
+	litq_wrap_t		w;
 	litq_span_t		c;
 
 	LITI_PROLOGUE	// a power-of-two texture (D_LITFAST sends the others to Agent AH's drawer)
+	// the surface's 32-bit coefficients: the high words of Agent AH's 64-bit
+	// values (D_LitFixSetup), so D is 2^28 to 2^29 at the nearest point
+	w.d0 = (int)(litfix_d0 >> 32); w.du = (int)(litfix_du >> 32); w.dv = (int)(litfix_dv >> 32);
+	w.s0 = (int)(litfix_s0 >> 32); w.su = (int)(litfix_su >> 32); w.sv = (int)(litfix_sv >> 32);
+	w.t0 = (int)(litfix_t0 >> 32); w.tu = (int)(litfix_tu >> 32); w.tv = (int)(litfix_tv >> 32);
+	w.uref = litfix_uref;
+	w.vref = litfix_vref;
+	// D is positive here, so past 2^30 (zsh 31 or more) every D is the maximum
+	w.zmax = zsh >= 31 ? 1 : zsh >= 0 ? 0x80000000u >> zsh : 0xFFFFFFFFu;
+	w.zl = zsh >= 0 && zsh < 31 ? zsh : 0;
+	w.zr = zsh >= 0 ? 0 : zsh <= -31 ? 31 : -zsh;
+	w.zfast = 0;
+#if defined(QOG_ZBUFFER8) && defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
+	w.zfast = izistep > -(1 << 22) && izistep < (1 << 22);
+#endif
+	w.rowbytes = screenwidth;
+	w.vbuf = (unsigned char *)d_viewbuffer;
+	w.zbuf = d_pzbuffer;
+	w.zwidth = d_zwidth;
+	w.spanbase = LITQ_SPANBASE;
+	w.step = step;
+	w.start64 = litq_start64;
+	w.zspan = D_QogZSpanI;
+#if defined(QOG_LITQ_ASM) && !defined(_WIN32)
+	w.span = litq_asm_ok ? litq_span_asm : litq_span_c;
+#else
+	w.span = litq_span_c;
+#endif
 #ifdef QOG_LITQ_SHARELIGHT
 	c.share = 1;	// each light run ends at the next one's start (QOG_LITQ_SHARELIGHT)
 #else
@@ -474,58 +717,12 @@ static LITQ_RAM QOG_NOINLINE void D_DrawSpans8LitQ (espan_t *pspan, int step)	//
 	c.m = 8;
 	c.izistep = izistep;
 	c.surf = &litq_surf;
-	for (;;)
+#ifdef QOG_LITQ_WRAPASM
+	if (litq_wrap_ok)
 	{
-		int		du_ = pspan->u - uref, dv_ = pspan->v - vref, count = pspan->count, izi, D;
-
-		c.count = count;
-		c.pd = (unsigned char *)d_viewbuffer + screenwidth * pspan->v + pspan->u;
-		D = (int)((unsigned)d0 + (unsigned)du_ * (unsigned)du + (unsigned)dv_ * (unsigned)dv);
-		if (D >= LITQ_DMIN && D + (count - 1) * du >= LITQ_DMIN)
-		{
-			c.D = D;
-			c.Ns = (int)((unsigned)s0 + (unsigned)du_ * (unsigned)su + (unsigned)dv_ * (unsigned)sv);
-			c.Nt = (int)((unsigned)t0 + (unsigned)du_ * (unsigned)tu + (unsigned)dv_ * (unsigned)tv);
-			c.DU = du;
-			c.SU = su;
-			c.TU = tu;
-			if (zsh >= 31)
-				izi = 0x7FFFFFFF;		// 1/z past 2^30
-			else if (zsh >= 0)
-				izi = (unsigned)D >= (0x80000000u >> zsh) ? 0x7FFFFFFF : D << zsh;
-			else
-				izi = zsh <= -31 ? 0 : D >> -zsh;
-		}
-		else
-		{
-			litq_start64 (du_, dv_, &c);	// Agent AH's exact 64-bit start
-			izi = c.izi;
-			if (c.D < 1)
-				c.D = 1;
-		}
-
-		// the z: by the pixel loop when every pixel's is z >> 3 (D_QogZSpanI's
-		// far case), else by D_QogZSpanI
-		c.pz = NULL;
-#if defined(QOG_ZBUFFER8) && defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
-		if (izi >= 0 && izi < (1024 << 16) && izistep > -(1 << 22) && izistep < (1 << 22) &&
-			(unsigned)(izi + izistep * (count - 1)) < (1024u << 16))
-			c.pz = d_pzbuffer + (d_zwidth * pspan->v) + pspan->u;
-		else
-#endif
-			D_QogZSpanI (pspan, izi, izistep);
-		c.izi = izi;
-		LITQ_SPAN (&c);
-
-		// the next span of this core
-		{
-			int		k = step;
-			do
-			{
-				if (pspan->pnext == SPAN_NONE)
-					return;
-				pspan = SPAN_PTR (pspan->pnext);
-			} while (--k > 0);
-		}
+		litq_wrap_asm (&w, &c, pspan);
+		return;
 	}
+#endif
+	litq_wrap_c (&w, &c, pspan);
 }
