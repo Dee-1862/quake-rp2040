@@ -429,19 +429,60 @@ void R_QogVertCacheEnd (void)
 }
 
 #ifdef QOG_VERTCACHE_CLIPDIST
+#ifdef QOG_BMODEL_VERTCACHE
+#define QOG_BMVERTS	64	// entries a brush entity uses (the cache has at least 64)
+/*
+QuakeOG, the cache for one brush entity's vertices. Its faces
+share their end points and brush edges are never cached, so each point was
+projected and measured against the view planes once per edge that has it.
+While a brush entity is drawn the entries hold its model's vertices, made by
+the same statements with its origin, vectors and planes, so a hit gives the
+same bits. They are emptied for each entity. Clipped points are not model
+vertices and never match. With the cache in the z-buffer region an entity
+uses it only where the brush clip buffers do not reach.
+*/
+void R_QogVertCacheBrush (model_t *clmodel)
+{
+	int			i;
+	unsigned	verts;
+
+	r_qog_vertbytes = 0;
+	if (!r_qog_vertcache)
+		return;
+#ifdef QOG_EDGES_IN_ZBUFFER
+	if ((byte *)(r_qog_vertcache + QOG_BMVERTS) > r_ztemp_base &&
+		(byte *)r_qog_vertcache < r_ztemp_base + MAX_BMODEL_VERTS * sizeof(mvertex_t) + MAX_BMODEL_EDGES * sizeof(bedge_t))
+		return;
+#endif
+	for (i = 0 ; i < QOG_BMVERTS ; i++)
+		r_qog_vertcache[i].tag = 0xFFFF;
+	verts = clmodel->numvertexes < 0xFFFF ? clmodel->numvertexes : 0xFFFF;
+	r_qog_vertbase = (byte *)clmodel->vertexes;
+	r_qog_vertbytes = verts * sizeof(mvertex_t);
+}
+#endif
+
 /* the entry of a world vertex, emptied if it held another one, or NULL */
 static r_qogvert_t *R_QogVertEntry (mvertex_t *pv)
 {
 	r_qogvert_t	*e;
 	unsigned	ofs, n;
 
+#ifdef QOG_BMODEL_VERTCACHE
+	if (!r_qog_vertcache)	// brush entities set the base and size (R_QogVertCacheBrush)
+#else
 	if (!r_qog_vertcache || insubmodel)
+#endif
 		return NULL;
 	ofs = (unsigned)((byte *)pv - r_qog_vertbase);
 	if (ofs >= r_qog_vertbytes)
 		return NULL;
 	n = ofs / sizeof(mvertex_t);
+#ifdef QOG_BMODEL_VERTCACHE
+	e = &r_qog_vertcache[n & (insubmodel ? QOG_BMVERTS - 1 : r_qog_vertmask)];
+#else
 	e = &r_qog_vertcache[n & r_qog_vertmask];
+#endif
 	if (e->tag != n)
 	{
 		e->tag = (unsigned short)n;

@@ -98,6 +98,7 @@
 *(.text.R_QogAxPointSide)
 *(.text.R_QogAxEdgeSides)
 *(.text.R_ZDrawSubmodelPolys)
+*(.text.R_QogVertCacheBrush)
 
 /* group c1alias core 1, with helpers c1loop models */
 *(.text.R_QogAliasFastCore1)

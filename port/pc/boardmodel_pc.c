@@ -70,7 +70,8 @@ static const char	*const bm_asname[QAS_N] = { "check", "drawn", "trivial", "subd
 static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dlpair_flt", "dlcell_flt",
 	"dllit_flt", "reachup", "reachup_step", "grad_fast", "grad_idf", "grad_idd", "scanlines", "scanedges",
 	"surfdrawn", "bmsurf", "bmfaces", "bmemit", "bmclip", "bmmark", "bmcheck", "bmsplit", "bpoly",
-	"bpolyedge", "bmsplitint" };
+	"bpolyedge", "bmsplitint",
+	"bpolybox", "bpolyboxedge" };
 
 /* every count, as pointers, so one loop takes the differences */
 #define BM_MAXCOL	160

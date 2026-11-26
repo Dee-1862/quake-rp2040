@@ -2,6 +2,17 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-26, brush models, box sides and one projection a vertex, exact (PC and ARM build, registered data)
+
+Nothing ran on hardware.
+
+- `QOG_BPOLY_BOX` (r_bsp.c R_RecursiveClipBPoly, r_main.c). A brush entity that does not turn, at an axial node plane its box does not come within a unit of, hands every edge to that side without turning the plane into model space or testing a point. The list is reversed as id's loop would leave it. R_DrawBEntitiesOnList widens r_emins and r_emaxs by a unit before the clip. In demo3 the box decides 64 of 106 calls a view and 253 of 415 edges.
+- `QOG_BMODEL_VERTCACHE` (r_draw.c R_QogVertCacheBrush). A brush entity's vertices use 64 entries of the world's vertex cache, emptied for each entity, so a vertex is projected and measured against the view planes once instead of once per edge that has it. About 80 projections and 80 plane distances fewer a view (28 more fills of the other planes). It needs `QOG_VERTCACHE_CLIPDIST`, and only works while the cache lives through the brush entities (`QOG_FRONT_FAST`). With the cache in the z-buffer it stays off where the brush clip buffers reach.
+- R_QogVertCacheBrush joins the bmodels group of `QOG_BOARD_HOTTEXT`. tools/xip_sets.py, models excess 50 lines to 17, bmodels still 0.
+- boardbench (300 MHz, PIO 60 MHz), a0d7690 to this, Fast 24.4 fps to 24.9 (41.0 to 40.2 ms), Turbo 27.8 to 28.4 (35.9 to 35.2 ms). bmodels 3.3 to 2.8 ms, world 8.6 to 8.2 (the model prices every projection in world). The model scales brush work by its calibration, and a count of cycles gives about 0.3 ms, so expect 0.3 to 0.8 ms. New counts `bm_bpolybox` and `bm_bpolyboxedge`.
+- RAM, quake_display `end` 0x2003f77c, unchanged. quake_main.bin 376 B bigger. R_RecursiveClipBPoly 112 B a level, R_DrawBEntitiesOnList 120 B. tools/core1_syms.py passes.
+- Pixel identical to a0d7690. qogtest_hash `ce86f894f9de` (default PC build), qogtest_f_hash `e92bc9e9650d`. On the default PC build with the board's world flags, 113 shots (`qogtest_k_quiet`, `qogtest_d_shots`) in r_fast 0, 1 and 2 are identical, and so are all frame hashes of the three demos in each mode after the start frames (they show the build time). The 113 shots are also identical in each mode on the default PC build and on the boardbench build. A `QOG_BPOLY_CHECK` build of demo1, 2 and 3 finds 0 sides that differ from id's.
+
 ## 2026-11-26, one copy of the lit surface drawing for both cores, exact (PC and ARM build, registered data)
 
 Run on the board later (docs/fps-board.md, log `run15_8.txt`). The text below was written before that run.

@@ -85,6 +85,8 @@ WEIGHTS = {
         "bm_bmsplitint": (0, 40),   #   the same on an axial plane by integer compares (QOG_BMSPLIT_INT)
         "bm_bpoly": (20, 150),      # R_RecursiveClipBPoly: the world plane into model space
         "bm_bpolyedge": (8, 80),    #   an edge against it (more when split)
+        "bm_bpolybox": (0, 60),     # a call the entity's box decided (QOG_BPOLY_BOX), counted apart from bm_bpoly
+        "bm_bpolyboxedge": (0, 15), #   an edge it passed on
         "bm_bmfaces": (20, 400),    # brush faces not clipped to the world
         "bm_bmemit": (0.5, 150),
         "bm_bmclip": (0, 100),

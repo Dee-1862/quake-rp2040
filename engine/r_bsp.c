@@ -511,6 +511,36 @@ static int R_QogAxSide (mvertex_t *pv, mplane_t *tp, float *pdist)
 #endif
 #endif
 
+#ifdef QOG_BPOLY_BOX
+#ifndef QOG_BPOLY_AXIAL
+#error "QOG_BPOLY_BOX needs QOG_BPOLY_AXIAL"
+#endif
+/*
+QuakeOG, the side of an axial node plane that a brush entity which does not
+turn lies on as a whole, 0 in front, 1 behind, or -1 when its box comes
+within a unit of the plane or for any other case. r_emins and r_emaxs hold
+the entity's origin plus the model's bounds, widened by a unit
+(R_DrawBEntitiesOnList). The bounds hold every vertex (some lie on them), so
+every edge of its polygons (clipped ones too, which lie between model
+vertices) has id's dist about a unit or more past 0 on that side, far more
+than the rounding. The plane need not be turned into model space and no edge
+needs its sides.
+*/
+static int R_QogBpolyBoxSide (mplane_t *p)
+{
+	int		k = p->type, d;
+
+	if (!r_qog_entident || k >= 3)
+		return -1;
+	d = R_QogFKey (QOG_FB (p->dist));
+	if (d < R_QogFKey (QOG_FB (r_emins[k])))
+		return 0;
+	if (d > R_QogFKey (QOG_FB (r_emaxs[k])))
+		return 1;
+	return -1;
+}
+#endif
+
 #ifdef QOG_BPOLY_CHECK
 /* PC check build, id's tplane, sides and dists beside the axial ones */
 static unsigned	r_qog_bpn, r_qog_bpbad;
@@ -544,6 +574,24 @@ static void R_QogBpolyCheckSide (mvertex_t *pv, mplane_t *tp, int side)
 	R_QogBpolyCount ((d > 0 ? 0 : 1) != side);
 }
 
+#ifdef QOG_BPOLY_BOX
+static void R_QogBpolyCheckBox (bedge_t *pedge, mplane_t *splitplane, int side)
+{
+	vec3_t	normal;
+	float	dist, d;
+	int		i;
+
+	dist = splitplane->dist - DotProduct(r_entorigin, splitplane->normal);
+	for (i=0 ; i<3 ; i++)
+		normal[i] = DotProduct (entity_rotation[i], splitplane->normal);
+	for (i=0 ; i<2 ; i++)
+	{
+		d = DotProduct (pedge->v[i]->position, normal) - dist;
+		R_QogBpolyCount ((d > 0 ? 0 : 1) != side);
+	}
+}
+#endif
+
 static void R_QogBpolyCheckDist (mvertex_t *pv, mplane_t *tp, float dist)
 {
 	float	d = DotProduct (pv->position, tp->normal) - tp->dist;
@@ -567,11 +615,34 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	mnode_t		*pn;
 
 	psideedges[0] = psideedges[1] = NULL;
-	QOG_BM (QOG_BM_BPOLY, 1);	// QuakeOG
 	QOG_AQ (AQ_BPOLY, 1);
 
 	makeclippededge = false;
 
+#ifdef QOG_BPOLY_BOX
+	// QuakeOG, the whole entity on one side, every edge goes there, in the
+	// reverse order, as the loop below would leave the list
+	side = R_QogBpolyBoxSide (pnode->plane);
+	if (side >= 0)
+	{
+		ptedge = NULL;
+		for ( ; pedges ; pedges = pnextedge)
+		{
+			QOG_BM (QOG_BM_BPOLYBOXEDGE, 1);	// QuakeOG
+#ifdef QOG_BPOLY_CHECK
+			R_QogBpolyCheckBox (pedges, pnode->plane, side);
+#endif
+			pnextedge = pedges->pnext;
+			pedges->pnext = ptedge;
+			ptedge = pedges;
+		}
+		psideedges[side] = ptedge;
+		QOG_BM (QOG_BM_BPOLYBOX, 1);	// QuakeOG
+		goto sides_done;
+	}
+#endif
+
+	QOG_BM (QOG_BM_BPOLY, 1);	// QuakeOG
 // transform the BSP plane into model space
 // FIXME: cache these?
 	splitplane = pnode->plane;
@@ -744,6 +815,9 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 		numbedges += 2;
 	}
 
+#ifdef QOG_BPOLY_BOX
+sides_done:
+#endif
 // draw or recurse further
 	for (i=0 ; i<2 ; i++)
 	{
