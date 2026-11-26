@@ -18,6 +18,7 @@ Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchma
 | **a95562b + HOTTEXT** | **Fast** | 300, 150, PIO 60 | **24.8** | **40.3** | 43.9 s, log `run13_8.txt` |
 | **a95562b + HOTTEXT** | **Turbo** | 300, 150, PIO 60 | **27.8** | **36.1** | 39.3 s, log `run13_8.txt` |
 | a95562b + HOTTEXT + XIPSTATS | Fast | 300, 150, PIO 60 | 24.3 | 41.2 | cache counting build, log `run14_8.txt` |
+| **ebc51eb + HOTTEXT** | **Fast** | 300, 150, PIO 60 | **25.5** | **39.2** | one shared copy of the drawing code, 42.7 s, log `run15_8.txt` |
 
 Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. Commit IDs are those of this repository.
 
