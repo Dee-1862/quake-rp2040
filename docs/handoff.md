@@ -65,4 +65,4 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 - Unfinished and unverified, kept in sibling worktrees with uncommitted edits too
   - qog-wt-ap, remaining scanout waits in R_ScanEdges, commit 48a49c5 Let the edge scan wait for the scanout row by row
   - qog-wt-am, interrupt driven scanout so core 1 is free between rows, commit f501ee1 Drive the LCD scanout from the end of line DMA interrupt on core 1
-  - qog-wt-ar, assembly for alias span drawing, no commit yet
+  - qog-wt-ar (agent-ar2), alias spans and the lit span loop in Thumb, finished and checked on the PC and in the emulator, not merged or flashed
