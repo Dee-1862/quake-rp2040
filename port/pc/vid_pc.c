@@ -875,6 +875,12 @@ void VID_Shutdown(void) {
                    r_qog_turbotextframes, r_qog_turbotextmax, QOG_TURBO_CHARS, r_qog_turbotextover);
     }
 #endif
+#ifdef QOG_EDGECACHE_TAIL
+    {   /* Agent AP: views whose world edges reached the edge cache at the end of the z-buffer region */
+        extern int r_qog_ecmoves;
+        Sys_Printf("qog_ectail: the edge cache moved to the frame rows in %d views\n", r_qog_ecmoves);
+    }
+#endif
     if (COM_CheckParm("-scanmodel")) {   /* Agent AP: the board's race wait, a few guesses of pre */
         scanmodel_print(Sys_Printf, 3.0, 8.6, 5.7);
         scanmodel_print(Sys_Printf, 5.0, 8.6, 5.7);

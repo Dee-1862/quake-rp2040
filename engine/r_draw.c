@@ -327,6 +327,17 @@ typedef int								r_qogaint_t;
 #define QOG_FX_RESERVE	0
 #endif
 
+#ifdef QOG_EDGECACHE_TAIL
+/* QuakeOG (Agent AP): the first byte after the vertex cache and its Fast
+   header in the frame buffer, where R_QogEdgeCacheOut may put the edge cache */
+byte *R_QogVertCacheEnd_ (void)
+{
+	if (!r_qog_vertcache)
+		return vid.buffer;
+	return (byte *)(r_qog_vertcache + r_qog_vertmask + 1) + QOG_FX_RESERVE;
+}
+#endif
+
 /* called by R_EdgeDrawing before R_RenderWorld, after the edge cache is set */
 void R_QogVertCacheBegin (void)
 {
@@ -346,6 +357,18 @@ void R_QogVertCacheBegin (void)
 	{
 		lo = r_qog_turbocachelo;
 		hi = r_qog_turbocachehi;
+	}
+	else
+#endif
+#ifdef QOG_EDGECACHE_TAIL
+	if (r_qog_ectail)
+	{
+		// QuakeOG (Agent AP): the edge cache is at the end of the z-buffer
+		// region, the vertex cache takes the frame's first rows and leaves
+		// room after it for the edge cache, should it have to move there
+		// (R_QogEdgeCacheOut)
+		lo = vid.buffer;
+		hi = vid.buffer + r_refdef.vrect.height * vid.rowbytes - r_qog_edgecachebytes - 4;
 	}
 	else
 #endif
@@ -1753,7 +1776,12 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	}
 
 // ditto if not enough edges left, or switch to auxedges if possible
-	if ((edge_p + fa->numedges + 4) >= edge_max)
+	if ((edge_p + fa->numedges + 4) >= edge_max
+#ifdef QOG_EDGECACHE_TAIL
+		// QuakeOG (Agent AP): the table met the edge cache, which moves away
+		&& !(R_QogEdgeCacheOut () && (edge_p + fa->numedges + 4) < edge_max)
+#endif
+		)
 	{
 		r_outofedges += fa->numedges;
 		return;

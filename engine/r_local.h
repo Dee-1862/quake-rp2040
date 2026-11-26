@@ -39,6 +39,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 extern unsigned short	*r_qog_edgecache;
 extern int				r_qog_edgecachebytes;
+#if defined(QOG_EDGECACHE_TAIL) && !(defined(QOG_VERTCACHE) && defined(QOG_EDGECACHE_FRAME) && defined(QOG_EDGES_IN_ZBUFFER))
+#undef QOG_EDGECACHE_TAIL	// it needs the frame buffer cache, the vertex cache and the edges in the z-buffer
+#endif
+#ifdef QOG_EDGECACHE_TAIL
+// QuakeOG (Agent AP): the world's edge cache at the end of the z-buffer
+// region for this view (r_main.c R_QogEdgeCacheTail), edge_max below it
+extern int				r_qog_ectail;
+qboolean R_QogEdgeCacheOut (void);
+#endif
 #endif
 
 #define ALIAS_BASE_SIZE_RATIO		(1.0 / 11.0)
