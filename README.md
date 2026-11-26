@@ -20,13 +20,13 @@ If you want the long story, read [docs/showcase.md](docs/showcase.md).
 
 ## The numbers
 
-All of these are from the actual board running `timedemo demo3`. Turbo was last measured before the newest change. The runs are listed in [docs/fps-board.md](docs/fps-board.md).
+All of these are from the actual board running `timedemo demo3`. The runs are listed in [docs/fps-board.md](docs/fps-board.md).
 
 | Mode | What it looks like | fps |
 | --- | --- | --- |
 | Exact | Same pixels as the original renderer | 12.8 |
 | Fast (default) | Full detail, small shortcuts you barely notice | **25.5** |
-| Turbo | 3D view at half width, blockier | **27.8** |
+| Turbo | 3D view at half width, blockier | **28.5** |
 
 You switch between them in **Options, Render**.
 
@@ -41,9 +41,9 @@ xychart-beta
 ```mermaid
 xychart-beta
   title "Turbo mode, how it went"
-  x-axis ["Turbo added", "Less screen waiting", "Better flash layout", "Now"]
+  x-axis ["Turbo added", "Less screen waiting", "Better flash layout", "More tuning", "Now"]
   y-axis "fps" 0 --> 35
-  bar [22.3, 26.0, 27.1, 27.8]
+  bar [22.3, 26.0, 27.1, 27.8, 28.5]
 ```
 
 I wanted 35 fps. I did not get there.
@@ -52,7 +52,7 @@ I wanted 35 fps. I did not get there.
 
 | Port | Chip | Has an FPU | Speed they report |
 | --- | --- | --- | --- |
-| **QuakeOG** | 2x RP2040 | no | 25.5 fps, or 27.8 in Turbo |
+| **QuakeOG** | 2x RP2040 | no | 25.5 fps, or 28.5 in Turbo |
 | [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | about 29 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
 

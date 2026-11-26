@@ -13,7 +13,7 @@ This page is the story for people who know microcontrollers but not this repo. E
 | Board | FREE-WILi OG, two RP2040s (Cortex-M0+), 264 KB SRAM and 16 MB QSPI flash per chip |
 | Game | id's WinQuake source, the registered game's data supplied by the user |
 | Picture | 320x200 at 8 bits a pixel, a 320x152 3D view, on a 320x240 ST7789 LCD |
-| Benchmark on the board, `timedemo demo3` | 12.8 fps Exact, 25.5 fps Fast, 27.8 fps Turbo (300 MHz, overclocked) |
+| Benchmark on the board, `timedemo demo3` | 12.8 fps Exact, 25.5 fps Fast, 28.5 fps Turbo (300 MHz, overclocked) |
 | Exactness | Same game state hashes as one-process WinQuake. Exact render mode byte-identical to id's renderer on 121 PC test frames |
 | On the board today | Episode 1, with sound and saving |
 
@@ -120,7 +120,7 @@ All figures are the board's `timedemo demo3`.
 | Fewer waits for the screen | 22.0 | 26.0 |
 | Related code placed together in flash | | 27.1 |
 | Further screen wait and drawing work | 24.8 | 27.8 |
-| One shared copy of the drawing code | 25.5 | |
+| One shared copy of the drawing code | 25.5 | 28.5 |
 
 The goal was 35 fps and it was not reached. A cache measurement showed that waiting for code and data to arrive from flash is now a large part of each frame.
 
@@ -148,7 +148,7 @@ A web search in November 2026 found no other Quake port on the RP2040, and none 
 
 | Port | Chip | FPU | RAM | External memory | Reported speed | Content | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **QuakeOG** (this) | 2x RP2040, Cortex-M0+, 300 MHz | no | 264 KB per chip | none (16 MB flash per chip) | 25.5 fps Fast, 27.8 fps Turbo (half width), demo3, measured on the board | episode 1 | this repo |
+| **QuakeOG** (this) | 2x RP2040, Cortex-M0+, 300 MHz | no | 264 KB per chip | none (16 MB flash per chip) | 25.5 fps Fast, 28.5 fps Turbo (half width), demo3, measured on the board | episode 1 | this repo |
 | MG24Quake (Nicola Wrachien, next-hack) | EFR32MG24, Cortex-M33 overclocked to about 136 MHz | yes | 276 KB | two 32 MB SPI flash chips plus an SD card | about 27 to 29 fps | full retail game | [github.com/next-hack/MG24Quake](https://github.com/next-hack/MG24Quake), [Habr article](https://habr.com/en/articles/848396) |
 | RP2350-Quake (zenodante) | RP2350, Cortex-M33 | yes | 520 KB | none | not published, full playthrough unverified | | [github.com/zenodante/RP2350-Quake](https://github.com/zenodante/RP2350-Quake) |
 | Quake-ESP32S3 (recrof) | ESP32-S3, 240 MHz | yes | | 8 MB PSRAM | 37 to 42 fps | | [github.com/recrof/Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) |
