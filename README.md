@@ -20,7 +20,7 @@ If you want the long story, read [docs/showcase.md](docs/showcase.md).
 
 ## The numbers
 
-All of these are from the actual board running `timedemo demo3`.
+All of these are from the actual board running `timedemo demo3`. The runs are listed in [docs/fps-board.md](docs/fps-board.md).
 
 | Mode | What it looks like | fps |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ flowchart LR
 - Only one episode fits at a time. The full game is bigger than both flash chips together.
 - Only episode 1 has been run on the board. Episodes 2 and 3 build but I have not tried them on it.
 - No multiplayer, no CD music, no keyboard console.
-- In some rare views the small depth buffer gives up and the game stops with an error.
+- In a few rare views the small depth buffer runs out of room. For that one frame monsters and particles can show through walls.
 
 ## Before you flash, read this
 
@@ -147,7 +147,7 @@ You need these.
 
 - The toolchain from the Raspberry Pi Pico VS Code extension (SDK 2.3.0, GCC `15_2_Rel1`, ninja 1.13.2, picotool 2.3.0)
 - CMake 3.21 or newer and Python 3
-- Visual Studio Build Tools 2022 for the PC build
+- Visual Studio Build Tools 2022 for the PC build. That build is Windows only, and you need it to make the data images
 
 ```bash
 git clone https://github.com/freewili/wiliOGbsp third_party/wiliOGbsp
@@ -168,7 +168,7 @@ Run these from the repo root and put only one chip in BOOTSEL at a time. **Pleas
        --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
    ```
 
-2. Build the game. Pass every option each time because the build folder remembers old ones.
+2. Build the game. Pass every option each time because the build folder remembers old ones. On macOS or Linux use `--preset target-posix`.
 
    ```bash
    cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON

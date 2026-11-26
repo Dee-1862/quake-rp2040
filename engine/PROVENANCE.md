@@ -23,5 +23,5 @@ GLQuake (`gl_*`), QuakeWorld (`QW/`), all `.s` assembly, every DOS, Linux, Sun a
 ## Rules for changing anything here
 
 - One purpose per commit, with a message that says what and why.
-- Code copied from MG24Quake (GPL-3.0) or RP2350-Quake (GPL-3.0) gets a comment naming the source file, and a line in `docs/engine-files.md`. Once any such code lands, the combined work is GPL-3.0.
+- Code copied from MG24Quake (GPL-3.0) or RP2350-Quake (GPL-3.0) gets a comment naming the source file, and a line in this file. Once any such code lands, the combined work is GPL-3.0.
 - Platform code does not go here. It lives in `port/` and implements id's own interfaces (`Sys_*`, `VID_*`, `IN_*`, `SNDDMA_*`).

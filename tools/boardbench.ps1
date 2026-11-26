@@ -3,7 +3,7 @@
 #   powershell -File tools\boardbench.ps1                  # Fast and Turbo at 300 MHz, LCD by PIO at 60 MHz
 #   powershell -File tools\boardbench.ps1 -Lcd pl022 -Spi 50   # the SPI peripheral at 300 MHz
 #   powershell -File tools\boardbench.ps1 -Mhz 250 -Spi 62.5 -Lcd pl022
-#   powershell -File tools\boardbench.ps1 -Ref a side branch    # another branch, merged with this tool in a temporary worktree
+#   powershell -File tools\boardbench.ps1 -Ref <branch>    # another branch, merged with this tool in a temporary worktree
 #   powershell -File tools\boardbench.ps1 -WhatIf "notify rows only=nonotify;spans x0.7=spans*0.7"
 #
 # Builds quakeog_pc with the board client's render flags and the cost

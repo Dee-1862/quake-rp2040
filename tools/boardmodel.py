@@ -188,7 +188,7 @@ FEATURE_SCALE = {
     # Earlier work, the alias span drawer in Thumb (port/rp2040/d_aspan_rp2040.S),
     # the board's own code in the emulator, 0.65 of the C's cycles on random
     # span lists, 0.73 to 0.82 on model meshes. A span's count also pays its
-    # left edge row (AQ's line above), so its weight drops less than a pixel's
+    # left edge row (the line above), so its weight drops less than a pixel's
     "QOG_ASPAN_ASM": {"am_pix": (1.0, 0.7), "vm_pix": (1.0, 0.7), "am_spans": (1.0, 0.8), "vm_spans": (1.0, 0.8)},
 }
 # The earlier pipeline (QOG_DRAW_CORE1), lit world surfaces drawn whole by either

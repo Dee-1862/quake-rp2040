@@ -24,7 +24,7 @@ Quake was written in 1996 for a Pentium with 8 MB of RAM and a fast FPU. The RP2
 | | What Quake expects | What one RP2040 has |
 | --- | --- | --- |
 | CPU | Pentium, hardware floating point | Cortex-M0+, no FPU, no DSP instructions, no 64-bit multiply result |
-| A float divide | a few cycles | 870 ns at 200 MHz (measured, software divide) |
+| A float divide | a few cycles | 870 ns at 200 MHz (measured early on). Later estimates assume 55 to 75 cycles for the ROM routine, and the two have not been reconciled |
 | RAM for E1M1 | about 5.9 MB in the unmodified engine (measured on the PC build, map 1.77 MB, cache 1.42 MB, surface cache 600 KB, edicts 513 KB, progs 404 KB, static 435 KB) | 264 KB |
 | Static RAM alone | 435 KB in the unmodified engine (ARM compiler, measured) | 264 KB |
 | Game data | the shareware `pak0.pak` is 18.7 MB, the whole registered game's display data about 38 MB | 16 MB of flash per chip, part of it taken by the apps and the bootloader |
@@ -82,7 +82,7 @@ Some clock and timing figures below were measured during earlier stages at 200 o
 
 **Edges in the z-buffer.** id's edge sorting renderer keeps its edge table on the stack, 84,768 bytes on the ARM build. Spans are made top to bottom and each one writes z only in its own row, so the rows of the z-buffer below the current scan line are free. The edge table lives at the end of the z-buffer during edge drawing and is moved down as edges die, and the world's edge cache lives at its start. The stack frame fell to 36,184 bytes and the hunk lost 27,312 bytes on E1M1, with byte-identical pictures. Between views the same buffer holds the status bar rows, the link's receive buffer and other short-lived data, each with a stated owner and a run-time check (lessons L65).
 
-**A one-byte depth buffer.** A 16-bit z-buffer for the 320x152 view is 97,280 bytes. Storing depth in one byte, with finer steps close to the viewer, saves 48,640 bytes. The user approved this for the board client only, because it is the one change that is not exact by construction, in rare views the edge table cannot fit beside the waiting spans and needs a fallback table on the stack that the board cannot afford. That case stops the game with an error. It happened 4 times in a PC fight tour of episode 1 and is still open.
+**A one-byte depth buffer.** A 16-bit z-buffer for the 320x152 view is 97,280 bytes. Storing depth in one byte, with finer steps close to the viewer, saves 48,640 bytes. The user approved this for the board client only, because it is the one change that is not exact by construction, in rare views the edge table cannot fit beside the waiting spans and needs a fallback table on the stack that the board cannot afford. That case used to stop the game with an error (4 times in a PC fight tour of episode 1). Now, when the stack cannot hold the table, the waiting spans are drawn without z for that one view, so the world stays exact and only models and particles in those rows can show through it ([changes.md](changes.md)). Why the edges and spans meet there is still open.
 
 **Sound mixed on the other chip.** id's mixer wants about 45 KB of tables and buffers (channels, a paint buffer, 34,816 bytes of sound names). The display chip had a few hundred bytes free. The speaker is on the display chip, but the mixer runs on main, the client's sound calls cross the link as small items, main mixes with id's own code, and the 8-bit samples come back at 11 KB/s on a 1.25 MB/s link. On the display a PIO program drives the I2S amplifier, one DMA channel feeds it from a 2 KB ring, and a second DMA channel chained to the first rewinds the ring, so playback needs no interrupt and no CPU time. On the PC the split pair mixes exactly the samples the one-process game mixes.
 
@@ -103,7 +103,8 @@ The board's default render mode trades a small picture difference for speed, in 
 | Adaptive perspective steps | a divide every 8, 16 or 32 pixels, the longest run over which 1/z changes by at most 8% | 1.49% |
 | Linear light | light blended exactly at the ends of each 8-pixel run and stepped between | 1.28% |
 | Integer reciprocal | 1/z from the integer divider, about 16 good bits | 0.06% |
-| All three (shipped) | | about 2.8% average, about 9% in the worst frame |
+| All three (first measurement) | | about 2.8% average, about 9% in the worst frame |
+| Fast mode as it is now (measured 26 November 2026) | | 3.4% average, 10.5% in the worst frame |
 | For comparison, fixed 32-pixel steps, as MG24Quake | | 14.3% average, 38% worst frame |
 
 On the board Fast mode took E1M1 from 10.4 to 10.9 fps.
@@ -160,12 +161,12 @@ Empty cells are figures we did not find. MG24Quake's speed comes partly from its
 - **Speed.** About 25 fps at full detail. MG24Quake reports about 29 on a chip with an FPU.
 - **Not the whole game.** The display data of the whole game is about 38 MB, and both chips together have 32 MB of flash. Only one episode can be on the board at a time.
 - **RAM is nearly all used.** The display chip has a few hundred bytes spare.
-- **The one-byte depth buffer's fallback** stops the game in rare views (see above).
+- **The one-byte depth buffer's fallback** draws one view without z in rare views, a one frame glitch (see above).
 - Sound and saving work on the board.
 - **Overclock.** 300 MHz at 1.25 V with flash at 150 MHz is above the RP2040's and the flash chip's ratings. The game checks flash reads and falls back, the core clock is not checked.
 - **Fast and Turbo are not exact.** Fast is the board default. Exact mode is one menu switch away.
 - No multiplayer, no CD music, no console keyboard.
-- **Publishing.** The engine is GPL and the board's BSP is under the FreeWili Hardware License. Whether they can be combined is an open question for FREE-WILi, so nothing is published yet. The game data is never in the repo.
+- **Publishing.** The engine is GPL and the board's BSP is under the FreeWili Hardware License. Whether they can be combined is an open question for FREE-WILi, so only the source is published, never built firmware. The game data is never in the repo.
 
 ## What is next
 

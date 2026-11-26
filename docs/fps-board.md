@@ -10,6 +10,16 @@ Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchma
 | de58316 | Fast | 250, 125, SPI 62.5 | 13.6 | 73.3 | 1090 frames in 79.9 s. E1M1 standing 18.0 fps (frame 55.2, view 53.2, race 6.0, lmap 2.0) |
 | **f7d9450** | **Fast** | 300, 150, PIO 60 | **20.0** | **49.9** | 1090 frames in 54.4 s |
 | **f7d9450** | **Turbo** | 300, 150, PIO 60 | **22.3** | **44.8** | 1090 frames in 48.8 s |
+| e38c9a4 | Fast | 300, 150, PIO 60 | 22.0 | 45.5 | 1090 frames in 49.6 s, log `run10_8.txt` |
+| e38c9a4 | Turbo | 300, 150, PIO 60 | 26.0 | 38.4 | 41.9 s, log `run10_8.txt` |
+| dd4bc39 + HOTTEXT | Turbo | 300, 150, PIO 60 | 27.1 | 36.9 | 40.2 s, log `run11_8.txt` |
+| f73166e + HOTTEXT | Turbo | 300, 150, PIO 60 | 27.8 | 36.0 | 39.2 s, log `run12_8.txt` |
+| 864bea5 + HOTTEXT | Exact | 300, 150, PIO 60 | 12.8 | 78.3 | 85.3 s, log `run13_8.txt` |
+| **864bea5 + HOTTEXT** | **Fast** | 300, 150, PIO 60 | **24.8** | **40.3** | 43.9 s, log `run13_8.txt` |
+| **864bea5 + HOTTEXT** | **Turbo** | 300, 150, PIO 60 | **27.8** | **36.1** | 39.3 s, log `run13_8.txt` |
+| 864bea5 + HOTTEXT + XIPSTATS | Fast | 300, 150, PIO 60 | 24.3 | 41.2 | cache counting build, log `run14_8.txt` |
+
+Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. The history was rewritten in November 2026, so the f7d9450 above is 8155226 now, and e38c9a4 was 5bb769e.
 
 de58316 phases, ms per view, spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total view 72.2.
 
@@ -39,7 +49,7 @@ What drives scanwait, windows with notify text (a pickup message in the last 3 s
 | Commit | Calibration | Fast | Turbo | Board |
 | --- | --- | ---: | ---: | --- |
 | cd1e749 | de58316 | 18.0 | 20.6 | not measured |
-| 768c8a6 + a side branch | de58316 | 22.6 | 26.5 | not measured |
+| 768c8a6 + an earlier branch | de58316 | 22.6 | 26.5 | not measured |
 | f7d9450 | de58316 | 26.5 (24.9 to 27.4) | 30.4 (27.6 to 31.6) | **20.0 / 22.3, the model was 33% and 36% high** |
 | f7d9450 | f7d9450 Fast (now) | 20.0 (by construction) | **22.8** (board 22.3, 2% high) | |
 
@@ -112,4 +122,4 @@ Rule for every claim, run `tools\boardbench.ps1` on the branch before and after,
 | 2026-11-25 | earlier work | First version, model calibrated on de58316, main cd1e749 predicted |
 | 2026-11-25 | earlier work | main 768c8a6 merged, the earlier pipeline, the earlier PIO scanout and Turbo text, the earlier paths in the model, attacks re-ranked |
 | 2026-11-25 | earlier work | Board run of f7d9450 (20.0 and 22.3 fps against the model's 26.5 and 30.4), model recalibrated on it, status bar cap what-if, attacks re-ranked for Turbo |
-| 2026-11-25 | earlier work | a side branch row race and edge cache tail, Fast 21.9 to 24.0, Turbo 26.6 to 27.5 predicted (board 22.0 and 26.0 on 5bb769e), the model keeps core 1 busy with the rest of the scanout |
+| 2026-11-25 | earlier work | an earlier branch row race and edge cache tail, Fast 21.9 to 24.0, Turbo 26.6 to 27.5 predicted (board 22.0 and 26.0 on 5bb769e), the model keeps core 1 busy with the rest of the scanout |

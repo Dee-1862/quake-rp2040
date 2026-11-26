@@ -290,7 +290,7 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L182. Git Bash's `sed -i` rewrites a CRLF file with LF endings.** It did so to pc/CMakeLists.txt and port/pc/vid_pc.c, and a PowerShell ReadAllText and WriteAllText round trip did the same. Patch CRLF files with a script that reads and writes bytes, and check `git ls-files --eol` before committing (L111). Escapes such as `\n` and `\b` in text passed through the shell tool can also arrive as real control characters, check generated text for bytes below 0x20.
 
-**L183. The engine's paths are at most 128 characters.** A worktree in the session scratchpad (a 120 character path) made quakeog_pc stop silently right after adding the paks. Keep test worktrees at short paths such as `C:\Users\...\GitHub\qog-ref-xx`.
+**L183. The engine's paths are at most 128 characters.** A worktree in a temporary folder (a 120 character path) made quakeog_pc stop silently right after adding the paks. Keep test worktrees at short paths such as `C:\Users\...\GitHub\qog-ref-xx`.
 
 **L184. At 300 MHz with the LCD at 50 MHz the world front end of a Fast view hides behind the scanout.** The view waits for the edge and vertex cache rows (about row 78, 8.8 ms after VID_Update) and then for the whole scanout (17 ms for 152 rows) after R_RenderWorld. Halving the world's 8.9 ms saves only 2.8 ms of frame until those waits go. Check a speed-up against the frame's critical path, not the phase's own time.
 

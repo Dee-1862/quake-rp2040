@@ -30,7 +30,7 @@ Add a `platform/pc/` backend with the same `qog_*.h` API, SDL2 or a raw window f
 
 Start from a full Quake source, then remove whole subsystems before optimising anything. Candidates, GLQuake and the GL renderer, QuakeWorld, networking beyond a loopback, CD audio, the console's command history, the demo recorder, the PCX screenshot code, video mode lists, and the `cvar` features we don't use.
 
-- **Check.** keep `docs/engine-files.md` with every engine file marked `kept`, `trimmed` or `deleted`, plus its origin (id GPL, MG24Quake GPL-3.0 or ours). The licence checklist needs this anyway.
+- **Check.** keep `engine/PROVENANCE.md` up to date, with any engine file marked `kept`, `trimmed` or `deleted`, plus its origin (id GPL, MG24Quake GPL-3.0 or ours). The licence checklist needs this anyway.
 
 ## 4. One copy of every number
 
@@ -60,7 +60,7 @@ Start from a full Quake source, then remove whole subsystems before optimising a
 ## 8. Third-party code is cloned, not committed
 
 - `third_party/` is git-ignored. README lists the exact clone commands, and should pin commits once we depend on specific ones.
-- Anything copied out of MG24Quake into `engine/` gets its origin noted in `docs/engine-files.md`.
+- Anything copied out of MG24Quake into `engine/` gets its origin noted in `engine/PROVENANCE.md`.
 
 ## 9. Two chips, one engine
 

@@ -1,4 +1,4 @@
-# QuakeOG, a Quake port to ONE RP2040 (the FreeWili OG's display CPU).
+# QuakeOG, a Quake port to the FreeWili OG's two RP2040s (server on main, client on display).
 #
 # This project consumes the FreeWili OG BSP (third_party/wiliOGbsp) the way
 # its AGENTS.md "Consuming this BSP from another project" section describes.

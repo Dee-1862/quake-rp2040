@@ -1077,7 +1077,7 @@ static void R_QogFaceGradFast (mplane_t *pplane)
 	surface_p->d_ziorigin = (float)g * (distinv * fx->gk[2]);
 #endif
 #ifdef QOG_FGRAD_CHECK
-	// PC check build, the values of the code above against AJ's statements
+	// PC check build, the values of the code above against the statements
 	{
 		static unsigned	n, bad;
 		float			di = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal)), v[3];
