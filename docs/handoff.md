@@ -57,8 +57,10 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 - The 1-byte depth buffer reaches the edge fallback in a few views per episode (4 in the episode 1 fight tour). On the board those now draw without z when the stack is short (a few models or particles show through the world in some rows for one frame). Why the edges and spans meet there is still not looked at.
 - Sound, listen on the board, and raise `_snd_mixahead` (0.1, at most 0.18) if it breaks up. The display's flash image still holds sounds the client no longer opens (about 1.6 MB to win for maps).
 
-## Where the speed work stopped (25 Nov 2026)
+## Where the speed work stands (26 Nov 2026)
 
-- Board runs f4dfb75. timedemo demo3 measured 22.0 fps Fast and 26.0 fps Turbo. The target is 35 fps
-- The later scanout wait and alias drawing work is merged and measured (docs/fps-board.md section 1)
-- The interrupt driven scanout was left out, its gain was too small
+- The board runs main. `timedemo demo3` measured 25.5 fps Fast and 28.5 fps Turbo (docs/fps-board.md section 1)
+- The goal is MG24Quake's 29.2 fps in Fast, about 5 ms a frame away. The earlier goal of 35 fps was not reached
+- The display chip has 132 bytes of RAM spare, so anything that needs RAM has to free some first
+- Ideas not built yet are the edge scan split over both cores, cheaper brush models, and hot per node and per edge code in RAM
+- Running the world pass on the main chip was studied and not built, the data would reach the display too late

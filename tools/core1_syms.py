@@ -25,12 +25,27 @@ import argparse
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 from collections import defaultdict
 
-BIN = os.path.join(os.path.expanduser("~"), ".pico-sdk", "toolchain", "15_2_Rel1", "bin")
 EXE = ".exe" if os.name == "nt" else ""
+
+
+def find_bin():
+    """The ARM tools, from PICO_TOOLCHAIN_PATH, then PATH, then the VS Code extension's folder."""
+    top = os.environ.get("PICO_TOOLCHAIN_PATH")
+    if top:
+        sub = os.path.join(top, "bin")
+        return sub if os.path.isdir(sub) else top
+    found = shutil.which("arm-none-eabi-nm")
+    if found:
+        return os.path.dirname(found)
+    return os.path.join(os.path.expanduser("~"), ".pico-sdk", "toolchain", "15_2_Rel1", "bin")
+
+
+BIN = find_bin()
 
 # read by both cores and written by neither while R_ScanEdges runs (the
 # frame's view, texture, light and buffer values), or the pipeline's own
@@ -77,14 +92,21 @@ def run(tool, *args):
                           capture_output=True, text=True, errors="replace").stdout
 
 
+def plain(sym):
+    """A static's name without the number some compilers add to it."""
+    return re.sub(r"\.\d+$", "", sym)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default="build")
     ap.add_argument("--root", default="D_QogC1Worker")
     a = ap.parse_args()
     base = os.path.join(a.build, "apps", "quake", "CMakeFiles")
-    objs = glob.glob(os.path.join(base, "qog_engine_cl.dir", "**", "*.obj"), recursive=True)
-    objs += glob.glob(os.path.join(base, "quake_display.dir", "**", "*.obj"), recursive=True)
+    objs = []   # CMake names objects .obj on Windows, .o elsewhere
+    for target in ("qog_engine_cl.dir", "quake_display.dir"):
+        for ext in ("*.obj", "*.o"):
+            objs += glob.glob(os.path.join(base, target, "**", ext), recursive=True)
     if not objs:
         sys.exit("no objects under " + base)
     local = {}                  # obj -> {name: type} of its local symbols
@@ -132,7 +154,7 @@ def main():
                 edges[cur].add((o, sym, local[o][sym]))
             else:
                 edges[cur].add((None, sym, gtype.get(sym, "U")))
-    c1objs = {o for o in objs if re.search(r"d_core1[se]?\.c\.obj$", o)}
+    c1objs = {o for o in objs if re.search(r"d_core1[se]?\.c\.(obj|o)$", o)}
     shared = "qog_drawctx" in gtype    # QOG_DRAW_SHARED
     allowed = SHARED | PER_CORE if shared else SHARED
     seen, todo, data = set(), [a.root], defaultdict(set)
@@ -149,15 +171,15 @@ def main():
                 if not o and not sym.startswith("c1_"):
                     shared_funcs.add(sym)
             elif t.upper() in "BDCSG":
-                if sym.startswith("c1_") or (o in c1objs and (not shared or sym in STATIC_OK)):
+                if sym.startswith("c1_") or (o in c1objs and (not shared or plain(sym) in STATIC_OK)):
                     continue
                 data[sym].add(f if isinstance(f, str) else f[1])
-    bad = sorted(s for s in data if s not in allowed)
+    bad = sorted(s for s in data if plain(s) not in allowed)
     print("core 1 reaches %d functions; shared (not c1_) ones:" % len(seen))
     print("  " + " ".join(sorted(shared_funcs)))
     print("shared variables on the list:")
     for s in sorted(data):
-        if s in allowed:
+        if plain(s) in allowed:
             print("  %s (%s)" % (s, ", ".join(sorted(data[s]))))
     if bad:
         print("NOT on the list, check each:")

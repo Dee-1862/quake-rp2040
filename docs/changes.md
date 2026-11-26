@@ -2,7 +2,9 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
-## 2026-11-26, one copy of the lit surface drawing for both cores, exact (PC and ARM build, registered data, not run on hardware)
+## 2026-11-26, one copy of the lit surface drawing for both cores, exact (PC and ARM build, registered data)
+
+Run on the board later (docs/fps-board.md, log `run15_8.txt`). The text below was written before that run.
 
 Both cores draw lit surfaces during the edge scan, and each ran its own copy of the code, so the same hot functions sat at two flash addresses and competed for the 16 KB XIP cache.
 
@@ -20,7 +22,9 @@ Both cores draw lit surfaces during the edge scan, and each ran its own copy of 
 
 Files, engine/d_drawctx.h (new), d_core1.h, d_core1.c, d_edge.c, d_scanlit.c, d_lit_q.h, r_surf.c, apps/quake/CMakeLists.txt, port/rp2040/ld_hottext/default_text_excludes.incl, tools/core1_syms.py.
 
-## 2026-11-25, The last two scanout waits, the row race and the edge cache tail, exact (PC and ARM build, registered data, not run on hardware)
+## 2026-11-25, The last two scanout waits, the row race and the edge cache tail, exact (PC and ARM build, registered data)
+
+Run on the board later (docs/fps-board.md, log `run12_8.txt`). The text below was written before that run.
 
 In run10_8 (f4dfb75) timedemo demo3 still waits for the LCD. Turbo windows show up to 4.5 ms of `scanwait` a frame, mostly 0 to 3 (the wait for the end of the scan before R_ScanEdges). Fast windows show 3 to 6 ms of `race` (row waits for the edge cache in the first rows of the frame).
 
@@ -33,7 +37,9 @@ In run10_8 (f4dfb75) timedemo demo3 still waits for the LCD. Turbo windows show 
 
 Files, engine/r_edge.c, r_main.c, r_draw.c, r_local.h, vid.h, apps/quake/CMakeLists.txt, pc/CMakeLists.txt, port/pc/vid_pc.c, boardmodel_pc.c, tools/boardmodel.py.
 
-## 2026-11-25, alias span pixels and the lit span loop in Thumb, exact (not run on hardware)
+## 2026-11-25, alias span pixels and the lit span loop in Thumb, exact
+
+Run on the board later (docs/fps-board.md, log `run12_8.txt`). The text below was written before that run.
 
 - `QOG_BOARD_ASPANASM` (on) draws id's alias spans (models and the view weapon) with hand written Thumb from flash (port/rp2040/d_aspan_rp2040.S). The light and the depth step on the interpolators. In the emulator the span drawer takes 0.65 of the C's cycles on random span lists and 0.73 to 0.83 on model meshes (67.4 to 49.3 cycles a pixel on 100 pixel meshes, 110.7 to 91.9 on 24 pixel ones). Player colours still take the C.
 - The loop over a lit surface's spans in the Fast and Turbo drawer (the span start, the z choice, the calls) is also Thumb from flash (`litq_wrap_asm`, port/rp2040/d_litq_rp2040.S), on both cores. An emulator replay of demo3 surfaces puts the loop at about 150 cycles a span against about 185 before (about 1% of the lit spans). Output is byte identical.
