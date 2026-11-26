@@ -3,10 +3,11 @@
  * (D_PolysetDrawSpans8, engine/d_polyse.c, Agent AI's QOG_ALIASSPAN_FAST
  * form) in hand-scheduled Thumb for the M0+, from flash.
  *
- *   void d_aspans_asm (spanpackage_t *p);
+ *   void d_aspans_asm (spanpackage_t *p, aspan_asm_t *k);
  *
- * It reads id's globals (d_aspancount, errorterm, the steps, the skin
- * width, acolormap) and writes back d_aspancount and errorterm, as the C does.
+ * It names no globals: d_aspancount, errorterm, the steps, the skin width
+ * and the colour map come in through k (d_polyse.c), and the count and the
+ * error term are left there for the caller, as the C leaves its globals.
  *
  * GCC keeps about 14 values live through each pixel and spills them to the
  * stack. Here interpolator 1 holds the light (its FULL result is the colour
@@ -37,8 +38,21 @@
 	.equ	P_SIZE, 32
 
 	@ stack frame
-	.equ	K_ACOUNT, 8
-	.equ	K_ERR, 12
+	.equ	K_CTX, 0		@ the aspan_asm_t
+
+	@ aspan_asm_t (d_polyse.c)
+	.equ	A_ACOUNT, 0
+	.equ	A_ERR, 4
+	.equ	A_ADJUP, 8
+	.equ	A_ADJDOWN, 12
+	.equ	A_CEXTRA, 16
+	.equ	A_UBASE, 20
+	.equ	A_ZSTEP, 24
+	.equ	A_LSTEP, 28
+	.equ	A_SSTEP, 32
+	.equ	A_TSTEP, 36
+	.equ	A_SKINW, 40
+	.equ	A_CMAP, 44
 
 	.equ	SIO_INTERP, 0xD0000080	@ INTERP0, INTERP1 at + 0x40
 	.equ	I0_ACC0, 0x00
@@ -94,14 +108,10 @@ d_aspans_asm:
 	mov	r6, r10
 	mov	r7, r11
 	push	{r4, r5, r6, r7}
-	sub	sp, #16
+	sub	sp, #8
 	mov	lr, r0			@ lr = the span package
-	ldr	r1, =d_aspancount
-	ldr	r2, [r1]
-	str	r2, [sp, #K_ACOUNT]
-	ldr	r1, =errorterm
-	ldr	r2, [r1]
-	str	r2, [sp, #K_ERR]
+	str	r1, [sp, #K_CTX]
+	movs	r4, r1
 	@ the constants of the call: interpolator 1 for the light, lane 1 of both off
 	ldr	r0, =SIO_INTERP
 	ldr	r2, =CTL_LIGHT
@@ -113,46 +123,38 @@ d_aspans_asm:
 	str	r2, [r0, #I0_CTRL1]
 	str	r2, [r0, #I0_ACC1]
 	str	r2, [r0, #I0_BASE1]
-	ldr	r1, =acolormap
-	ldr	r2, [r1]
+	ldr	r2, [r4, #A_CMAP]
 	str	r2, [r0, #I1_BASE2]
-	ldr	r1, =r_lstepx
-	ldr	r2, [r1]
+	ldr	r2, [r4, #A_LSTEP]
 	str	r2, [r0, #I1_BASE0]
-	ldr	r1, =r_zistepx
-	ldr	r2, [r1]
+	ldr	r2, [r4, #A_ZSTEP]
 	str	r2, [r0, #I0_BASE0]
-	ldr	r1, =r_affinetridesc
-	ldr	r2, [r1, #8]		@ skinwidth
+	ldr	r2, [r4, #A_SKINW]
 	mov	r9, r2
-	ldr	r1, =r_sstepx
-	ldr	r2, [r1]
+	ldr	r2, [r4, #A_SSTEP]
 	mov	r10, r2
-	ldr	r1, =r_tstepx
-	ldr	r2, [r1]
+	ldr	r2, [r4, #A_TSTEP]
 	mov	r11, r2
 
 .Lspan:
 	@ r0 = SIO_INTERP, lr = the span package. lcount and id's error term step
 	mov	r6, lr
-	ldr	r3, [sp, #K_ACOUNT]
+	ldr	r7, [sp, #K_CTX]
+	ldr	r3, [r7, #A_ACOUNT]
 	ldr	r2, [r6, #P_COUNT]
 	subs	r5, r3, r2		@ lcount
-	ldr	r2, [sp, #K_ERR]
-	ldr	r4, =erroradjustup
-	ldr	r4, [r4]
+	ldr	r2, [r7, #A_ERR]
+	ldr	r4, [r7, #A_ADJUP]
 	adds	r2, r4
 	bmi	1f
-	ldr	r4, =erroradjustdown
-	ldr	r4, [r4]
+	ldr	r4, [r7, #A_ADJDOWN]
 	subs	r2, r4
-	ldr	r4, =d_countextrastep
+	ldr	r4, [r7, #A_CEXTRA]
 	b	2f
-1:	ldr	r4, =ubasestep
-2:	ldr	r4, [r4]
-	adds	r3, r4
-	str	r3, [sp, #K_ACOUNT]
-	str	r2, [sp, #K_ERR]
+1:	ldr	r4, [r7, #A_UBASE]
+2:	adds	r3, r4
+	str	r3, [r7, #A_ACOUNT]
+	str	r2, [r7, #A_ERR]
 	cmp	r5, #0
 	ble	.Lnext
 
@@ -280,13 +282,7 @@ d_aspans_asm:
 	cmp	r2, r3
 	beq	1f
 	b	.Lspan
-1:	ldr	r7, =d_aspancount
-	ldr	r2, [sp, #K_ACOUNT]
-	str	r2, [r7]
-	ldr	r7, =errorterm
-	ldr	r2, [sp, #K_ERR]
-	str	r2, [r7]
-	add	sp, #16
+1:	add	sp, #8
 	pop	{r4, r5, r6, r7}
 	mov	r8, r4
 	mov	r9, r5

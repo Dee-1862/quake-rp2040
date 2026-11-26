@@ -966,7 +966,15 @@ assembly holds the light and the depth on the interpolators. The board
 checks it against the C at start-up (D_QogAspanCheck) and keeps the C if
 they differ. Player colours (d_atranslate) take the C.
 */
-void d_aspans_asm (spanpackage_t *p);	// reads and writes id's globals as the C does
+// what it reads of id's globals, in its order. It names none of them
+// itself, and leaves acount and err for the caller.
+typedef struct
+{
+	int			acount, err, adjup, adjdown, cextra, ubase;
+	int			zstep, lstep, sstep, tstep, skinw;
+	const byte	*cmap;
+} aspan_asm_t;
+void d_aspans_asm (spanpackage_t *p, aspan_asm_t *k);
 int		d_aspan_asm_ok;	// D_QogAspanCheck found the assembly equal to the C
 #endif
 
@@ -999,20 +1007,48 @@ int		d_aspan_asm_ok;	// D_QogAspanCheck found the assembly equal to the C
 			D_QOGSPANLOOP (ZQ, D_QOGTEX);							\
 	}
 
+#ifdef QOG_ASPAN_ON
+static void D_AspanRunAsm (spanpackage_t *pspanpackage)
+{
+	aspan_asm_t	k;
+
+	k.acount = d_aspancount;
+	k.err = errorterm;
+	k.adjup = erroradjustup;
+	k.adjdown = erroradjustdown;
+	k.cextra = d_countextrastep;
+	k.ubase = ubasestep;
+	k.zstep = r_zistepx;
+	k.lstep = r_lstepx;
+	k.sstep = r_sstepx;
+	k.tstep = r_tstepx;
+	k.skinw = r_affinetridesc.skinwidth;
+	k.cmap = (const byte *)acolormap;
+	d_aspans_asm (pspanpackage, &k);
+	d_aspancount = k.acount;
+	errorterm = k.err;
+}
+
+// the C loop a function of its own, so the usual call does not pay its frame
+static __attribute__((noinline)) void D_PolysetDrawSpans8C (spanpackage_t *pspanpackage);
+
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
+{
+	if (d_aspan_asm_ok && !d_atranslate)
+		D_AspanRunAsm (pspanpackage);	// QuakeOG (Agent AR): the same, in Thumb
+	else
+		D_PolysetDrawSpans8C (pspanpackage);
+}
+
+static void D_PolysetDrawSpans8C (spanpackage_t *pspanpackage)
+#else
+void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
+#endif
 {
 	int			lcount, aspancount, err;
 	int			adjup, adjdown, cextra, ubase;
 	int			zistepx, lstepx, sstepx, tstepx, skinw;
 	byte		*cmap, *tr;
-
-#ifdef QOG_ASPAN_ON
-	if (d_aspan_asm_ok && !d_atranslate)
-	{
-		d_aspans_asm (pspanpackage);	// QuakeOG (Agent AR): the same, in Thumb
-		return;
-	}
-#endif
 
 	aspancount = d_aspancount;
 	err = errorterm;
@@ -1176,14 +1212,11 @@ void D_QogAspanCheck (void)
 		// the C
 		memset (pa, 0, sizeof(pa));
 		memcpy (za, z0, sizeof(za));
-		{
-			ac = d_aspancount;
-			et = errorterm;
-			d_aspan_asm_ok = 0;
-			D_PolysetDrawSpans8 (sp);
-			ca = d_aspancount; ea = errorterm;
-			d_aspancount = ac; errorterm = et;
-		}
+		ac = d_aspancount;
+		et = errorterm;
+		D_PolysetDrawSpans8C (sp);
+		ca = d_aspancount; ea = errorterm;
+		d_aspancount = ac; errorterm = et;
 		// the assembly, into the other buffers
 		for (i = 0 ; i < 16 ; i++)
 		{
@@ -1192,7 +1225,7 @@ void D_QogAspanCheck (void)
 		}
 		memset (pb, 0, sizeof(pb));
 		memcpy (zb, z0, sizeof(zb));
-		d_aspans_asm (sp);	// from the same d_aspancount and errorterm as the C
+		D_AspanRunAsm (sp);	// from the same d_aspancount and errorterm as the C
 		cb = d_aspancount;
 		eb = errorterm;
 		d_aspancount = ac;
