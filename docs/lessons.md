@@ -367,3 +367,5 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L312. Two copies of the same code on two cores cost the cache twice.** QOG_DRAW_CORE1 compiles the lit surface drawing a second time for core 1, so during the edge scan about 6.3 KB of identical functions are hot at two addresses. Code that both cores run at the same time should be one copy that takes its state through a pointer, not one copy per core.
 
 **L313. A prefetch needs a free path to memory.** A DMA read of the next BSP node would fill its XIP line in the background on a bigger chip, but the RP2040's XIP has one bus port. The fill would block core 0's own instruction fetches, which also come from flash. Check what else waits on the same port before adding a prefetch.
+
+**L330. A wait removed on one core can move to the other.** The edge scan no longer waits for the end of the scanout, but core 1 sends that scanout and draws nothing until it ends, so core 0 draws those surfaces itself. A model that takes core 1 as free counts the whole wait as saved.

@@ -62,7 +62,7 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 - Board runs 5bb769e. timedemo demo3 measured 22.0 fps Fast and 26.0 fps Turbo. The target is 35 fps
 - Main also has agent-aq4 and agent-aq5, not flashed. Main was not rebuilt or rechecked after the agent-aq5 merge
 - Next test, flash with -DQOG_BOARD_HOTTEXT=ON and compare the Turbo result. The XIP counter build is in the top changes.md entries
-- Unfinished and unverified, kept in sibling worktrees with uncommitted edits too
-  - qog-wt-ap, remaining scanout waits in R_ScanEdges, commit 48a49c5 Let the edge scan wait for the scanout row by row
+- Other speed work, kept in sibling worktrees (the first bullet is finished, the rest unfinished and unverified)
+  - agent-ap3 (worktree qog-wt-ap), the row race and the edge cache tail are finished and checked on the PC and in the ARM build, not merged or flashed (top of changes.md)
   - qog-wt-am, interrupt driven scanout so core 1 is free between rows, commit f501ee1 Drive the LCD scanout from the end of line DMA interrupt on core 1
   - qog-wt-ar, assembly for alias span drawing, no commit yet

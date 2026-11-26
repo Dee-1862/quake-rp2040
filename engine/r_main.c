@@ -1491,7 +1491,9 @@ its whole room back, so every view still gets every edge it needs.
 */
 int		r_qog_ectail;	// the cache is at the end of the z-buffer region now
 static int	r_qog_ecplaced;	// this view moved the cache from the frame buffer's start
-int		r_qog_ecmoves;	// measurement: views whose world edges reached the cache
+#ifdef _WIN32
+int		r_qog_ecmoves;	// PC measurement: views whose world edges reached the cache
+#endif
 
 static void R_QogEdgeCacheTail (void)
 {
@@ -1530,13 +1532,13 @@ false when nothing was moved.
 */
 qboolean R_QogEdgeCacheOut (void)
 {
-	extern byte	*R_QogVertCacheEnd_ (void);	// r_draw.c
+	extern byte	*R_QogVertCacheTop (void);	// r_draw.c
 	byte		*dst;
 
 	if (!r_qog_ectail)
 		return false;
 	r_qog_ectail = 0;
-	dst = R_QogVertCacheEnd_ ();
+	dst = R_QogVertCacheTop ();
 	dst = (byte *)(((size_t)dst + 3) & ~(size_t)3);
 #ifdef QOG_VID_SCANRACE
 	VID_QogScanFree (dst, dst + r_qog_edgecachebytes);
@@ -1544,7 +1546,9 @@ qboolean R_QogEdgeCacheOut (void)
 	memcpy (dst, r_qog_edgecache, r_qog_edgecachebytes);
 	r_qog_edgecache = (unsigned short *)dst;
 	edge_max = &r_edges[r_numallocatededges];
+#ifdef _WIN32
 	r_qog_ecmoves++;
+#endif
 	return true;
 }
 #endif

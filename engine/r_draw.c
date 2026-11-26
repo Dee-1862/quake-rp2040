@@ -330,7 +330,7 @@ typedef int								r_qogaint_t;
 #ifdef QOG_EDGECACHE_TAIL
 /* QuakeOG (Agent AP): the first byte after the vertex cache and its Fast
    header in the frame buffer, where R_QogEdgeCacheOut may put the edge cache */
-byte *R_QogVertCacheEnd_ (void)
+byte *R_QogVertCacheTop (void)
 {
 	if (!r_qog_vertcache)
 		return vid.buffer;

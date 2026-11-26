@@ -201,9 +201,12 @@ def row_ms(spi_mhz, mhz, lcd="pl022"):
     return (320 * 16 / spi_mhz + 9.6 * 250.0 / mhz) / 1000.0
 
 
-def pipeline(fr, m, s1):
+def pipeline(fr, m, s1, delay=0.0):
     """core 0's time for the edge scan and the surfaces with Agent AM's
-    pipeline, and core 0's wait for core 1's last surface"""
+    pipeline, and core 0's wait for core 1's last surface. delay: the last
+    scanout still has this long to run when the edge scan starts (Agent AP's
+    row race), core 1 draws nothing before it ends and core 0 joins its job
+    after that"""
     e = m["edgescan"]
     sd = m["lmap"] + m["grad"]
     surfs = max(1.0, fr.get("pc_litsurfs", 1.0))
@@ -213,9 +216,11 @@ def pipeline(fr, m, s1):
     d = sd * fs + m["spans"] * fp               # pipelined world surfaces
     c0 = sd * (1 - fs) + m["spans"] * (1 - fp)  # sky, water and brush surfaces stay on core 0
     fe = fr.get("c1_earlypx", 0.0) / max(1.0, fr.get("c1_px", 0.0))
-    during = min(e * s1, fe * d)                # core 1 during the scan
+    during = min(max(0.0, e - delay) * s1, fe * d)    # core 1 during the scan
+    lag = max(0.0, delay - e)                   # core 1 still scanning after it
     r = d - during
-    after = c0 if r <= s1 * c0 else (r + c0) / (1 + s1)
+    after = c0 if r <= s1 * max(0.0, c0 - lag) else (r + c0 + s1 * lag) / (1 + s1)
+    after = max(after, lag)                     # the last rows and the join
     n = max(1.0, fr.get("c1_surfs", 1.0))
     wait = 0.5 * d / n / s1 if d > 0 else 0.0
     return e + after + wait, wait, after
@@ -371,6 +376,7 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             notes.append((t_now, CENTER_S))
         notes = [n for n in notes if t_now - n[0] < n[1]]
         notify = bool(notes) and "nonotify" not in whatif
+        c1delay = 0.0
         if covered:
             notify = notify and turbo and any(n[1] == CENTER_S for n in notes)
         rows_prev = int(fr.get("racerows", 200)) if sent_prev is None else sent_prev
@@ -422,7 +428,7 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             # Its z writes must be free first: a Turbo view's z-buffer only
             # after a packed scan, the z-buffer region after the status bar
             # rows (first in the scan with QOG_VID_HUDFIRST)
-            beside = 0.0
+            beside, c1delay = 0.0, 0.0
             if rowrace:
                 zfree = (prev_packed > 0) if turbo else True
                 if zfree:
@@ -433,6 +439,8 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
                         waits["race_done"] += (zready - t) * wscale
                         t += (zready - t) * wscale
                     beside = m["edgescan"]
+                    if pipe:    # pipeline() works out the end with core 1 still sending
+                        c1delay, beside = max(0.0, t_scan - t), t_scan
             if t_scan > t + beside:          # VID_QogScanDone after R_RenderWorld (or the edge scan's last row)
                 waits["race_done"] += (t_scan - t - beside) * wscale
                 t += (t_scan - t - beside) * wscale
@@ -440,7 +448,7 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
         if early_b and not notify and "bmodels" not in done:
             done.append("bmodels")
         if pipe:
-            pt, pw, pa = pipeline(fr, m, s1)
+            pt, pw, pa = pipeline(fr, m, s1, c1delay)
             waits["c0wait"] += pw
             waits["surf_c0"] += pa
             t += pt
