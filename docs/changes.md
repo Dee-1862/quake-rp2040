@@ -13,6 +13,26 @@ Nothing ran on hardware.
 - RAM, quake_display `end` 0x2003f77c, unchanged. quake_main.bin 376 B bigger. R_RecursiveClipBPoly 112 B a level, R_DrawBEntitiesOnList 120 B. tools/core1_syms.py passes.
 - Pixel identical to a0d7690. qogtest_hash `ce86f894f9de` (default PC build), qogtest_f_hash `e92bc9e9650d`. On the default PC build with the board's world flags, 113 shots (`qogtest_k_quiet`, `qogtest_d_shots`) in r_fast 0, 1 and 2 are identical, and so are all frame hashes of the three demos in each mode after the start frames (they show the build time). The 113 shots are also identical in each mode on the default PC build and on the boardbench build. A `QOG_BPOLY_CHECK` build of demo1, 2 and 3 finds 0 sides that differ from id's.
 
+## 2026-11-26, compiler settings for the display app, QOG_BOARD_SCANSIZE (ARM build only, not run on hardware)
+
+`QOG_BOARD_SCANSIZE` (off, exact, no RAM) builds engine/r_edge.c with -Os. The edge scan's code with the drawing beside it is more than the XIP cache holds, so smaller code leaves fewer lines in conflict. The scan phase goes from 2,481 lines and 433 excess to 2,383 and 335 (tools/xip_sets.py), and flash text is 840 B smaller. RAM `end` is the same, and the hot functions make no new float or helper calls. -Os keeps `R_RemoveEdges` and `R_QogRowFree` out of line, so the HOTTEXT scan group now lists them. Without the option they are inlined and the layout is as before.
+
+The estimate is 0 to 0.2 ms a frame. The shared drawing code removed about 600 lines and saved about 1 ms, which gives about 0.2 ms for 100 lines, and the size built loops cost some of it back.
+
+The other settings tried, by xip_sets.py excess lines in the world, bmodels, models and scan phases (today 0, 0, 50, 433). None was built into an option.
+
+| Setting | Excess | Why not |
+|---|---|---|
+| -Os for all of qog_engine_cl | 0, 0, 184, 111 | more loads and stores in the world code, and 64 bit shifts become calls in the span setup |
+| -Os for r_bsp.c and r_draw.c | 0, 0, 297, 432 | world already has no excess, 10% more loads and stores, models layout worse |
+| -Os for those and r_edge.c | 0, 0, 297, 323 | the same |
+| -Os for r_edge.c and d_edge.c | 0, 0, 51, 297 | a little less excess for more calls on each surface |
+| -O3 for r_bsp.c, r_draw.c and r_edge.c | 0, 0, 243, 539 | larger code |
+| -falign-*=2 | 0, 0, 50, 432 | no change |
+| LTO (needs -fcommon and -ffunction-sections at link) | 0, 0, 306, 306 on the functions still found | inlining moves much more code into the scan, 1,270 excess counted by address, and half the HOTTEXT names no longer match |
+
+-O2 is what the build already uses (RelWithDebInfo).
+
 ## 2026-11-26, one copy of the lit surface drawing for both cores, exact (PC and ARM build, registered data)
 
 Run on the board later (docs/fps-board.md, log `run15_8.txt`). The text below was written before that run.
