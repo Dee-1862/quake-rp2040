@@ -13,22 +13,22 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// snd_link.c -- QuakeOG (Agent W): the split client's sound (QOG_SND_REMOTE)
+// snd_link.c -- QuakeOG, the split client's sound (QOG_SND_REMOTE)
 //
 // The split game's client half (the display chip) plays the sound, but id's
 // mixer (snd_dma.c, snd_mix.c, snd_mem.c) runs on the server half (the main
 // chip, QOG_SND_HOST), which has the room for its channels and the sounds in
 // its flash. Each S_ call here is the same call there, made at the same
-// point of the client's frame (engine/net_link.c, LK_SND):
+// point of the client's frame (engine/net_link.c, LK_SND).
 //
 //  - Calls with an answer, or whose effect the client must see before it goes
-//    on, are exchanges: S_PrecacheSound (the sound's number), S_StartSound
+//    on, are exchanges, S_PrecacheSound (the sound's number), S_StartSound
 //    and S_LocalSound (the random number id draws when an identical sound
 //    started this frame comes back with the server's state), S_Update and
 //    S_ExtraUpdate (they mix, and the samples come back before the answer).
 //  - The rest are sent in order without waiting.
 //
-// What id's mixer read from client state is sent with the call: the view
+// What id's mixer read from client state is sent with the call, the view
 // entity, and with S_Update the listener's leaf's ambient levels. The play
 // position is the client's output's (qog_snd_out_samples), so the server
 // half mixes exactly what id's mixer mixes for the same calls at the same
@@ -42,12 +42,12 @@ See the GNU General Public License for more details.
 #include "net_link.h"
 #include "qog_snd.h"
 
-// the archived sound cvars the client's menus and config.cfg use; setting
+// the archived sound cvars the client's menus and config.cfg use. Setting
 // one here sets the server half's too (Link_CvarChanged)
 cvar_t	bgmvolume = {"bgmvolume", "1", true};
 cvar_t	volume = {"volume", "0.7", true};
 cvar_t	_snd_mixahead = {"_snd_mixahead", "0.1", true};
-// QuakeOG: the background (ambient) level, mixed on main. Registered here
+// QuakeOG, the background (ambient) level, mixed on main. Registered here
 // too so the board menu can set it and the cvar sync carries it over.
 cvar_t	ambient_level = {"ambient_level", "0.3", true};
 cvar_t	snd_noextraupdate = {"snd_noextraupdate", "0"};	// read here too, see S_ExtraUpdate

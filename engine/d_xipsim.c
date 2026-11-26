@@ -12,14 +12,14 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// d_xipsim.c -- QuakeOG (Agent AH): PC measurement only (QOG_XIPSIM). A
+// d_xipsim.c -- QuakeOG, PC measurement only (QOG_XIPSIM). A
 // model of the RP2040's XIP cache (16 KB, two ways, 8-byte lines, LRU)
-// fed with the flash reads of the world span drawer: texels, colour map
+// fed with the flash reads of the world span drawer, texels, colour map
 // entries and the lightmap samples R_BuildLightMap reads. Code fetches and
 // the rest of the frame are not modelled, so the misses are a lower bound
 // of what the board sees, good for comparing ways of drawing the spans.
 //
-// Four caches run side by side, each seeing a subset of the reads:
+// Four caches run side by side, each seeing a subset of the reads.
 //   0 texels + colour map + lightmaps (as the board reads them today)
 //   1 texels + lightmaps (colour map in RAM)
 //   2 colour map + lightmaps (texture in RAM)

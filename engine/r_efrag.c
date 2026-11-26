@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,12 +22,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
-#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
+#include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG, front end work counts (QOG_AQ_STATS)
 
 mnode_t	*r_pefragtopnode;
 #ifdef QOG_ENTITY_NOTOPNODE
-mnode_t	*r_entitytopnode;	// QuakeOG (Agent AD): the top node of the bmodel being drawn (render.h)
+mnode_t	*r_entitytopnode;	// QuakeOG, the top node of the bmodel being drawn (render.h)
 #endif
 
 
@@ -133,7 +134,7 @@ void R_SplitEntityOnNode (mnode_t *node)
 // set the leaf links
 		ef->leaf = leaf;
 #ifdef QOG_LEAF16
-		R_EfragLeafSlot (leaf);	// QuakeOG: give the leaf a head
+		R_EfragLeafSlot (leaf);	// QuakeOG, give the leaf a head
 #endif
 		ef->leafnext = LEAF_EFRAGS (cl.worldmodel, leaf);
 		LEAF_EFRAGS (cl.worldmodel, leaf) = ef;
@@ -165,7 +166,7 @@ void R_SplitEntityOnNode (mnode_t *node)
 
 #ifdef QOG_BMSPLIT_INT
 /*
-QuakeOG (Agent AQ): BOX_ON_PLANE_SIDE on an axial plane compares two floats
+QuakeOG, BOX_ON_PLANE_SIDE on an axial plane compares two floats
 twice. For floats that are neither NaN nor denormal, a <= b is the integer
 compare of their bits mapped to the order of the real numbers (both zeros
 as 0), so no float call is needed. Denormals (the board's float routines
@@ -231,16 +232,16 @@ void R_SplitEntityOnNode2 (mnode_t *node)
 #ifdef QOG_BMSPLIT_INT
 	if (splitplane->type < 3)
 	{
-		QOG_BM (QOG_BM_BMSPLITINT, 1);	// QuakeOG (Agent AQ)
+		QOG_BM (QOG_BM_BMSPLITINT, 1);	// QuakeOG
 		sides = R_QogBoxAxialSides (splitplane);
 	}
 	else
 	{
-		QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG
 		sides = BoxOnPlaneSide (r_emins, r_emaxs, splitplane);
 	}
 #else
-	QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG (Agent AS)
+	QOG_BM (QOG_BM_BMSPLIT, 1);	// QuakeOG
 	sides = BOX_ON_PLANE_SIDE(r_emins, r_emaxs, splitplane);
 #endif
 	
@@ -290,7 +291,7 @@ void R_AddEfrags (entity_t *ent)
 
 	R_SplitEntityOnNode (cl.worldmodel->nodes);
 
-#ifndef QOG_ENTITY_NOTOPNODE	// QuakeOG (Agent AD): never read, see ENT_TOPNODE in render.h
+#ifndef QOG_ENTITY_NOTOPNODE	// QuakeOG, never read, see ENT_TOPNODE in render.h
 	ent->topnode = r_pefragtopnode;
 #endif
 }
@@ -346,7 +347,7 @@ void R_StoreEfrags (efrag_t **ppefrag)
 ================
 R_EfragLeafSlot
 
-QuakeOG: give a world leaf that is about to get an efrag its own list head,
+QuakeOG, give a world leaf that is about to get an efrag its own list head,
 or the shared last head once the others are taken (see efragheads_t).
 ================
 */
@@ -379,7 +380,7 @@ void R_EfragLeafSlot (mleaf_t *leaf)
 ================
 R_StoreLeafEfrags
 
-QuakeOG: R_StoreEfrags for one leaf. In the shared head's list it passes
+QuakeOG, R_StoreEfrags for one leaf. In the shared head's list it passes
 over the efrags of other leafs, the leaf's own come in id's order.
 ================
 */

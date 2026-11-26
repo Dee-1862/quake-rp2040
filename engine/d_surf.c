@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -256,7 +257,7 @@ int D_log2 (int num)
 
 //=============================================================================
 
-#ifdef QOG_SURFCACHE	// QuakeOG: only used with the surface cache (see d_scanlit.c)
+#ifdef QOG_SURFCACHE	// QuakeOG, only used with the surface cache (see d_scanlit.c)
 /*
 ================
 D_CacheSurface

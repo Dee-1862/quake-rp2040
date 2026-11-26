@@ -1,8 +1,8 @@
 /* Aiming help for button-only play (no mouse, no analog stick).
  *
- *   Crosshair on by default: id shipped it off, assuming mouse players.
- *   Fine aim: a turn starts slow so a tap nudges the view a few degrees,
- *   then ramps to full speed for big turns. Tunable from the console:
+ *   Crosshair on by default, id shipped it off, assuming mouse players.
+ *   Fine aim, a turn starts slow so a tap nudges the view a few degrees,
+ *   then ramps to full speed for big turns. Tunable from the console.
  *     qog_aim_slow  30    degrees/s for the first part of a turn
  *     qog_aim_fast  140   degrees/s once ramped up (id's cl_yawspeed default)
  *     qog_aim_hold  0.15  seconds at slow speed before the ramp starts

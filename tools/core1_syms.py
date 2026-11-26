@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What core 1's surface drawing can touch (Agent AM, QOG_DRAW_CORE1).
+"""What core 1's surface drawing can touch (QOG_DRAW_CORE1).
 
 engine/d_core1.c, d_core1s.c and d_core1e.c compile the lit surface drawing
 a second time with core 1's own names for what it writes (d_core1.h). A
@@ -49,7 +49,7 @@ SHARED = {
     "d_qogc1_drawing", "s_pipe_lock", "qog_c1_stat",
     # the SDK's float and divide helpers' tables, the timer
     "timer_hw",
-    # Agent AR: the span assembly's start-up check result (d_lit_q.h), written
+    # Earlier work, the span assembly's start-up check result (d_lit_q.h), written
     # once by D_QogLitQCheck on core 0 at D_Init, before core 1 ever draws
     "litq_asm_ok",
     "litq_wrap_ok",  # the same for the span loop (D_QogLitWrapCheck)

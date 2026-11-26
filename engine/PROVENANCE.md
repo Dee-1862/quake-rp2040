@@ -12,7 +12,7 @@ The baseline commit of this folder is an **unmodified** copy of id Software's GP
 ## What was taken
 
 - The portable engine files from id's own software-renderer build list (`SQUAKE_OBJS` in `Makefile.linuxi386`), minus the Linux platform files and the x86 assembly.
-- id's own stubs, used instead of real platform code where we don't need it yet: `cd_null.c`, `snd_null.c`, `in_null.c`, `net_none.c` (loopback only, no networking).
+- id's own stubs, used instead of real platform code where we don't need it yet. `cd_null.c`, `snd_null.c`, `in_null.c`, `net_none.c` (loopback only, no networking).
 - The sound mixer (`snd_dma.c`, `snd_mem.c`, `snd_mix.c`) for later.
 - Every header from `WinQuake/`. Unused ones get deleted in their own commits.
 

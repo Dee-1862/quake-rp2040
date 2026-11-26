@@ -84,7 +84,7 @@ def parse(progs):
         sys.exit("progs.dat version %d, expected 6" % version)
     stmts = [struct.unpack_from("<Hhhh", progs, ost + 8 * i) for i in range(nst)]
     globs = struct.unpack_from("<%di" % nglob, progs, oglob)
-    # Field operands that are field definitions no statement writes: their
+    # Field operands that are field definitions no statement writes, their
     # value is a constant field number, known now.
     fielddefs = set()
     for i in range(ngd):
@@ -122,12 +122,12 @@ def parse(progs):
 
 
 # ---------------------------------------------------------------------------
-# Globals: which stay in RAM, which are constants, which become C locals
+# Globals, which stay in RAM, which are constants, which become C locals
 #
 # id's qcc gives every statement result its own global ("temp"), so most of
 # progs.dat's 11,000 globals are temps used by one function, and most of the
 # rest are constants no statement writes. The interpreter needs them all in
-# RAM. Compiled code does not:
+# RAM. Compiled code does not.
 #   - a temp used by one function only, always written before it is read on
 #     every path, and never live across a call becomes a C local (a call could
 #     recurse into the same function, which in id's code would overwrite it),
@@ -391,7 +391,7 @@ def emit_stmt(s, op, a, b, c, out, label, ctx):
         prev = ctx.get("addr")
         f = ctx["constfields"].get(prev[2]) if prev else None
         if prev and prev[0] == b and prev[0] != prev[1] and f is not None:
-            # right after the OP_ADDRESS that made the pointer: store straight
+            # right after the OP_ADDRESS that made the pointer, store straight
             # into that edict's field, where the pointer points
             w("{ edict_t *ed = PROG_TO_EDICT(%s);" % I(prev[1]))
             for k in range(nw):
@@ -471,7 +471,7 @@ static float QK (int bits) { union qcv u; u.i = bits; return u.f; }
 #define QC_ST(ed,o,k,x)	(((int *)&(ed)->v)[o] = (x))
 #define QC_LDX(ed,o)	(((int *)&(ed)->v)[o])
 #define QC_ADDR(e,ed,o)	((byte *)((int *)&(ed)->v + (o)) - (byte *)sv.edicts)
-#define QC_STP(p,x0,x1,x2,n)	do { int *pp = (int *)((byte *)sv.edicts + (p)); \
+#define QC_STP(p,x0,x1,x2,n)	do { int *pp = (int *)((byte *)sv.edicts + (p)). \
 	pp[0] = (x0); if ((n) == 3) { pp[1] = (x1); pp[2] = (x2); } } while (0)
 #endif
 """

@@ -1,7 +1,7 @@
-/* QuakeOG (Agent AI): shared by the alias model and particle drawers
+/* QuakeOG, shared by the alias model and particle drawers
  * (r_alias.c, d_polyse.c, r_aclip.c, d_part.c, r_part.c).
  *
- * QOG_ALIAS_STATS (PC measurement only): work counts of the alias model and
+ * QOG_ALIAS_STATS (PC measurement only), work counts of the alias model and
  * particle drawers, printed every 100 views as "qog_aliasstats" lines, the
  * sums since the level started. Set 0 is every entity but the view model,
  * set 1 the view model. */
@@ -35,9 +35,9 @@ enum
 	QAS_PARTS,		// D_DrawParticle calls
 	QAS_PARTVIS,	// particles on the screen
 	QAS_PARTPIX,	// particle pixels tested
-	QAS_TINYTRI,	// Turbo triangles drawn without gradients (Agent AR, d_polyse.c)
-	QAS_SUBLEAF,	// subdivision leaves tested inline, no call (Agent AQ, QOG_SUBDIV_LEAF)
-	QAS_SMALLTRI,	// triangles of two lines or less with no pixel or one, without gradients (Agent AQ, QOG_ALIAS_SMALLTRI)
+	QAS_TINYTRI,	// Turbo triangles drawn without gradients (d_polyse.c)
+	QAS_SUBLEAF,	// subdivision leaves tested inline, no call (QOG_SUBDIV_LEAF)
+	QAS_SMALLTRI,	// triangles of two lines or less with no pixel or one, without gradients (QOG_ALIAS_SMALLTRI)
 	QAS_N
 };
 extern unsigned	qog_astats[2][QAS_N];
@@ -49,7 +49,7 @@ void R_QogAliasStatsView (void);
 #endif
 
 #ifdef QOG_ALIAS_FAST
-// QuakeOG (Agent AI): (int)(f * 2^frac), truncated, from the float's bits
+// QuakeOG, (int)(f * 2^frac), truncated, from the float's bits
 // with no float arithmetic, for |f * 2^frac| below 2^30 (larger values give
 // +-0x3fffffff). Fast mode only.
 static int R_QogFix (float f, int frac)
@@ -72,7 +72,7 @@ static int R_QogFix (float f, int frac)
 	return b.i < 0 ? -m : m;
 }
 
-// QuakeOG (Agent AI): the view's constants of the Fast mode particle drawer
+// QuakeOG, the view's constants of the Fast mode particle drawer
 // (d_part.c), made by R_DrawParticles once a view
 typedef struct
 {

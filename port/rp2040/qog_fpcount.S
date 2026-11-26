@@ -1,4 +1,4 @@
-/* QuakeOG (Agent Z): counting stubs for the engine library's float, double
+/* QuakeOG, counting stubs for the engine library's float, double
  * and divide helper calls (QOG_PHASE_FPCOUNT, port/common/qog_fpcount.h).
  * Measurement builds of the board client only. apps/quake/CMakeLists.txt
  * renames each helper the library calls to its stub here (objcopy

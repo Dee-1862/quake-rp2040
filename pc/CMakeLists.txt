@@ -4,7 +4,7 @@
 #   cmake --build build-pc --config Release
 #   build-pc\Release\quakeog_pc.exe            (game data in data\id1\)
 #
-# 32-bit on purpose: the RP2040 has 32-bit pointers, so struct sizes and the
+# 32-bit on purpose, the RP2040 has 32-bit pointers, so struct sizes and the
 # RAM meter's numbers carry over. Separate from the firmware build, which
 # uses the ARM toolchain from the repo root.
 cmake_minimum_required(VERSION 3.21)
@@ -15,12 +15,12 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR "Configure with -A Win32: the engine port assumes 32-bit pointers.")
 endif()
 
-# Engine: id's files with the real sound mixer (port/pc/snd_pc.c is the output).
+# Engine, id's files with the real sound mixer (port/pc/snd_pc.c is the output).
 file(GLOB ENGINE_SRC ${ROOT}/engine/*.c)
 list(REMOVE_ITEM ENGINE_SRC ${ROOT}/engine/snd_null.c)
 
 # QuakeC compiled to C from the player's own progs.dat (never committed).
-# Opt-in: translating the data is a derivative work, which the shareware
+# Opt-in, translating the data is a derivative work, which the shareware
 # licence forbids (docs/lessons.md L39). Turn it on only with registered or
 # retail data. Off, qc2c writes an empty table and id's interpreter runs.
 option(QOG_AOT "compile QuakeC to C from data/id1 (registered/retail data only)" OFF)
@@ -102,7 +102,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SURF_T_PACKED               # edge-drawing surface entries 52 bytes, not id's assembly-padded 64
     QOG_MAX_BMODEL_VERTS=128        # one clipped brush entity polygon, measured peak 22 (id 500)
     QOG_MAX_BMODEL_EDGES=256)       #   and 74 edges (id 1000)
-# Renderer stack frames and render tables (Agent D)
+# Renderer stack frames and render tables
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_EDGE_T_PACKED               # edge_t 24 bytes with 16-bit links and owner (id 32)
     QOG_ESPAN_T_PACKED              # espan_t 8 bytes, 16-bit coordinates and link (id 16)
@@ -110,7 +110,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_FINALVERT_PACKED            # finalvert_t 28 bytes, no assembly padding (id 32)
     QOG_ALIAS_NO_AUXVERTS)          # no per-vertex view-space array, the clipper recomputes it
 # Same random sequence on every port (port/common/qog_rand.c). Engine and
-# generated files only: the port's own qog_rand.c must not be renamed.
+# generated files only, the port's own qog_rand.c must not be renamed.
 set_source_files_properties(${ENGINE_SRC} ${PROGS_AOT}
     PROPERTIES COMPILE_DEFINITIONS "rand=qog_rand")
 # id's surface cache (600 KB at 320x200) or per-pixel lighting (engine/d_scanlit.c).
@@ -118,14 +118,14 @@ option(QOG_SURFCACHE "use id's surface cache instead of per-pixel lighting" OFF)
 if(QOG_SURFCACHE)
     target_compile_definitions(quakeog_pc PRIVATE QOG_SURFCACHE)
 endif()
-# id's 1996 code is noisy at higher warning levels; keep ours strict later.
+# id's 1996 code is noisy at higher warning levels. Keep ours strict later.
 target_compile_options(quakeog_pc PRIVATE /W1 /MP)
 target_link_libraries(quakeog_pc PRIVATE user32 gdi32 winmm)
-# Fixed load address: with the fixed hunk and flash addresses in sys_pc.c,
+# Fixed load address, with the fixed hunk and flash addresses in sys_pc.c,
 # every run has the same memory layout, so qog_statehash is repeatable.
 target_link_options(quakeog_pc PRIVATE /DYNAMICBASE:NO)
 set_target_properties(quakeog_pc PROPERTIES WIN32_EXECUTABLE OFF)
-# Baked maps (engine/model.c): read-only BSP structures from id1/qogbake.bin in flash.
+# Baked maps (engine/model.c), read-only BSP structures from id1/qogbake.bin in flash.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE                        # map loads use the baked image when it matches the packs
     QOG_BAKE_WRITER)                # the qog_bake console command that writes it (PC only)
@@ -138,14 +138,14 @@ target_compile_definitions(quakeog_pc PRIVATE
 # qc2c reads the core edict fields from the engine headers (QOG_EDICT_SPARSE)
 add_custom_command(OUTPUT ${PROGS_AOT} APPEND
     DEPENDS ${ROOT}/engine/progs.h ${ROOT}/engine/progdefs.q1)
-# Client memory and 2D drawing (Agent G)
+# Client memory and 2D drawing
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_CONBACK_FLASH               # console background read in place from the mapped pack (id 62.6 KB cache copy)
     QOG_ENTITY_PACKED               # client entity_t 104 bytes, network origins and angles kept as sent (id 184)
     QOG_PARTICLE_PACKED             # particle_t 36 bytes, byte colour and type, 16-bit list link (id 44)
     QOG_PARTICLE_AVEL8              # entity particle rates as bytes, same floats on use (id 1.9 KB static)
     QOG_CACHEPIC_FLASH)             # menu and intermission pics read in place from the mapped pack (id cache copies)
-# Model table, server tables and board wiring (Agent I)
+# Model table, server tables and board wiring
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_MOD_FLASH                   # baked model_t used in place in flash, the table holds names and pointers
     QOG_SV_TABLES                   # server precache lists sized below, no map model name copy
@@ -153,7 +153,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SV_MAX_SOUNDS=176           #   (id 256, the protocol's byte index)
     QOG_CONST_NOVIS                 # the all-visible PVS row is a constant in flash
     QOG_PVS_LEAFS=4096)             # server PVS rows, largest full-game map 2156 leafs (id 8192)
-# Video memory and renderer tables (Agent H). The QOG_ flags that change the
+# Video memory and renderer tables. The QOG_ flags that change the
 # picture (docs/changes.md) are not in this list.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_CONST_RTABLES               # turbulence, normal and edge tables as constants in flash
@@ -161,11 +161,11 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_SKY_DIRECT                  # sky composed per drawn pixel, no 16 KB composite
     QOG_HUD_IN_ZBUFFER              # status bar rows of the frame share the z-buffer (15 KB)
     QOG_SPANS_IN_EDGES)             # spans in the free end of the edge table, no 8 KB span buffer
-# Flash budget for the board's data image (Agent J)
+# Flash budget for the board's data image
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BAKE_STUBS                  # qog_bake -bakestubs copies maps into the image, a stub stands for each in the pak
     QOG_DEMOS_OPTIONAL)             # the demo loop plays only the demos present, the board's data has none
-# Server, client and system memory (Agent M)
+# Server, client and system memory
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_HUNK_PACKED                 # entity strings and command entries share hunk blocks (id 32 B block each)
     QOG_TRANSLATE_ONDRAW            # player colour table built on the stack when drawn (id 16 KB per player on the hunk)
@@ -175,17 +175,17 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_EDICT_REUSE                 # all edicts in use, reuse the longest-free one before id's Sys_Error
     QOG_PALETTE_FLASH)              # gfx/palette.lmp read in place from the mapped pack (id 800 B hunk copy)
 
-# Renderer-only fly-through (Agent N): the board app apps/qogfly runs the same host.
+# Renderer-only fly-through, the board app apps/qogfly runs the same host.
 # -qogfly runs it standalone, qog_fly and qog_fly_ref compare it with the game.
 target_sources(quakeog_pc PRIVATE
     ${ROOT}/port/common/qog_fly.c
     ${ROOT}/port/pc/fly_pc.c)
-# Per-level map arrays (Agent L)
+# Per-level map arrays
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_FRAMEBITS                   # visframe stamps of surfaces, nodes and leafs as one bit each with a frame tag
     QOG_DLIGHT_SPARSE               # dlight bits only for visible lit surfaces in a 1024 entry hash (QOG_DLIGHT_SURFS), a bit per surface for the stamp
     QOG_LEAF16)                     # 16-bit leaf keys, efrag list heads picked by a byte per leaf
-# Renderer temporary memory in the z-buffer (Agent K)
+# Renderer temporary memory in the z-buffer
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_EDGES_IN_ZBUFFER            # edge table in the z-buffer while it holds no z, spans in the surface table
     QOG_EDGECACHE_ZBUFFER           # the world's edge cache in the z-buffer while the world is drawn, not on the hunk
@@ -193,7 +193,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_LOOP_ONINIT                 # loopback receive buffers on the hunk from Loop_Init
     QOG_PACKDIR_CHUNKED             # pack directory read 2 KB at a time, no 21 KB temporary block
     QOG_PARTICLES_PRESET)           # a host may keep its own particle array (the fly-through)
-# Full game on the board (Agent Q)
+# Full game on the board
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_MIN_MEMORY=0                # no 5.3 MB hunk floor, so -heapsize can find the smallest hunk a map runs in
     QOG_SND_OFF_NOHUNK              # with -nosound no sound channels or paint buffer on the hunk (10.8 KB)
@@ -201,7 +201,7 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_PRECACHE_ZTEMP              # the client's precache names at the end of the z-buffer while server info is read, not high hunk
     QOG_KEYS_BYTES)                 # key down, console and menu key flags as bytes (2.3 KB static)
 
-# Demo playback host (Agent O): the board app apps/qogdemo runs the same host.
+# Demo playback host, the board app apps/qogdemo runs the same host.
 # -qogdemo plays demos with no server, QuakeC, console or sound.
 target_sources(quakeog_pc PRIVATE
     ${ROOT}/port/common/qog_demo.c
@@ -209,7 +209,7 @@ target_sources(quakeog_pc PRIVATE
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_DEMO_FLASH                  # a demo in a mapped pack is read and parsed in place, no FILE
     QOG_ITEMBOX_NOLEAFS)            # item box maps get no efrag heads or leaf keys, only the world uses them
-# Test build only (default off): the engine settings of the board's demo
+# Test build only (default off), the engine settings of the board's demo
 # player (apps/qogdemo/CMakeLists.txt) that change what it can hold or draw,
 # so the PC can measure them. -DQOG_PC_DEMO_BOARD=ON in a separate build
 # folder. Never for the normal game.
@@ -230,41 +230,41 @@ if(QOG_PC_DEMO_BOARD)
     set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_pcdemo_defs}")
 endif()
 
-# Renderer speed, exact (Agent P). Same pixels as id's code, less work.
+# Renderer speed, exact. Same pixels as id's code, less work.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_LITSPAN_FAST                # lit spans without modulo, texture origin folded into the light pointer, a loop per mip
     QOG_LITSPAN_TAILMUL             # the last run of a span reuses the surface's float products for its length
     QOG_ZSPANS_FAST                 # z span start without double arithmetic (exact integer form of zi * 2^31)
     QOG_LITSPAN_ZFUSE               # lit spans write their z from the 1/z they compute anyway, no second span walk
-    QOG_ALIASSPAN_FAST)             # Agent AI: alias spans with their steps in locals, one-byte z per span piece (d_polyse.c)
-# Fast render mode (Agent AA): the r_fast cvar, default 0 on the PC, so every
+    QOG_ALIASSPAN_FAST)             # earlier work: alias spans with their steps in locals, one-byte z per span piece (d_polyse.c)
+# Fast render mode, the r_fast cvar, default 0 on the PC, so every
 # test runs the exact picture unless a script sets r_fast 1 (d_litspan.h).
 # QOG_FLOAT_EXACT is exact and applies in both modes.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_RFAST                       # r_fast 1 draws approximate lit spans, r_fast 0 exactly as before
     QOG_FLOAT_EXACT)                # front end divides and ceils in single precision where the float result is the same (mathlib.h)
-# Fast mode alias models and particles (Agent AI): with r_fast 1 their
+# Fast mode alias models and particles, with r_fast 1 their
 # vertices, triangle gradients and particle positions in integers, r_fast 0
 # exactly as before (r_alias.c, d_polyse.c, d_part.c)
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ALIAS_FAST)
-# Turbo render mode (Agent AO): r_fast 2 draws the 3D view at half width with
+# Turbo render mode, r_fast 2 draws the 3D view at half width with
 # the Fast shortcuts, doubled sideways as the board's LCD scanout does
 # (engine/r_qogturbo.c). r_fast 0 and 1 draw exactly as before.
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_RTURBO
-    QOG_ALIAS_TURBOTINY)            # Agent AR: Turbo draws model triangles within 3 x 3 pixels without gradients (d_polyse.c)
-# Episode 1 client RAM, exact (Agent Y)
+    QOG_ALIAS_TURBOTINY)            # earlier work: Turbo draws model triangles within 3 x 3 pixels without gradients (d_polyse.c)
+# Episode 1 client RAM, exact
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_ENTITY_TIGHT                # client entity_t 88 bytes, a static entity 52 (no network state)
     QOG_CON_DEBUGLOG_DIRECT)        # -condebug writes the console text as it is, no 1 KB static copy
-# Server stack, exact (Agent AC)
+# Server stack, exact
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_PUSHMOVE_ALLOCA)            # SV_PushMove's lists on the stack for sv.max_edicts entries, not MAX_EDICTS (9,600 B)
-# World and brush model front end, exact (Agent AJ)
+# World and brush model front end, exact
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BMODEL_ZEROANGLE)           # a brush entity with zero angles skips the double sine, cosine and matrix products (r_bsp.c)
-# Lightmaps and dynamic lights, exact (Agent AL): r_light.c, r_surf.c
+# Lightmaps and dynamic lights, exact, r_light.c, r_surf.c
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_DLIGHT_AXIAL                # a light's distance to an axial plane with one subtraction, id's float result
     QOG_DLIGHT_FACING               # the visible-only pass marks only surfaces facing the eye, the lit surface hash stays small
@@ -272,10 +272,10 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_DLIGHT_REACHUP              # a lit surface the full hash lost: its node found and the light tested up the parents, not a tree search
     QOG_GRAD_EXACTF                 # D_CalcGradients without double arithmetic, the same values (d_edge.c)
     QOG_GRAD_FAST)                  # r_fast 1: world surface gradients from rows made once a view, in integers
-# Particles, exact (Agent AR): r_part.c
+# Particles, exact, r_part.c
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_PART_DIEBITS)               # a particle's death time against cl.time as an integer compare of float bits, id's result
-# Brush entities and the edge scan with fewer float calls, exact (Agent AQ):
+# Brush entities and the edge scan with fewer float calls, exact.
 # r_bsp.c, r_edge.c, d_edge.c, r_main.c
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_LEADZ_FLOAT                 # two brush surfaces of one key ordered by 1/z in float, id's doubles only near a tie
@@ -296,25 +296,25 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_ALIAS_SMALLTRI              # alias triangles with no pixel or one drawn without gradients (d_polyse.c)
     QOG_CLIPDIST_FILL4              # with QOG_FRONT_FAST: a world vertex's four view plane distances at its first need (r_draw.c)
     QOG_NODESIDE_BITS)              # with QOG_WORLDNODE_FAST: node side and facing by the float's bits (r_bsp.c)
-# One app for every episode's data image (Agent AG): qog_boot starts the level
+# One app for every episode's data image, qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE
     QOG_BOOT_ENTRY                  # qog_boot, COM_BootMap (common.c, host_cmd.c)
     QOG_MISSING_MAPS)               # changelevel to a missing level goes to the boot level, such a save is not loaded
-# Render phase times for profiling (Agent P), off by default: `qog_phase` in
+# Render phase times for profiling, off by default. `qog_phase` in
 # the console and the end of `-qogfly` print where render time goes.
 #   cmake -S pc -B build-pc-prof -A Win32 -DQOG_PHASE=ON
 option(QOG_PHASE "render phase times (engine/qog_phase.h)" OFF)
 if(QOG_PHASE)
     target_compile_definitions(quakeog_pc PRIVATE QOG_PHASE_TIME)
 endif()
-# Extra definitions for test builds of approximate flags (Agent P), for
+# Extra definitions for test builds of approximate flags, for
 # example -DQOG_PC_EXTRA_DEFS="QOG_LITSPAN_LINLIGHT;QOG_LITSPAN16".
 set(QOG_PC_EXTRA_DEFS "" CACHE STRING "extra compile definitions for test builds")
 if(QOG_PC_EXTRA_DEFS)
     target_compile_definitions(quakeog_pc PRIVATE ${QOG_PC_EXTRA_DEFS})
 endif()
-# Sound hashes (Agent W), off by default: `qog_sndhash` prints a hash of every
+# Sound hashes, off by default. `qog_sndhash` prints a hash of every
 # sample the mixer painted and wrote, to compare the split game's mixer on
 # the server half (QOG_SND_HOST) with the single-process game's. Also the
 # split builds below.
@@ -323,7 +323,7 @@ if(QOG_SND_HASH)
     target_compile_definitions(quakeog_pc PRIVATE QOG_SND_HASH)
 endif()
 
-# Two-chip split (Agent R): the server half (quakeog_sv) and the client half
+# Two-chip split, the server half (quakeog_sv) and the client half
 # (quakeog_cl) of the same game, joined by the link net driver
 # (engine/net_link.c) over TCP on 127.0.0.1 at the UART's speed
 # (port/pc/link_pc.c). Same engine flags as quakeog_pc, except the bake
@@ -350,8 +350,8 @@ add_executable(quakeog_sv
     ${ROOT}/port/common/qog_link.c
     ${ROOT}/port/common/qog_mem.c
     ${ROOT}/port/common/qog_rand.c
-    ${ROOT}/port/pc/tour_pc.c          # the level tour runs on the server half (Agent S, QOG_SPLIT_TOUR)
-    ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_SV_EXTRA (Agent V)
+    ${ROOT}/port/pc/tour_pc.c          # the level tour runs on the server half (QOG_SPLIT_TOUR)
+    ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_SV_EXTRA
     ${QOG_BSP_LINK})
 set(QOG_SPLIT_SV_DEFS ${QOG_SPLIT_DEFS})
 list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
@@ -360,8 +360,8 @@ list(REMOVE_ITEM QOG_SPLIT_SV_DEFS QOG_LOADGAME_ZTEMP QOG_PRECACHE_ZTEMP)
 set(QOG_SPLIT_SV_EXTRA "" CACHE STRING "extra engine flags for quakeog_sv")
 set(QOG_SPLIT_CL_EXTRA "" CACHE STRING "extra engine flags for quakeog_cl")
 target_compile_definitions(quakeog_sv PRIVATE ${QOG_SPLIT_SV_DEFS} QOG_NET_LINK QOG_SPLIT_SERVER QOG_SPLIT_TOUR ${QOG_SPLIT_SV_EXTRA}
-    QOG_RECONNECT_FIRST)   # Agent AD: the client's reconnect before its message (sv_main.c), so a changelevel works with QOG_LINK_RX_ZTEMP
-# Agent W: with QOG_SND_HOST in QOG_SPLIT_SV_EXTRA the server half mixes for
+    QOG_RECONNECT_FIRST)   # earlier work: the client's reconnect before its message (sv_main.c), so a changelevel works with QOG_LINK_RX_ZTEMP
+# Earlier work, with QOG_SND_HOST in QOG_SPLIT_SV_EXTRA the server half mixes for
 # the client half (QOG_SND_REMOTE in QOG_SPLIT_CL_EXTRA), as on the board
 if(QOG_SPLIT_SV_EXTRA MATCHES "QOG_SND_HOST")
     target_sources(quakeog_sv PRIVATE
@@ -374,7 +374,7 @@ add_executable(quakeog_cl
     ${ROOT}/port/pc/sys_pc.c
     ${ROOT}/port/pc/vid_pc.c
     ${ROOT}/port/pc/snd_pc.c
-    ${ROOT}/port/pc/snd_link_pc.c      # the output with QOG_SND_REMOTE (Agent W)
+    ${ROOT}/port/pc/snd_link_pc.c      # the output with QOG_SND_REMOTE
     ${ROOT}/port/pc/split_cl_pc.c
     ${ROOT}/port/pc/link_pc.c
     ${ROOT}/port/common/qog_link.c
@@ -382,11 +382,11 @@ add_executable(quakeog_cl
     ${ROOT}/port/common/qog_aim.c
     ${ROOT}/port/common/qog_rand.c
     ${ROOT}/platform/qog_input.c
-    ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_CL_EXTRA (Agent V)
+    ${ROOT}/port/common/qog_phase.c    # frame phase times with QOG_PHASE_TIME in QOG_SPLIT_CL_EXTRA
     ${QOG_BSP_LINK})
 target_compile_definitions(quakeog_cl PRIVATE ${QOG_SPLIT_DEFS} QOG_NET_LINK QOG_SPLIT_CLIENT ${QOG_SPLIT_CL_EXTRA})
 
-# Server stack in the board's bytes (Agent AC), a measurement build only:
+# Server stack in the board's bytes, a measurement build only.
 #   cmake -S pc -B build-pc-stack -A Win32 -DQOG_SV_STACKPROBE=ON (and the board's QOG_SPLIT_SV_EXTRA)
 #   python tools/stack_chain.py --su-table <table> --su-dir <board build>/apps/quake/CMakeFiles/qog_engine_sv.dir
 #       --su-dir <board build>/apps/quake/CMakeFiles/quake_main.dir
@@ -412,13 +412,13 @@ foreach(_t quakeog_sv quakeog_cl)
     set_target_properties(${_t} PROPERTIES WIN32_EXECUTABLE OFF)
 endforeach()
 
-# Board cost model (Agent AS), a measurement build only: tools/boardbench.ps1
+# Board cost model, a measurement build only, tools/boardbench.ps1
 # makes it in its own folder. quakeog_pc gets the board client's render
 # flags (apps/quake/CMakeLists.txt, keep the two lists in step), the phase
 # times and every work count, and -bmlog <file> writes the counts of each
 # timedemo frame (port/pc/boardmodel_pc.c) for tools/boardmodel.py.
 # QOG_PC_REMOVE_DEFS takes flags out again, to measure a path a branch
-# replaced (for example the code before Agent AL with its six flags).
+# replaced (for example the code before earlier work with its six flags).
 option(QOG_PC_BOARDMODEL "quakeog_pc with the board client's render flags and the cost model's work counts" OFF)
 set(QOG_PC_REMOVE_DEFS "" CACHE STRING "compile definitions taken out of quakeog_pc (measurement builds)")
 if(QOG_PC_BOARDMODEL)
@@ -431,8 +431,8 @@ if(QOG_PC_BOARDMODEL)
         QOG_VID_LOCKWAIT QOG_SPANS_CORE1 QOG_VID_SCANRACE QOG_HUD_SKIP QOG_VID_HUDFIRST QOG_VID_ROWRACE QOG_EDGECACHE_TAIL
         QOG_VERTCACHE QOG_WORLDNODE_FAST QOG_VERTCACHE_CLIPDIST QOG_ALIAS_CORE1
         QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP
-        QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT    # Agent AR: the board's span drawer (its C version)
-        QOG_ASPAN_ASM                         # Agent AR: names the board's alias span assembly for the model (no PC code)
+        QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT    # earlier work: the board's span drawer (its C version)
+        QOG_ASPAN_ASM                         # earlier work: names the board's alias span assembly for the model (no PC code)
         QOG_DRAW_CORE1 QOG_PARTS_CORE1 QOG_AQ_STATS
         QOG_PHASE_TIME QOG_PHASE_XIP QOG_LMAP_STATS QOG_ALIAS_STATS QOG_BOARDMODEL)
     set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_bm_defs}")

@@ -35,7 +35,7 @@ static qog_video_config_t s_cfg;
 static uint16_t s_y0;                       /* first panel line */
 static uint16_t s_xmap[QOG_LCD_W];
 static bool     s_x_identity;
-static uint16_t s_line[2][QOG_LCD_W] __attribute__((aligned(4)));   /* Agent AO: word stores (convert_line_double) */
+static uint16_t s_line[2][QOG_LCD_W] __attribute__((aligned(4)));   /* Earlier work, word stores (convert_line_double) */
 static int      s_dma = -1;
 
 static uint16_t s_pal[256];
@@ -43,34 +43,34 @@ static uint16_t s_pal_pending[256];
 static volatile bool s_pal_dirty;
 
 static volatile bool     s_busy;
-/* QuakeOG (Agent AK): source rows the scanout in flight has read so far (it
+/* QuakeOG, source rows the scanout in flight has read so far (it
    reads each row once, into a line buffer), and how many it sends */
 static volatile uint32_t s_scan_row;
 static uint32_t          s_scan_rows;
-static uint32_t          s_scan_packed;   /* Agent AO: its first rows hold src_w / 2 pixels each, sent doubled */
-static uint32_t          s_scan_first, s_first_next;   /* Agent AP: rows [first, rows) go out first, 0 in order */
+static uint32_t          s_scan_packed;   /* Earlier work, its first rows hold src_w / 2 pixels each, sent doubled */
+static uint32_t          s_scan_first, s_first_next;   /* Earlier work, rows [first, rows) go out first, 0 in order */
 static volatile uint32_t s_frames;
 static volatile uint32_t s_last_scan_us;
 static uint32_t          s_last_wait_us;
 static void (*volatile s_hook)(void);
-static uint32_t          s_last_scan_rows;   /* Agent AP */
-/* Agent AP: characters over the packed rows (qog_video_set_text), the next
+static uint32_t          s_last_scan_rows;   /* Earlier work */
+/* Earlier work, characters over the packed rows (qog_video_set_text), the next
    present's and the scanout's in flight */
 static const uint32_t   *s_text_next, *s_scan_text;
 static const uint8_t    *s_chars_next, *s_scan_chars;
 static uint32_t          s_text_next_n, s_scan_text_n;
 static const uint8_t    *s_font;
 
-/* QuakeOG (Agent AP): the pixel stream through PIO (qog_video_use_pio).
-   Two instructions, side-set 1 bit on SCK, autopull 16 bits MSB first:
+/* QuakeOG, the pixel stream through PIO (qog_video_use_pio).
+   Two instructions, side-set 1 bit on SCK, autopull 16 bits MSB first.
        out pins, 1   side 0 [lo - 1]    data out, SCK low
        nop           side 1 [hi - 1]    SCK high, the panel samples
    An empty FIFO stalls the out with SCK low (SPI mode 0 idle). A 16-bit
    DMA write to the TX FIFO lands in both halves of the word, and the left
    shift sends the upper copy. No gap between pixels or lines, where the
-   PL022 in mode 0 leaves about 1.5 bit times between frames (Agent V
+   PL022 in mode 0 leaves about 1.5 bit times between frames (earlier work
    measured 22.4 ms a scanout against 20.5 ms of wire at 50 MHz). */
-static uint32_t s_pio_want_khz;     /* 0: PL022 only */
+static uint32_t s_pio_want_khz;     /* 0, PL022 only */
 static PIO      s_pio;
 static int      s_pio_sm = -1;
 static uint     s_pio_offset;
@@ -81,7 +81,7 @@ static uint32_t s_pio_hz;
 /* ---- core 1 ---------------------------------------------------------- */
 
 /* Hot loops live in RAM so core 1 never contends with core 0 for XIP while
-   the renderer is streaming textures out of flash. QuakeOG (Agent AP): in
+   the renderer is streaming textures out of flash. QuakeOG, in
    the board build the compiler inlines them into scanout and scanout into
    core1_main, which is in flash, so the loop runs from flash and its few
    cache lines stay in the XIP cache. Keeping them in RAM with
@@ -105,7 +105,7 @@ static void __not_in_flash_func(convert_line)(uint16_t *dst, const uint8_t *src)
     }
 }
 
-/* QuakeOG (Agent AO): a packed Turbo row, src_w / 2 pixels, each sent twice
+/* QuakeOG, a packed Turbo row, src_w / 2 pixels, each sent twice
    (platform/qog_video.h, qog_video_present_packed). Two pixels a word. */
 static void __not_in_flash_func(convert_line_double)(uint16_t *dst, const uint8_t *src) {
     const uint16_t *pal = s_pal;
@@ -121,7 +121,7 @@ static void __not_in_flash_func(convert_line_double)(uint16_t *dst, const uint8_
     }
 }
 
-/* QuakeOG (Agent AP): the listed characters that cross source row sy, over
+/* QuakeOG, the listed characters that cross source row sy, over
    its converted line, as Draw_Character draws them over a spread view */
 static void text_line(uint16_t *dst, uint32_t sy) {
     const uint16_t *pal = s_pal;
@@ -144,7 +144,7 @@ static inline void spi_drain(void) {
     spi_hw_t *hw = spi_get_hw(FWOG_LCD_SPI);
     while (hw->sr & SPI_SSPSR_BSY_BITS) tight_loop_contents();
     while (hw->sr & SPI_SSPSR_RNE_BITS) (void)hw->dr;
-    hw->icr = SPI_SSPICR_RORIC_BITS;   /* we never read RX; clear the overrun */
+    hw->icr = SPI_SSPICR_RORIC_BITS;   /* we never read RX. Clear the overrun */
 }
 
 static inline void dma_wait_with_hook(void) {
@@ -153,7 +153,7 @@ static inline void dma_wait_with_hook(void) {
     dma_channel_wait_for_finish_blocking((uint)s_dma);
 }
 
-/* QuakeOG (Agent AP): RAMWR, then the pins or the PL022 set for the pixel
+/* QuakeOG, RAMWR, then the pins or the PL022 set for the pixel
    stream, and back to 8-bit commands once its last bit is out */
 static void stream_begin(void) {
     /* RAMWR as an 8-bit command, then switch the PL022 to 16-bit frames for
@@ -165,7 +165,7 @@ static void stream_begin(void) {
     spi_drain();
     gpio_put(PIN_LCD_DC, 1);
     if (s_pio_sm >= 0) {
-        /* Agent AP: SCK and MOSI to the state machine (both idle low) */
+        /* Earlier work, SCK and MOSI to the state machine (both idle low) */
         const gpio_function_t f = pio_get_index(s_pio) ? GPIO_FUNC_PIO1 : GPIO_FUNC_PIO0;
         gpio_set_function(PIN_LCD_SCK, f);
         gpio_set_function(PIN_LCD_MOSI, f);
@@ -176,7 +176,7 @@ static void stream_begin(void) {
 static void stream_end(void) {
     dma_channel_wait_for_finish_blocking((uint)s_dma);
     if (s_pio_sm >= 0) {
-        /* Agent AP: the last bits have left the shift register once the
+        /* Earlier work, the last bits have left the shift register once the
            state machine stalls on the empty FIFO (TXSTALL is set again in
            every cycle it waits, so clearing it first cannot miss the end).
            Then the pins go back to the PL022 for the BSP's commands. */
@@ -202,9 +202,9 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
     }
 
     st7789_dma_wait();   /* the BSP's own fill DMA, if any */
-    /* QuakeOG (Agent AK): only the first s_scan_rows lines when the rows
+    /* QuakeOG, only the first s_scan_rows lines when the rows
        below them are already on the panel (qog_video_present_rows).
-       Agent AP: with s_scan_first, lines [first, out_h) go out first in a
+       Earlier work, with s_scan_first, lines [first, out_h) go out first in a
        window of their own, then [0, first), and s_scan_row counts the lines
        sent in that order (qog_video_set_first). */
     const uint32_t out_h = s_scan_rows, first = s_scan_first;
@@ -236,14 +236,14 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
                 /* New source line: build it in the free buffer. The other one
                    may still be on the wire. */
                 cur ^= 1u;
-                if ((uint32_t)sy < s_scan_packed) {   /* Agent AO: a Turbo view's row, packed */
+                if ((uint32_t)sy < s_scan_packed) {   /* Earlier work, a Turbo view's row, packed */
                     convert_line_double(s_line[cur], fb + (uint32_t)sy * (src_w / 2u));
-                    if (s_scan_text_n) text_line(s_line[cur], (uint32_t)sy);   /* Agent AP */
+                    if (s_scan_text_n) text_line(s_line[cur], (uint32_t)sy);   /* Earlier work */
                 } else
                     convert_line(s_line[cur], fb + (uint32_t)sy * src_w);
                 last_sy = sy;
                 __dmb();
-                /* Agent AK: the game may draw over rows above this (Agent AP:
+                /* Earlier work, the game may draw over rows above this (earlier work.
                    over the rows sent so far, in the order they go out) */
                 s_scan_row = first ? ++pos : (uint32_t)sy + 1u;
             }
@@ -265,12 +265,12 @@ static void __not_in_flash_func(scanout)(const uint8_t *fb) {
    board, docs/lessons.md L14). */
 static const uint8_t *volatile s_next_fb;
 
-/* QuakeOG (Agent V): one job core 0 hands to core 1 (qog_video_core1_start),
+/* QuakeOG, one job core 0 hands to core 1 (qog_video_core1_start),
    run between scanouts. */
 static void (*volatile s_job_fn)(void *);
 static void *volatile s_job_arg;
 static volatile bool s_job_done = true;
-/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs, us since boot
+/* QuakeOG, core 1's time in scanouts and in jobs, us since boot
    (wrap after 71 minutes, the reader takes differences) */
 static volatile uint32_t s_c1_scan_us, s_c1_job_us;
 
@@ -308,7 +308,7 @@ static void core1_main(void) {
 
 /* ---- core 0 ---------------------------------------------------------- */
 
-/* QuakeOG (Agent AP): claim a state machine and load the stream program,
+/* QuakeOG, claim a state machine and load the stream program,
    pio1 first (pio0 holds the WS2812 bar's SM 0, and the speaker asks pio0
    first, sys_rp2040.c and snd_rp2040.c). Called once before core 1 starts,
    after the panel init, so the BSP's init and clear ran on the PL022. */
@@ -448,14 +448,14 @@ void qog_video_present_rows(const uint8_t *fb, uint32_t rows) {
 
 void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed) {
     qog_video_wait();
-    /* Agent AK: a part only when lines and rows are one to one */
+    /* Earlier work, a part only when lines and rows are one to one */
     s_scan_rows = (rows && rows < s_cfg.out_h && s_cfg.src_h == s_cfg.out_h) ? rows : s_cfg.out_h;
-    /* Agent AO: packed rows only for a 320 wide frame, rows one to one */
+    /* Earlier work, packed rows only for a 320 wide frame, rows one to one */
     s_scan_packed = (s_x_identity && s_cfg.src_h == s_cfg.out_h && packed <= s_cfg.src_h) ? packed : 0u;
-    /* Agent AP: rows [first, out_h) first, for a whole frame of rows one to one */
+    /* Earlier work, rows [first, out_h) first, for a whole frame of rows one to one */
     s_scan_first = (s_first_next && s_first_next < s_scan_rows && s_scan_rows == s_cfg.out_h
                     && s_cfg.src_h == s_cfg.out_h) ? s_first_next : 0u;
-    /* Agent AP: the characters only over packed rows */
+    /* Earlier work, the characters only over packed rows */
     s_scan_text = s_text_next;
     s_scan_chars = s_chars_next;
     s_scan_text_n = (s_scan_packed && s_font) ? s_text_next_n : 0u;

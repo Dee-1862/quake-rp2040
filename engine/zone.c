@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -22,16 +23,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 #if defined(QOG_ZONE_BOARD_KB)
-// QuakeOG: board-only zone size (apps/quake/CMakeLists.txt), used instead of
+// QuakeOG, board-only zone size (apps/quake/CMakeLists.txt), used instead of
 // QOG_ZONE_KB. With QOG_CBUF_INPLACE no script passes through the zone, and
 // the measured peak is 7,920 bytes (cvar strings, bindings, aliases and
 // command arguments, PC run over the start, menus, save and load, three
-// maps with fights). The zone fragments: a 12 KB zone failed at startup
+// maps with fights). The zone fragments, a 12 KB zone failed at startup
 // with 3.5 KB free in pieces of at most 152 bytes, 16 KB ran every test.
 // The PC builds keep QOG_ZONE_KB for the test scripts.
 #define	DYNAMIC_SIZE	(QOG_ZONE_BOARD_KB * 1024)
 #elif defined(QOG_ZONE_KB)
-// QuakeOG: the zone holds cvar strings, aliases, key bindings, command
+// QuakeOG, the zone holds cvar strings, aliases, key bindings, command
 // arguments and, for a moment, the rest of the command buffer (up to 8 KB)
 // when a script is inserted. Measured peak 7.4 KB over every shareware
 // level, the menus and the demos. -zone still overrides it.
@@ -283,7 +284,7 @@ void Z_CheckHeap (void)
 #define	HUNK_SENTINAL	0x1df001ed
 
 #ifdef QOG_HUNK_HDR8
-// QuakeOG (Agent AD): an 8-byte block header (the size and the first four
+// QuakeOG, an 8-byte block header (the size and the first four
 // letters of the name, no sentinel) and blocks rounded to 8 bytes, not 16.
 // The client half's level holds about 110 blocks, which gives back about
 // 1 KB. Nothing in the engine needs more than 8-byte alignment.
@@ -479,7 +480,7 @@ void *Hunk_Alloc (int size)
 ===================
 Hunk_AllocPacked
 
-QuakeOG: small allocations that live as long as the low hunk under them
+QuakeOG, small allocations that live as long as the low hunk under them
 (entity lump strings, console command entries, saved light styles) share
 "packed" blocks. id gave each its own block with a 16-byte header and
 16-byte rounding, so a 6-byte string took 32 bytes. The open block grows in
@@ -509,11 +510,11 @@ void *Hunk_AllocPacked (int size, int align)
 			return (byte *)(h + 1) + ofs;
 		}
 		if (hunk_packed_start + h->size == hunk_low_used)
-		{	// last block on the low hunk: grow it
+		{	// last block on the low hunk, grow it
 			grow = HUNK_ROUND (ofs + size - room);
 			if (hunk_size - hunk_low_used - hunk_high_used < grow)
 				Sys_Error ("Hunk_Alloc: failed on %i bytes", grow);
-			// QuakeOG (Agent W): move the cache out of the way before
+			// QuakeOG, move the cache out of the way before
 			// clearing, as Hunk_AllocName does. Clearing first wiped the
 			// header of a cache block lying there (a sound's, with sound
 			// on), and moving it then freed a NULL user.
@@ -542,7 +543,7 @@ void Hunk_FreeToLowMark (int mark)
 	if (mark < 0 || mark > hunk_low_used)
 		Sys_Error ("Hunk_FreeToLowMark: bad mark %i", mark);
 #ifdef QOG_HUNK_PACKED
-	// QuakeOG: forget a freed open block, or cut it at the mark when it grew
+	// QuakeOG, forget a freed open block, or cut it at the mark when it grew
 	// past a mark taken while it was the last block
 	if (hunk_packed_start >= 0)
 	{

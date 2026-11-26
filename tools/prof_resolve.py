@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QuakeOG (Agent AN): sum the board profiler's windows from a saved USB log.
+"""QuakeOG: sum the board profiler's windows from a saved USB log.
 
 The profiler (port/rp2040/prof_rp2040.c, build option QOG_PROF) prints every
 5 s, per core, a header and the top functions of that window:

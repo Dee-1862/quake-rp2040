@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -56,25 +57,25 @@ void D_Init (void)
 #if defined(QOG_LITSPAN_INTERP) && defined(QOG_RFAST) && !defined(_WIN32)
 	{
 		void D_QogLitInterpCheck (void);
-		D_QogLitInterpCheck ();	// QuakeOG (Agent AH): the board's interpolators, once (d_scanlit.c)
+		D_QogLitInterpCheck ();	// QuakeOG, the board's interpolators, once (d_scanlit.c)
 	}
 #endif
 #if defined(QOG_ASPAN_ASM) && !defined(_WIN32)
 	{
 		void D_QogAspanCheck (void);
-		D_QogAspanCheck ();	// QuakeOG (Agent AR): the alias span assembly against the C, once (d_polyse.c)
+		D_QogAspanCheck ();	// QuakeOG, the alias span assembly against the C, once (d_polyse.c)
 	}
 #endif
 #ifdef QOG_XIPSIM
 	{
 		void XipSim_f (void);
-		Cmd_AddCommand ("qog_xipsim", XipSim_f);	// QuakeOG (Agent AH), PC measurement (d_xipsim.c)
+		Cmd_AddCommand ("qog_xipsim", XipSim_f);	// QuakeOG, PC measurement (d_xipsim.c)
 	}
 #endif
 #ifdef QOG_AR_DUMP
 	{
 		void D_QogArDump_f (void);
-		Cmd_AddCommand ("qog_ardump", D_QogArDump_f);	// QuakeOG (Agent AR), PC measurement (d_scanlit.c)
+		Cmd_AddCommand ("qog_ardump", D_QogArDump_f);	// QuakeOG, PC measurement (d_scanlit.c)
 	}
 #endif
 
@@ -154,7 +155,7 @@ void D_SetupFrame (void)
 
 	if (r_dowarp
 #ifdef QOG_RTURBO
-		&& !r_qog_turboview	// QuakeOG (Agent AO): the in-place warp keeps a Turbo view's half rows
+		&& !r_qog_turboview	// QuakeOG, the in-place warp keeps a Turbo view's half rows
 #endif
 		)
 		screenwidth = WARP_WIDTH;

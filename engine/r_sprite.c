@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -259,7 +260,7 @@ mspriteframe_t *R_GetSpriteframe (msprite_t *psprite)
 		numframes = pspritegroup->numframes;
 		fullinterval = pintervals[numframes-1];
 
-		time = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG: render.h
+		time = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG, render.h
 
 	// when loading in Mod_LoadSpriteGroup, we guaranteed all interval values
 	// are positive, so we don't have to worry about division by 0

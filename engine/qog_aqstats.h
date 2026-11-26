@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AQ): PC measurement only (QOG_AQ_STATS). Work counts of the
+/* QuakeOG, PC measurement only (QOG_AQ_STATS). Work counts of the
  * brush entity front end, the world walk and the edge scan per view, printed
  * every 100 views as sums since the start (r_main.c). Without the flag the
  * macro is empty. */

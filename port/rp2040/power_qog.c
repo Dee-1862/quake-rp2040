@@ -1,10 +1,10 @@
-/* QuakeOG: the display client's power poll (FWOG_POWER_CUSTOM).
+/* QuakeOG, the display client's power poll (FWOG_POWER_CUSTOM).
  *
  * The BSP's fwog_power_poll() powers the board off after red has been held
  * for FWOG_SHIP_HOLD_MS (6 s), counting red whatever else is held. In the
  * game red is the combo button (red + yellow walks backwards, which can last
  * longer than 6 s), so this poll feeds the same hold machine red only while it
- * is the ONLY button down. Everything else is the BSP's: its debounced button
+ * is the ONLY button down. Everything else is the BSP's, its debounced button
  * poll, its hold machine and power-off call, and the same red LED countdown
  * on the WS2812 bar, restored when the hold is let go.
  *

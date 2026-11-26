@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AN): the profiler's function table, a fixed size hole in
+/* QuakeOG, the profiler's function table, a fixed size hole in
  * the app's flash image (port/rp2040/prof_rp2040.c).
  *
  * The link leaves it holding only the placeholder magic 'QPR0'. The app's

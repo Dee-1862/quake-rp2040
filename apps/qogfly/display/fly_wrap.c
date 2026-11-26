@@ -39,7 +39,7 @@ void __wrap_Con_DPrintf (char *fmt, ...)
 	(void)fmt;
 }
 
-/* No server to abort: id's Host_Error would longjmp to a host_abortserver
+/* No server to abort, id's Host_Error would longjmp to a host_abortserver
    that Host_Init never set up. Stop with the message instead. */
 void __wrap_Host_Error (char *error, ...)
 {

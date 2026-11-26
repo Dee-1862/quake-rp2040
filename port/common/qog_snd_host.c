@@ -1,4 +1,4 @@
-/* QuakeOG (Agent W): id's SNDDMA calls on the split game's server half
+/* QuakeOG, id's SNDDMA calls on the split game's server half
  * (QOG_SND_HOST), where the mixer runs for the client half (qog_snd.h).
  *
  * The "DMA buffer" is a ring of QOG_SND_RING 8-bit mono samples, as id's
@@ -7,11 +7,11 @@
  * GetSoundtime takes id's own path for such outputs (QOG_SND_GETSAMPLES).
  * Submit sends what the mixer wrote since the last one to the client.
  *
- * Memory (QOG_SND_HOSTMEM): the paint buffer and the ring hold samples only
+ * Memory (QOG_SND_HOSTMEM), the paint buffer and the ring hold samples only
  * while one S_Update_ runs (S_PaintChannels clears the paint buffer before
  * it paints, and Submit sends everything the ring got), so nothing in them
  * has to last. On the main chip (QOG_SND_BOARDMEM) they are the lowest
- * QOG_SND_SCRATCH bytes of the server's stack array: the mixer runs only
+ * QOG_SND_SCRATCH bytes of the server's stack array, the mixer runs only
  * from the link's items, between server frames, where the stack is a few KB
  * deep, and interrupts have their own stack. known_sfx, which lasts, takes
  * the free half of the SCRATCH_Y bank (the other half is the interrupt

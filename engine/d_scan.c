@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -43,7 +44,7 @@ D_WarpScreen
 */
 #ifdef QOG_WARP_INPLACE
 /*
-QuakeOG: the underwater view is drawn straight into the frame buffer (see
+QuakeOG, the underwater view is drawn straight into the frame buffer (see
 R_RenderView_) and distorted in place here, instead of being drawn into a
 64 KB warp buffer on the stack and copied out. Destination row v reads
 source rows from rowsrc[v] to rowsrc[v + AMP2*2], which are never more than
@@ -484,7 +485,7 @@ D_DrawZSpans
 =============
 D_QogZiFixed
 
-QuakeOG: (int)(zi * 0x8000 * 0x10000) as id's D_DrawZSpans computes it,
+QuakeOG, (int)(zi * 0x8000 * 0x10000) as id's D_DrawZSpans computes it,
 with zi a double holding a float, but without double arithmetic (a float
 to double conversion, two double multiplies and a double to int
 conversion are about 250 cycles per span through the M0+'s ROM routines).
@@ -504,7 +505,7 @@ static int D_QogZiFixed (float zi)
 	e = (int)((v.u >> 23) & 0xFF);
 	if (e >= 127)
 		return (int)((double)zi * 0x8000 * 0x10000);
-	if (e < 96)		// below 2^-31 (zeros and denormals too): truncates to 0
+	if (e < 96)		// below 2^-31 (zeros and denormals too), truncates to 0
 		return 0;
 	m = (v.u & 0x7FFFFF) | 0x800000;	// zi = m * 2^(e - 150), so zi * 2^31 = m * 2^(e - 119)
 	if (e >= 119)
@@ -522,7 +523,7 @@ void D_DrawZSpans (espan_t *pspan)
 	d_zval_t		*pdest;
 	unsigned		ltemp;
 #ifdef QOG_ZSPANS_FAST
-	float			zi;		// QuakeOG: see D_QogZiFixed
+	float			zi;		// QuakeOG, see D_QogZiFixed
 #else
 	double			zi;
 #endif
@@ -604,7 +605,7 @@ void D_DrawZSpans (espan_t *pspan)
 =============
 D_QogZSpan
 
-QuakeOG: the z of one span exactly as D_DrawZSpans writes it, for
+QuakeOG, the z of one span exactly as D_DrawZSpans writes it, for
 D_DrawSpans8Lit, which computes the same 1/z at the start of each span
 for its own use (d_litspan.h). izistep as D_DrawZSpans computes it.
 =============
@@ -626,7 +627,7 @@ void D_QogZSpan (espan_t *pspan, float zi, int izistep)
 #ifdef QOG_ZBUFFER8
 	(void)ltemp; (void)doublecount;
 #if defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
-	// QuakeOG (Agent AH): exact. z is linear along the span, so when both
+	// QuakeOG, exact. z is linear along the span, so when both
 	// ends are 32 units or farther (z below 1024) and the steps cannot wrap,
 	// every pixel's D_ZQ (z) is z >> 3, without D_ZQ's two tests a pixel
 	if (izi >= 0 && izi < (1024 << 16) && izistep > -(1 << 22) && izistep < (1 << 22))
@@ -680,7 +681,7 @@ void D_QogZSpan (espan_t *pspan, float zi, int izistep)
 =============
 D_QogZSpanI
 
-QuakeOG (Agent AH): D_QogZSpan with the span start's 1/z * 2^31 already
+QuakeOG, D_QogZSpan with the span start's 1/z * 2^31 already
 an integer, for the fixed point Fast drawer (QOG_RFAST_FIX, d_litspan.h)
 =============
 */
@@ -695,7 +696,7 @@ void D_QogZSpanI (espan_t *pspan, int izi, int izistep)
 #ifdef QOG_ZBUFFER8
 	(void)ltemp; (void)doublecount;
 #if defined(QOG_ZBUFFER8_NEAR) && !defined(QOG_ZSPAN8_SLOW)
-	// QuakeOG (Agent AH): exact. z is linear along the span, so when both
+	// QuakeOG, exact. z is linear along the span, so when both
 	// ends are 32 units or farther (z below 1024) and the steps cannot wrap,
 	// every pixel's D_ZQ (z) is z >> 3, without D_ZQ's two tests a pixel
 	if (izi >= 0 && izi < (1024 << 16) && izistep > -(1 << 22) && izistep < (1 << 22))

@@ -92,7 +92,7 @@ void qog_demo_start (const char **names, int count, unsigned seed)
 	memset (cls.demos, 0, sizeof(cls.demos));
 	for (i = 0 ; i < count ; i++)
 		Q_strncpy (cls.demos[i], (char *)names[i], sizeof(cls.demos[0]) - 1);
-	// as "startdemos": the loop starts with the first demo, whose
+	// as "startdemos", the loop starts with the first demo, whose
 	// "playdemo" runs in the next frame's command buffer
 	qog_srand (seed);
 	cls.demonum = 0;
@@ -200,7 +200,7 @@ static qboolean demo_update_screen (void)
 		return false;
 
 	if (!cl.worldmodel || cls.signon != SIGNONS)
-	{	// id's console is forced up: SCR_DrawConsole clears clearconsole
+	{	// id's console is forced up, SCR_DrawConsole clears clearconsole
 		clearconsole = 0;
 		return false;
 	}
@@ -384,7 +384,7 @@ int qog_demo_frame (double frametime, qboolean fixed)
 	int		drawn;
 
 	if (setjmp (host_abortserver))
-	{	// Host_EndGame at the end of a demo: id's frame stops there too
+	{	// Host_EndGame at the end of a demo, id's frame stops there too
 		demo_wasplaying = false;
 		return -1;
 	}
@@ -419,7 +419,7 @@ int qog_demo_frame (double frametime, qboolean fixed)
 
 	Cbuf_Execute ();
 
-	// CL_SendCmd: in a demo the client sends nothing and only empties its
+	// CL_SendCmd, in a demo the client sends nothing and only empties its
 	// reliable message (the view angles it adjusts are replaced by the
 	// demo's in CL_RelinkEntities)
 	if (cls.state == ca_connected && cls.demoplayback)

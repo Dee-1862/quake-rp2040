@@ -13,7 +13,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-/* Windows sound output for the PC build: id's four SNDDMA_* calls over a
+/* Windows sound output for the PC build, id's four SNDDMA_* calls over a
  * looping waveOut ring, following the wave path of id's snd_win.c.
  *
  * Mixes at 11025 Hz, the rate every Quake sound is stored at, so sounds are
@@ -25,7 +25,7 @@ See the GNU General Public License for more details.
 #include <math.h>
 #include "quakedef.h"
 
-#ifndef QOG_SND_REMOTE   /* QuakeOG (Agent W): a split client's output is snd_link_pc.c */
+#ifndef QOG_SND_REMOTE   /* QuakeOG, a split client's output is snd_link_pc.c */
 
 #define WAV_BUFFERS      64
 #define WAV_MASK         (WAV_BUFFERS - 1)
@@ -39,7 +39,7 @@ static WAVEHDR  s_hdr[WAV_BUFFERS];
 static byte    *s_buffer;
 static int      s_sent, s_completed;
 
-/* Silent mode (-hidden or -silentsound): the mixer runs into the buffer as
+/* Silent mode (-hidden or -silentsound), the mixer runs into the buffer as
    usual but nothing is sent to the speakers, and the play position advances
    by game time, not by the audio device. So scripted tests exercise sound
    without being heard, and stay repeatable. qog_soundlevel reports what was
@@ -76,7 +76,7 @@ qboolean SNDDMA_Init(void) {
     shm->speed = SND_SPEED;
 
     s_silent = COM_CheckParm("-hidden") || COM_CheckParm("-silentsound");
-    /* QuakeOG (Agent W): -sndmono8 mixes 8-bit mono as the split game's
+    /* QuakeOG, -sndmono8 mixes 8-bit mono as the split game's
        server half does (port/common/qog_snd_host.c), silent only, to compare */
     if (s_silent && COM_CheckParm("-sndmono8")) {
         shm->channels = 1;

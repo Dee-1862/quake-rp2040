@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -27,7 +28,7 @@ int	d_vrectx, d_vrecty, d_vrectright_particle, d_vrectbottom_particle;
 int	d_y_aspect_shift, d_pix_min, d_pix_max, d_pix_shift;
 
 #ifdef QOG_NO_ROWTABLES
-int		d_scanrowbytes;		// QuakeOG: replaces the two row tables (d_local.h)
+int		d_scanrowbytes;		// QuakeOG, replaces the two row tables (d_local.h)
 #else
 int		d_scantable[MAXHEIGHT];
 d_zval_t	*zspantable[MAXHEIGHT]; 
@@ -64,14 +65,14 @@ void D_ViewChanged (void)
 {
 	int rowbytes;
 
-	// QuakeOG: the scan and span tables are sized for MAXWIDTH x MAXHEIGHT
+	// QuakeOG, the scan and span tables are sized for MAXWIDTH x MAXHEIGHT
 	if (vid.width > MAXWIDTH || vid.height > MAXHEIGHT)
 		Sys_Error ("D_ViewChanged: video mode %dx%d is larger than MAXWIDTH x MAXHEIGHT (%dx%d)",
 				   vid.width, vid.height, MAXWIDTH, MAXHEIGHT);
 
 	if (r_dowarp
 #ifdef QOG_RTURBO
-		&& !r_qog_turboview	// QuakeOG (Agent AO): the in-place warp keeps a Turbo view's half rows
+		&& !r_qog_turboview	// QuakeOG, the in-place warp keeps a Turbo view's half rows
 #endif
 		)
 		rowbytes = WARP_WIDTH;
@@ -83,7 +84,7 @@ void D_ViewChanged (void)
 		scale_for_mip = yscale;
 
 #ifdef QOG_ZBUFFER_VIEW
-	// QuakeOG: z rows as wide as the view, see d_local.h
+	// QuakeOG, z rows as wide as the view, see d_local.h
 	d_zwidth = r_refdef.vrect.width;
 	d_zrowbytes = d_zwidth * 2;
 	d_pzbuffer = d_zbase - (r_refdef.vrect.y * (int)d_zwidth + r_refdef.vrect.x);
@@ -102,7 +103,7 @@ void D_ViewChanged (void)
 		d_pix_max = 1;
 #ifdef QOG_RTURBO
 	if (r_qog_turboview)
-		d_pix_shift++;	// QuakeOG (Agent AO): particles half as many pixels wide, twice as many rows (d_y_aspect_shift), so their size on the screen stays
+		d_pix_shift++;	// QuakeOG, particles half as many pixels wide, twice as many rows (d_y_aspect_shift), so their size on the screen stays
 #endif
 
 	if (pixelAspect > 1.4)

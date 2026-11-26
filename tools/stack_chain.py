@@ -23,7 +23,7 @@ assembly) count --unknown bytes each and are listed.
     python tools/stack_chain.py --build build --app quake_display
     python tools/stack_chain.py --root R_RenderView --top 3
 
---su-table OUT (Agent AC) writes "name bytes" for every function of the
+--su-table OUT writes "name bytes" for every function of the
 --su-dir folders (default --build) and the known library frames, the table
 the PC's server stack probe weighs its calls with (port/pc/stackprobe_pc.c).
 A GCC clone (name.constprop.N, name.isra.N) counts for name when bigger,
@@ -47,8 +47,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BIN = os.path.join(os.path.expanduser("~"), ".pico-sdk", "toolchain", "15_2_Rel1", "bin")
 EXE = ".exe" if os.name == "nt" else ""
 
-# Indirect calls in this engine, by caller: which functions the pointer can
-# hold (from the sources: the command table, the QuakeC builtins and
+# Indirect calls in this engine, by caller, which functions the pointer can
+# hold (from the sources, the command table, the QuakeC builtins and
 # compiled functions, the network driver table, the clippers, span and block
 # drawers, the menus, printf's output hooks). Callers not listed reach the
 # byte swappers (LittleLong and friends), which is what the rest use.
@@ -97,7 +97,7 @@ def frames_from_su(build):
 
 
 def write_su_table(dirs, out):
-    """Agent AC: name -> frame for the PC's server stack probe."""
+    """earlier work: name -> frame for the PC's server stack probe."""
     fr = {}
     for d in dirs:
         for name, (n, _) in frames_from_su(d).items():
@@ -183,7 +183,7 @@ def main(argv=None):
     ap.add_argument("--qc-depth", type=int, default=1,
                     help="QuakeC calls nested on the C stack (compiled QuakeC), the chain holds one")
     ap.add_argument("--top", type=int, default=1, help="print the deepest chain under this many children of the root")
-    ap.add_argument("--su-table", help="write the frame table of the --su-dir folders and stop (Agent AC)")
+    ap.add_argument("--su-table", help="write the frame table of the --su-dir folders and stop")
     ap.add_argument("--su-dir", action="append", default=[], help="folder of .su files for --su-table, repeat")
     a = ap.parse_args(argv)
     if a.su_table:
@@ -199,7 +199,7 @@ def main(argv=None):
         caller, rx = spec.split("=", 1)
         rules.insert(0, (re.compile(caller), re.compile(rx)))
 
-    # compiled QuakeC (tools/qc2c.py): every qc_N becomes one node QC with
+    # compiled QuakeC (tools/qc2c.py), every qc_N becomes one node QC with
     # the biggest frame and every callee, so QuakeC recursion is one cycle
     qc = re.compile(r"qc_\d+")
     qcf = [f for f in funcs if qc.fullmatch(f)]
@@ -253,10 +253,10 @@ def main(argv=None):
     cycles = set()
     sys.setrecursionlimit(100000)
 
-    # Depth first, each function at most once on a chain: a call back to a
+    # Depth first, each function at most once on a chain, a call back to a
     # function already on the chain is recursion, cut and listed. Results
     # are memoised whatever the chain was, so a second trip around a cycle
-    # is never counted; recursion depth is bounded separately (--qc-depth).
+    # is never counted. Recursion depth is bounded separately (--qc-depth).
     def deepest(f, onpath):
         if f in memo:
             return memo[f]

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -45,7 +46,7 @@ void D_Sky_uv_To_st (int u, int v, fixed16_t *s, fixed16_t *t)
 #ifdef QOG_RTURBO
 	if (r_qog_turboview)
 	{
-		// QuakeOG (Agent AO): a Turbo view's pixels are twice as wide, so
+		// QuakeOG, a Turbo view's pixels are twice as wide, so
 		// the sky is placed by the screen position 2u (vid.width is half)
 		temp = 2.0f * r_refdef.vrect.width >= r_refdef.vrect.height ?
 			2.0f * r_refdef.vrect.width : (float)r_refdef.vrect.height;
@@ -65,7 +66,7 @@ void D_Sky_uv_To_st (int u, int v, fixed16_t *s, fixed16_t *t)
 	end[2] *= 3;
 	VectorNormalize (end);
 
-	temp = skytime*skyspeed;	// TODO: add D_SetupFrame & set this there
+	temp = skytime*skyspeed;	// TODO, add D_SetupFrame & set this there
 	*s = (int)((temp + 6*(SKYSIZE/2-1)*end[0]) * 0x10000);
 	*t = (int)((temp + 6*(SKYSIZE/2-1)*end[1]) * 0x10000);
 }
@@ -135,7 +136,7 @@ void D_DrawSkyScans8 (espan_t *pspan)
 			}
 
 #ifdef QOG_SKY_DIRECT
-			// QuakeOG: compose each pixel as R_MakeSky would have (r_sky.c)
+			// QuakeOG, compose each pixel as R_MakeSky would have (r_sky.c)
 			do
 			{
 				int		x = (s & R_SKY_SMASK) >> 16;
@@ -149,7 +150,7 @@ void D_DrawSkyScans8 (espan_t *pspan)
 #else
 			do
 			{
-				*pdest++ = r_skysource[((t & R_SKY_TMASK) >> 9) +	// QuakeOG: newsky is 128 wide now (was 256)
+				*pdest++ = r_skysource[((t & R_SKY_TMASK) >> 9) +	// QuakeOG, newsky is 128 wide now (was 256)
 						((s & R_SKY_SMASK) >> 16)];
 				s += sstep;
 				t += tstep;

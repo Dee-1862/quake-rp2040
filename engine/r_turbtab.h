@@ -1,6 +1,6 @@
-// QuakeOG: r_turbtab.h, the turbulence sine tables of R_InitTurb (r_main.c)
+// QuakeOG, r_turbtab.h, the turbulence sine tables of R_InitTurb (r_main.c)
 // precomputed for SIN_BUFFER_SIZE 448 (MAXWIDTH 320, CYCLE 128), so they live
-// in flash instead of 3.5 KB of RAM. Generated with id's own formulas:
+// in flash instead of 3.5 KB of RAM. Generated with id's own formulas.
 //   sintable[i]    = AMP  + sin(i*3.14159*2/CYCLE)*AMP    (AMP 8*0x10000)
 //   intsintable[i] = AMP2 + sin(i*3.14159*2/CYCLE)*AMP2   (AMP2 3)
 // The PC build recomputes both at startup and stops if they differ.

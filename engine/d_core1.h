@@ -12,7 +12,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// d_core1.h -- QuakeOG (Agent AM): the names d_core1.c gives core 1's copy
+// d_core1.h -- QuakeOG, the names d_core1.c gives core 1's copy
 // of the lit surface drawing (d_scanlit.c, r_surf.c and d_edge.c compiled a
 // second time, QOG_DRAW_CORE1). Only d_core1.c includes this, before any
 // other header.
@@ -24,7 +24,7 @@ See the GNU General Public License for more details.
 // while the view's surfaces are drawn (the frame buffer and z-buffer
 // pointers, the view's scale and centre, the texture and light data, the
 // light styles and dynamic lights, r_qogfast) keeps its name.
-// tools/core1_syms.py checks the board object against that list: a name
+// tools/core1_syms.py checks the board object against that list, a name
 // missing here would be shared silently, the board link allows multiple
 // definitions and the PC merges uninitialized ones.
 
@@ -87,7 +87,7 @@ See the GNU General Public License for more details.
 #define R_GenTurbTile			c1_R_GenTurbTile
 #define R_GenTurbTile16			c1_R_GenTurbTile16
 #define R_GenTile				c1_R_GenTile
-#define qog_lms					c1_qog_lms		// Agent AL's PC light grid counts
+#define qog_lms					c1_qog_lms		// The earlier PC light grid counts
 
 // d_edge.c
 #define D_DrawPoly				c1_D_DrawPoly
@@ -103,7 +103,7 @@ See the GNU General Public License for more details.
 #define erroradjustdown			c1_erroradjustdown
 #define vstartscan				c1_vstartscan
 
-// d_vars.c and d_local.h: the surface's gradients
+// d_vars.c and d_local.h, the surface's gradients
 #define d_sdivzstepu			c1_d_sdivzstepu
 #define d_tdivzstepu			c1_d_tdivzstepu
 #define d_zistepu				c1_d_zistepu
@@ -120,16 +120,16 @@ See the GNU General Public License for more details.
 #define cacheblock				c1_cacheblock
 #define cachewidth				c1_cachewidth
 
-// r_main.c, r_misc.c: what a brush entity's surface changes on core 0
+// r_main.c, r_misc.c, what a brush entity's surface changes on core 0
 #define currententity			c1_currententity
 #define vright					c1_vright
 #define vup						c1_vup
 #define vpn						c1_vpn
-#define modelorg				c1_modelorg		// Agent AL's Fast gradient rows read it once a view
+#define modelorg				c1_modelorg		// The earlier Fast gradient rows read it once a view
 #define TransformVector			c1_TransformVector
 
 #ifdef QOG_BOARDMODEL
-// Agent AS: the board cost model's PC builds keep core 1's work counts apart
+// Earlier work, the board cost model's PC builds keep core 1's work counts apart
 // (port/pc/boardmodel_pc.c adds both cores' sums)
 #define qog_bm_count			c1_qog_bm_count
 #ifdef QOG_C1_TIMED

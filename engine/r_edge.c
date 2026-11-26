@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,10 +22,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
-#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
+#include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG, front end work counts (QOG_AQ_STATS)
 #ifdef QOG_EDGES_IN_ZBUFFER
-#include "d_local.h"	// QuakeOG: d_pzbuffer, d_zwidth (R_QogScanRows)
+#include "d_local.h"	// QuakeOG, d_pzbuffer, d_zwidth (R_QogScanRows)
 #endif
 
 #if 0
@@ -48,16 +49,16 @@ surf_t	*surfaces, *surface_p, *surf_max;
 // pointer is greater than another one, it should be drawn in front
 // surfaces[1] is the background, and is used as the active surface stack
 
-edgeref_t	newedges[MAXHEIGHT];	// QuakeOG: edgeref_t, see r_shared.h
+edgeref_t	newedges[MAXHEIGHT];	// QuakeOG, edgeref_t, see r_shared.h
 edgeref_t	removeedges[MAXHEIGHT];
 
 espan_t	*span_p, *max_span_p;
 #ifdef QOG_ESPAN_T_PACKED
-byte	*r_spanbase;	// QuakeOG: see espan_t in r_shared.h
+byte	*r_spanbase;	// QuakeOG, see espan_t in r_shared.h
 #if defined(QOG_SPANS_IN_EDGES) || defined(QOG_EDGES_IN_ZBUFFER)
-byte	*r_spanpool_end;	// QuakeOG: end of the span room, see r_local.h
+byte	*r_spanpool_end;	// QuakeOG, end of the span room, see r_local.h
 #endif
-// QuakeOG: span measurements for the PC qog_rpeaks command (port/pc/vid_pc.c)
+// QuakeOG, span measurements for the PC qog_rpeaks command (port/pc/vid_pc.c)
 int		r_qog_peakspanroom, r_qog_minspanroom, r_qog_peakframespans, r_qog_peakflushspans;
 #endif
 
@@ -72,7 +73,7 @@ int	edge_head_u_shift20, edge_tail_u_shift20;
 static void (*pdrawfunc)(void);
 
 #ifdef QOG_EDGE_T_PACKED
-edge_t	*r_edgesentinels;	// QuakeOG: in the edge buffer, see r_local.h
+edge_t	*r_edgesentinels;	// QuakeOG, in the edge buffer, see r_local.h
 byte	*r_edgebase;
 #else
 edge_t	edge_head;
@@ -115,7 +116,7 @@ void R_DrawCulledPolys (void)
 
 			if (!(s->flags & SURF_DRAWBACKGROUND))
 			{
-				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG: SURF_DATA
+				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG, SURF_DATA
 				R_RenderPoly (pface, 15);
 			}
 		}
@@ -129,7 +130,7 @@ void R_DrawCulledPolys (void)
 
 			if (!(s->flags & SURF_DRAWBACKGROUND))
 			{
-				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG: SURF_DATA
+				pface = (msurface_t *)SURF_DATA (s);	// QuakeOG, SURF_DATA
 				R_RenderPoly (pface, 15);
 			}
 		}
@@ -151,7 +152,7 @@ void R_BeginEdgeFrame (void)
 
 	surface_p = &surfaces[2];	// background is surface 1,
 								//  surface 0 is a dummy
-	surfaces[1].spans = SPAN_NONE;	// no background spans yet (QuakeOG: SPAN_NONE)
+	surfaces[1].spans = SPAN_NONE;	// no background spans yet (QuakeOG, SPAN_NONE)
 	surfaces[1].flags = SURF_DRAWBACKGROUND;
 
 // put the background behind everything in the world
@@ -164,7 +165,7 @@ void R_BeginEdgeFrame (void)
 	else
 	{
 		pdrawfunc = R_GenerateSpans;
-		surfaces[1].key = SURF_KEY_BACK;	// QuakeOG: 0x7FFFFFFF, or 0xFFFF for 16-bit keys
+		surfaces[1].key = SURF_KEY_BACK;	// QuakeOG, 0x7FFFFFFF, or 0xFFFF for 16-bit keys
 		r_currentkey = 0;
 	}
 
@@ -188,7 +189,7 @@ sentinel at the end (actually, this is the active edge table starting at
 edge_head.next).
 ==============
 */
-// QuakeOG: links through EDGE_PTR/EDGE_REF (r_shared.h), id's pointers by default
+// QuakeOG, links through EDGE_PTR/EDGE_REF (r_shared.h), id's pointers by default
 void R_InsertNewEdges (edge_t *edgestoadd, edge_t *edgelist)
 {
 	edgeref_t	next_edge;
@@ -235,7 +236,7 @@ void R_RemoveEdges (edge_t *pedge)
 
 	do
 	{
-		EDGE_PTR(pedge->next)->prev = pedge->prev;	// QuakeOG: EDGE_PTR
+		EDGE_PTR(pedge->next)->prev = pedge->prev;	// QuakeOG, EDGE_PTR
 		EDGE_PTR(pedge->prev)->next = pedge->next;
 	} while (pedge->nextremove != EDGE_NONE && (pedge = EDGE_PTR(pedge->nextremove)));
 }
@@ -245,7 +246,7 @@ void R_RemoveEdges (edge_t *pedge)
 
 #if	!id386
 
-#ifndef QOG_SCAN_FAST	// QuakeOG (Agent AQ): else further down
+#ifndef QOG_SCAN_FAST	// QuakeOG, else further down
 /*
 ==============
 R_StepActiveU
@@ -285,7 +286,7 @@ pushback:
 			return;
 			
 	// push it back to keep it sorted		
-		pnext_edge = EDGE_PTR(pedge->next);	// QuakeOG: EDGE_PTR/EDGE_REF
+		pnext_edge = EDGE_PTR(pedge->next);	// QuakeOG, EDGE_PTR/EDGE_REF
 
 	// pull the edge out of the edge list
 		EDGE_PTR(pedge->next)->prev = pedge->prev;
@@ -421,7 +422,7 @@ newtop:
 				
 gotposition:
 	// insert before surf2
-		surf->next = SURF_REF(surf2);	// QuakeOG: SURF_PTR/SURF_REF
+		surf->next = SURF_REF(surf2);	// QuakeOG, SURF_PTR/SURF_REF
 		surf->prev = surf2->prev;
 		SURF_PTR(surf2->prev)->next = SURF_REF(surf);
 		surf2->prev = SURF_REF(surf);
@@ -447,7 +448,7 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 		if (surf->insubmodel)
 			r_bmodelactive--;
 
-		if (surf == SURF_PTR(surfaces[1].next))	// QuakeOG: SURF_PTR
+		if (surf == SURF_PTR(surfaces[1].next))	// QuakeOG, SURF_PTR
 		{
 		// emit a span (current top going away)
 			iu = edge->u >> 20;
@@ -478,7 +479,7 @@ void R_TrailingEdge (surf_t *surf, edge_t *edge)
 ==============
 R_QogZFront
 
-QuakeOG (Agent AQ): id's 1/z order of two brush entity surfaces that share
+QuakeOG, id's 1/z order of two brush entity surfaces that share
 a key, in float with id's doubles only near a tie. Returns 1 where id's
 code finds surf in front of surf2 (newzibottom >= testzi, or newzitop >=
 testzi and surf's d_zistepu >= surf2's), else 0.
@@ -486,7 +487,7 @@ testzi and surf's d_zistepu >= surf2's), else 0.
 id computes newzi = (double)(zo + fv*zv) + fu*(double)zu, with the first
 part in float and the second product exact in double, then multiplies by
 the double 0.99 or 1.01 and compares with testzi made the same way. Here
-a = zo + fv*zv is id's own float, the rest is float: b = fu*zu, n = a + b,
+a = zo + fv*zv is id's own float, the rest is float, b = fu*zu, n = a + b,
 n*0.99f, n*1.01f and t the same for surf2. Each float step rounds by at
 most 2^-24 of its size and id's doubles by 2^-53, and 0.99f and 1.01f
 differ from id's doubles by less than 2^-24 of themselves, so the float
@@ -529,7 +530,7 @@ static int R_QogZFrontDouble (surf_t *surf, surf_t *surf2, edge_t *edge)
 }
 
 /*
-QuakeOG (Agent AQ, QOG_SCAN_FAST): surf's half of the compare (its fu, its
+QuakeOG (QOG_SCAN_FAST), surf's half of the compare (its fu, its
 float part a, its b, n = a + b and the larger exponent of a and b) depends
 only on surf, the edge and the scan line, and 96% of the compares in demo3
 come from R_LeadingEdge's search loop, which compares the same surf with
@@ -552,7 +553,7 @@ static int R_QogZFrontC (surf_t *surf, surf_t *surf2, edge_t *edge, r_qogzc_t *c
 	{
 		fu = (float)(edge->u - 0xFFFFF);
 		if (QOG_FBITS (fu) & 0x7FFFFFFF)
-			QOG_FBITS (fu) -= 20u << 23;		// times 2^-20, exact: id's fu
+			QOG_FBITS (fu) -= 20u << 23;		// times 2^-20, exact, id's fu
 		a1 = surf->d_ziorigin + fv*surf->d_zistepv;				// id's float part
 		b1 = fu*surf->d_zistepu;
 		e = QOG_FBITS (a1) & 0x7F800000;
@@ -611,7 +612,7 @@ static int R_QogZFront (surf_t *surf, surf_t *surf2, edge_t *edge)
 }
 
 #ifdef QOG_LEADZ_CHECK
-// PC check build: both ways on every compare, mismatches counted
+// PC check build, both ways on every compare, mismatches counted
 unsigned	r_qog_leadzn, r_qog_leadzbad;
 
 static int R_QogZFrontCheck (surf_t *surf, surf_t *surf2, edge_t *edge)
@@ -686,7 +687,7 @@ void R_LeadingEdge (edge_t *edge)
 			// must be two bmodels in the same leaf; sort on 1/z
 				QOG_AQ (AQ_LEADZ, 1);
 #ifdef QOG_LEADZ_FLOAT
-				if (R_QOGZFRONT (surf, surf2, edge))	// QuakeOG (Agent AQ)
+				if (R_QOGZFRONT (surf, surf2, edge))	// QuakeOG
 					goto newtop;
 #else
 				fu = (float)(edge->u - 0xFFFFF) * (1.0 / 0x100000);
@@ -730,7 +731,7 @@ continue_search:
 			// must be two bmodels in the same leaf; sort on 1/z
 				QOG_AQ (AQ_LEADZ, 1);
 #ifdef QOG_LEADZ_FLOAT
-				if (R_QOGZFRONT (surf, surf2, edge))	// QuakeOG (Agent AQ)
+				if (R_QOGZFRONT (surf, surf2, edge))	// QuakeOG
 					goto gotposition;
 #else
 				fu = (float)(edge->u - 0xFFFFF) * (1.0 / 0x100000);
@@ -780,7 +781,7 @@ newtop:
 				
 gotposition:
 		// insert before surf2
-			surf->next = SURF_REF(surf2);	// QuakeOG: SURF_PTR/SURF_REF
+			surf->next = SURF_REF(surf2);	// QuakeOG, SURF_PTR/SURF_REF
 			surf->prev = surf2->prev;
 			SURF_PTR(surf2->prev)->next = SURF_REF(surf);
 			surf2->prev = SURF_REF(surf);
@@ -797,13 +798,13 @@ gotposition:
 ==============
 R_GenerateSpans
 
-QuakeOG (Agent AQ): id's R_GenerateSpans, R_TrailingEdge and R_LeadingEdge
+QuakeOG, id's R_GenerateSpans, R_TrailingEdge and R_LeadingEdge
 as one loop with the same statements in the same order. The engine is
 built with -fno-strict-aliasing, so every store made GCC load again the
 globals behind the links (r_edgebase, surfaces, r_spanbase, span_p,
 current_iv), and the two calls per edge saved and restored registers. Here
 those values are locals for the whole scan line (nothing in the loop
-changes them: the 1/z order reads only the surfaces, the edge and fv), and
+changes them, the 1/z order reads only the surfaces, the edge and fv), and
 span_p and r_bmodelactive are written back before R_CleanupSpan, which
 reads span_p. r_bmodelactive is only counted, never read, so its final
 value is id's.
@@ -837,7 +838,7 @@ void R_GenerateSpans (void)
 #define QSREF(p)	(p)
 #endif
 
-	QOG_BM (QOG_BM_SCANLINES, 1);	// QuakeOG (Agent AS)
+	QOG_BM (QOG_BM_SCANLINES, 1);	// QuakeOG
 	QOG_AQ (AQ_SCANLINES, 1);
 	surfs = surfaces;
 	head = &surfs[1];
@@ -853,7 +854,7 @@ void R_GenerateSpans (void)
 // generate spans
 	for (edge=QE(edge_head.next) ; edge != tail; edge=QE(edge->next))
 	{
-		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG
 		QOG_AQ (AQ_SCANEDGES, 1);
 		s0 = edge->surfs[0];
 		s1 = edge->surfs[1];
@@ -988,7 +989,7 @@ gotposition:
 ==============
 R_StepActiveU
 
-QuakeOG (Agent AQ): id's loop with r_edgebase, the tail and the aftertail
+QuakeOG, id's loop with r_edgebase, the tail and the aftertail
 sentinel in locals, for the same reason as above.
 ==============
 */
@@ -1061,7 +1062,7 @@ void R_GenerateSpans (void)
 	surf_t			*surf;
 
 	r_bmodelactive = 0;
-	QOG_BM (QOG_BM_SCANLINES, 1);	// QuakeOG (Agent AS)
+	QOG_BM (QOG_BM_SCANLINES, 1);	// QuakeOG
 	QOG_AQ (AQ_SCANLINES, 1);
 
 // clear active surfaces to just the background surface
@@ -1071,7 +1072,7 @@ void R_GenerateSpans (void)
 // generate spans
 	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
-		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG
 		QOG_AQ (AQ_SCANEDGES, 1);
 		if (edge->surfs[0])
 		{
@@ -1112,7 +1113,7 @@ void R_GenerateSpansBackward (void)
 // generate spans
 	for (edge=EDGE_PTR(edge_head.next) ; edge != &edge_tail; edge=EDGE_PTR(edge->next))	// QuakeOG
 	{			
-		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_SCANEDGES, 1);	// QuakeOG
 		if (edge->surfs[0])
 			R_TrailingEdge (&surfaces[edge->surfs[0]], edge);
 
@@ -1127,13 +1128,13 @@ void R_GenerateSpansBackward (void)
 #ifdef QOG_EDGES_IN_ZBUFFER
 /*
 ==============
-QuakeOG: R_ScanEdges with the edge table in the z-buffer
+QuakeOG, R_ScanEdges with the edge table in the z-buffer
 
 The edge table sits at the end of the z-buffer, and a span writes z only in
 its own scan line's row (d_pzbuffer[v * d_zwidth + u]). Spans are made top
 to bottom, so the spans of rows above the edge table can be drawn whenever
 the span buffer fills, as id does, while those of rows that still hold
-needed edges have to wait. The buffer is flushed:
+needed edges have to wait. The buffer is flushed.
  - when it is full and every span in it lies above the edges (id's flush)
  - before the first scan line whose row reaches the edges, so that the
    buffer is empty when the waiting starts
@@ -1147,7 +1148,7 @@ needed edges have to wait. The buffer is flushed:
  - after the last scan line, when no edge is needed any more
 Each pixel is drawn once, by one span, whichever flush draws it, so the
 picture is the same as id's. The surfaces and spans cannot live in the
-z-buffer: the last flush writes every z row while it still reads them.
+z-buffer, the last flush writes every z row while it still reads them.
 ==============
 */
 #if defined(__GNUC__)
@@ -1162,7 +1163,7 @@ z-buffer: the last flush writes every z row while it still reads them.
 #endif
 
 #ifdef QOG_ZEDGE_STACK_GUARD
-// QuakeOG (Agent AC): the board reads none of these PC measurements, and its
+// QuakeOG, the board reads none of these PC measurements, and its
 // display has no static RAM to spare, so R_QogFlushNoZ's three ints take
 // their place there
 int		r_qog_zstack;
@@ -1172,7 +1173,7 @@ int		r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;	// measu
 #define QOG_ZMEASURE(x)	(x)
 #endif
 #ifdef QOG_CL_PEAKS
-int		r_qog_zstackedges;	// QuakeOG (Agent S): measurement, R_QogEdgesToStack
+int		r_qog_zstackedges;	// QuakeOG, measurement, R_QogEdgesToStack
 #endif
 
 static byte		*r_qog_edgeend;		// end of the edge table
@@ -1180,14 +1181,14 @@ static espan_t	*r_qog_basespan;	// the span buffer
 static int		r_qog_framespans;	// measurement only
 
 #if defined(QOG_ZEDGE_STACK_GUARD) || defined(QOG_ZEDGE_FORCE_NOZ) || defined(QOG_ZEDGE_COMPARE)
-// QuakeOG (Agent AC): the graceful end of the edge fallback, see R_QogFlushNoZ
+// QuakeOG, the graceful end of the edge fallback, see R_QogFlushNoZ
 #define QOG_ZEDGE_NOZ
 #ifdef QOG_ZEDGE_COMPARE
-int				r_qog_zforcenoz;	// PC test: V_RenderView draws a fallback view both ways
+int				r_qog_zforcenoz;	// PC test, V_RenderView draws a fallback view both ways
 #endif
 int				r_qog_znoz;			// flushes without z so far
 #ifndef QOG_ZEDGE_STACK_GUARD
-int				r_qog_znozrows;		// PC measurement: their rows
+int				r_qog_znozrows;		// PC measurement, their rows
 #endif
 static int		r_qog_noztop, r_qog_nozend;	// rows top to end - 1 drawn without z in this view, none if end is 0
 #endif
@@ -1202,7 +1203,7 @@ static int		r_qog_noztop, r_qog_nozend;	// rows top to end - 1 drawn without z i
 ==============
 R_QogMarkEdges
 
-QuakeOG: marks the edges needed after scan line iv: the active list from
+QuakeOG, marks the edges needed after scan line iv, the active list from
 edge_head to edge_sentinel, and the lists of later scan lines. The owner
 field, which only R_RenderFace reads, holds the mark. Returns their number.
 ==============
@@ -1238,7 +1239,7 @@ static int R_QogMarkEdges (int iv, int bottom)
 ==============
 R_QogMoveEdges
 
-QuakeOG: moves the edges R_QogMarkEdges marked, in their order, so that
+QuakeOG, moves the edges R_QogMarkEdges marked, in their order, so that
 they end at dstend, and rewrites every link to them for the new r_edgebase
 newbase. The others are dropped. owner holds the new offset meanwhile.
 ==============
@@ -1290,7 +1291,7 @@ static void R_QogMoveEdges (int iv, int bottom, byte *dstend, byte *newbase)
 		removeedges[w] = NEWREF(removeedges[w]);
 	}
 
-// move them, from the end down: an edge never moves down, so none
+// move them, from the end down, an edge never moves down, so none
 // overwrites one not yet moved
 	newsentinels = (edge_t *)(newbase + r_edgesentinels->owner);
 	for (e=last-1 ; e>=first ; e--)
@@ -1308,7 +1309,7 @@ static void R_QogMoveEdges (int iv, int bottom, byte *dstend, byte *newbase)
 ==============
 R_QogRowFree
 
-QuakeOG (Agent AP): while r_qog_rowrace (r_main.c R_EdgeDrawing), the last
+QuakeOG, while r_qog_rowrace (r_main.c R_EdgeDrawing), the last
 frame's scanout may still be sending the view's rows. Spans drawn now lie
 on scan lines down to iv, so they wait until the scanout has read the
 frame's rows down to iv (in a Turbo view its packed rows, screenwidth bytes
@@ -1333,14 +1334,14 @@ static void R_QogRowFree (int iv)
 ==============
 R_QogFlushSpans
 
-QuakeOG: id's mid-scan flush
+QuakeOG, id's mid-scan flush
 ==============
 */
 static void R_QogFlushSpans (void)
 {
 	surf_t	*s;
 
-	R_QogRowFree (current_iv);	// QuakeOG (Agent AP): the spans lie on lines down to this one
+	R_QogRowFree (current_iv);	// QuakeOG, the spans lie on lines down to this one
 
 	VID_UnlockBuffer ();
 	S_ExtraUpdate ();	// don't let sound get messed up if going slow
@@ -1370,7 +1371,7 @@ static void R_QogFlushSpans (void)
 ==============
 R_QogFlushNoZ
 
-QuakeOG (Agent AC): the fallback when the edges still needed cannot move
+QuakeOG, the fallback when the edges still needed cannot move
 to the stack either (the board's stack, QOG_ZEDGE_STACK_GUARD). It used to
 stop the game with an error. Now the waiting spans are drawn at once, with
 every pixel as id draws it, but their z goes to the frame buffer's last
@@ -1379,7 +1380,7 @@ flush draws over, so the edges in the z-buffer stay intact. Their rows are
 noted (one range from the first to the last such row of the view, no static
 RAM to spare for more), and R_ScanEdges sets the z of those rows to the
 farthest value once no edge is needed. So the world is drawn exactly, and only the depth test
-of models, sprites and particles in those rows of this one frame changes:
+of models, sprites and particles in those rows of this one frame changes.
 they show in front of the world there. Costs no stack.
 ==============
 */
@@ -1390,7 +1391,7 @@ static void R_QogFlushNoZ (int iv, int bottom)
 	int			v;
 
 #ifdef QOG_DRAW_CORE1
-	D_QogPipeSync ();	// QuakeOG (Agent AM): core 1 done before the z-buffer moves
+	D_QogPipeSync ();	// QuakeOG, core 1 done before the z-buffer moves
 #endif
 	r_qog_znoz++;
 	v = r_qog_basespan->v;		// the buffer's spans are of scan lines v to iv
@@ -1403,8 +1404,8 @@ static void R_QogFlushNoZ (int iv, int bottom)
 
 	zbuffer = d_pzbuffer;
 	zwidth = d_zwidth;
-	R_QogRowFree (bottom);	// QuakeOG (Agent AP): the z goes to the view's last row
-	// every span's z lands in one row: d_pzbuffer + 0 * v + u, u < screenwidth
+	R_QogRowFree (bottom);	// QuakeOG, the z goes to the view's last row
+	// every span's z lands in one row, d_pzbuffer + 0 * v + u, u < screenwidth
 	d_pzbuffer = (d_zval_t *)(d_viewbuffer + bottom * screenwidth);
 	d_zwidth = 0;
 	R_QogFlushSpans ();
@@ -1416,7 +1417,7 @@ static void R_QogFlushNoZ (int iv, int bottom)
 ==============
 R_QogClearNoZ
 
-QuakeOG (Agent AC): the farthest z in the rows R_QogFlushNoZ drew, once
+QuakeOG, the farthest z in the rows R_QogFlushNoZ drew, once
 the edge table in the z-buffer is no longer needed. Rows inside the range
 that a normal flush drew lose their z as well, only in this view.
 ==============
@@ -1437,7 +1438,7 @@ static qboolean R_QogEdgesToStack (int iv, int bottom);
 #ifdef QOG_DRAW_CORE1
 /*
 ==============
-QuakeOG (Agent AM): the scan's part of the two-core pipeline (d_edge.c)
+QuakeOG, the scan's part of the two-core pipeline (d_edge.c)
 
 Before the first scan line each world surface gets the last scan line of
 its edges (an edge's last line is the line whose removeedges list holds
@@ -1502,7 +1503,7 @@ static void R_QogPipeRow (int iv)
 			s = &surfaces[si];
 			if (s->spans != SPAN_NONE && D_QOG_C1OK (s) && SURF_LASTROW (s) == iv)
 			{
-				R_QogRowFree (iv);	// QuakeOG (Agent AP): core 1 draws its lines down to iv
+				R_QogRowFree (iv);	// QuakeOG, core 1 draws its lines down to iv
 				D_QogPipePush (s);
 			}
 		}
@@ -1514,7 +1515,7 @@ static void R_QogPipeRow (int iv)
 ==============
 R_QogScanRows
 
-QuakeOG: scan lines iv to bottom, see above. edgesinz is true while the
+QuakeOG, scan lines iv to bottom, see above. edgesinz is true while the
 edge table is in the z-buffer.
 ==============
 */
@@ -1541,7 +1542,7 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 			R_RemoveEdges (EDGE_PTR(removeedges[iv]));
 
 #ifdef QOG_DRAW_CORE1
-	// QuakeOG (Agent AM): the surfaces that ended here, to core 1, when
+	// QuakeOG, the surfaces that ended here, to core 1, when
 	// their z rows are free of edges
 		if (d_qogpipe_on && removeedges[iv] && (!edgesinz || ZROWS_END(iv) <= (byte *)r_edgesentinels))
 			R_QogPipeRow (iv);
@@ -1554,7 +1555,7 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 		}
 		else if (ZROWS_END(iv) <= (byte *)r_edgesentinels)
 		{
-		// every span so far lies above the edges: flush when full, and
+		// every span so far lies above the edges, flush when full, and
 		// before a scan line whose row reaches the edges
 			if (span_p >= max_span_p)
 			{
@@ -1572,7 +1573,7 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 				? r_qog_peakheldspans = span_p - r_qog_basespan : 0);
 			if (span_p >= max_span_p)
 			{
-			// full while spans wait: drop the edges no longer needed
+			// full while spans wait, drop the edges no longer needed
 				QOG_ZMEASURE (r_qog_zcompacts++);
 				R_QogMarkEdges (iv, bottom);
 				R_QogMoveEdges (iv, bottom, r_qog_edgeend, r_edgebase);
@@ -1613,7 +1614,7 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 		r_qog_peakframespans = r_qog_framespans;
 
 // draw whatever's left in the span list, no edge is needed any more
-	R_QogRowFree (iv);	// QuakeOG (Agent AP)
+	R_QogRowFree (iv);	// QuakeOG
 	if (r_drawculledpolys)
 		R_DrawCulledPolys ();
 	else
@@ -1624,11 +1625,11 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 ==============
 R_QogEdgesToStack
 
-QuakeOG: the span buffer is full of spans that wait for edges still needed.
+QuakeOG, the span buffer is full of spans that wait for edges still needed.
 Move those edges out of the z-buffer, to auxedges or a table on the stack
 just large enough (at most the old table's size), and go on with id's
 flushing. Not inlined, so the table is on the stack only when this runs.
-Returns true when it scanned the rest of the view. Agent AC: with
+Returns true when it scanned the rest of the view. Earlier work, with
 QOG_ZEDGE_STACK_GUARD, when the stack cannot hold the table, it draws the
 waiting spans without z instead (R_QogFlushNoZ) and returns false, and the
 scan goes on with the edges in the z-buffer.
@@ -1642,15 +1643,15 @@ static QOG_NOINLINE qboolean R_QogEdgesToStack (int iv, int bottom)
 	r_qog_zstack++;
 	n = R_QogMarkEdges (iv, bottom);
 #ifdef QOG_CL_PEAKS
-	{	// QuakeOG (Agent S): measurement only, the most edges a fallback moved
+	{	// QuakeOG, measurement only, the most edges a fallback moved
 		extern int	r_qog_zstackedges;
 		if (n > r_qog_zstackedges)
 			r_qog_zstackedges = n;
 	}
 #endif
 #ifdef QOG_ZEDGE_STACK_GUARD
-	// QuakeOG (Agent S): a board stack is not sized for this table (the
-	// port's qog_stack_bottom is its lowest byte). Agent AC: when it cannot
+	// QuakeOG, a board stack is not sized for this table (the
+	// port's qog_stack_bottom is its lowest byte). Earlier work, when it cannot
 	// hold it, draw the waiting spans without z rather than stop the game
 	if (!auxedges)
 	{
@@ -1666,7 +1667,7 @@ static QOG_NOINLINE qboolean R_QogEdgesToStack (int iv, int bottom)
 	}
 #endif
 #if defined(QOG_ZEDGE_FORCE_NOZ) || defined(QOG_ZEDGE_COMPARE)
-	// PC test builds only: every fallback takes the board's graceful path
+	// PC test builds only, every fallback takes the board's graceful path
 #ifdef QOG_ZEDGE_COMPARE
 	if (!auxedges && r_qog_zforcenoz)
 #else
@@ -1695,7 +1696,7 @@ static QOG_NOINLINE qboolean R_QogEdgesToStack (int iv, int bottom)
 ==============
 R_ScanEdges
 
-QuakeOG: QOG_EDGES_IN_ZBUFFER version, see above
+QuakeOG, QOG_EDGES_IN_ZBUFFER version, see above
 ==============
 */
 void R_ScanEdges (void)
@@ -1704,7 +1705,7 @@ void R_ScanEdges (void)
 	byte	*dst;
 
 #ifdef QOG_VID_ROWRACE
-	// QuakeOG (Agent AP): the z-buffer region (z, the edge table moved
+	// QuakeOG, the z-buffer region (z, the edge table moved
 	// below, scratch) and the view's z-buffer (in a Turbo view the second
 	// half of its rows, which a packed scanout never reads) wait here. The
 	// spans write only rows down to the scan line reached (R_QogRowFree).
@@ -1756,7 +1757,7 @@ void R_ScanEdges (void)
 	span_p = r_qog_basespan;
 	r_qog_framespans = 0;
 #ifdef QOG_VID_ROWRACE
-	r_qog_rowfreed = 0;		// QuakeOG (Agent AP)
+	r_qog_rowfreed = 0;		// QuakeOG
 #endif
 
 // clear active edges to just the background edges around the whole screen
@@ -1785,7 +1786,7 @@ void R_ScanEdges (void)
 	edge_sentinel.prev = EDGE_REF(&edge_aftertail);
 
 #ifdef QOG_DRAW_CORE1
-	// QuakeOG (Agent AM): core 1 draws surfaces while the scan goes on
+	// QuakeOG, core 1 draws surfaces while the scan goes on
 	D_QogPipeBegin (!r_drawculledpolys);
 	if (d_qogpipe_on)
 		R_QogPipeLastRows (r_refdef.vrect.y, r_refdef.vrectbottom - 1);
@@ -1795,7 +1796,7 @@ void R_ScanEdges (void)
 	D_QogPipeEnd ();	// the last flush drew every surface, core 1's job returns
 #endif
 #ifdef QOG_ZEDGE_NOZ
-	R_QogClearNoZ ();	// Agent AC: every edge is done with
+	R_QogClearNoZ ();	// Earlier work, every edge is done with
 #endif
 }
 
@@ -1816,9 +1817,9 @@ Each surface has a linked list of its visible spans
 void R_ScanEdges (void)
 {
 	int		iv, bottom;
-	int		framespans = 0;	// QuakeOG: measurement only
+	int		framespans = 0;	// QuakeOG, measurement only
 #if defined(QOG_SPANS_IN_EDGES)
-	// QuakeOG: the spans fill the edge table from the first unused entry on
+	// QuakeOG, the spans fill the edge table from the first unused entry on
 	// (r_local.h). Every edge of the frame is emitted by now, and the edge
 	// cache only looks at entries below edge_p. 16-bit links reach
 	// (65536 / 8) - 1 spans.
@@ -1843,7 +1844,7 @@ void R_ScanEdges (void)
 	r_spanbase = (byte *)basespan_p - sizeof(espan_t);
 #define MAXSPANS_THISFRAME	numspans
 #elif defined(QOG_ESPAN_T_PACKED)
-	// QuakeOG: 8-byte spans gain nothing from cache line alignment, and the
+	// QuakeOG, 8-byte spans gain nothing from cache line alignment, and the
 	// 16-bit links reach (65536 / 8) - 1 spans (r_shared.h)
 	espan_t	basespans[MAXSPANS];
 	espan_t	*basespan_p;
@@ -1874,7 +1875,7 @@ void R_ScanEdges (void)
 	edge_head.u = r_refdef.vrect.x << 20;
 	edge_head_u_shift20 = edge_head.u >> 20;
 	edge_head.u_step = 0;
-	edge_head.prev = EDGE_NONE;	// QuakeOG: EDGE_NONE/EDGE_REF
+	edge_head.prev = EDGE_NONE;	// QuakeOG, EDGE_NONE/EDGE_REF
 	edge_head.next = EDGE_REF(&edge_tail);
 	edge_head.surfs[0] = 0;
 	edge_head.surfs[1] = 1;
@@ -1937,7 +1938,7 @@ void R_ScanEdges (void)
 			for (s = &surfaces[1] ; s<surface_p ; s++)
 				s->spans = SPAN_NONE;	// QuakeOG
 
-			framespans += span_p - basespan_p;	// QuakeOG: measurement only
+			framespans += span_p - basespan_p;	// QuakeOG, measurement only
 			if (span_p - basespan_p > r_qog_peakflushspans)
 				r_qog_peakflushspans = span_p - basespan_p;
 			span_p = basespan_p;
@@ -1963,7 +1964,7 @@ void R_ScanEdges (void)
 
 	(*pdrawfunc) ();
 
-// QuakeOG: measurement only
+// QuakeOG, measurement only
 	framespans += span_p - basespan_p;
 	if (span_p - basespan_p > r_qog_peakflushspans)
 		r_qog_peakflushspans = span_p - basespan_p;

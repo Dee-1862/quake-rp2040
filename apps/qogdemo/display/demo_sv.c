@@ -7,13 +7,13 @@
  * nothing runs here (r_part.c's pointfile reads sv.name).
  * id's server_t is 11,360 bytes on the board. This file does not include
  * quakedef.h, so its sv can be just server_t's first fields, in its order
- * and types: the compiler checks nothing across files, and nothing of the
+ * and types, the compiler checks nothing across files, and nothing of the
  * server itself is linked. */
 typedef int qboolean_t;		/* qboolean, a 4-byte enum in the board engine */
 
 struct
 {
-	qboolean_t	active;		/* false: no server */
+	qboolean_t	active;		/* false, no server */
 	qboolean_t	paused;
 	qboolean_t	loadgame;
 	double		time;

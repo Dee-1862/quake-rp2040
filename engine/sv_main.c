@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,14 +22,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #ifdef QOG_NET_LINK
-#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#include "net_link.h"	// QuakeOG, the split game (net_link.c)
 #endif
 
 server_t		sv;
 server_static_t	svs;
 
 #ifdef QOG_CONST_LOCALMODELS
-// QuakeOG: the same "*0" to "*255" names as a constant table, so they stay in
+// QuakeOG, the same "*0" to "*255" names as a constant table, so they stay in
 // flash instead of 1.25 KB of RAM filled in by SV_Init
 #define	LM10(p)	p "0", p "1", p "2", p "3", p "4", p "5", p "6", p "7", p "8", p "9"
 static const char	localmodels[MAX_MODELS][5] = {
@@ -155,7 +156,7 @@ void SV_StartSound (edict_t *entity, int channel, char *sample, int volume,
 		return;	
 
 // find precache number for sound
-    for (sound_num=1 ; sound_num<SV_MAX_SOUNDS	// QuakeOG: SV_MAX_SOUNDS, see server.h
+    for (sound_num=1 ; sound_num<SV_MAX_SOUNDS	// QuakeOG, SV_MAX_SOUNDS, see server.h
         && sv.sound_precache[sound_num] ; sound_num++)
         if (!strcmp(sample, sv.sound_precache[sound_num]))
             break;
@@ -382,7 +383,7 @@ crosses a waterline.
 
 int		fatbytes;
 #ifdef QOG_PVS_LEAFS
-byte	fatpvs[QOG_PVS_LEAFS/8];	// QuakeOG: maps are checked against it at load
+byte	fatpvs[QOG_PVS_LEAFS/8];	// QuakeOG, maps are checked against it at load
 #else
 byte	fatpvs[MAX_MAP_LEAFS/8];
 #endif
@@ -931,7 +932,7 @@ int SV_ModelIndex (char *name)
 	if (!name || !name[0])
 		return 0;
 
-	for (i=0 ; i<SV_MAX_MODELS && sv.model_precache[i] ; i++)	// QuakeOG: SV_MAX_MODELS
+	for (i=0 ; i<SV_MAX_MODELS && sv.model_precache[i] ; i++)	// QuakeOG, SV_MAX_MODELS
 		if (!strcmp(sv.model_precache[i], name))
 			return i;
 	if (i==SV_MAX_MODELS || !sv.model_precache[i])
@@ -953,7 +954,7 @@ void SV_CreateBaseline (void)
 #ifdef QOG_BASELINE_POOL
 	int				n = 1;
 
-	// QuakeOG: a baseline only for the edicts that get one below, entry 0
+	// QuakeOG, a baseline only for the edicts that get one below, entry 0
 	// is the empty baseline every other edict keeps, as in id's zeroed array
 	for (entnum = 0; entnum < sv.num_edicts ; entnum++)
 	{
@@ -1032,10 +1033,10 @@ void SV_SendReconnect (void)
 	msg.maxsize = sizeof(data);
 
 #if defined(QOG_SPLIT_SERVER) && defined(QOG_RECONNECT_FIRST)
-	// QuakeOG (Agent AD): the client's reconnect goes before the message.
+	// QuakeOG, the client's reconnect goes before the message.
 	// It draws the loading plaque over the old level's view, and a client
 	// whose receive buffer is in the z-buffer (QOG_LINK_RX_ZTEMP) stops with
-	// an error when a message waits there while a view is drawn: every
+	// an error when a message waits there while a view is drawn, every
 	// changelevel did. Nothing the reconnect runs reads the receive buffer
 	// and the delivery runs no client code, so the client does the same.
 	Link_ServerClientExec ("reconnect\n");
@@ -1046,7 +1047,7 @@ void SV_SendReconnect (void)
 
 #ifdef QOG_SPLIT_SERVER
 #ifndef QOG_RECONNECT_FIRST
-	Link_ServerClientExec ("reconnect\n");	// QuakeOG: the client runs it now (net_link.c)
+	Link_ServerClientExec ("reconnect\n");	// QuakeOG, the client runs it now (net_link.c)
 #endif
 #else
 	if (cls.state != ca_dedicated)
@@ -1091,13 +1092,13 @@ void SV_SaveSpawnparms (void)
 ================
 SV_EdictsForMap
 
-QuakeOG: how many edicts this map needs: one per entity block in its entity
+QuakeOG, how many edicts this map needs, one per entity block in its entity
 lump (worldspawn becomes edict 0), the client slots, and QOG_EDICT_MARGIN
 for what play spawns (missiles, gibs, dropped items), capped at id's
 MAX_EDICTS. Without QOG_EDICT_MARGIN it is id's fixed MAX_EDICTS.
 ================
 */
-static int	sv_edictestimate;	// QuakeOG: entities expected to survive spawning
+static int	sv_edictestimate;	// QuakeOG, entities expected to survive spawning
 
 int SV_EdictsForMap (char *entities)
 {
@@ -1108,7 +1109,7 @@ int SV_EdictsForMap (char *entities)
 	qboolean	targetname;
 
 	// Count the entity blocks, minus the ones id's QuakeC frees while
-	// spawning (misc.qc): "light" without a targetname removes itself,
+	// spawning (misc.qc), "light" without a targetname removes itself,
 	// torches and flames become static entities, and info_null removes
 	// itself. The PC checks this estimate against the real count after
 	// spawn (SV_SpawnServer prints both with developer 1).
@@ -1145,7 +1146,7 @@ int SV_EdictsForMap (char *entities)
 	}
 	sv_edictestimate = n;
 #ifdef QOG_EDICT_MARGIN_BOARD
-	// QuakeOG: board-only margin (apps/quake/CMakeLists.txt). The fight tour
+	// QuakeOG, board-only margin (apps/quake/CMakeLists.txt). The fight tour
 	// of every map never went more than 35 slots past the estimate, and a
 	// full array still reuses the slot freed longest ago (QOG_EDICT_REUSE).
 	n += svs.maxclients + QOG_EDICT_MARGIN_BOARD;
@@ -1171,7 +1172,7 @@ This is called at the start of each level
 extern float		scr_centertime_off;
 
 #ifdef QOG_SPLIT_SERVER
-#define	scr_centertime_off	qog_split_centertime	// QuakeOG: the client's, see below
+#define	scr_centertime_off	qog_split_centertime	// QuakeOG, the client's, see below
 static float	scr_centertime_off;
 #endif
 #ifdef QUAKE2
@@ -1188,7 +1189,7 @@ void SV_SpawnServer (char *server)
 		Cvar_Set ("hostname", "UNNAMED");
 	scr_centertime_off = 0;
 #ifdef QOG_SPLIT_SERVER
-	Link_ServerCenterOff ();	// QuakeOG: on the client
+	Link_ServerCenterOff ();	// QuakeOG, on the client
 #endif
 
 	Con_DPrintf ("SpawnServer: %s\n",server);
@@ -1232,7 +1233,7 @@ void SV_SpawnServer (char *server)
 	PR_LoadProgs ();
 
 // allocate server memory
-	// QuakeOG: the edicts are allocated once the world has loaded, below,
+	// QuakeOG, the edicts are allocated once the world has loaded, below,
 	// so the array can be sized for this map
 
 	sv.datagram.maxsize = sizeof(sv.datagram_buf);
@@ -1254,7 +1255,7 @@ void SV_SpawnServer (char *server)
 	
 	strcpy (sv.name, server);
 #ifdef QOG_SV_TABLES
-	// QuakeOG: no copy of the model name in sv, the model has it
+	// QuakeOG, no copy of the model name in sv, the model has it
 	{
 		char	modelname[64];
 
@@ -1282,7 +1283,7 @@ void SV_SpawnServer (char *server)
 	sv.max_edicts = SV_EdictsForMap (sv.worldmodel->entities);
 	sv.edicts = Hunk_AllocName (sv.max_edicts*pr_edict_size, "edicts");
 #ifdef QOG_EDICT_SPARSE
-	ED_ColdInit ();	// QuakeOG: the arena for the non-core fields
+	ED_ColdInit ();	// QuakeOG, the arena for the non-core fields
 #endif
 
 // leave slots at start for clients only
@@ -1302,13 +1303,13 @@ void SV_SpawnServer (char *server)
 
 	sv.model_precache[0] = pr_strings;
 #ifdef QOG_SV_TABLES
-	sv.model_precache[1] = sv.worldmodel->name;	// QuakeOG: the same text, kept by the model table
+	sv.model_precache[1] = sv.worldmodel->name;	// QuakeOG, the same text, kept by the model table
 #else
 	sv.model_precache[1] = sv.modelname;
 #endif
 	for (i=1 ; i<sv.worldmodel->numsubmodels ; i++)
 	{
-		sv.model_precache[1+i] = (char *)localmodels[i];	// QuakeOG: may be const, never written
+		sv.model_precache[1+i] = (char *)localmodels[i];	// QuakeOG, may be const, never written
 		sv.models[i+1] = Mod_ForName ((char *)localmodels[i], false);
 	}
 
@@ -1316,7 +1317,7 @@ void SV_SpawnServer (char *server)
 // load the rest of the entities
 //	
 	ent = EDICT_NUM(0);
-	ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
+	ED_CLEARFIELDS(ent);	// QuakeOG, was memset (&ent->v, 0, progs->entityfields * 4)
 	ent->free = false;
 	ent->v.model = sv.worldmodel->name - pr_strings;
 	ent->v.modelindex = 1;		// world model
@@ -1338,7 +1339,7 @@ void SV_SpawnServer (char *server)
 	
 	ED_LoadFromFile (sv.worldmodel->entities);
 #ifdef QOG_EDICT_MARGIN
-	{	// QuakeOG: how good the estimate was (developer 1)
+	{	// QuakeOG, how good the estimate was (developer 1)
 		int i, live = 0;
 		for (i=0 ; i<sv.num_edicts ; i++)
 			if (!EDICT_NUM(i)->free)

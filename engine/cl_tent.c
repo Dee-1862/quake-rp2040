@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -26,7 +27,7 @@ int			num_temp_entities;
 #error QOG_TEMPENT_SMALL needs QOG_ENTITY_TIGHT and QOG_TEMPENT_BLOCK
 #endif
 #ifdef QOG_TEMPENT_BLOCK
-// QuakeOG (Agent S): the beam segments come from the level's hunk in blocks
+// QuakeOG, the beam segments come from the level's hunk in blocks
 // of QOG_TEMPENT_BLOCK as a frame first needs them (CL_NewTempEntity), so a
 // level without beams holds none. CL_ClearState forgets the blocks.
 entity_t	*cl_tempblocks[(MAX_TEMP_ENTITIES + QOG_TEMPENT_BLOCK - 1) / QOG_TEMPENT_BLOCK];
@@ -36,7 +37,7 @@ entity_t	cl_temp_entities[MAX_TEMP_ENTITIES];
 #endif
 beam_t		cl_beams[MAX_BEAMS];
 #ifdef QOG_CL_PEAKS
-// QuakeOG (Agent S): measurement only, printed by qog_mem in the client
+// QuakeOG, measurement only, printed by qog_mem in the client
 int			cl_qog_peaktemp, cl_qog_tempdrops, cl_qog_peakbeams;
 #endif
 
@@ -328,7 +329,7 @@ entity_t *CL_NewTempEntity (void)
 	}
 #ifdef QOG_TEMPENT_BLOCK
 	if (cls.signon != SIGNONS)
-	{	// QuakeOG (Agent S): no 3D view is drawn before signon (con_forcedup),
+	{	// QuakeOG, no 3D view is drawn before signon (con_forcedup),
 		// but the beams of the last level still take their segments and
 		// rand() calls as in id, here in one scratch entity, while the hunk
 		// may already be the next level's
@@ -337,7 +338,7 @@ entity_t *CL_NewTempEntity (void)
 	else
 	{
 #ifdef QOG_TEMPENT_SMALL
-		// QuakeOG (Agent AD): a beam segment is drawn and never gets a
+		// QuakeOG, a beam segment is drawn and never gets a
 		// network update and has no efrags, so it is the drawn part of
 		// entity_t (render.h, ENT_RENDER_SIZE), 40 to 52 bytes, not 88
 		if (!cl_tempblocks[num_temp_entities / QOG_TEMPENT_BLOCK])
@@ -391,7 +392,7 @@ void CL_UpdateTEnts (void)
 	num_temp_entities = 0;
 
 #ifdef QOG_CL_PEAKS
-	{	// QuakeOG (Agent S): beams alive in this frame
+	{	// QuakeOG, beams alive in this frame
 		int		n = 0;
 		for (i=0, b=cl_beams ; i< MAX_BEAMS ; i++, b++)
 			if (b->model && b->endtime >= cl.time)

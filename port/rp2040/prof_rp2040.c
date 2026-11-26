@@ -1,27 +1,27 @@
-/* QuakeOG (Agent AN): the board's PC-sampling profiler (qog_prof.h).
+/* QuakeOG, the board's PC-sampling profiler (qog_prof.h).
  *
- * Sampling: one hardware alarm per core, its TIMER_IRQ enabled only in that
+ * Sampling, one hardware alarm per core, its TIMER_IRQ enabled only in that
  * core's NVIC, priority 0 so it also samples the other interrupts. The
  * handler is RAM resident. It picks the stack the interrupted code used from
- * EXC_RETURN (bit 2: process stack, where the game runs, or main stack) and
+ * EXC_RETURN (bit 2, process stack, where the game runs, or main stack) and
  * takes the stacked PC (word 6) and LR (word 5). The next alarm is the
  * period plus or minus an eighth, so a loop with the same period cannot hide
  * from the samples.
  *
- * Lookup: the function table in flash (prof_table_rp2040.c, written by
+ * Lookup, the function table in flash (prof_table_rp2040.c, written by
  * tools/prof_table.py) holds the sorted start and end of every function,
- * flash ones first, then the RAM resident ones, and a page index: for each
+ * flash ones first, then the RAM resident ones, and a page index, for each
  * 2^shift bytes of flash text the last function starting at or before it.
  * The page index is copied to RAM, so a flash PC costs one or two table
  * reads (usually cached) and a RAM PC a binary search over the few RAM
  * functions. PCs in the boot ROM (0 to 0x3FFF, the float routines) count as
  * "[rom]" and once more against the function in the stacked LR.
  *
- * Counts: per core an open addressed table of (function, count) pairs. The
+ * Counts, per core an open addressed table of (function, count) pairs. The
  * report pauses the sampling, takes each core's top QOG_PROF_TOP, prints
  * them and clears the tables, so every window starts from nothing.
  *
- * RAM: 2 KB for core 0's table, 1 KB for core 1's, up to 1 KB of page index.
+ * RAM, 2 KB for core 0's table, 1 KB for core 1's, up to 1 KB of page index.
  * The profiler build takes it from the hunk (apps/quake/CMakeLists.txt). */
 #include <stdint.h>
 #include <string.h>
@@ -68,7 +68,7 @@
 #define KEY_EMPTY    0xFFFFu
 #define ID_ROM       0x7FFFu
 #define ID_UNKNOWN   0x7FFEu
-#define ROM_CALLER   0x8000u       /* key flag: a ROM sample, keyed by its caller */
+#define ROM_CALLER   0x8000u       /* key flag, a ROM sample, keyed by its caller */
 
 typedef struct { uint16_t key, n; } prof_slot_t;
 
@@ -162,7 +162,7 @@ void __attribute__((used, noinline)) __not_in_flash_func(qog_prof_sample)(const 
     if (core) { __dmb(); s_busy1 = 0u; }
 }
 
-/* EXC_RETURN bit 2 set: the interrupted code ran on the process stack */
+/* EXC_RETURN bit 2 set, the interrupted code ran on the process stack */
 static void __attribute__((naked, used, section(".time_critical.qog_prof_irq"))) qog_prof_irq(void) {
     __asm volatile (
         "movs r0, #4\n\t"
@@ -189,7 +189,7 @@ static void prof_arm(uint32_t a) {
 }
 
 #if PROF_CORES > 1
-/* run once on core 1 through the frame's job slot: its own NVIC */
+/* run once on core 1 through the frame's job slot, its own NVIC */
 static void prof_core1_job(void *arg) {
     (void)arg;
     const uint irq = hardware_alarm_get_irq_num(s_alarm[1]);

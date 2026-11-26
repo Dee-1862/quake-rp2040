@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AS): work counts for the board cost model (QOG_BOARDMODEL).
+/* QuakeOG, work counts for the board cost model (QOG_BOARDMODEL).
  *
  *   quakeog_pc -bmlog <file> ... +timedemo demo3
  *   quakeog_pc -bmlog <file> -bmall ... (every frame of a level, for scenes other than a timedemo)
@@ -6,16 +6,16 @@
  * While a timedemo runs, every VID_Update writes one line to <file>:
  * - the frame, the rows the last VID_Update sent and how many of them held
  *   a packed Turbo view (the scanout this frame's view raced), the rows and
- *   packed rows this frame sends;
+ *   packed rows this frame sends.
  * - up to four byte ranges [lo, hi) of the frame the view handed to
  *   VID_QogScanFree, in order (the board waits there until the scanout has
- *   read them; the PC's own race state depends on the PC's speed, so the
- *   model works the waits out itself);
+ *   read them. The PC's own race state depends on the PC's speed, so the
+ *   model works the waits out itself).
  * - console lines printed and centre prints started in the frame (on the
  *   board a notify line or centre print makes the whole view wait for the
- *   scanout, for as long as it shows in board time);
+ *   scanout, for as long as it shows in board time).
  * - this frame's change of every work count the renderer keeps
- *   (qog_phase.h, QOG_LMAP_STATS, QOG_ALIAS_STATS, qog_bmodel.h);
+ *   (qog_phase.h, QOG_LMAP_STATS, QOG_ALIAS_STATS, qog_bmodel.h).
  * - the PC's own phase times in microseconds.
  * The first line names the columns. tools/boardmodel.py turns the lines
  * into board milliseconds. Measurement builds only (tools/boardbench.ps1). */
@@ -157,19 +157,19 @@ static void bm_open (void)
 		" QOG_LITSPAN_INTERP"
 #endif
 #ifdef QOG_RTURBO
-		" QOG_RTURBO QOG_TURBO_TEXT"	// Agent AP's text list came with this logger
+		" QOG_RTURBO QOG_TURBO_TEXT"	// The earlier text list came with this logger
 #endif
 #ifdef QOG_DRAW_CORE1
 		" QOG_DRAW_CORE1"
 #endif
 #ifdef QOG_VID_SCANRACE
-		" QOG_NOTIFY_COVERED QOG_BMODELS_EARLY"	// Agent AP's race package came with these (screen.c, r_main.c)
+		" QOG_NOTIFY_COVERED QOG_BMODELS_EARLY"	// The earlier race package came with these (screen.c, r_main.c)
 #endif
 #ifdef QOG_VID_HUDFIRST
 		" QOG_VID_HUDFIRST"
 #endif
 #ifdef QOG_PARTS_CORE1
-		" QOG_PARTS_CORE1"	/* Agent AM */
+		" QOG_PARTS_CORE1"	/* Earlier work */
 #endif
 #ifdef QOG_VID_ROWRACE
 		" QOG_VID_ROWRACE"
@@ -199,7 +199,7 @@ static void bm_open (void)
 		" QOG_FGRAD_AXIAL"
 #endif
 #ifdef QOG_LITSPAN_Q
-		" QOG_LITSPAN_Q"		// Agent AR: the Q span drawer (d_lit_q.h)
+		" QOG_LITSPAN_Q"		// Earlier work, the Q span drawer (d_lit_q.h)
 #endif
 #ifdef QOG_LITQ_SHARELIGHT
 		" QOG_LITQ_SHARELIGHT"
@@ -211,7 +211,7 @@ static void bm_open (void)
 		" QOG_PART_DIEBITS"
 #endif
 #ifdef QOG_ASPAN_ASM
-		" QOG_ASPAN_ASM"		// Agent AR: the board's alias spans in Thumb (the PC runs the C)
+		" QOG_ASPAN_ASM"		// Earlier work, the board's alias spans in Thumb (the PC runs the C)
 #endif
 #ifdef QOG_SCAN_FAST
 		" QOG_SCAN_FAST"
@@ -285,7 +285,7 @@ void qog_bm_frame (int rows, int packed)
 	if (bm_log && (cls.timedemo || (bm_all && cls.signon == SIGNONS && cl.worldmodel)))
 	{
 		if (!bm_was)
-		{	// the first frame of a timedemo: differences start here
+		{	// the first frame of a timedemo, differences start here
 			for (i = 0 ; i < bm_ncol ; i++)
 				bm_last[i] = *bm_col[i] + (bm_col2[i] ? *bm_col2[i] : 0);
 			memcpy (bm_lasttime, qog_ph_time, sizeof bm_lasttime);

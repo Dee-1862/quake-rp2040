@@ -26,17 +26,17 @@
 
 typedef struct {
     uint16_t src_w, src_h;   /* game buffer size, src_w <= 320 */
-    uint16_t out_h;          /* panel lines used, <= 240, centered; width is always 320 */
+    uint16_t out_h;          /* panel lines used, <= 240, centered. Width is always 320 */
 } qog_video_config_t;
 
 typedef struct {
     uint32_t frames;          /* scanouts completed */
     uint32_t last_scan_us;    /* duration of the last scanout */
     uint32_t last_wait_us;    /* how long the last present()/wait() blocked core 0 */
-    uint32_t last_scan_rows;  /* QuakeOG (Agent AP): panel lines the last scanout sent */
+    uint32_t last_scan_rows;  /* QuakeOG, panel lines the last scanout sent */
 } qog_video_stats_t;
 
-/* QuakeOG (Agent AP): send the pixel stream through a PIO state machine
+/* QuakeOG, send the pixel stream through a PIO state machine
  * instead of the PL022, at clk_sys / n with n the smallest whole number of
  * system clocks a bit that keeps the bit rate at or under max_khz (clock
  * divider 1, so no fractional jitter). The PL022 still sends the commands
@@ -44,7 +44,7 @@ typedef struct {
  * instruction room is free, qog_video_init keeps the PL022 and says so. */
 void qog_video_use_pio(uint32_t max_khz);
 
-/* Pure, host-testable (Agent AP): system clocks a bit for the PIO stream at
+/* Pure, host-testable, system clocks a bit for the PIO stream at
  * clk_hz with the rate at most max_hz (at least 2, at most 32), and how many
  * of them the clock is high (hi) and low (lo, the data setup before the
  * rising edge, never shorter than hi). */
@@ -67,19 +67,19 @@ void qog_video_present(const uint8_t *fb);
 void qog_video_wait(void);
 bool qog_video_busy(void);
 
-/* QuakeOG (Agent AK): present only the first `rows` panel lines (the rest of
+/* QuakeOG, present only the first `rows` panel lines (the rest of
  * the panel keeps what it shows), when src_h == out_h, else the whole frame.
  * qog_video_wait_rows returns once the scanout in flight has read the frame
  * buffer's first `rows` rows (each row is read once, into a line buffer, so
  * the game may draw over them), or when no scanout runs. */
 void qog_video_present_rows(const uint8_t *fb, uint32_t rows);
-/* QuakeOG (Agent AO): as present_rows, and the frame's first `packed` rows
- * are a Turbo view: row r holds src_w / 2 pixels at fb + r * src_w / 2, and
+/* QuakeOG, as present_rows, and the frame's first `packed` rows
+ * are a Turbo view, row r holds src_w / 2 pixels at fb + r * src_w / 2, and
  * each pixel goes to the panel twice side by side (no CPU on core 0). Only
  * for a 320 wide frame whose rows and lines are one to one. */
 void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed);
-/* QuakeOG (Agent AP): characters the next present_packed draws over its
- * packed rows after doubling them, as runs in list order: each run is
+/* QuakeOG, characters the next present_packed draws over its
+ * packed rows after doubling them, as runs in list order, each run is
  * x | y << 9 | length << 17 | first << 23, its characters chars[first] on,
  * 8 pixels apart. A glyph is 8x8 at font + (num >> 4) * 1024 + (num & 15)
  * * 8 with rows 128 bytes apart, index 0 see-through (id's Draw_Character).
@@ -87,10 +87,10 @@ void qog_video_present_packed(const uint8_t *fb, uint32_t rows, uint32_t packed)
  * are until the present after that one. */
 void qog_video_set_text(const uint32_t *runs, uint32_t nruns, const uint8_t *chars, const uint8_t *font);
 void qog_video_wait_rows(uint32_t rows);
-/* QuakeOG (Agent AP): from the next present on, a scanout of every row of
+/* QuakeOG, from the next present on, a scanout of every row of
  * a frame whose rows and lines are one to one sends rows [first, src_h)
- * first, then [0, first) (0: top to bottom). qog_video_wait_rows then
- * counts rows in that order: it returns once the scanout has read as many
+ * first, then [0, first) (0, top to bottom). qog_video_wait_rows then
+ * counts rows in that order, it returns once the scanout has read as many
  * rows as asked, in the order it sends them. */
 void qog_video_set_first(uint32_t first);
 
@@ -98,13 +98,13 @@ void qog_video_set_first(uint32_t first);
  * Phase 5). Must return quickly: one line is ~100 us on the wire. */
 void qog_video_set_core1_hook(void (*fn)(void));
 
-/* QuakeOG (Agent V): run fn(arg) on core 1, which takes it between
+/* QuakeOG, run fn(arg) on core 1, which takes it between
  * scanouts (at once when none is in flight), and wait for it to finish.
- * One job at a time: join before the next start. Core 1 runs on the SDK's
+ * One job at a time, join before the next start. Core 1 runs on the SDK's
  * 2 KB core 1 stack, so the job must be shallow. */
 void qog_video_core1_start(void (*fn)(void *), void *arg);
 void qog_video_core1_join(void);
-/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs since boot, us */
+/* QuakeOG, core 1's time in scanouts and in jobs since boot, us */
 void qog_video_core1_times(uint32_t *scan_us, uint32_t *job_us);
 
 qog_video_stats_t qog_video_stats(void);

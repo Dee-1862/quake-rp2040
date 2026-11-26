@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #ifdef QOG_NET_LINK
-#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#include "net_link.h"	// QuakeOG, the split game (net_link.c)
 #endif
 
 edict_t	*sv_player;
@@ -233,7 +234,7 @@ void DropPunchAngle (void)
 {
 	float	len;
 #ifdef QOG_EDICT_SPARSE
-	vec3_t	punch;	// QuakeOG: punchangle is not a core field, work on a copy
+	vec3_t	punch;	// QuakeOG, punchangle is not a core field, work on a copy
 
 	VectorCopy (EV_VECTOR(sv_player, punchangle), punch);
 	len = VectorNormalize (punch);
@@ -639,7 +640,7 @@ void SV_RunClients (void)
 
 // always pause in single player if in console or menus
 #ifdef QOG_SPLIT_SERVER
-		if (!sv.paused && (svs.maxclients > 1 || link_keygame) )	// QuakeOG: the client's key_dest
+		if (!sv.paused && (svs.maxclients > 1 || link_keygame) )	// QuakeOG, the client's key_dest
 #else
 		if (!sv.paused && (svs.maxclients > 1 || key_dest == key_game) )
 #endif

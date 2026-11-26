@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -73,7 +74,7 @@ typedef struct texture_s
 	int			anim_min, anim_max;		// time for this frame min <=time< max
 	struct texture_s *anim_next;		// in the animation sequence
 	struct texture_s *alternate_anims;	// bmodels in frmae 1 use these
-	byte		*mips[MIPLEVELS];		// QuakeOG: pixels of the four mip levels, in RAM or read in place from flash
+	byte		*mips[MIPLEVELS];		// QuakeOG, pixels of the four mip levels, in RAM or read in place from flash
 } texture_t;
 
 
@@ -88,7 +89,7 @@ typedef struct texture_s
 typedef struct
 {
 	unsigned short	v[2];
-	// QuakeOG: cachededgeoffset moved to model_t.edge_cache (RAM), so medge_t
+	// QuakeOG, cachededgeoffset moved to model_t.edge_cache (RAM), so medge_t
 	// matches the file's dedge_t and can be read in place from flash
 } medge_t;
 
@@ -102,11 +103,11 @@ typedef struct
 
 typedef struct msurface_s
 {
-	// QuakeOG: visframe, dlightframe and dlightbits moved to RAM arrays in
+	// QuakeOG, visframe, dlightframe and dlightbits moved to RAM arrays in
 	// model_t (SURF_VISFRAME and friends) so surfaces can be read only
 
 #ifdef QOG_SURF_INDEX
-	// QuakeOG: the file's 16-bit plane and texinfo numbers instead of
+	// QuakeOG, the file's 16-bit plane and texinfo numbers instead of
 	// pointers, use SURF_PLANE and SURF_TEXINFO with the owning model
 	unsigned short	planenum;
 	unsigned short	texinfonum;
@@ -114,7 +115,7 @@ typedef struct msurface_s
 	mplane_t	*plane;
 #endif
 #ifdef QOG_SURF_PACKED
-	// QuakeOG: flags fit 16 bits (SURF_* up to 0x40) and numedges is the
+	// QuakeOG, flags fit 16 bits (SURF_* up to 0x40) and numedges is the
 	// file's 16-bit count, so the two share one word (msurface_t 36 to 32 B)
 	unsigned short	flags;
 	short		numedges;	// are backwards edges
@@ -144,7 +145,7 @@ typedef struct msurface_s
 	byte		*samples;		// [numstyles*surfsize]
 } msurface_t;
 
-// QuakeOG: a surface's plane and texinfo; m is the model that owns it
+// QuakeOG, a surface's plane and texinfo. M is the model that owns it
 #ifdef QOG_SURF_INDEX
 #define SURF_PLANE(m, s)	((m)->planes + (s)->planenum)
 #define SURF_TEXINFO(m, s)	((m)->texinfo + (s)->texinfonum)
@@ -153,7 +154,7 @@ typedef struct msurface_s
 #define SURF_TEXINFO(m, s)	((s)->texinfo)
 #endif
 
-// QuakeOG: with QOG_MARKSURF16 a mark surface is the file's 16-bit surface
+// QuakeOG, with QOG_MARKSURF16 a mark surface is the file's 16-bit surface
 // number (read in place from flash when possible) instead of a pointer.
 // The file format stores 16-bit numbers, so no map loses anything.
 #ifdef QOG_MARKSURF16
@@ -168,7 +169,7 @@ typedef struct mnode_s
 {
 // common with leaf
 	int			contents;		// 0, to differentiate from leafs
-	// QuakeOG: visframe moved to model_t (NODE_VISFRAME)
+	// QuakeOG, visframe moved to model_t (NODE_VISFRAME)
 
 	short		minmaxs[6];		// for bounding box culling
 
@@ -188,7 +189,7 @@ typedef struct mleaf_s
 {
 // common with node
 	int			contents;		// wil be a negative contents number
-	// QuakeOG: visframe moved to model_t (NODE_VISFRAME)
+	// QuakeOG, visframe moved to model_t (NODE_VISFRAME)
 
 	short		minmaxs[6];		// for bounding box culling
 
@@ -196,21 +197,21 @@ typedef struct mleaf_s
 
 // leaf specific
 	byte		*compressed_vis;
-	// QuakeOG: efrags and key moved to model_t (LEAF_EFRAGS, LEAF_KEY)
+	// QuakeOG, efrags and key moved to model_t (LEAF_EFRAGS, LEAF_KEY)
 
 #ifdef QOG_LEAF_PACKED
-	// QuakeOG: the file's 16-bit first index and count (mleaf_t 36 to 32 B),
+	// QuakeOG, the file's 16-bit first index and count (mleaf_t 36 to 32 B),
 	// use LEAF_MARKSURFACES
 	unsigned short	firstmarksurface;
 	unsigned short	nummarksurfaces;
 #else
-	marksurf_t	*firstmarksurface;	// QuakeOG: see marksurf_t
+	marksurf_t	*firstmarksurface;	// QuakeOG, see marksurf_t
 	int			nummarksurfaces;
 #endif
 	byte		ambient_sound_level[NUM_AMBIENTS];
 } mleaf_t;
 
-// QuakeOG: a leaf's first mark surface in model m
+// QuakeOG, a leaf's first mark surface in model m
 #ifdef QOG_LEAF_PACKED
 #define LEAF_MARKSURFACES(m, l)	((m)->marksurfaces + (l)->firstmarksurface)
 #else
@@ -329,15 +330,15 @@ typedef struct {
 	int					stverts;
 	int					skindesc;
 	int					triangles;
-	// QuakeOG: when the model was loaded from flash, the bulk data (frame
+	// QuakeOG, when the model was loaded from flash, the bulk data (frame
 	// vertices, skin pixels, triangles) stays there and those offsets are
 	// relative to flashbase, an absolute pointer that stays valid when the
-	// cache moves this header. NULL: everything is relative to the header.
+	// cache moves this header. NULL, everything is relative to the header.
 	byte				*flashbase;
 	maliasframedesc_t	frames[1];
 } aliashdr_t;
 
-// QuakeOG: address of frame vertices, skin pixels or triangles
+// QuakeOG, address of frame vertices, skin pixels or triangles
 #define ALIAS_BULK(hdr, ofs) \
 	(((hdr)->flashbase ? (hdr)->flashbase : (byte *)(hdr)) + (ofs))
 
@@ -349,7 +350,7 @@ typedef struct {
 
 typedef enum {mod_brush, mod_sprite, mod_alias} modtype_t;
 
-// QuakeOG: id's per-frame stamps (a surface's or node's visframe, a
+// QuakeOG, id's per-frame stamps (a surface's or node's visframe, a
 // surface's dlightframe) are only ever compared for equality with a counter
 // that never goes back (r_framecount, r_visframecount, r_dlightframecount),
 // so a stamp from an earlier value never matches again. With QOG_FRAME16 a
@@ -360,7 +361,7 @@ typedef enum {mod_brush, mod_sprite, mod_alias} modtype_t;
 // the window match nothing, as no stamp can hold it. A fresh array is all
 // zero with base 0, exactly like id's zeroed int array. Results are
 // identical to id's for every counter value. FS_IS and FS_SET evaluate
-// their arguments more than once: pass plain expressions only.
+// their arguments more than once, pass plain expressions only.
 #ifdef QOG_FRAME16
 typedef unsigned short	framestamp_t;
 #ifndef QOG_FRAME16_WINDOW		// at most 0xFFFF, smaller only to test the refill
@@ -379,7 +380,7 @@ typedef int				framestamp_t;
 #define FS_SET(a, i, c)	((a)[i] = (c))
 #endif
 
-// QuakeOG: with QOG_FRAMEBITS (visframe stamps) and QOG_DLIGHT_SPARSE (the
+// QuakeOG, with QOG_FRAMEBITS (visframe stamps) and QOG_DLIGHT_SPARSE (the
 // dlightframe stamp) a stamp array is one bit per entry plus one tag, the
 // counter the bits belong to (FB_TAG, kept in front of the bits with their
 // byte count FB_BYTES). Bit i set means id's stamp i equals the tag. A
@@ -388,7 +389,7 @@ typedef int				framestamp_t;
 // again. A fresh array has tag 0 and every bit set, like id's zeroed
 // stamps. Every read uses the counter of the latest write or a later one
 // (the counters only grow), so the results equal id's. FB_IS and FB_SET
-// evaluate their arguments more than once: pass plain expressions only.
+// evaluate their arguments more than once, pass plain expressions only.
 #if defined(QOG_FRAMEBITS) || defined(QOG_DLIGHT_SPARSE)
 typedef unsigned char	framebits_t;
 #define FB_TAG(a)		(((int *)(a))[-1])
@@ -399,7 +400,7 @@ typedef unsigned char	framebits_t;
 void	FB_Clear (framebits_t *bits, int counter);
 #endif
 
-// QuakeOG: the type and accessors of the visframe stamps (surfaces, nodes,
+// QuakeOG, the type and accessors of the visframe stamps (surfaces, nodes,
 // leafs) and of the dlightframe stamps
 #ifdef QOG_FRAMEBITS
 typedef framebits_t		visstamp_t;
@@ -421,9 +422,9 @@ typedef framestamp_t	dlstamp_t;
 #endif
 
 #ifdef QOG_LEAF16
-// QuakeOG: with QOG_LEAF16 a leaf's efrag list head is one of the world's
+// QuakeOG, with QOG_LEAF16 a leaf's efrag list head is one of the world's
 // QOG_EFRAG_HEADS heads, kept in front of a byte per leaf that selects it
-// (EFRAG_HDR). Byte 0 selects head 0, which stays NULL: a leaf gets its own
+// (EFRAG_HDR). Byte 0 selects head 0, which stays NULL, a leaf gets its own
 // head when it first gets an efrag (R_EfragLeafSlot). Once the heads run
 // out, every further leaf shares the last head, and R_StoreLeafEfrags skips
 // the efrags of other leafs in that list, so each leaf still sees its own
@@ -451,9 +452,9 @@ void	R_StoreLeafEfrags (mleaf_t *leaf);
 #define	EF_TRACER3	128			// purple trail
 
 #ifdef QOG_MOD_FLASH
-// QuakeOG: with QOG_MOD_FLASH a baked model_t is used in place in the flash
+// QuakeOG, with QOG_MOD_FLASH a baked model_t is used in place in the flash
 // image, so it cannot hold the RAM pointers of the per-frame arrays (end of
-// model_t). It holds an index into mod_frames (model.c) instead: 0 for a
+// model_t). It holds an index into mod_frames (model.c) instead, 0 for a
 // world map and its inline models, its own index for an item box map
 // (maps/b_*.bsp) that is loaded next to the world.
 typedef struct modframe_s
@@ -541,7 +542,7 @@ typedef struct model_s
 	dclipnode_t	*clipnodes;
 
 	int			nummarksurfaces;
-	marksurf_t	*marksurfaces;		// QuakeOG: see marksurf_t
+	marksurf_t	*marksurfaces;		// QuakeOG, see marksurf_t
 
 	hull_t		hulls[MAX_MAP_HULLS];
 
@@ -557,12 +558,12 @@ typedef struct model_s
 //
 	cache_user_t	cache;		// only access through Mod_Extradata
 
-// QuakeOG: the per-frame state id kept inside the BSP structures, moved out
+// QuakeOG, the per-frame state id kept inside the BSP structures, moved out
 // so those structures can be read only (flash). Indexed like the arrays
-// above; inline submodels share their world's arrays, as they share its
+// above. Inline submodels share their world's arrays, as they share its
 // surfaces, nodes and leafs. Use the accessor macros below.
 #ifdef QOG_MOD_FLASH
-	int				frameslot;			// QuakeOG: see modframe_t
+	int				frameslot;			// QuakeOG, see modframe_t
 #else
 	visstamp_t		*surf_visframe;		// [numsurfaces]
 	dlstamp_t		*surf_dlightframe;	// [numsurfaces]
@@ -585,17 +586,17 @@ typedef struct model_s
 
 } model_t;
 
-// QuakeOG: MODFRAME(m) is the model itself, or its arrays in mod_frames
+// QuakeOG, MODFRAME(m) is the model itself, or its arrays in mod_frames
 #define SURF_VISFRAME_IS(m, s, c)	VS_IS (MODFRAME (m)->surf_visframe, (s) - (m)->surfaces, c)
-// QuakeOG: surface number n, as a leaf's mark surfaces give it
+// QuakeOG, surface number n, as a leaf's mark surfaces give it
 #define SURF_VISFRAME_SETNUM(m, n, c)	VS_SET (MODFRAME (m)->surf_visframe, n, c)
 #define SURF_DLIGHTFRAME_SET(m, s, c)	DS_SET (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
 #ifdef QOG_DLIGHT_SPARSE
-// QuakeOG: no dlightbits array, and the world's marks are made when first
+// QuakeOG, no dlightbits array, and the world's marks are made when first
 // asked for, see R_DlightLit and R_DlightBits (r_light.c)
 qboolean	R_DlightLit (model_t *m, msurface_t *surf, int c);
 int		R_DlightBits (model_t *m, msurface_t *surf);
-void	R_QogDlightSettle (void);	// QuakeOG (Agent AL): the waiting pass now, before two cores build grids
+void	R_QogDlightSettle (void);	// QuakeOG, the waiting pass now, before two cores build grids
 #define SURF_DLIGHTFRAME_IS(m, s, c)	R_DlightLit (m, s, c)
 #else
 #define SURF_DLIGHTFRAME_IS(m, s, c)	DS_IS (MODFRAME (m)->surf_dlightframe, (s) - (m)->surfaces, c)
@@ -605,7 +606,7 @@ void	R_QogDlightSettle (void);	// QuakeOG (Agent AL): the waiting pass now, befo
 #define LEAF_EFRAGS(m, l)		(EFRAG_HDR (MODFRAME (m)->leaf_efrags)->heads \
 	[MODFRAME (m)->leaf_efrags[(l) - (m)->leafs]])
 #define LEAF_KEY(m, l)			(MODFRAME (m)->leaf_key[(l) - (m)->leafs])
-// QuakeOG: a frame's keys stay far below 0x10000 (one per node, leaf and
+// QuakeOG, a frame's keys stay far below 0x10000 (one per node, leaf and
 // drawn surface), the check makes sure a key is never silently cut
 #define LEAF_KEY_SET(m, l, k)	((void)((k) <= 0xFFFF || (Mod_LeafKeyOverflow (), 0)), \
 	LEAF_KEY (m, l) = (unsigned short)(k))
@@ -616,10 +617,10 @@ void	Mod_LeafKeyOverflow (void);
 #define LEAF_KEY_SET(m, l, k)	(LEAF_KEY (m, l) = (k))
 #endif
 #define EDGE_CACHE(m, e)		(MODFRAME (m)->edge_cache[(e) - (m)->edges])
-// QuakeOG: first frame of the 16-bit edge cache's window, an int stored just
+// QuakeOG, first frame of the 16-bit edge cache's window, an int stored just
 // before the array so inline submodels share it with their world
 #define EDGE_CACHE_START(m)		(((int *)MODFRAME (m)->edge_cache)[-1])
-// nodes and leafs share id's node pointer type; contents < 0 means a leaf
+// nodes and leafs share id's node pointer type. Contents < 0 means a leaf
 #define NODE_VISFRAME_IS(m, n, c)	((n)->contents < 0 \
 	? VS_IS (MODFRAME (m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
 	: VS_IS (MODFRAME (m)->node_visframe, (n) - (m)->nodes, c))
@@ -627,7 +628,7 @@ void	Mod_LeafKeyOverflow (void);
 	? VS_SET (MODFRAME (m)->leaf_visframe, (mleaf_t *)(n) - (m)->leafs, c) \
 	: VS_SET (MODFRAME (m)->node_visframe, (n) - (m)->nodes, c))
 
-// QuakeOG: baked models (QOG_BAKE). The PC command qog_bake runs the loaders
+// QuakeOG, baked models (QOG_BAKE). The PC command qog_bake runs the loaders
 // above on every map, alias model and sprite and writes what they build
 // into one image, id1/qogbake.bin, with every pointer resolved for the flash
 // address the image is mapped at. For a map that is everything in model_t
@@ -664,7 +665,7 @@ typedef struct
 	unsigned	pad;
 } qogbake_entry_t;			// 64 bytes
 
-// QuakeOG: QOG_BAKE_STUBS. qog_bake run with -bakestubs copies everything a
+// QuakeOG, QOG_BAKE_STUBS. qog_bake run with -bakestubs copies everything a
 // map's block points at in the pack (light, vis, entities, vertexes, edges,
 // surface edges, clip nodes, mark surfaces, texture pixels) into the image,
 // each distinct texture's pixels once for all maps. The map file is then
@@ -682,13 +683,13 @@ typedef struct
 	unsigned	filehash;
 } qogbake_stub_t;			// 132 bytes
 
-// QuakeOG (Agent T): the server's image for the main chip of the split game.
+// QuakeOG, the server's image for the main chip of the split game.
 // qog_bake -bakestubs -bakeserver keeps what the server reads of a map
 // (planes, leafs, nodes, clip nodes and hulls, submodels, entities,
 // visibility) and leaves out textures, texinfo, surfaces, edges, vertexes,
 // mark surfaces and light, which only the client draws. An alias model or
 // sprite is its model_t alone (type, bounds, frame count, flags), with no
-// cache data. Every model file in the server's pak is then a stub: a map
+// cache data. Every model file in the server's pak is then a stub, a map
 // the qogbake_stub_t above, an alias model or sprite this 16-byte one. The
 // image's layout word is the build's layout XOR QOGB_SERVER_LAYOUT, so only
 // a server half (QOG_SPLIT_SERVER) uses it. tools/mkboard.py --main.
@@ -709,7 +710,7 @@ void	Mod_ClearAll (void);
 model_t *Mod_ForName (char *name, qboolean crash);
 void	*Mod_Extradata (model_t *mod);	// handles caching
 void	Mod_TouchModel (char *name);
-void	Mod_KnownStats (int *known, int *referenced, int *peak);	// QuakeOG: qog_mem
+void	Mod_KnownStats (int *known, int *referenced, int *peak);	// QuakeOG, qog_mem
 
 mleaf_t *Mod_PointInLeaf (float *p, model_t *model);
 byte	*Mod_LeafPVS (mleaf_t *leaf, model_t *model);

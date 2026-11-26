@@ -1,11 +1,11 @@
-/* QuakeOG (Agent AC): the split server's deepest stack in the board's bytes
+/* QuakeOG, the split server's deepest stack in the board's bytes
  * (PC measurement build only, pc/CMakeLists.txt QOG_SV_STACKPROBE).
  *
  * quakeog_sv is compiled with /Gh and /GH (every function calls _penter
  * before its prologue and _pexit before its epilogue) and /Ob0 (no
  * inlining, so every C function of the engine and of the compiled QuakeC is
  * a call). They keep a shadow call stack, checked against the real stack
- * pointer: an entry whose stack pointer is not above a new call's has
+ * pointer, an entry whose stack pointer is not above a new call's has
  * returned (this also follows Host_Error's longjmp). Each entry
  * weighs what the same function's frame is on the board, read from the ARM
  * build's -fstack-usage files (tools/stack_chain.py --su-table), so the
@@ -32,7 +32,7 @@
 #define NAMEHASH	(1 << 14)
 
 typedef struct { unsigned addr; int frame; int flags; } fninfo_t;
-#define F_MIX		1		/* the mixer: S_Update_ and below */
+#define F_MIX		1		/* the mixer, S_Update_ and below */
 #define F_UNKNOWN	2		/* no frame in the board's table */
 
 static fninfo_t	s_fn[FNHASH];
@@ -144,7 +144,7 @@ static void __cdecl probe_enter(unsigned ret, unsigned sp) {
 	s_busy = 0;
 }
 
-/* /GH: every function calls _pexit before its epilogue, at the bottom of its
+/* /GH, every function calls _pexit before its epilogue, at the bottom of its
    frame. Its callees, which were entered below that, have returned, and the
    entry just above it is the function itself. Without this a sibling call
    that pushed fewer arguments would look like an ancestor. */
@@ -189,7 +189,7 @@ void __declspec(naked) __cdecl _penter(void) {
 	}
 }
 
-/* SV_PushMove's lists from alloca (QOG_PUSHMOVE_ALLOCA): the same bytes on
+/* SV_PushMove's lists from alloca (QOG_PUSHMOVE_ALLOCA), the same bytes on
    the board's stack, added to the function that called alloca, the top of
    the shadow stack */
 void qog_stackprobe_alloca(int bytes) {

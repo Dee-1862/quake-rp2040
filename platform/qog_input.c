@@ -8,7 +8,7 @@ enum { B_GRAY = 1u << 0, B_YELLOW = 1u << 1, B_GREEN = 1u << 2, B_BLUE = 1u << 3
 #define B_FWD    B_YELLOW    /* forward, with red held back */
 #define B_LEFT   B_GREEN     /* turn left, with red held jump */
 #define B_RIGHT  B_BLUE      /* turn right, with red held down */
-#define B_MOD    B_RED       /* the combo button; tapped alone, next weapon */
+#define B_MOD    B_RED       /* the combo button. Tapped alone, next weapon */
 
 void qog_input_reset(qog_input_state_t *s) {
     s->prev_actions = 0;
@@ -32,12 +32,12 @@ qog_input_t qog_input_step(qog_input_state_t *s, uint8_t b, uint32_t now_ms) {
 
     s->seen = 0;
 
-    /* Fire tapped between two steps: down and up again where only the polls
+    /* Fire tapped between two steps, down and up again where only the polls
        in between saw it. One shot, unless red was part of it (a combo). */
     if (!fire && !s->fire_prev && (seen & B_FIRE) && !(seen & B_MOD))
         taps |= QOG_ACT_BIT(QOG_ACT_FIRE);
 
-    /* Red: the combo button. Its own action, next weapon, fires on release
+    /* Red, the combo button. Its own action, next weapon, fires on release
        when no other button joined it and it was not a long hold. */
     if (red) {
         if (!s->red_prev) { s->red_since_ms = now_ms; s->red_combo = false; }

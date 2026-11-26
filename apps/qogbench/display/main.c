@@ -1,49 +1,49 @@
-/* QuakeOG display benchmark: how fast is Quake's world drawing on this chip?
+/* QuakeOG display benchmark, how fast is Quake's world drawing on this chip?
  *
  * Times the inner loops the engine spends its frame in, on the real RP2040
  * (Cortex-M0+, no FPU), with textures read from the flash data region the way
- * the game reads them. Nothing here is a game: the scene is one textured
+ * the game reads them. Nothing here is a game, the scene is one textured
  * plane seen in perspective, filling the 320x152 3D view.
  *
  *   lit_flash   engine/d_scanlit.c D_DrawSpans8Lit + LitPixel, copied as is,
- *               running from XIP flash: texel from flash, 4-sample light
+ *               running from XIP flash, texel from flash, 4-sample light
  *               blend, colormap, two modulos per pixel (the texture is not
  *               a power of two). This is what the game does today.
  *   lit_ram     the same code placed in RAM (__not_in_flash_func).
  *   lit_pow2    lit_ram with a 64x64 texture and masks instead of modulos.
  *   old_p2      lit_flash on a 256x128 texture in flash (the first 32 KB of
  *               the picture), the texture origin whole light cells as in the
- *               game: today's code on a power-of-two texture, the common case.
+ *               game, today's code on a power-of-two texture, the common case.
  *   fast_p2     the same scene with the engine's QOG_LITSPAN_FAST drawer
- *               (engine/d_litspan.h, included, not copied): no modulo, the
+ *               (engine/d_litspan.h, included, not copied), no modulo, the
  *               origin folded into the light pointer, two passes per run.
  *   fast_any    QOG_LITSPAN_FAST on the 320x200 picture (not a power of
- *               two): wrapped coordinates, compare and subtract.
- *   lin_p2      approximate QOG_LITSPAN_LINLIGHT on the fast_p2 scene: light
+ *               two), wrapped coordinates, compare and subtract.
+ *   lin_p2      approximate QOG_LITSPAN_LINLIGHT on the fast_p2 scene, light
  *               blended at both ends of each run, stepped linearly between.
- *   s16_p2      approximate QOG_LITSPAN16: one float divide per 16 pixels.
+ *   s16_p2      approximate QOG_LITSPAN16, one float divide per 16 pixels.
  *   s16lin_p2   both approximations.
  *   rfast_p2    the Fast render mode's drawer (r_fast 1, QOG_RFAST,
- *               D_LITSPANS_FAST_BODY): divide every 8, 16 or 32 pixels as
+ *               D_LITSPANS_FAST_BODY), divide every 8, 16 or 32 pixels as
  *               1/z allows, linear light in runs of 16, the reciprocal from
  *               the integer divider. rfast_short on the game-like spans.
  *   floor_*     a floor seen level (1/z constant along each row, where Fast
- *               takes 32-pixel sub-spans): exact drawer and Fast drawer.
+ *               takes 32-pixel sub-spans), exact drawer and Fast drawer.
  *   frecip      Fast mode's 0x10000 / x through the integer divider, against
  *               fdiv above.
- *   *_short     the same on game-like spans: each row cut into spans of 17
+ *   *_short     the same on game-like spans, each row cut into spans of 17
  *               to 47 pixels (E1M1's fly-through averages 30 pixels a span,
  *               1,600 spans a frame), so the per-span float work shows.
- *   zid_short   the engine's D_DrawZSpans as id wrote it: 1/z in double
+ *   zid_short   the engine's D_DrawZSpans as id wrote it, 1/z in double
  *               (float to double, two double multiplies, double to int).
- *   zfast_short QOG_ZSPANS_FAST: the same z values from the float's bits.
+ *   zfast_short QOG_ZSPANS_FAST, the same z values from the float's bits.
  *   chk_z       zid against zfast over both span sets, 0 or differing z.
  *   chk_p2, chk_any   QOG_LITSPAN_FAST against the old code, byte for byte,
  *               at every mip level (lshift 4 to 1), on full and ragged
- *               spans: 0 or the number of differing pixels.
+ *               spans, 0 or the number of differing pixels.
  *   surfcache   id's D_DrawSpans8 from a lit surface cache in RAM (no
  *               lighting per pixel), for comparison with id's design.
- *   zspans      id's D_DrawZSpans: 16-bit depth for every view pixel.
+ *   zspans      id's D_DrawZSpans, 16-bit depth for every view pixel.
  *   fdiv        one float divide (the per-8-pixel perspective step).
  *   xip_seq     64 KB memcpy from the flash data region.
  *   xip_rand    64 K byte reads scattered over 1 MB of flash (cache misses).
@@ -241,7 +241,7 @@ static int D_QogZiFixed(float zi) {
 static NOINLINE void DrawZSpans_id(espan_t *pspan) { ZSPANS_BODY(double, (int)(zi * 0x8000 * 0x10000)) }
 static NOINLINE void DrawZSpans_fast(espan_t *pspan) { ZSPANS_BODY(float, D_QogZiFixed(zi)) }
 
-/* Game-like spans: every row cut into spans of 17 to 47 pixels. */
+/* Game-like spans, every row cut into spans of 17 to 47 pixels. */
 static espan_t s_short[VIEW_H * 13];   /* at most 12 spans a row with these lengths */
 static void short_spans(void) {
     int n = 0, len = 17;
@@ -304,7 +304,7 @@ static void setup_scene(int tw, int th) {
     }
 }
 
-/* The scene with a texture and mip level of the game's kind: texture origin
+/* The scene with a texture and mip level of the game's kind, texture origin
    whole light cells (multiples of 16 texels at mip 0), extents as
    D_CalcGradients sets them for a 256-texel face at that mip. */
 static void setup_game_scene(const uint8_t *tex, int tw, int th, int mip) {
@@ -384,7 +384,7 @@ int main(void) {
     }
     const bool tex_in_flash = flash_tex && tex_sz == W * H;
 
-    /* Light grid in the form R_BuildLightMap leaves it: (light & 0xFF00) picks
+    /* Light grid in the form R_BuildLightMap leaves it, (light & 0xFF00) picks
        a colormap row, row 0 brightest, row 63 black. A bright pool in the
        middle that fades towards the edges, like a lamp on a wall. */
     for (int y = 0; y < 18; y++)
@@ -437,7 +437,7 @@ int main(void) {
         if (time_reached(next_bench)) {
             if (video_ok) qog_video_wait();   /* never draw into a frame being scanned */
 
-            /* Today's path: texture from flash (or RAM if the data image has no picture). */
+            /* Today's path, texture from flash (or RAM if the data image has no picture). */
             setup_scene(tex_in_flash ? W : 64, tex_in_flash ? H : 64);
             lit_tex = tex_in_flash ? flash_tex : ram_tex;
             r_lit_flash = time_frames(DrawSpans_lit_flash);
@@ -465,7 +465,7 @@ int main(void) {
                 r_rfast_p2 = time_frames(DrawSpans_lit_rfast);
                 short_spans();
                 r_rfast_short = time_frames_on(DrawSpans_lit_rfast, s_short);
-                /* a floor seen level: 1/z changes only from row to row */
+                /* a floor seen level, 1/z changes only from row to row */
                 setup_game_scene(game_tex, p2_w, p2_h, 0);
                 d_zistepu = 0.0f;
                 d_sdivzstepu = 0.00110f; d_tdivzstepu = 0.0f;
@@ -506,7 +506,7 @@ int main(void) {
             for (int i = 0; i < 20000; i++) acc = litspan_frecip(acc + dv);
             r_frecip_ns = (uint32_t)((time_us_64() - t0) * 1000u / 20000u);
 
-            /* Flash reads: sequential copy, then scattered single bytes. */
+            /* Flash reads, sequential copy, then scattered single bytes. */
             const uint8_t *flash = (const uint8_t *)QOG_DATA_XIP_ADDR;   /* data region */
             static uint8_t xbuf[4096];
             t0 = time_us_64();

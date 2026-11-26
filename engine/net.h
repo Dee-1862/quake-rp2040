@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -136,14 +137,14 @@ typedef struct qsocket_s
 	unsigned int	sendSequence;
 	unsigned int	unreliableSendSequence;
 	int				sendMessageLength;
-#ifndef QOG_SINGLE_PLAYER	// QuakeOG: the loopback driver never uses a send buffer
+#ifndef QOG_SINGLE_PLAYER	// QuakeOG, the loopback driver never uses a send buffer
 	byte			sendMessage [NET_MAXMESSAGE];
 #endif
 
 	unsigned int	receiveSequence;
 	unsigned int	unreliableReceiveSequence;
 	int				receiveMessageLength;
-#ifdef QOG_SINGLE_PLAYER	// QuakeOG: loopback buffers sized per direction, see net_loop.c
+#ifdef QOG_SINGLE_PLAYER	// QuakeOG, loopback buffers sized per direction, see net_loop.c
 	byte			*receiveMessage;
 	int				receiveMessageSize;
 #else
@@ -186,7 +187,7 @@ typedef struct
 
 #define	MAX_NET_DRIVERS		8
 #ifdef QOG_STATIC_TRIM
-// QuakeOG: the engine has the loopback driver only (net_none.c) and no LAN
+// QuakeOG, the engine has the loopback driver only (net_none.c) and no LAN
 // driver, so one slot each and one server list entry (Loop_SearchForHosts
 // fills entry 0) hold everything id's tables of 8 ever held
 #define	NET_DRIVER_SLOTS	1
@@ -239,7 +240,7 @@ double SetNetTime(void);
 
 
 #ifdef QOG_STATIC_TRIM
-#define HOSTCACHESIZE	1	// QuakeOG: see NET_DRIVER_SLOTS
+#define HOSTCACHESIZE	1	// QuakeOG, see NET_DRIVER_SLOTS
 #else
 #define HOSTCACHESIZE	8
 #endif

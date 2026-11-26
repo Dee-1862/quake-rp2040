@@ -1,4 +1,4 @@
-# QuakeOG demo playback pair (Agent O). The display half runs id's client and
+# QuakeOG demo playback pair. The display half runs id's client and
 # renderer on the recorded demos in the board's data image, with no server,
 # QuakeC, console or sound (port/common/qog_demo.c), and prints fps over USB.
 # The main half is the same minimal companion as apps/qogfly.
@@ -58,11 +58,11 @@ target_link_libraries(qog_engine_demo PUBLIC pico_stdlib)
 target_compile_options(qog_engine_demo PUBLIC -fno-short-enums)   # same layout as the PC and the baked image (apps/quake)
 target_link_options(qog_engine_demo INTERFACE -Wl,--no-enum-size-warning)
 target_link_libraries(qogdemo_display qog_engine_demo qog_platform fwog_display_bsp)
-# As apps/qogfly: the SDK's sources are in the library and the app, and id's
+# As apps/qogfly, the SDK's sources are in the library and the app, and id's
 # headers define a few globals in every file that includes them.
 target_link_options(qogdemo_display PRIVATE -Wl,--allow-multiple-definition -Wl,--cref)
 # The host, server, console, keys, menus, network and sound objects stay out
-# of the link: display/demo_wrap.c and demo_sv.c define what the client and
+# of the link, display/demo_wrap.c and demo_sv.c define what the client and
 # renderer refer to.
 fwog_display_app(qogdemo_display
     VERSION 001

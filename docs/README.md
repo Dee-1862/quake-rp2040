@@ -14,7 +14,7 @@
 
 These are working notes kept for the record. They describe what was known when they were written and may be out of date.
 
-- [plans/](plans/): the original one chip plan, the fit plan and the speed plan
-- [research/](research/): hardware, embedded techniques, other Quake and RP2040 projects, MG24Quake
+- [plans/](plans/), the original one chip plan, the fit plan and the speed plan
+- [research/](research/), hardware, embedded techniques, other Quake and RP2040 projects, MG24Quake
 
 `lessons.md` and `changes.md` are long engineering logs. The lesson numbers (L1 and up) are referred to in code comments.

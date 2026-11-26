@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -22,7 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef GLQUAKE
 #include "r_shared.h"
 
-// QuakeOG: QOG_EDGES_IN_ZBUFFER moves the edge table into the z-buffer and
+// QuakeOG, QOG_EDGES_IN_ZBUFFER moves the edge table into the z-buffer and
 // the spans into the surface table, which replaces QOG_SPANS_IN_EDGES
 #ifdef QOG_EDGES_IN_ZBUFFER
 #undef QOG_SPANS_IN_EDGES
@@ -31,7 +32,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 #endif
 
-// QuakeOG: QOG_EDGECACHE_ZBUFFER keeps the world's 16-bit edge cache in the
+// QuakeOG, QOG_EDGECACHE_ZBUFFER keeps the world's 16-bit edge cache in the
 // z-buffer while R_RenderWorld runs (r_draw.c, R_NewMap), not on the hunk
 #ifdef QOG_EDGECACHE_ZBUFFER
 #ifndef QOG_EDGECACHE16
@@ -43,7 +44,7 @@ extern int				r_qog_edgecachebytes;
 #undef QOG_EDGECACHE_TAIL	// it needs the frame buffer cache, the vertex cache and the edges in the z-buffer
 #endif
 #ifdef QOG_EDGECACHE_TAIL
-// QuakeOG (Agent AP): the world's edge cache at the end of the z-buffer
+// QuakeOG, the world's edge cache at the end of the z-buffer
 // region for this view (r_main.c R_QogEdgeCacheTail), edge_max below it
 extern int				r_qog_ectail;
 qboolean R_QogEdgeCacheOut (void);
@@ -90,7 +91,7 @@ typedef struct {
 } auxvert_t;
 
 #ifdef QOG_ALIAS_NO_AUXVERTS
-// QuakeOG: R_AliasDrawModel keeps no per-vertex view-space array. The
+// QuakeOG, R_AliasDrawModel keeps no per-vertex view-space array. The
 // triangle clipper recomputes a vertex's view-space position from the
 // frame's vertices with the same function, so the values are the same.
 extern trivertx_t	*r_qog_apverts;		// first vertex of the frame being drawn
@@ -110,7 +111,7 @@ extern cvar_t	r_drawentities;
 extern cvar_t	r_aliasstats;
 extern cvar_t	r_dspeeds;
 #ifdef QOG_RFAST
-extern cvar_t	r_fast;		// QuakeOG (Agent AA): Fast render mode (r_main.c)
+extern cvar_t	r_fast;		// QuakeOG, Fast render mode (r_main.c)
 extern int		r_qogfast;	//   and its value for the current view
 #endif
 extern cvar_t	r_drawflat;
@@ -259,14 +260,14 @@ typedef struct btofpoly_s {
 	msurface_t	*psurf;
 } btofpoly_t;
 
-// QuakeOG: only a driver that sets r_worldpolysbacktofront uses this list
+// QuakeOG, only a driver that sets r_worldpolysbacktofront uses this list
 // (a 40 KB array in R_RenderWorld's frame), and D_Init always clears it.
 // QOG_MAX_BTOFPOLYS 0 removes the array, R_RenderWorld then stops with an
 // error if the flag is ever set.
 #ifdef QOG_MAX_BTOFPOLYS
 #define MAX_BTOFPOLYS	QOG_MAX_BTOFPOLYS
 #else
-#define MAX_BTOFPOLYS	5000	// FIXME: tune this
+#define MAX_BTOFPOLYS	5000	// FIXME, tune this
 #endif
 
 extern int			numbtofpolys;
@@ -279,14 +280,14 @@ void	R_ZDrawSubmodelPolys (model_t *clmodel);
 // Alias models
 //=========================================================
 
-// QuakeOG: R_AliasDrawModel keeps two work arrays of this many vertices on
+// QuakeOG, R_AliasDrawModel keeps two work arrays of this many vertices on
 // the stack (44 bytes each). The largest shareware model is progs/boss.mdl
 // with 325 vertices. Mod_LoadAliasModel still refuses a bigger model with
 // "model ... has too many vertices".
 #ifdef QOG_MAXALIASVERTS
 #define MAXALIASVERTS		QOG_MAXALIASVERTS
 #else
-#define MAXALIASVERTS		2000	// TODO: tune this
+#define MAXALIASVERTS		2000	// TODO, tune this
 #endif
 #define ALIAS_Z_CLIP_PLANE	5
 
@@ -324,13 +325,13 @@ extern edge_t	*auxedges;
 extern int		r_numallocatededges;
 extern edge_t	*r_edges, *edge_p, *edge_max;
 
-extern	edgeref_t	newedges[MAXHEIGHT];	// QuakeOG: edgeref_t, see r_shared.h
+extern	edgeref_t	newedges[MAXHEIGHT];	// QuakeOG, edgeref_t, see r_shared.h
 extern	edgeref_t	removeedges[MAXHEIGHT];
 
 extern	int	screenwidth;
 
 #ifdef QOG_EDGE_T_PACKED
-// QuakeOG: the sentinels are the first entries of the edge buffer, so they
+// QuakeOG, the sentinels are the first entries of the edge buffer, so they
 // can be linked with 16-bit offsets (set up in R_EdgeDrawing)
 #define EDGE_SENTINELS	4
 extern	edge_t	*r_edgesentinels;
@@ -339,7 +340,7 @@ extern	edge_t	*r_edgesentinels;
 #define edge_aftertail	(r_edgesentinels[2])
 #define edge_sentinel	(r_edgesentinels[3])
 #if defined(QOG_EDGES_IN_ZBUFFER)
-// QuakeOG: the edge table (sentinels first) lives at the end of the
+// QuakeOG, the edge table (sentinels first) lives at the end of the
 // z-buffer during R_EdgeDrawing, ZEDGE_BYTES of it, and nothing of it is on
 // the stack. R_ScanEdges keeps its spans in the surface table after the last
 // surface of the frame, up to r_spanpool_end. The table has room for
@@ -355,9 +356,9 @@ extern	edge_t	*r_edgesentinels;
 #define ZEDGE_BYTES(n)		((EDGE_SENTINELS + (n)) * (int)sizeof(edge_t))
 extern	byte	*r_spanpool_end;
 // measurements for the PC qog_rpeaks command (r_edge.c)
-extern	int		r_qog_zstack;	// QuakeOG: the others are PC measurements (r_edge.c)
+extern	int		r_qog_zstack;	// QuakeOG, the others are PC measurements (r_edge.c)
 #elif defined(QOG_SPANS_IN_EDGES)
-// QuakeOG: R_ScanEdges puts its spans in the edge table after the last edge
+// QuakeOG, R_ScanEdges puts its spans in the edge table after the last edge
 // of the frame, up to r_spanpool_end. The table has room for QOG_SPAN_MIN
 // spans past the edge limit, so the edge limit is unchanged. Where the spans
 // are flushed changes nothing in the picture, each pixel is drawn once.
@@ -424,13 +425,13 @@ void R_cshift_f (void);
 void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1);
 void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip);
 #ifdef QOG_VERTCACHE
-void R_QogVertCacheBegin (void);	// QuakeOG (Agent Z): r_draw.c
+void R_QogVertCacheBegin (void);	// QuakeOG, r_draw.c
 void R_QogVertCacheEnd (void);
 #ifdef QOG_FRONT_FAST
-void R_QogFxSetup (void);	// QuakeOG (Agent AJ): r_draw.c, the Fast front end's constants
+void R_QogFxSetup (void);	// QuakeOG, r_draw.c, the Fast front end's constants
 #endif
 #ifdef QOG_WORLDNODE_INT
-const int *R_QogFxPlanes (void);	// QuakeOG (Agent AJ): r_draw.c, the view planes for R_QogCullNode
+const int *R_QogFxPlanes (void);	// QuakeOG, r_draw.c, the view planes for R_QogCullNode
 #endif
 #endif
 void R_SplitEntityOnNode2 (mnode_t *node);

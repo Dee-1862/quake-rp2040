@@ -23,7 +23,7 @@ TOOLCHAIN = os.path.join(os.path.expanduser("~"), ".pico-sdk", "toolchain", "15_
 EXE = ".exe" if os.name == "nt" else ""
 GCC = os.path.join(TOOLCHAIN, "arm-none-eabi-gcc" + EXE)
 NM = os.path.join(TOOLCHAIN, "arm-none-eabi-nm" + EXE)
-# Same files the PC build compiles (pc/CMakeLists.txt): the real mixer, not the null stub.
+# Same files the PC build compiles (pc/CMakeLists.txt), the real mixer, not the null stub.
 EXCLUDE = {"snd_null.c"}
 CFLAGS = ["-std=gnu11", "-mcpu=cortex-m0plus", "-mthumb", "-Os", "-fno-common", "-ffunction-sections",
           "-fdata-sections", "-w", "-Wno-implicit-function-declaration", "-DQOG_RP2040_METER", "-DQOG_SINGLE_PLAYER", "-DQOG_EDICT_MARGIN=128", "-DQOG_MAX_MOD_KNOWN=192", "-DQOG_MAX_PARTICLES=512", "-DQOG_CON_TEXTSIZE=4096", "-DQOG_KEY_HISTORY=8", "-DQOG_MAXWIDTH=320", "-DQOG_MAXHEIGHT=200", "-DQOG_MAXALIASVERTS=328", "-DQOG_MAX_BTOFPOLYS=0", "-DQOG_WARP_INPLACE=1", "-I", os.path.join(ROOT, "engine")]
@@ -39,27 +39,27 @@ CFLAGS += ["-DQOG_BAKE"]
 CFLAGS += ["-DQOG_EDICT_SPARSE", "-DQOG_BASELINE_POOL", "-DQOG_AOT_GLOBALS"]
 # Client memory and 2D drawing flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CONBACK_FLASH", "-DQOG_ENTITY_PACKED", "-DQOG_PARTICLE_PACKED", "-DQOG_PARTICLE_AVEL8", "-DQOG_CACHEPIC_FLASH"]
-# Model table, server tables and board wiring (Agent I, pc/CMakeLists.txt)
+# Model table, server tables and board wiring (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_MOD_FLASH", "-DQOG_SV_TABLES", "-DQOG_SV_MAX_MODELS=208", "-DQOG_SV_MAX_SOUNDS=176", "-DQOG_CONST_NOVIS", "-DQOG_PVS_LEAFS=4096"]
 # Video memory and renderer table flags (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CONST_RTABLES", "-DQOG_NO_ROWTABLES", "-DQOG_SKY_DIRECT", "-DQOG_HUD_IN_ZBUFFER", "-DQOG_SPANS_IN_EDGES"]
-# Flash budget for the board's data image (Agent J, pc/CMakeLists.txt)
+# Flash budget for the board's data image (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_BAKE_STUBS", "-DQOG_DEMOS_OPTIONAL"]
-# Server, client and system memory (Agent M, pc/CMakeLists.txt)
+# Server, client and system memory (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_HUNK_PACKED", "-DQOG_TRANSLATE_ONDRAW", "-DQOG_CBUF_INPLACE", "-DQOG_LOOP_INPLACE", "-DQOG_STATIC_TRIM", "-DQOG_EDICT_REUSE", "-DQOG_PALETTE_FLASH"]
 # Board-only sizes (apps/quake/CMakeLists.txt only, not pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_CMDBUF_SIZE=4096", "-DQOG_ZONE_BOARD_KB=16"]
-# Per-level map arrays (Agent L, pc/CMakeLists.txt)
+# Per-level map arrays (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_FRAMEBITS", "-DQOG_DLIGHT_SPARSE", "-DQOG_LEAF16"]
-# Renderer temporary memory in the z-buffer (Agent K, pc/CMakeLists.txt)
+# Renderer temporary memory in the z-buffer (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_EDGES_IN_ZBUFFER", "-DQOG_EDGECACHE_ZBUFFER", "-DQOG_SND_ONINIT", "-DQOG_LOOP_ONINIT", "-DQOG_PACKDIR_CHUNKED"]
-# Full game on the board (Agent Q), the last one board only (apps/quake/CMakeLists.txt)
+# Full game on the board, the last one board only (apps/quake/CMakeLists.txt)
 CFLAGS += ["-DQOG_MIN_MEMORY=0", "-DQOG_SND_OFF_NOHUNK", "-DQOG_LOADGAME_ZTEMP", "-DQOG_PRECACHE_ZTEMP", "-DQOG_KEYS_BYTES", "-DQOG_EDICT_MARGIN_BOARD=64"]
-# Demo playback (Agent O, pc/CMakeLists.txt)
+# Demo playback (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_DEMO_FLASH", "-DQOG_ITEMBOX_NOLEAFS"]
-# Renderer speed, exact (Agent P, pc/CMakeLists.txt)
+# Renderer speed, exact (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_LITSPAN_FAST", "-DQOG_LITSPAN_TAILMUL", "-DQOG_ZSPANS_FAST", "-DQOG_LITSPAN_ZFUSE"]
-# Episode 1 client RAM, exact (Agent Y, pc/CMakeLists.txt)
+# Episode 1 client RAM, exact (pc/CMakeLists.txt)
 CFLAGS += ["-DQOG_ENTITY_TIGHT", "-DQOG_CON_DEBUGLOG_DIRECT"]
 RAM_TYPES = set("bBdD")   # bss and data, local and global
 

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -27,12 +28,12 @@ key up events are sent even if in console mode
 
 
 #define		MAXCMDLINE	256
-// QuakeOG: QOG_KEY_HISTORY lines of console history (a power of two), id used 32
+// QuakeOG, QOG_KEY_HISTORY lines of console history (a power of two), id used 32
 #ifndef QOG_KEY_HISTORY
 #define QOG_KEY_HISTORY 32
 #endif
 #ifdef QOG_KEYLINES_SCRATCH
-// QuakeOG (Agent S): in the RP2040's scratch Y bank, below the 2 KB boot
+// QuakeOG, in the RP2040's scratch Y bank, below the 2 KB boot
 // stack that only board_init uses (2 KB free there)
 __attribute__((section(".scratch_y.qog_key_lines")))
 #endif
@@ -50,7 +51,7 @@ int		key_count;			// incremented every key event
 
 char	*keybindings[256];
 #ifdef QOG_KEYS_BYTES
-// QuakeOG: true or false in a byte each, not in a 4-byte enum (2.3 KB)
+// QuakeOG, true or false in a byte each, not in a 4-byte enum (2.3 KB)
 byte	consolekeys[256];	// if true, can't be rebound while in console
 byte	menubound[256];	// if true, can't be rebound while in menu
 #else
@@ -58,7 +59,7 @@ qboolean	consolekeys[256];	// if true, can't be rebound while in console
 qboolean	menubound[256];	// if true, can't be rebound while in menu
 #endif
 #ifdef QOG_STATIC_TRIM
-// QuakeOG: bytes, not ints. Key numbers are below 256, and the repeat count
+// QuakeOG, bytes, not ints. Key numbers are below 256, and the repeat count
 // stops at 255, which keeps the only test made of it (> 1) as id had it.
 byte	keyshift[256];		// key to map to if shift held down in console
 byte	key_repeats[256];	// if > 1, it is autorepeating
@@ -79,7 +80,7 @@ typedef struct
 } keyname_t;
 
 #ifdef QOG_KEYNAMES_CONST
-const	// QuakeOG (Agent S): never written, so in flash on the board
+const	// QuakeOG, never written, so in flash on the board
 #endif
 keyname_t keynames[] =
 {

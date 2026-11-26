@@ -1,11 +1,11 @@
 # Install one episode of the split game on the FREE-WILi OG, the lead's three
-# steps (docs/handoff.md), one CPU in BOOTSEL at a time:
+# steps (docs/handoff.md), one CPU in BOOTSEL at a time.
 #
-#   1. display data: fw.py bootsel --cpu display, then copy qb_ep<N>.uf2 to
+#   1. display data, fw.py bootsel --cpu display, then copy qb_ep<N>.uf2 to
 #      the RPI-RP2 drive (0x10100000 up, the display app below it is kept)
-#   2. the app:      fw.py flash quake --uf2 build\apps\quake\quake_main.uf2
+#   2. the app,      fw.py flash quake --uf2 build\apps\quake\quake_main.uf2
 #                    (main, which then sends the display its app and RUN)
-#   3. main data:    fw.py flash quake --uf2 qb_ep<N>_main.uf2
+#   3. main data,    fw.py flash quake --uf2 qb_ep<N>_main.uf2
 #                    (0x10200000 up, the app and the save volume are kept)
 #
 #   powershell -File tools\install_episode.ps1 -Episode 2
@@ -14,7 +14,7 @@
 #
 # Every image carries qogboot.txt (tools/mkboard.py), so the same app starts
 # any episode, and step 2 is needed only when the app changed. The script
-# refuses to go on whenever two RPI-RP2 drives are mounted: both RP2040s look
+# refuses to go on whenever two RPI-RP2 drives are mounted, both RP2040s look
 # the same in BOOTSEL, and a copy to the wrong one writes the other chip's
 # data over its app. Each step is tried -Retries times. Run it from the repo
 # root of the checkout that built the app, with the board on USB and no
@@ -78,7 +78,7 @@ if ($Print) {
     exit 0
 }
 
-# 1. display data, first: later main restarts every 20 s until its data is
+# 1. display data, first, later main restarts every 20 s until its data is
 #    written, and each restart resets the display (docs/handoff.md)
 $done = $false
 for ($try = 1; $try -le $Retries -and -not $done; $try++) {

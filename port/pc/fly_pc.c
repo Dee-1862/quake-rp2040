@@ -2,7 +2,7 @@
  *
  *   quakeog_pc.exe -qogfly [-flymap e1m1] [-flyframes 200] [-flydt 0.1]
  *                  [-flyshots 0]
- *       The renderer-only host the board app apps/qogfly runs: no server,
+ *       The renderer-only host the board app apps/qogfly runs, no server,
  *       client or QuakeC. Draws -flyframes frames, the camera -flydt
  *       seconds further each frame (cl.time too), prints
  *       "fly <frame> <view hash> <point>" for each and the hunk use, writes
@@ -21,7 +21,7 @@
  *       crosshair 0 and light styles 'm'. After the game has drawn the
  *       spot through its normal pipeline (V_RenderView), the fly host's
  *       camera draws the same spot at the same cl.time, and the two 3D views
- *       are compared: "flyref <point> <game hash> <fly hash> same|DIFF
+ *       are compared, "flyref <point> <game hash> <fly hash> same|DIFF
  *       <pixels>". Quits when done. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +48,7 @@ static float fly_argf (const char *name, float def)
 	return (i && i + 1 < com_argc) ? Q_atof (com_argv[i + 1]) : def;
 }
 
-/* One deterministic frame: camera at k * dt, cl.time the same. */
+/* One deterministic frame, camera at k * dt, cl.time the same. */
 static void fly_frame (int k, float dt, int shots, const char *shotname)
 {
 	vec3_t		feet, ang;
@@ -152,7 +152,7 @@ static byte		ref_game[320 * 200];
 
 static float ref_angle (float a)
 {
-	// what the client reads back: MSG_WriteAngle then MSG_ReadAngle
+	// what the client reads back, MSG_WriteAngle then MSG_ReadAngle
 	return (signed char)((((int)a) * 256 / 360) & 255) * (360.0 / 256);
 }
 

@@ -13,29 +13,29 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-/* RP2040 (FREE-WILi OG display CPU) system layer: id's sys.h.
+/* RP2040 (FREE-WILi OG display CPU) system layer, id's sys.h.
  *
  * There is no filesystem. The game data region (platform/qog_flashmap.h)
- * holds one pack file, built on the PC by tools/mkpak.py; it appears to the
+ * holds one pack file, built on the PC by tools/mkpak.py. It appears to the
  * engine as <basedir>/id1/pak0.pak, read with memcpy and mapped in place
  * with Sys_FlashMap. Nothing is written (saves come later, to the save
  * slots at the end of flash).
  *
- * QuakeOG: a baked model image (engine/model.c, "QOGB") may follow the pack
+ * QuakeOG, a baked model image (engine/model.c, "QOGB") may follow the pack
  * at a 64 KB boundary (tools/mkboard.py lays both out). It appears as
  * <basedir>/id1/qogbake.bin and is mapped in place the same way. The engine
  * checks it was built for the address it is found at.
  *
- * Hunk size: QOG_HUNK_KB. The engine does not fit in RAM yet; this layer
+ * Hunk size, QOG_HUNK_KB. The engine does not fit in RAM yet. This layer
  * is built to measure code size, static RAM and stack frames on the target
  * (docs/plans/fit-plan.md).
  *
- * QuakeOG (Agent R): built with QOG_SYS_MAIN it is the main CPU's layer for
- * the split game's server half (apps/quake/main): the pack and the baked
+ * QuakeOG, built with QOG_SYS_MAIN it is the main CPU's layer for
+ * the split game's server half (apps/quake/main), the pack and the baked
  * image are the server's copy in main's own flash (QOG_MAIN_DATA_XIP_ADDR),
  * main() boots the display CPU first, and every wait kicks the watchdog.
- * Saves go to main's FAT volume (Agent T, "saves on main's FAT volume"
- * below); tools/mkboard.py --main writes the server's data region. */
+ * Saves go to main's FAT volume ("saves on main's FAT volume"
+ * below). tools/mkboard.py --main writes the server's data region. */
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -53,14 +53,14 @@ See the GNU General Public License for more details.
 #include "qog_flashmap.h"
 #if defined(QOG_SND_REMOTE) || defined(QOG_SND_HOST)
 #include "qog_snd.h"
-/* Agent W: the split game's sound, mixed on main and played by the display */
+/* Earlier work, the split game's sound, mixed on main and played by the display */
 #define QOG_SYS_SOUNDARG
 #else
 #define QOG_SYS_SOUNDARG "-nosound",
 #endif
 #include "qog_phase.h"
 #ifdef QOG_CLOCK_BOOST
-/* Agent AB: the Quake apps' faster clock and flash (port/rp2040/clock_rp2040.c) */
+/* Earlier work, the Quake apps' faster clock and flash (port/rp2040/clock_rp2040.c) */
 #include "qog_clock.h"
 #define QOG_CLOCK_BOOST_NOW()   qog_clock_boost()
 #define QOG_CLOCK_REPORT_ONCE() qog_clock_report_once()
@@ -72,7 +72,7 @@ See the GNU General Public License for more details.
 #endif
 
 #ifdef QOG_PHASE_TIME
-/* QuakeOG (Agent V): where the frame time goes, over USB every 2 s
+/* QuakeOG, where the frame time goes, over USB every 2 s
    (engine/qog_phase.h, apps/quake QOG_BOARD_TIMING). Called from the main
    loop, between frames, where the stack is nearly empty. */
 static void board_print(char *fmt, ...) {
@@ -106,20 +106,20 @@ static void board_timing(const char *who) {
 qboolean isDedicated = false;
 static byte s_hunk[QOG_HUNK_KB * 1024] __attribute__((aligned(16)));
 
-/* QuakeOG: the hunk, for a main() in another file (apps/qogfly, built with
+/* QuakeOG, the hunk, for a main() in another file (apps/qogfly, built with
    QOG_SYS_NO_MAIN). */
 void *qog_rp2040_hunk(int *size) { *size = (int)sizeof s_hunk; return s_hunk; }
 
 #ifdef QOG_SYS_MAIN
-/* BSP contract rule 7: the main loop kicks the watchdog (and so does every
+/* BSP contract rule 7, the main loop kicks the watchdog (and so does every
    wait of the link, port/rp2040/link_rp2040.c). */
 FWOG_WATCHDOG_DEFAULT();
 
 #ifdef QOG_FAULT_RECORD
-/* QuakeOG: a hard fault on the main chip used to hang it silently until the
+/* QuakeOG, a hard fault on the main chip used to hang it silently until the
    watchdog reset the board 8.3 s later, leaving no trace. The handler saves
    the faulting PC, LR and xPSR in RAM that a reset does not clear, then
-   reboots at once; the link's diagnostic line prints them after the reboot
+   reboots at once. The link's diagnostic line prints them after the reboot
    (port/rp2040/link_rp2040.c), and arm-none-eabi-addr2line maps them. */
 #include "hardware/watchdog.h"
 #define QOG_FAULT_MAGIC 0x51464C54u     /* "QFLT" */
@@ -136,8 +136,8 @@ void __attribute__((used, noreturn)) qog_fault_save(const uint32_t *frame) {
     for (;;) {}
 }
 
-/* replaces the SDK's weak isr_hardfault: pick the stack the fault used
-   (EXC_RETURN bit 2: 1 = process stack, the game's) */
+/* replaces the SDK's weak isr_hardfault, pick the stack the fault used
+   (EXC_RETURN bit 2, 1 = process stack, the game's) */
 void __attribute__((naked)) isr_hardfault(void) {
     __asm volatile (
         "movs r0, #4\n\t"
@@ -154,7 +154,7 @@ void __attribute__((naked)) isr_hardfault(void) {
 }
 
 /* the last fault, or 0 when the last reset was not one */
-/* once: the record is handed out one time and then cleared, so a report on the console
+/* once, the record is handed out one time and then cleared, so a report on the console
    always belongs to the reset just before it */
 const uint32_t *qog_fault_last(void) {
     static uint32_t copy[24];
@@ -164,8 +164,8 @@ const uint32_t *qog_fault_last(void) {
     return copy;
 }
 
-/* QuakeOG: a hang detector. The server loop and every link wait bump
-   qog_progress. A timer interrupt checks it twice a second; when it has not
+/* QuakeOG, a hang detector. The server loop and every link wait bump
+   qog_progress. A timer interrupt checks it twice a second. When it has not
    moved for 6 s (the watchdog fires at 8.3 s) it records where the game was
    stuck, from the exception frame the interrupt pushed on the game's process
    stack, and reboots. */
@@ -184,10 +184,10 @@ static bool hang_check(struct repeating_timer *t) {
         s_fault[2] = frame[5];          /* its LR */
         s_fault[3] = frame[7];
         s_fault[4] = (uint32_t)frame;
-        /* the words above the exception frame: the stuck function's frame
+        /* the words above the exception frame, the stuck function's frame
            and its callers' saved return addresses */
         for (int i = 0; i < 16; i++) s_fault[5 + i] = frame[8 + i];
-        {   /* debugging: QuakeC's first parameter, the value anglemod spun on */
+        {   /* debugging, QuakeC's first parameter, the value anglemod spun on */
             extern float *pr_globals;
             s_fault[21] = pr_globals ? ((const uint32_t *)pr_globals)[4] : 0;
             s_fault[22] = pr_globals ? ((const uint32_t *)pr_globals)[178] : 0;   /* anglemod's v in this build's packed globals */
@@ -201,10 +201,10 @@ void qog_hang_watch_start(void) {
 }
 #endif
 #else
-/* BSP contract rule 2: red held 6 s powers the board off. The main loop
+/* BSP contract rule 2, red held 6 s powers the board off. The main loop
    calls fwog_power_poll every iteration (and Sys_Error keeps doing so). */
 #ifdef QOG_POWER_RED_ALONE
-/* the app owns the power poll (port/rp2040/power_qog.c): red powers off
+/* the app owns the power poll (port/rp2040/power_qog.c), red powers off
    after the same 6 s, counted only while red is the only button held */
 FWOG_POWER_CUSTOM();
 #else
@@ -212,32 +212,32 @@ FWOG_POWER_DEFAULT();
 #endif
 #endif
 
-/* newlib's remove() wants this; there is no filesystem to delete from. */
+/* newlib's remove() wants this. There is no filesystem to delete from. */
 int _unlink(const char *path) { (void)path; return -1; }
 
 #ifdef QOG_SYS_MAIN
 /* ---- saves on main's FAT volume ------------------------------------------
  *
- * QuakeOG (Agent T): the server half saves and loads with id's stdio calls
+ * QuakeOG, the server half saves and loads with id's stdio calls
  * (fopen, fprintf, fscanf, fgetc in host_cmd.c and pr_edict.c, and the
  * client menus' save list in engine/net_link.c). newlib turns them into the
  * system calls below, which keep the file in the folder "quake" of main's
- * FAT volume through the BSP's API (bsp/main_cpu/fs/fwog_fs.h): the engine's
+ * FAT volume through the BSP's API (bsp/main_cpu/fs/fwog_fs.h), the engine's
  * "./id1/s0.sav" is "quake/s0.sav". One file at a time, as the BSP allows.
  *
- * The BSP's flash write hazards: core1 never runs on main in this app (no
+ * The BSP's flash write hazards, core1 never runs on main in this app (no
  * multicore launch anywhere in quake_main), and the BSP's disk driver kicks
  * the watchdog after every chunk of at most 8 sectors it writes (FatFs
  * writes one 4 KB sector at a time here), so a long save cannot outlive the
  * 8.3 s window. The volume is mounted at the first open and never formatted
- * from here: without a volume a save fails with id's "couldn't open". */
+ * from here, without a volume a save fails with id's "couldn't open". */
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include "fs/fwog_fs.h"
 #include "fs/fs_geom.h"
 
-/* Agent AC: the server data region ends where the BSP's FAT volume starts */
+/* Earlier work, the server data region ends where the BSP's FAT volume starts */
 _Static_assert(QOG_MAIN_FAT_OFFSET == FWOG_FS_FLASH_OFFSET, "qog_flashmap.h: QOG_MAIN_FAT_OFFSET is not the BSP's FAT volume");
 _Static_assert(QOG_MAIN_DATA_OFFSET + QOG_MAIN_DATA_MAX_SIZE <= FWOG_FS_FLASH_OFFSET, "qog_flashmap.h: main's data reaches the FAT volume");
 #ifdef QOG_FAT_FORMAT_IF_MISSING
@@ -384,7 +384,7 @@ static qboolean is_pak_path(const char *path) {
 
 #define BAKE_HANDLE 2
 static const byte *s_bake;
-static int s_bakelen = -1;     /* -1: not looked for yet, 0: none */
+static int s_bakelen = -1;     /* -1, not looked for yet, 0, none */
 
 static qboolean is_bake_path(const char *path) {
     size_t n = strlen(path);
@@ -462,8 +462,8 @@ void Sys_MakeCodeWriteable(unsigned long startaddr, unsigned long length) { (voi
 void Sys_LowFPPrecision(void) {}
 void Sys_HighFPPrecision(void) {}
 void Sys_SetFPCW(void) {}
-/* QuakeOG: the clocks the benchmark result names (engine/menu.c), read
-   from the hardware: clk_sys, and the flash clock from the SSI's divider
+/* QuakeOG, the clocks the benchmark result names (engine/menu.c), read
+   from the hardware, clk_sys, and the flash clock from the SSI's divider
    (port/rp2040/clock_rp2040.c sets it) */
 unsigned Sys_QogClockKHz(void) { return clock_get_hz(clk_sys) / 1000u; }
 unsigned Sys_QogFlashKHz(void) {
@@ -490,7 +490,7 @@ void Sys_Error(char *error, ...) {
     vsnprintf(text, sizeof text, error, ap);
     va_end(ap);
 #ifdef QOG_SYS_MAIN
-    /* Report for 20 s, then stop kicking: the watchdog resets main, and
+    /* Report for 20 s, then stop kicking, the watchdog resets main, and
        main resets the display through GUI_NRESET, a clean restart of both. */
     for (int k = 0; k < 20; k++) {
         DIAG("Sys_Error: %s\n", text);
@@ -501,9 +501,9 @@ void Sys_Error(char *error, ...) {
         tight_loop_contents();
 #else
 #ifdef QOG_SND_REMOTE
-    qog_snd_out_shutdown();   /* Agent W: stop the speaker, or the ring loops forever */
+    qog_snd_out_shutdown();   /* Earlier work, stop the speaker, or the ring loops forever */
 #endif
-    /* Keep the red-button power-off alive while reporting (BSP rule): the
+    /* Keep the red-button power-off alive while reporting (BSP rule), the
        display CPU has no watchdog and must stay switch-off-able. */
     for (;;) {
         DIAG("Sys_Error: %s\n", text);
@@ -520,14 +520,14 @@ void Sys_Quit(void) { Sys_Error("quit"); }
 double Sys_FloatTime(void) { return (double)time_us_64() * 1e-6; }
 
 #ifdef QOG_SYS_MAIN
-/* QuakeOG (Agent R): the server half on the main CPU. Main is the CPU that
+/* QuakeOG, the server half on the main CPU. Main is the CPU that
    boots the display (fwog_display_update_run, which also brings the link up
    and releases GUI_NRESET), then each Host_Frame waits for the client half's
    frame on the link, kicking the watchdog while it waits. */
 #ifdef QOG_STACK_KB
 static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
 #ifdef QOG_SND_BOARDMEM
-/* Agent W: the mixer's paint buffer and ring are the stack's lowest
+/* Earlier work, the mixer's paint buffer and ring are the stack's lowest
    QOG_SND_SCRATCH bytes, used only between server frames when the stack is
    shallow (port/common/qog_snd_host.c). The watermark starts above them. */
 unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
@@ -536,7 +536,7 @@ unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
 #define SV_STACK_LOW 0
 #endif
 #ifdef QOG_GAME_PSP
-/* QuakeOG: the server on the process stack, interrupts on the SDK's main
+/* QuakeOG, the server on the process stack, interrupts on the SDK's main
    stack, as on the display chip (see the client's run_on_stack below) */
 static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, void (*fn)(void)) {
     __asm volatile ("msr psp, r0\n\tmovs r2, #2\n\tmsr control, r2\n\tisb\n\tbx r1\n");
@@ -547,7 +547,7 @@ static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, v
 }
 #endif
 #ifdef QOG_STACK_WATERMARK
-/* QuakeOG: the deepest stack use so far, from a marker filled at start */
+/* QuakeOG, the deepest stack use so far, from a marker filled at start */
 #define STACK_MARK 0xA5A5A5A5u
 static void stack_fill(void) {
     uint32_t *sp;
@@ -596,7 +596,7 @@ static void __attribute__((noreturn)) server_main(void) {
 
 int main(void) {
     board_init();
-    /* Agent AB: 250 MHz and the faster flash before the display update. The
+    /* Earlier work, 250 MHz and the faster flash before the display update. The
        display is still held in reset and the link is down, and the link comes
        up at 12.5 Mbaud from either clock (clk_peri / 16 / 1.25 at 250 MHz,
        the bootloader's / 16 / 1 at 200 MHz). */
@@ -611,25 +611,25 @@ int main(void) {
 }
 #endif	/* QOG_SYS_MAIN */
 
-/* Buttons for Sys_SendKeyEvents (vid_rp2040.c): the main loop polls them
+/* Buttons for Sys_SendKeyEvents (vid_rp2040.c), the main loop polls them
    through fwog_power_poll, the only poll allowed (docs/lessons.md L5). */
 uint8_t qog_rp2040_buttons;
-/* QuakeOG: every button that was down at any poll since the last game frame,
+/* QuakeOG, every button that was down at any poll since the last game frame,
    so a tap shorter than a frame still reaches the input step (vid_rp2040.c) */
 uint8_t qog_rp2040_buttons_seen;
 
 #if !defined(QOG_SYS_NO_MAIN) && !defined(QOG_SYS_MAIN)
 #ifdef QOG_STACK_KB
-/* QuakeOG: the game's stack, in main RAM so the link counts it (the SDK's
+/* QuakeOG, the game's stack, in main RAM so the link counts it (the SDK's
    default is 2 KB in a scratch bank). Sized from the deepest call chain
    that tools/stack_chain.py finds (apps/quake/CMakeLists.txt). Thread mode
    runs on MSP, so interrupts use this stack too, as in apps/qogfly. */
 static uint32_t s_stack[QOG_STACK_KB * 256] __attribute__((aligned(8)));
-/* QuakeOG (Agent S): the stack's lowest byte, for QOG_ZEDGE_STACK_GUARD (engine/r_edge.c) */
+/* QuakeOG, the stack's lowest byte, for QOG_ZEDGE_STACK_GUARD (engine/r_edge.c) */
 unsigned char *qog_stack_bottom = (unsigned char *)s_stack;
 
 #ifdef QOG_GAME_PSP
-/* QuakeOG: the game runs on the process stack (PSP = s_stack) and interrupt
+/* QuakeOG, the game runs on the process stack (PSP = s_stack) and interrupt
    handlers keep the main stack (MSP), the SDK's 2 KB in a scratch bank that
    nothing else uses once the game has its own. Before, the USB and timer
    interrupts ran on top of the game's deepest call chain in s_stack, and the
@@ -644,7 +644,7 @@ static void __attribute__((naked, noreturn, noinline)) run_on_stack(void *top, v
 #endif
 
 #ifdef QOG_STACK_WATERMARK
-/* QuakeOG: the stack is filled with a marker below the point where the game
+/* QuakeOG, the stack is filled with a marker below the point where the game
    starts, so the deepest use so far is where the marker ends. */
 #define STACK_MARK 0xA5A5A5A5u
 static void stack_fill(void) {
@@ -663,7 +663,7 @@ static void __attribute__((noreturn)) game_main(void);
 
 int main(void) {
     board_init();
-    /* Agent AB: before core 1 starts (VID_Init) and before any driver takes
+    /* Earlier work, before core 1 starts (VID_Init) and before any driver takes
        a divider from clock_get_hz() (port/rp2040/clock_rp2040.c) */
     QOG_CLOCK_BOOST_NOW();
     run_on_stack(s_stack + sizeof s_stack / sizeof s_stack[0], game_main);
@@ -674,12 +674,12 @@ static void __attribute__((noreturn)) game_main(void) {
 int main(void) {
 #endif
 #if defined(QOG_BOARD_BOOT)
-    /* QuakeOG (Agent AG): the level to start in comes from the data image
-       (qog_boot, engine/host_cmd.c: the qogboot.txt mkboard writes, else
+    /* QuakeOG, the level to start in comes from the data image
+       (qog_boot, engine/host_cmd.c, the qogboot.txt mkboard writes, else
        e1m1), so one app starts any episode's image. */
     static char *argv[] = { "quake", QOG_SYS_SOUNDARG "+qog_boot" };
 #elif defined(QOG_BOARD_MAP)
-    /* QuakeOG: the board has no keyboard to type "map" at the console, so a
+    /* QuakeOG, the board has no keyboard to type "map" at the console, so a
        board build can name the level to start in (apps/quake QOG_BOARD_MAP). */
     static char *argv[] = { "quake", QOG_SYS_SOUNDARG "+map", QOG_BOARD_MAP };
 #else
@@ -721,7 +721,7 @@ int main(void) {
         qog_rp2040_buttons_seen |= pw.buttons.down;
         double newtime = Sys_FloatTime();
         double dt = newtime - oldtime;
-        if (dt < 1.0 / 72.0) continue;   /* see port/pc/sys_pc.c: id calls rand() per call */
+        if (dt < 1.0 / 72.0) continue;   /* see port/pc/sys_pc.c, id calls rand() per call */
         qog_aim_update(newtime);
         Host_Frame((float)dt);
 #ifdef QOG_PHASE_TIME

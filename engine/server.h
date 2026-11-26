@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -32,7 +33,7 @@ typedef struct
 
 typedef enum {ss_loading, ss_active} server_state_t;
 
-// QuakeOG: QOG_SV_TABLES sizes the server's precache lists from measured
+// QuakeOG, QOG_SV_TABLES sizes the server's precache lists from measured
 // peaks instead of the protocol's 256 (QOG_SV_MAX_MODELS, QOG_SV_MAX_SOUNDS),
 // keeping the last entry NULL so the lists stay NULL terminated, and drops
 // the map's model name copy (sv.worldmodel->name is the same string).
@@ -82,7 +83,7 @@ typedef struct
 									// edict_t is variable sized, but can
 									// be used to reference the world ent
 #ifdef QOG_BASELINE_POOL
-	entity_state_t	*baselines;		// QuakeOG: only edicts that got one at spawn, entry 0 empty
+	entity_state_t	*baselines;		// QuakeOG, only edicts that got one at spawn, entry 0 empty
 #endif
 	server_state_t	state;			// some actions are only valid during load
 
@@ -93,7 +94,7 @@ typedef struct
 	byte		reliable_datagram_buf[MAX_DATAGRAM];
 
 	sizebuf_t	signon;
-#ifdef QOG_SIGNON_SIZE	// QuakeOG: the signon is copied into client_t.message, so
+#ifdef QOG_SIGNON_SIZE	// QuakeOG, the signon is copied into client_t.message, so
 	byte		signon_buf[QOG_SIGNON_SIZE];	// more than MAX_MSGLEN never reaches a client
 #else
 	byte		signon_buf[8192];
@@ -238,7 +239,7 @@ extern	cvar_t	fraglimit;
 extern	cvar_t	timelimit;
 
 #ifdef QOG_SPLIT_CLIENT
-// QuakeOG: the split client has no server. What client code reads of sv and
+// QuakeOG, the split client has no server. What client code reads of sv and
 // svs is what the server half last sent (engine/net_link.c).
 typedef struct
 {

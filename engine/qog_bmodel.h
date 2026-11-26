@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AS): work counts for the board cost model (QOG_BOARDMODEL).
+/* QuakeOG, work counts for the board cost model (QOG_BOARDMODEL).
  *
  * PC measurement builds only (tools/boardbench.ps1). Each count says which
  * code path did the work, so tools/boardmodel.py can give each path its own
@@ -31,7 +31,7 @@ enum
 	QOG_BM_BMSPLIT,			/* R_SplitEntityOnNode2 plane tests */
 	QOG_BM_BPOLY,			/* R_RecursiveClipBPoly calls (brush polygons clipped to the world tree) */
 	QOG_BM_BPOLYEDGE,		/*   edges they clipped */
-	QOG_BM_BMSPLITINT,		/* R_SplitEntityOnNode2 axial plane tests in integers (Agent AQ, QOG_BMSPLIT_INT) */
+	QOG_BM_BMSPLITINT,		/* R_SplitEntityOnNode2 axial plane tests in integers (QOG_BMSPLIT_INT) */
 	QOG_BM_N
 };
 
@@ -40,8 +40,8 @@ extern unsigned	qog_bm_count[QOG_BM_N];
 #define QOG_BM(c, n)	(qog_bm_count[c] += (unsigned)(n))
 /* port/pc/boardmodel_pc.c */
 void qog_bm_bmodels (int begin);		/* around R_DrawBEntitiesOnList */
-void qog_bm_scanfree (int lo, int hi);	/* VID_QogScanFree: the view writes frame bytes [lo, hi) next */
-void qog_bm_frame (int rows, int packed);	/* VID_Update: the frame ends, rows and packed rows sent */
+void qog_bm_scanfree (int lo, int hi);	/* VID_QogScanFree, the view writes frame bytes [lo, hi) next */
+void qog_bm_frame (int rows, int packed);	/* VID_Update, the frame ends, rows and packed rows sent */
 #else
 #define QOG_BM(c, n)	((void)0)
 #endif

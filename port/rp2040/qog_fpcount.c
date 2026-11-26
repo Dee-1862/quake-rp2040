@@ -1,4 +1,4 @@
-/* QuakeOG (Agent Z): float and double helper call counts for measurement
+/* QuakeOG, float and double helper call counts for measurement
  * builds of the board client (QOG_PHASE_FPCOUNT, port/common/qog_fpcount.h).
  * The stubs in qog_fpcount.S count, this file times one helper of each
  * group on core 0 and prints the counts. Built outside the engine library,

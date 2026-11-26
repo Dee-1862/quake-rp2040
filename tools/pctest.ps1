@@ -1,4 +1,4 @@
-# Run the PC build for an automated test: no window, no sound from the
+# Run the PC build for an automated test, no window, no sound from the
 # speakers, a known config, and a hard timeout.
 #
 #   powershell -File tools\pctest.ps1 -Exe build-pc-dev\Release\quakeog_pc.exe `
@@ -7,10 +7,10 @@
 # -hidden makes the game draw off-screen and mix sound without output
 # (port/pc/vid_pc.c, port/pc/snd_pc.c). The fixed config is restored before
 # the run, because every run saves its settings and the next would inherit
-# them. Never name a PowerShell parameter $args: it is a reserved variable
+# them. Never name a PowerShell parameter $args, it is a reserved variable
 # and silently arrives empty (docs/lessons.md).
 #
-# The split game (Agent R) runs as a pair: -ServerExe starts the server half
+# The split game runs as a pair, -ServerExe starts the server half
 # first (build-pc-dev\Release\quakeog_sv.exe, no window and no sound code
 # at all), then -Exe is the client half. -ServerArgs must carry the same
 # -basedir and any -link* options. The server quits with the client and is

@@ -8,10 +8,10 @@
  * image from these manifests.
  *
  *   qog_manifest_reset         forget the files opened so far
- *   qog_manifest <file>        write: map, precached models and sounds, and
+ *   qog_manifest <file>        write, map, precached models and sounds, and
  *                              every pack file opened since the last reset
  *
- * File names given to console commands must be relative: Quake's tokenizer
+ * File names given to console commands must be relative, Quake's tokenizer
  * splits on ':' (docs/lessons.md L32). */
 #include <stdio.h>
 #include <string.h>

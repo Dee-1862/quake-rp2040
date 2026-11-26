@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -23,16 +24,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 
-// QuakeOG (Agent AA): for a float x, x < 0.01 (a double) is x <= (float)0.01,
+// QuakeOG, for a float x, x < 0.01 (a double) is x <= (float)0.01,
 // the largest float below 0.01, so QOG_FLOAT_EXACT compares in single precision
 #ifdef QOG_FLOAT_EXACT
 #define QOG_NEARCLIPPED(x)	((x) <= (float)NEAR_CLIP)
 #else
 #define QOG_NEARCLIPPED(x)	((x) < NEAR_CLIP)
 #endif
-#include "d_local.h"	// FIXME: shouldn't need to include this
-#include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
-#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
+#include "d_local.h"	// FIXME, shouldn't need to include this
+#include "qog_phase.h"	// QuakeOG, world work counts (QOG_PHASE_XIP)
+#include "qog_aqstats.h"	// QuakeOG, front end work counts (QOG_AQ_STATS)
 
 #define MAXLEFTCLIPEDGES		100
 
@@ -42,9 +43,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 unsigned int	cacheoffset;
 
-// QuakeOG: id's cachededgeoffset per model edge (model_t.edge_cache) is a
+// QuakeOG, id's cachededgeoffset per model edge (model_t.edge_cache) is a
 // byte offset into r_edges, or FULLY_CLIPPED_CACHED plus the frame count,
-// or 0x7FFFFFFF for "not cacheable". With QOG_EDGECACHE16 it is 16 bits:
+// or 0x7FFFFFFF for "not cacheable". With QOG_EDGECACHE16 it is 16 bits.
 // an edge index (below 0x7FFF), 0x7FFF for "not cacheable", or 0x8000 plus
 // the frame number counted from a window start kept in front of the array
 // (EDGE_CACHE_START). When a model's window reaches 0x7FFF frames the array
@@ -61,7 +62,7 @@ unsigned int	cacheoffset;
 #define EC16_WINDOW		0x7FFF
 #endif
 #ifdef QOG_EDGECACHE_ZBUFFER
-// QuakeOG: the world's cache is in the z-buffer (or on the hunk, R_NewMap)
+// QuakeOG, the world's cache is in the z-buffer (or on the hunk, R_NewMap)
 // and R_EdgeDrawing fills it with EC16_NEVER every frame, so a fully
 // clipped entry carries frame 0 and matches only in the frame that wrote
 // it. Only world faces read the cache (insubmodel is false only while the
@@ -80,7 +81,7 @@ static void R_QogEdgeCacheWindow (model_t *m)
 	if (r_framecount - *start >= EC16_WINDOW || r_framecount < *start)
 	{
 		*start = r_framecount;
-		memset (MODFRAME (m)->edge_cache, 0xFF, (m->numedges + 1) * sizeof(*MODFRAME (m)->edge_cache));	// QuakeOG: MODFRAME, QOG_MOD_FLASH
+		memset (MODFRAME (m)->edge_cache, 0xFF, (m->numedges + 1) * sizeof(*MODFRAME (m)->edge_cache));	// QuakeOG, MODFRAME, QOG_MOD_FLASH
 	}
 	r_qog_ecframe = r_framecount - *start;
 }
@@ -115,7 +116,7 @@ static unsigned short R_QogEdgeCacheValue (unsigned int offset)
 #endif
 
 #ifdef QOG_EDGE_T_PACKED
-// QuakeOG: edge_t.owner is a world medge_t index, see r_shared.h. Only
+// QuakeOG, edge_t.owner is a world medge_t index, see r_shared.h. Only
 // world edges are ever looked up in the cache (insubmodel is false only
 // while the world is drawn), and they always encode to their index, so the
 // comparison gives the same answer as id's pointer comparison.
@@ -154,7 +155,7 @@ static qboolean	makeleftedge, makerightedge;
 qboolean		r_nearzionly;
 
 #ifdef QOG_CONST_RTABLES
-// QuakeOG: the turbulence tables never change after R_InitTurb, so they are
+// QuakeOG, the turbulence tables never change after R_InitTurb, so they are
 // precomputed constants in flash (r_turbtab.h, checked at startup on the PC)
 #include "r_turbtab.h"
 #if SIN_BUFFER_SIZE != QOG_TURBTAB_SIZE
@@ -194,7 +195,7 @@ qboolean	r_lastvertvalid;
 
 #ifdef QOG_VERTCACHE
 /*
-QuakeOG (Agent Z): world vertices projected once a frame. A world vertex
+QuakeOG, world vertices projected once a frame. A world vertex
 is shared by several edges, and every edge that is not in the edge cache
 projects its end points again (on E1M1 1,060 projections a view of 474
 vertices). While R_RenderWorld runs, a direct-mapped cache keeps each
@@ -208,7 +209,7 @@ cache and the edge table) and is emptied every frame.
 */
 #ifdef QOG_VERTCACHE_CLIPDIST
 /*
-QuakeOG (Agent Z): with QOG_VERTCACHE_CLIPDIST each entry also keeps the
+QuakeOG, with QOG_VERTCACHE_CLIPDIST each entry also keeps the
 vertex's distance to each of the four view planes, as R_ClipEdge computes
 it (DotProduct (position, normal) - dist), so an edge end point shared by
 several faces is measured against a plane once a frame. A distance not yet
@@ -249,12 +250,12 @@ static unsigned		r_qog_vertbytes;	//   and their size, at most 0xFFFF vertices
 #error "QOG_FRONT_FAST needs QOG_VERTCACHE_CLIPDIST and QOG_RFAST"
 #endif
 /*
-QuakeOG (Agent AJ): the Fast mode (r_fast 1) front end in integers.
+QuakeOG, the Fast mode (r_fast 1) front end in integers.
 
 The RP2040 has no FPU, so each float operation of id's projection is a
 call of tens of cycles (about 1,750 cycles a point), while its multiply
 takes one cycle and its divider eight. In Fast mode the world and brush
-model front end works in fixed point:
+model front end works in fixed point.
  - a position less the view origin, in 1/1024 units within 128 units of
    the eye on each axis and in 1/32 units out to 4096, is multiplied by
    xscale vright and yscale vup (scaled by a power of two that keeps the
@@ -294,7 +295,7 @@ typedef struct
 	int		gr[3][3];			// the face gradient rows (R_QogFaceGradFast), 2^gs times
 	float	gk[3];				//   and 2^-(gs + 14) for each
 #ifdef QOG_FX_REUSE
-	float	vec[9];				// vright, vup, vpn of the values above (Agent AQ)
+	float	vec[9];				// vright, vup, vpn of the values above
 	float	xs, ys;				// xscale 2^xl, yscale 2^yl
 #endif
 #ifdef QOG_WORLDNODE_INT
@@ -311,7 +312,7 @@ typedef struct
 #define R_QOGFX_ON()	(r_qogfast && r_qog_vertcache && R_QOGFX->on)
 #endif
 #define QOG_FX_NEARZ	655		// NEAR_CLIP in 1/65536 units
-#define QOG_FX_LMAX		(1 << 17)	// |position - origin| per axis: 128 units in 1/1024, 4096 in 1/32
+#define QOG_FX_LMAX		(1 << 17)	// |position - origin| per axis, 128 units in 1/1024, 4096 in 1/32
 #define QOG_FX_RESERVE	sizeof(r_qogfx_t)
 #ifndef QOG_VERTCACHE_FASTMAX
 #define QOG_VERTCACHE_FASTMAX	128	// entries in Fast mode (R_QogVertCacheBegin)
@@ -328,7 +329,7 @@ typedef int								r_qogaint_t;
 #endif
 
 #ifdef QOG_EDGECACHE_TAIL
-/* QuakeOG (Agent AP): the first byte after the vertex cache and its Fast
+/* QuakeOG, the first byte after the vertex cache and its Fast
    header in the frame buffer, where R_QogEdgeCacheOut may put the edge cache */
 byte *R_QogVertCacheTop (void)
 {
@@ -351,7 +352,7 @@ void R_QogVertCacheBegin (void)
 #ifdef QOG_RTURBO
 	extern byte	*r_qog_turbocachelo, *r_qog_turbocachehi;
 
-	// QuakeOG (Agent AO): a Turbo view placed the edge cache in the frame
+	// QuakeOG, a Turbo view placed the edge cache in the frame
 	// buffer and gives the vertex cache this room (r_qogturbo.c R_QogTurboCaches)
 	if (r_qog_turbocachehi)
 	{
@@ -363,7 +364,7 @@ void R_QogVertCacheBegin (void)
 #ifdef QOG_EDGECACHE_TAIL
 	if (r_qog_ectail)
 	{
-		// QuakeOG (Agent AP): the edge cache is at the end of the z-buffer
+		// QuakeOG, the edge cache is at the end of the z-buffer
 		// region, the vertex cache takes the frame's first rows and leaves
 		// room after it for the edge cache, should it have to move there
 		// (R_QogEdgeCacheOut)
@@ -388,14 +389,14 @@ void R_QogVertCacheBegin (void)
 		hi = (byte *)r_edgesentinels;
 	}
 	lo = (byte *)(((size_t)lo + 3) & ~(size_t)3);
-	if (hi <= lo + QOG_FX_RESERVE)	// QuakeOG (Agent AJ): the Fast header
+	if (hi <= lo + QOG_FX_RESERVE)	// QuakeOG, the Fast header
 		return;
 	n = (unsigned)(hi - lo - QOG_FX_RESERVE) / sizeof(r_qogvert_t);
 	if (n > QOG_VERTCACHE_MAX)
 		n = QOG_VERTCACHE_MAX;
 #ifdef QOG_FRONT_FAST
-	// QuakeOG (Agent AJ): in Fast mode a miss costs a few hundred cycles,
-	// not 1,750, so fewer entries do: the cache then ends in a higher frame
+	// QuakeOG, in Fast mode a miss costs a few hundred cycles,
+	// not 1,750, so fewer entries do, the cache then ends in a higher frame
 	// buffer row, which the last frame's scanout leaves sooner
 	if (r_qogfast && n > QOG_VERTCACHE_FASTMAX)
 		n = QOG_VERTCACHE_FASTMAX;
@@ -405,7 +406,7 @@ void R_QogVertCacheBegin (void)
 	if (n < 64)
 		return;
 #ifdef QOG_VID_SCANRACE
-	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t) + QOG_FX_RESERVE);	// QuakeOG (Agent AK): the last scanout may still read these rows (Agent AJ: and the Fast header after them)
+	VID_QogScanFree (lo, lo + n * sizeof(r_qogvert_t) + QOG_FX_RESERVE);	// QuakeOG, the last scanout may still read these rows (and the Fast header after them)
 #endif
 	for (i = 0 ; i < n ; i++)
 		((r_qogvert_t *)lo)[i].tag = 0xFFFF;
@@ -415,7 +416,7 @@ void R_QogVertCacheBegin (void)
 	r_qog_vertmask = n - 1;
 	r_qog_vertcache = (r_qogvert_t *)lo;
 #ifdef QOG_FRONT_FAST
-	R_QOGFX->on = 0;	// QuakeOG (Agent AJ): R_QogFxSetup turns it on
+	R_QOGFX->on = 0;	// QuakeOG, R_QogFxSetup turns it on
 #ifdef QOG_WORLDNODE_INT
 	R_QOGFX->plon = 0;
 #endif
@@ -515,17 +516,17 @@ static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int
 	}
 #endif
 
-	QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_PROJECT);	// QuakeOG
 	world = &pv->position[0];
 
 // transform and project
 	VectorSubtract (world, modelorg, local);
 	TransformVector (local, transformed);
 
-	if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
+	if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG, QOG_FLOAT_EXACT
 		transformed[2] = NEAR_CLIP;
 
-	lzi = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
+	lzi = QOG_FRECIP (transformed[2]);	// QuakeOG, QOG_FLOAT_EXACT
 
 // FIXME: build x/yscale into transform?
 	scale = xscale * lzi;
@@ -542,7 +543,7 @@ static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int
 	if (v > r_refdef.fvrectbottom_adj)
 		v = r_refdef.fvrectbottom_adj;
 
-	ceilv = (int) QOG_CEILF(v);	// QuakeOG: QOG_FLOAT_EXACT
+	ceilv = (int) QOG_CEILF(v);	// QuakeOG, QOG_FLOAT_EXACT
 
 	if (e)
 	{
@@ -561,7 +562,7 @@ static void R_QogProject (mvertex_t *pv, float *pu, float *pvv, float *plzi, int
 }
 
 #ifdef QOG_FRONT_FAST
-/* QuakeOG (Agent AJ): the Fast front end, see r_qogfx_t above */
+/* QuakeOG, the Fast front end, see r_qogfx_t above */
 
 static int R_QogRound (float f)
 {
@@ -598,7 +599,7 @@ static int R_QogQ10 (float f)
 	return (b & 0x80000000) ? -q : q;
 }
 
-/* a point less the origin: in 1/1024 units within 256 units on each axis
+/* a point less the origin, in 1/1024 units within 256 units on each axis
    (returns 1), else in 1/32 units (returns 0), or out of range (-1) */
 static int R_QogLocal (mvertex_t *pv, int *l)
 {
@@ -643,7 +644,7 @@ void R_QogFxSetup (void)
 	fx = R_QOGFX;
 #ifdef QOG_FX_REUSE
 	/*
-	QuakeOG (Agent AQ): a brush entity that does not turn has the world's
+	QuakeOG, a brush entity that does not turn has the world's
 	vectors (or those of the entity before), and everything below but the
 	origin's part comes from the vectors, the view planes' normals (made
 	from the vectors) and the view's projection values. When the vectors
@@ -655,10 +656,10 @@ void R_QogFxSetup (void)
 #endif
 	fx->on = 0;
 #ifdef QOG_WORLDNODE_INT
-	// QuakeOG (Agent AJ): the world's view planes for R_QogCullNode, in
+	// QuakeOG, the world's view planes for R_QogCullNode, in
 	// both render modes (its integer tests decide only with a margin)
 #ifdef QOG_BMODEL_BBOXINT
-	// QuakeOG (Agent AQ): the world's planes stay for the brush entities'
+	// QuakeOG, the world's planes stay for the brush entities'
 	// box tests (r_main.c R_QogBoxPlaneInt), only the world's setup sets them
 	if (!insubmodel)
 #endif
@@ -677,7 +678,7 @@ void R_QogFxSetup (void)
 		fx->plon = i == 4;
 	}
 #endif
-#ifndef QOG_FRONT_FAST_ALWAYS	// measurement: the integer front end with the exact spans
+#ifndef QOG_FRONT_FAST_ALWAYS	// measurement, the integer front end with the exact spans
 	if (!r_qogfast)
 		return;
 #endif
@@ -742,7 +743,7 @@ void R_QogFxSetup (void)
 		fx->cn[i][2] = R_QogRound (view_clipplanes[i].normal[2] * 8192);
 		fx->cn[i][3] = R_QogRound (DotProduct (r, view_clipplanes[i].normal) * 262144);
 	}
-	// the face gradients' rows: d_zistepu = distinv vright . n / xscale,
+	// the face gradients' rows, d_zistepu = distinv vright . n / xscale,
 	// d_zistepv = -distinv vup . n / yscale and d_ziorigin = distinv
 	// (vpn - xcenter vright / xscale + ycenter vup / yscale) . n
 	for (i=0 ; i<3 ; i++)
@@ -800,7 +801,7 @@ const int *R_QogFxPlanes (void)
 #endif
 
 /*
-id's float projection, with the result in the Fast front end's units:
+id's float projection, with the result in the Fast front end's units.
 o[0] u and o[1] v in 1/256 pixel, o[2] z in 1/65536 units, o[3] ceil (v).
 Only for points out of the integer range, so not inlined.
 */
@@ -836,7 +837,7 @@ static void R_QogProjectFloatFx (mvertex_t *pv, int *o)
 }
 
 /*
-A point in integers. Returns 0 for id's float projection instead: out of
+A point in integers. Returns 0 for id's float projection instead, out of
 the integer range, at or behind id's near clip (where id clamps z and u, v
 depend on the rounding of everything) or far past the view's sides (only
 points no clip has seen, whose u or v id clamps).
@@ -917,7 +918,7 @@ static void R_QogProjectFast (mvertex_t *pv, int *o)
 		R_QogProjectFloatFx (pv, o);
 	}
 #ifdef QOG_FRONT_FAST_CHECK
-	// measurement (PC): the integer point against id's float one
+	// measurement (PC), the integer point against id's float one
 	{
 		static int	n, maxdu, maxdv, ceildiff, zbad;
 		static double	sdu, sdv;
@@ -978,7 +979,7 @@ static int R_QogQ14 (float f)
 	if (e < -15)
 		return 0;
 	if (e > 0)
-		e = 0;							// not a unit normal: 1
+		e = 0;							// not a unit normal, 1
 	m = (b & 0x7FFFFF) | 0x800000;
 	q = (int)((m + (1u << (8 - e))) >> (9 - e));
 	return (b & 0x80000000) ? -q : q;
@@ -986,14 +987,14 @@ static int R_QogQ14 (float f)
 
 #ifdef QOG_FGRAD_AXIAL
 /*
-QuakeOG (Agent AQ): the same gradients with fewer float calls and the same
+QuakeOG, the same gradients with fewer float calls and the same
 bits. On an axial plane (one normal component +-1, two +-0) id's
 DotProduct (modelorg, normal) is exactly modelorg[k] normal[k] when that is
 not zero, else a zero that is -0 only when all three products are -0
 (round to nearest adds zeros that way), so its bits need no float call
 (R_QogAxialDotF, any modelorg component not finite or denormal takes id's
 arithmetic). gk is a power of two (R_QogFxSetup), so distinv gk is exact
-and g (distinv gk) rounds as (g gk) distinv: g gk is made by adding to the
+and g (distinv gk) rounds as (g gk) distinv, g gk is made by adding to the
 exponent of (float) g (R_QogScale2), one multiply instead of two.
 */
 static int R_QogAxialDotF (const float *v, const float *n, float *out)
@@ -1034,7 +1035,7 @@ static float R_QogScale2 (float f, float p)
 #endif
 
 /*
-A face's 1/z gradients in Fast mode: the plane normal in 1/16384 against
+A face's 1/z gradients in Fast mode, the plane normal in 1/16384 against
 rows made once per view or entity (R_QogFxSetup), so the face costs the
 distance's reciprocal, three int dot products and six float multiplies
 instead of id's 30 float operations.
@@ -1076,7 +1077,7 @@ static void R_QogFaceGradFast (mplane_t *pplane)
 	surface_p->d_ziorigin = (float)g * (distinv * fx->gk[2]);
 #endif
 #ifdef QOG_FGRAD_CHECK
-	// PC check build: the values of the code above against AJ's statements
+	// PC check build, the values of the code above against AJ's statements
 	{
 		static unsigned	n, bad;
 		float			di = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal)), v[3];
@@ -1095,7 +1096,7 @@ static void R_QogFaceGradFast (mplane_t *pplane)
 }
 
 /*
-R_EmitEdge in Fast mode: the same edges, with the points and the stepping
+R_EmitEdge in Fast mode, the same edges, with the points and the stepping
 in integers. r_u1, r_v1 and r_lzi1 hold u, v (1/256 pixel) and z as ints,
 r_nearzi and edge->nearzi the key 0x7FFFFFFF - z.
 */
@@ -1260,11 +1261,11 @@ static int R_QogClipDistFx (mvertex_t *pv, int k)
 		e->d[k].bits = (unsigned)d;	// never QOG_VC_NODIST, |d| is below 2^30.8
 #ifdef QOG_CLIPDIST_FILL4
 		/*
-		QuakeOG (Agent AQ): the point's position is already in 1/32 units,
+		QuakeOG, the point's position is already in 1/32 units,
 		so its distances to the other view planes cost three multiplies
 		each. A world vertex is asked against about 3.4 planes a view on
 		average (several faces share it), so the other unknown slots are
-		filled now with the same statement: the same values, later asked
+		filled now with the same statement, the same values, later asked
 		for, without three more conversions of its position.
 		*/
 		{
@@ -1281,7 +1282,7 @@ static int R_QogClipDistFx (mvertex_t *pv, int k)
 }
 
 /*
-R_ClipEdge in Fast mode: the plane sides from the integer distances, the
+R_ClipEdge in Fast mode, the plane sides from the integer distances, the
 clipped point by id's float interpolation with their ratio.
 */
 static void R_QogClipEdgeFast (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
@@ -1412,11 +1413,11 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 #ifdef QOG_FRONT_FAST
 	if (R_QOGFX_ON ())
 	{
-		R_QogEmitEdgeFast (pv0, pv1);	// QuakeOG (Agent AJ)
+		R_QogEmitEdgeFast (pv0, pv1);	// QuakeOG
 		return;
 	}
 #endif
-	QOG_WC (QOG_WC_EMITEDGE);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_EMITEDGE);	// QuakeOG
 	if (r_lastvertvalid)
 	{
 		u0 = r_u1;
@@ -1426,23 +1427,23 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	}
 #ifdef QOG_VERTCACHE
 	else
-		R_QogProject (pv0, &u0, &v0, &lzi0, &ceilv0);	// QuakeOG (Agent Z)
+		R_QogProject (pv0, &u0, &v0, &lzi0, &ceilv0);	// QuakeOG
 
 	R_QogProject (pv1, &r_u1, &r_v1, &r_lzi1, &ceilv1);
 #else
 	else
 	{
-		QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
+		QOG_WC (QOG_WC_PROJECT);	// QuakeOG
 		world = &pv0->position[0];
 	
 	// transform and project
 		VectorSubtract (world, modelorg, local);
 		TransformVector (local, transformed);
 	
-		if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
+		if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG, QOG_FLOAT_EXACT
 			transformed[2] = NEAR_CLIP;
 	
-		lzi0 = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
+		lzi0 = QOG_FRECIP (transformed[2]);	// QuakeOG, QOG_FLOAT_EXACT
 	
 	// FIXME: build x/yscale into transform?
 		scale = xscale * lzi0;
@@ -1459,20 +1460,20 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 		if (v0 > r_refdef.fvrectbottom_adj)
 			v0 = r_refdef.fvrectbottom_adj;
 	
-		ceilv0 = (int) QOG_CEILF(v0);	// QuakeOG: QOG_FLOAT_EXACT
+		ceilv0 = (int) QOG_CEILF(v0);	// QuakeOG, QOG_FLOAT_EXACT
 	}
 
-	QOG_WC (QOG_WC_PROJECT);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_PROJECT);	// QuakeOG
 	world = &pv1->position[0];
 
 // transform and project
 	VectorSubtract (world, modelorg, local);
 	TransformVector (local, transformed);
 
-	if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
+	if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG, QOG_FLOAT_EXACT
 		transformed[2] = NEAR_CLIP;
 
-	r_lzi1 = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
+	r_lzi1 = QOG_FRECIP (transformed[2]);	// QuakeOG, QOG_FLOAT_EXACT
 
 	scale = xscale * r_lzi1;
 	r_u1 = (xcenter + scale*transformed[0]);
@@ -1502,9 +1503,9 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	r_emitted = 1;
 
 #ifdef QOG_VERTCACHE
-	r_ceilv1 = ceilv1;	// QuakeOG (Agent Z): ceil(r_v1), from R_QogProject
+	r_ceilv1 = ceilv1;	// QuakeOG, ceil(r_v1), from R_QogProject
 #else
-	r_ceilv1 = (int) QOG_CEILF(r_v1);	// QuakeOG: QOG_FLOAT_EXACT
+	r_ceilv1 = (int) QOG_CEILF(r_v1);	// QuakeOG, QOG_FLOAT_EXACT
 #endif
 
 
@@ -1574,7 +1575,7 @@ void R_EmitEdge (mvertex_t *pv0, mvertex_t *pv1)
 	if (edge->surfs[0])
 		u_check++;	// sort trailers after leaders
 
-// QuakeOG: links through EDGE_PTR/EDGE_REF (r_shared.h)
+// QuakeOG, links through EDGE_PTR/EDGE_REF (r_shared.h)
 	if (!newedges[v] || EDGE_PTR(newedges[v])->u >= u_check)
 	{
 		edge->next = newedges[v];
@@ -1607,20 +1608,20 @@ void R_ClipEdge (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip)
 #ifdef QOG_FRONT_FAST
 	if (R_QOGFX_ON ())
 	{
-		R_QogClipEdgeFast (pv0, pv1, clip);	// QuakeOG (Agent AJ)
+		R_QogClipEdgeFast (pv0, pv1, clip);	// QuakeOG
 		return;
 	}
 #endif
-	QOG_WC (QOG_WC_CLIPEDGE);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_CLIPEDGE);	// QuakeOG
 	if (clip)
 	{
 		do
 		{
 #ifdef QOG_VERTCACHE_CLIPDIST
-			d0 = R_QogClipDist (pv0, clip);	// QuakeOG (Agent Z)
+			d0 = R_QogClipDist (pv0, clip);	// QuakeOG
 			d1 = R_QogClipDist (pv1, clip);
 #else
-			QOG_WC (QOG_WC_CLIPDOT);	// QuakeOG (Agent Z)
+			QOG_WC (QOG_WC_CLIPDOT);	// QuakeOG
 			QOG_WC (QOG_WC_CLIPDOT);
 			d0 = DotProduct (pv0->position, clip->normal) - clip->dist;
 			d1 = DotProduct (pv1->position, clip->normal) - clip->dist;
@@ -1724,7 +1725,7 @@ void R_EmitCachedEdge (void)
 {
 	edge_t		*pedge_t;
 
-	QOG_WC (QOG_WC_CACHED);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_CACHED);	// QuakeOG
 	pedge_t = EC_EDGE (currententity->model, r_pedge);	// QuakeOG
 
 	if (!pedge_t->surfs[0])
@@ -1735,7 +1736,7 @@ void R_EmitCachedEdge (void)
 #ifdef QOG_FRONT_FAST
 	if (R_QOGFX_ON ())
 	{
-		// QuakeOG (Agent AJ): Fast keys (0x7FFFFFFF - z) as ints
+		// QuakeOG, Fast keys (0x7FFFFFFF - z) as ints
 		if (R_QogGetI (&pedge_t->nearzi) > R_QogGetI (&r_nearzi))
 			R_QogSetI (&r_nearzi, R_QogGetI (&pedge_t->nearzi));
 	}
@@ -1763,7 +1764,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	medge_t		*pedges, tedge;
 	clipplane_t	*pclip;
 
-	QOG_WC (QOG_WC_FACES);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_FACES);	// QuakeOG
 #if defined(QOG_EDGECACHE16) && !defined(QOG_EDGECACHE_ZBUFFER)
 	R_QogEdgeCacheWindow (currententity->model);	// QuakeOG
 #endif
@@ -1778,7 +1779,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 // ditto if not enough edges left, or switch to auxedges if possible
 	if ((edge_p + fa->numedges + 4) >= edge_max
 #ifdef QOG_EDGECACHE_TAIL
-		// QuakeOG (Agent AP): the table met the edge cache, which moves away
+		// QuakeOG, the table met the edge cache, which moves away
 		&& !(R_QogEdgeCacheOut () && (edge_p + fa->numedges + 4) < edge_max)
 #endif
 		)
@@ -1925,7 +1926,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	r_polycount++;
 
 #ifdef QOG_SURF_T_TINY
-	// QuakeOG (Agent S): the face as an index into the entity model's surfaces
+	// QuakeOG, the face as an index into the entity model's surfaces
 	if (r_currentkey > SURF_KEY_MAX)
 		Sys_Error ("R_RenderFace: surface key %d, 16-bit keys allow %d", r_currentkey, SURF_KEY_MAX);
 	surface_p->dataref = fa - currententity->model->surfaces;
@@ -1934,7 +1935,7 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	surface_p->data = (void *)fa;
 #endif
 #ifdef QOG_FRONT_FAST
-	surface_p->nearzi = R_QOGFX_ON () ? R_QogNearzi () : r_nearzi;	// QuakeOG (Agent AJ)
+	surface_p->nearzi = R_QOGFX_ON () ? R_QogNearzi () : r_nearzi;	// QuakeOG
 #else
 	surface_p->nearzi = r_nearzi;
 #endif
@@ -1950,14 +1951,14 @@ void R_RenderFace (msurface_t *fa, int clipflags)
 	pplane = SURF_PLANE (currententity->model, fa);	// QuakeOG
 #ifdef QOG_FRONT_FAST
 	if (R_QOGFX_ON ())
-		R_QogFaceGradFast (pplane);	// QuakeOG (Agent AJ)
+		R_QogFaceGradFast (pplane);	// QuakeOG
 	else
 #endif
 	{
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
-	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));	// QuakeOG: QOG_FLOAT_EXACT
+	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));	// QuakeOG, QOG_FLOAT_EXACT
 
 	surface_p->d_zistepu = p_normal[0] * xscaleinv * distinv;
 	surface_p->d_zistepv = -p_normal[1] * yscaleinv * distinv;
@@ -2062,7 +2063,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	r_polycount++;
 
 #ifdef QOG_SURF_T_TINY
-	// QuakeOG (Agent S): the face as an index into the entity model's surfaces
+	// QuakeOG, the face as an index into the entity model's surfaces
 	if (r_currentbkey > SURF_KEY_MAX)
 		Sys_Error ("R_RenderBmodelFace: surface key %d, 16-bit keys allow %d", r_currentbkey, SURF_KEY_MAX);
 	surface_p->dataref = psurf - currententity->model->surfaces;
@@ -2071,7 +2072,7 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	surface_p->data = (void *)psurf;
 #endif
 #ifdef QOG_FRONT_FAST
-	surface_p->nearzi = R_QOGFX_ON () ? R_QogNearzi () : r_nearzi;	// QuakeOG (Agent AJ)
+	surface_p->nearzi = R_QOGFX_ON () ? R_QogNearzi () : r_nearzi;	// QuakeOG
 #else
 	surface_p->nearzi = r_nearzi;
 #endif
@@ -2087,14 +2088,14 @@ void R_RenderBmodelFace (bedge_t *pedges, msurface_t *psurf)
 	pplane = SURF_PLANE (currententity->model, psurf);	// QuakeOG
 #ifdef QOG_FRONT_FAST
 	if (R_QOGFX_ON ())
-		R_QogFaceGradFast (pplane);	// QuakeOG (Agent AJ)
+		R_QogFaceGradFast (pplane);	// QuakeOG
 	else
 #endif
 	{
 // FIXME: cache this?
 	TransformVector (pplane->normal, p_normal);
 // FIXME: cache this?
-	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));	// QuakeOG: QOG_FLOAT_EXACT
+	distinv = QOG_FRECIP (pplane->dist - DotProduct (modelorg, pplane->normal));	// QuakeOG, QOG_FLOAT_EXACT
 
 	surface_p->d_zistepu = p_normal[0] * xscaleinv * distinv;
 	surface_p->d_zistepv = -p_normal[1] * yscaleinv * distinv;
@@ -2122,8 +2123,8 @@ void R_RenderPoly (msurface_t *fa, int clipflags)
 	clipplane_t	*pclip;
 	medge_t		*pedges;
 	mplane_t	*pplane;
-	mvertex_t	verts[2][100];	//FIXME: do real number
-	polyvert_t	pverts[100];	//FIXME: do real number, safely
+	mvertex_t	verts[2][100];	//FIXME, do real number
+	polyvert_t	pverts[100];	//FIXME, do real number, safely
 	int			vertpage, newverts, newpage, lastvert;
 	qboolean	visible;
 
@@ -2249,10 +2250,10 @@ void R_RenderPoly (msurface_t *fa, int clipflags)
 		VectorSubtract (verts[vertpage][i].position, modelorg, local);
 		TransformVector (local, transformed);
 
-		if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG: QOG_FLOAT_EXACT
+		if (QOG_NEARCLIPPED (transformed[2]))	// QuakeOG, QOG_FLOAT_EXACT
 			transformed[2] = NEAR_CLIP;
 
-		lzi = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
+		lzi = QOG_FRECIP (transformed[2]);	// QuakeOG, QOG_FLOAT_EXACT
 
 		if (lzi > r_nearzi)	// for mipmap finding
 			r_nearzi = lzi;

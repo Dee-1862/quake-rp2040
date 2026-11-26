@@ -65,7 +65,7 @@ static void Tour_AddSpot (vec3_t p)
 	}
 }
 
-/* QuakeOG (Agent AD): edict fields by QuakeC field number, either layout */
+/* QuakeOG, edict fields by QuakeC field number, either layout */
 static int Tour_GetInt (edict_t *ent, int ofs)
 {
 #ifdef QOG_EDICT_SPARSE
@@ -122,7 +122,7 @@ static void Tour_FindSpots (void)
 		ent = EDICT_NUM (i);
 		if (ent->free || ent == sv_player)
 			continue;
-		// QuakeOG (Agent AD): a spot inside a level exit changed the level
+		// QuakeOG, a spot inside a level exit changed the level
 		// in the middle of a tour, and a teleporter whose target is gone
 		// stops the game, so the tour takes both out first
 		if (Tour_Disarm (ent))
@@ -166,7 +166,7 @@ void qog_tour_frame (void)
 	if (tour_state == TOUR_LOADING)
 	{
 #ifdef QOG_SPLIT_SERVER
-		// QuakeOG (Agent S): the split game's server half runs the tour, its
+		// QuakeOG, the split game's server half runs the tour, its
 		// client is in the game once it has spawned. Text added here joins
 		// the client's command buffer (engine/net_link.c).
 		if (!sv.active || !svs.clients[0].spawned || Q_strcmp (sv.name, tour_maps[tour_map]))
@@ -187,7 +187,7 @@ void qog_tour_frame (void)
 	if (tour_spot >= tour_numspots)
 	{
 #ifdef QOG_SPLIT_SERVER
-		Cbuf_AddText ("qog_mem hunk\n");	// QuakeOG (Agent S): the client's hunk blocks of this level
+		Cbuf_AddText ("qog_mem hunk\n");	// QuakeOG, the client's hunk blocks of this level
 #endif
 		Cbuf_AddText (tour_fight ? "-attack\nqog_mem\nqog_mem reset\n" : "qog_mem\nqog_mem reset\n");
 		if (++tour_map < tour_nummaps)
@@ -216,7 +216,7 @@ void qog_tour_frame (void)
 	}
 }
 
-/* QuakeOG (Agent AD): `qog_tour_spot x y z` puts the player there and links
+/* QuakeOG. `qog_tour_spot x y z` puts the player there and links
    it, touching what is there, as a tour spot does (for one trigger) */
 static void cmd_qog_tour_spot (void)
 {

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -36,7 +37,7 @@ typedef struct
 {
 	int		length;
 #ifdef QOG_LIGHTSTYLE_ZONE
-	char	*map;		// QuakeOG (Agent S): length + 1 bytes in the zone (cl_parse.c), NULL before the first
+	char	*map;		// QuakeOG, length + 1 bytes in the zone (cl_parse.c), NULL before the first
 #else
 	char	map[MAX_STYLESTRING];
 #endif
@@ -53,7 +54,7 @@ typedef struct
 #else
 	byte	translations[VID_GRADES*256];
 #endif
-	// QuakeOG: with QOG_TRANSLATE_ONDRAW an entity in player colours has
+	// QuakeOG, with QOG_TRANSLATE_ONDRAW an entity in player colours has
 	// colormap pointing at its scoreboard_t, and the alias renderer builds
 	// the 16 KB table on its stack for that draw only (r_alias.c). Only chase
 	// view and copies of the player body ever draw one.
@@ -127,7 +128,7 @@ typedef struct
 // personalization data sent to server	
 	char		mapstring[MAX_QPATH];
 #ifdef QOG_STATIC_TRIM
-	// QuakeOG: built from the arguments of one console line, which must fit
+	// QuakeOG, built from the arguments of one console line, which must fit
 	// Cbuf_Execute's 1024-byte line buffer, each argument followed by one
 	// space where the line had at least one separator before it
 	char		spawnparms[1024];	// to restart a level
@@ -226,7 +227,7 @@ typedef struct
 // information that is static for the entire time connected to a server
 //
 #if defined(QOG_CL_PRECACHE_SV) && defined(QOG_SV_MAX_MODELS)
-	// QuakeOG (Agent S): the server half sends at most its own table sizes
+	// QuakeOG, the server half sends at most its own table sizes
 	// (server.h), CL_ParseServerInfo stops with an error past them
 	struct model_s		*model_precache[QOG_SV_MAX_MODELS];
 	struct sfx_s		*sound_precache[QOG_SV_MAX_SOUNDS];
@@ -299,7 +300,7 @@ extern	cvar_t	m_forward;
 extern	cvar_t	m_side;
 
 
-#ifdef QOG_MAX_TEMP_ENTITIES	// QuakeOG: a host may keep fewer (the demo player, measured)
+#ifdef QOG_MAX_TEMP_ENTITIES	// QuakeOG, a host may keep fewer (the demo player, measured)
 #define	MAX_TEMP_ENTITIES	QOG_MAX_TEMP_ENTITIES
 #else
 #define	MAX_TEMP_ENTITIES	64			// lightning bolts, etc
@@ -309,20 +310,20 @@ extern	cvar_t	m_side;
 extern	client_state_t	cl;
 
 // FIXME, allocate dynamically
-#ifdef QOG_STATICS_ON_HUNK	// QuakeOG: static entities and efrags on the hunk (cl_main.c)
+#ifdef QOG_STATICS_ON_HUNK	// QuakeOG, static entities and efrags on the hunk (cl_main.c)
 entity_t *CL_AllocStatic (void);
 void CL_LinkStatic (entity_t *ent);
 #else
 extern	efrag_t			cl_efrags[MAX_EFRAGS];
 #endif
-extern	entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level
+extern	entity_t		*cl_entities;	// QuakeOG, [cl_max_edicts], allocated per level
 extern	int				cl_max_edicts;
 #ifdef QOG_CL_ENTSLOTS
-// QuakeOG: client entities in slots (cl_main.c). cl_entities holds
+// QuakeOG, client entities in slots (cl_main.c). cl_entities holds
 // QOG_CL_ENTSLOTS entities, given to entity numbers as they are first used,
 // slot 0 to entity 0 (the world) so cl_entities[0] stays the world.
 #ifdef QOG_CL_ENTBLOCK
-// QuakeOG (Agent S): the slots come from the hunk in blocks of
+// QuakeOG, the slots come from the hunk in blocks of
 // QOG_CL_ENTBLOCK entities as numbers are first used, so a level holds only
 // the entities it uses. Slot numbers are 16-bit, QOG_CL_ENTSLOTS is the cap.
 typedef unsigned short	cl_slot_t;
@@ -346,7 +347,7 @@ extern	entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 extern	lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
 extern	dlight_t		cl_dlights[MAX_DLIGHTS];
 #ifdef QOG_TEMPENT_BLOCK
-extern	entity_t		*cl_tempblocks[(MAX_TEMP_ENTITIES + QOG_TEMPENT_BLOCK - 1) / QOG_TEMPENT_BLOCK];	// QuakeOG: cl_tent.c
+extern	entity_t		*cl_tempblocks[(MAX_TEMP_ENTITIES + QOG_TEMPENT_BLOCK - 1) / QOG_TEMPENT_BLOCK];	// QuakeOG, cl_tent.c
 #else
 extern	entity_t		cl_temp_entities[MAX_TEMP_ENTITIES];
 #endif
@@ -424,7 +425,7 @@ void CL_TimeDemo_f (void);
 void CL_ParseServerMessage (void);
 void CL_NewTranslation (int slot);
 #ifdef QOG_TRANSLATE_ONDRAW
-int CL_TranslationSlot (void *colormap);	// QuakeOG: scoreboard slot an entity colormap names, or -1
+int CL_TranslationSlot (void *colormap);	// QuakeOG, scoreboard slot an entity colormap names, or -1
 void CL_BuildTranslation (byte *dest, int slot);
 #endif
 

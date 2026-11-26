@@ -1,6 +1,6 @@
-# qog_platform: everything Quake needs from the board, and nothing else.
+# qog_platform, everything Quake needs from the board, and nothing else.
 # Engine code should include only these headers, never the BSP directly,
-# so the BSP glue stays small and separable (licensing: see docs/).
+# so the BSP glue stays small and separable (licensing, see docs/).
 add_library(qog_platform STATIC
     qog_video.c
     qog_input.c

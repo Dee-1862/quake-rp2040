@@ -1,10 +1,10 @@
-/* QuakeOG: a reliable, ordered byte stream between the two RP2040s.
+/* QuakeOG, a reliable, ordered byte stream between the two RP2040s.
  *
  * The client (display CPU) and the server (main CPU) talk over the BSP's
- * inter-CPU link: UART0 with RTS/CTS, frames [0x7E][len16][payload][crc16]
+ * inter-CPU link, UART0 with RTS/CTS, frames [0x7E][len16][payload][crc16]
  * built by the BSP's own codec (bsp/common/link/link_frame.c). Byte 0 of a
  * payload is the message type. 0x01-0x1F belong to the display bootloader
- * and 0x20-0x22 to the breakout I/O messages, so Quake uses 0x40-0x43:
+ * and 0x20-0x22 to the breakout I/O messages, so Quake uses 0x40-0x43.
  *
  *   0x40 DATA   [type][seq][bytes...]   up to QOG_LINK_CHUNK stream bytes
  *   0x41 ACK    [type][seq]             DATA seq arrived in order
@@ -15,7 +15,7 @@
  * lost or fails its CRC is sent again after a timeout, a duplicate is
  * acknowledged again and dropped, and the frame decoder resynchronizes on
  * the next 0x7E with a good CRC. A receiver whose stream buffer is full
- * does not acknowledge, so the sender waits: that and the UART's RTS/CTS
+ * does not acknowledge, so the sender waits, that and the UART's RTS/CTS
  * are the flow control. Any other payload type is handed to
  * qog_link_hw_other(), which on the display services the breakout I/O
  * messages (fwog_ioexp_link_handle).
@@ -33,12 +33,12 @@
 #define QOG_LINK_T_HELLO    0x42u
 #define QOG_LINK_T_HELLOK   0x43u
 
-/* QuakeOG (Agent T): requests and replies outside the stream, one frame
+/* QuakeOG, requests and replies outside the stream, one frame
    each, for things the client asks while no exchange runs. The asker
    sends again after a timeout, and every request is answered.
  *
  *   0x44 SAVES_ASK [type][seq]                        the client's load and save menus
- *   0x45 SAVES     [type][seq][count][count x 40]     slot i: loadable byte + 39-byte comment
+ *   0x45 SAVES     [type][seq][count][count x 40]     slot i, loadable byte + 39-byte comment
  *
  * Types 0x44 to 0x4F go to qog_link_side, which the engine sets. */
 #define QOG_LINK_T_SAVES_ASK 0x44u
@@ -57,10 +57,10 @@
 #ifndef QOG_LINK_RXRING
 #define QOG_LINK_RXRING     4096  /* received bytes not yet read (power of two) */
 #endif
-/* QuakeOG (Agent AK): when this side has not pumped the link for longer than
+/* QuakeOG, when this side has not pumped the link for longer than
    this many ms (the display draws for about 70 ms), an acknowledgement may
    be waiting behind the peer's frame in the flow control, so the resend
-   timer starts again instead of sending a duplicate at once. 0: off. */
+   timer starts again instead of sending a duplicate at once. 0, off. */
 #ifndef QOG_LINK_LISTEN_GAP
 #define QOG_LINK_LISTEN_GAP 0
 #endif
@@ -75,7 +75,7 @@ typedef struct {
 
 extern qog_link_stats_t qog_link_stats;
 
-/* Start the session: the client sends HELLO until the server answers. Blocks
+/* Start the session, the client sends HELLO until the server answers. Blocks
    until the peer is there. Bytes written before this are kept and sent
    after it. */
 void qog_link_start(int role);
@@ -91,17 +91,17 @@ int  qog_link_avail(void);
 void qog_link_pump(void);
 /* Pump until every written byte is acknowledged. */
 void qog_link_drain(void);
-/* QuakeOG (Agent AK): pump until the frame on the wire and the replies are
+/* QuakeOG, pump until the frame on the wire and the replies are
    out (QOG_LINK_TXASYNC), before this side stops */
 void qog_link_flush(void);
 #ifdef QOG_LINK_PIPELINE
-/* QuakeOG (Agent V): pump until every written byte has gone out in a frame
+/* QuakeOG, pump until every written byte has gone out in a frame
    (the last frame may still wait for its acknowledgement). */
 void qog_link_push(void);
 #endif
 /* Set when the peer started a new session (it restarted). The caller clears it. */
 extern int qog_link_peer_restarted;
-/* QuakeOG (Agent T): send one frame of a side type (0x44-0x4F) now, and the
+/* QuakeOG, send one frame of a side type (0x44-0x4F) now, and the
    handler of the side frames that arrive (called from the pump). */
 void qog_link_send_side(const void *payload, int len);
 extern void (*qog_link_side)(const uint8_t *payload, int len);
@@ -113,14 +113,14 @@ void     qog_link_hw_open(int role);
    waits it must call qog_link_rx_drain(), or both ends can block writing to
    each other with their receive FIFOs full (hardware RTS/CTS). */
 void     qog_link_hw_write(const void *data, int len);
-/* Supplied by qog_link.c: decode what has arrived without sending anything.
+/* Supplied by qog_link.c, decode what has arrived without sending anything.
    Replies it would send are queued and go out after the current frame. */
 void     qog_link_rx_drain(void);
 /* Read what is there, up to max bytes. Returns 0 when nothing is waiting. */
 int      qog_link_hw_read(void *dst, int max);
 /* A millisecond clock. */
 uint32_t qog_link_hw_ms(void);
-/* Called in every wait loop: the main CPU kicks its watchdog here. */
+/* Called in every wait loop, the main CPU kicks its watchdog here. */
 void     qog_link_hw_idle(void);
 /* A complete frame of another protocol (type outside 0x40-0x43). */
 void     qog_link_hw_other(const void *payload, int len);
@@ -128,10 +128,10 @@ void     qog_link_hw_other(const void *payload, int len);
 uint32_t qog_link_hw_rate(void);
 
 #ifdef QOG_LINK_TXASYNC
-/* QuakeOG (Agent AK): frames go out in the background (on main a DMA channel
+/* QuakeOG, frames go out in the background (on main a DMA channel
    feeds the UART), so this side never stalls in a write while the peer is
    busy and does not read (the display while it draws a frame). One frame
-   at a time: tx_frame starts it, and its bytes stay untouched while
+   at a time, tx_frame starts it, and its bytes stay untouched while
    tx_busy is true. Acks and other replies wait for the frame on the wire. */
 int      qog_link_hw_tx_busy(void);
 void     qog_link_hw_tx_frame(const uint8_t *frame, int len);

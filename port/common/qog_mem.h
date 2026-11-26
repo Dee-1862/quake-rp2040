@@ -1,7 +1,7 @@
-/* RAM meter, runtime half: how much of Quake's dynamic memory is in use.
+/* RAM meter, runtime half, how much of Quake's dynamic memory is in use.
  *
- * Reads id's own allocator globals (zone.c) without changing zone.c:
- *   hunk low   level data: BSP, models, progs, edicts (grows up)
+ * Reads id's own allocator globals (zone.c) without changing zone.c.
+ *   hunk low   level data, BSP, models, progs, edicts (grows up)
  *   hunk high  temporary and per-level buffers (grows down)
  *   cache      LRU cache that lives in the gap between low and high
  *   zone       small fixed heap for strings and small structs
@@ -25,14 +25,14 @@ typedef struct {
 /* The port reports what its VID_Init allocated outside the hunk. */
 void qog_mem_set_video(int bytes);
 
-/* Sample now and update peaks. Cheap; call once per frame. */
+/* Sample now and update peaks. Cheap. Call once per frame. */
 const qog_mem_t *qog_mem_sample(void);
 
 /* Forget peaks, e.g. at a map change. */
 void qog_mem_reset_peaks(void);
 
 /* Registers the console command `qog_mem` (prints a report, `qog_mem reset`
- * clears peaks). Call during Host_Init (e.g. from VID_Init): the engine
+ * clears peaks). Call during Host_Init (e.g. from VID_Init), the engine
  * refuses Cmd_AddCommand once host_initialized is set. */
 void qog_mem_register(void);
 

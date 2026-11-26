@@ -4,7 +4,7 @@
 Usage: check_app_size.py <app.bin> <qog_flashmap.h> [main]
 Reads QOG_APP_OFFSET and QOG_DATA_OFFSET from the header so there is one
 source of truth (tools/mkdata.py reads the same header). Also prints how
-much flash headroom is left. With "main" the app is the main CPU's (the split game's quake_main, Agent R), which must
+much flash headroom is left. With "main" the app is the main CPU's (the split game's quake_main, earlier work), which must
 stay below the server data region at QOG_MAIN_DATA_OFFSET.
 """
 import os

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -69,7 +70,7 @@ Sets everything to NULL
 */
 void ED_ClearEdict (edict_t *e)
 {
-	ED_CLEARFIELDS(e);	// QuakeOG: was memset (&e->v, 0, progs->entityfields * 4)
+	ED_CLEARFIELDS(e);	// QuakeOG, was memset (&e->v, 0, progs->entityfields * 4)
 	e->free = false;
 }
 
@@ -77,9 +78,9 @@ void ED_ClearEdict (edict_t *e)
 /*
 ==============================================================================
 
-QuakeOG: sparse edict fields (progs.h). Core fields sit in edict_t.v. Every
+QuakeOG, sparse edict fields (progs.h). Core fields sit in edict_t.v. Every
 other field an edict has written since it was cleared is a pair in its list
-in ed_cold: a header word (owner edict number, capacity << 16), the values,
+in ed_cold, a header word (owner edict number, capacity << 16), the values,
 then the field numbers as bytes. A list that grows moves to the top of the
 arena. When the top reaches the end, live lists slide down over dead ones.
 Nothing outside this file keeps a pointer into the arena across a write.
@@ -131,7 +132,7 @@ static void ED_BuildFieldMap (void)
 }
 
 /*
-Called once the edicts are allocated: the arena comes from the hunk too.
+Called once the edicts are allocated, the arena comes from the hunk too.
 */
 void ED_ColdInit (void)
 {
@@ -189,7 +190,7 @@ static void ED_ColdFree (edict_t *e)
 	ed_cold[e->coldofs] |= COLD_DEAD;
 	ed_coldlive -= COLD_WORDS(e->coldcap);
 	if (e->coldofs + COLD_WORDS(e->coldcap) == ed_coldtop)
-		ed_coldtop = e->coldofs;	// the last list: give the space straight back
+		ed_coldtop = e->coldofs;	// the last list, give the space straight back
 	e->coldofs = 0;
 	e->coldn = e->coldcap = 0;
 }
@@ -223,7 +224,7 @@ static int *ED_ColdAdd (edict_t *e, int ofs)
 		if (cap > 255)
 			cap = 255;
 		r = ED_ColdAlloc (COLD_WORDS(cap));	// may compact, which moves e's list
-		// not NUM_FOR_EDICT: a savegame load fills edicts past sv.num_edicts
+		// not NUM_FOR_EDICT, a savegame load fills edicts past sv.num_edicts
 		ed_cold[r] = (int)(((byte *)e - (byte *)sv.edicts) / pr_edict_size) | (cap << 16);
 		if (e->coldofs)
 		{
@@ -372,10 +373,10 @@ edict_t *ED_Alloc (void)
 		}
 	}
 	
-	if (i == sv.max_edicts)	// QuakeOG: was MAX_EDICTS, wrong once the array is sized per map
+	if (i == sv.max_edicts)	// QuakeOG, was MAX_EDICTS, wrong once the array is sized per map
 	{
 #ifdef QOG_EDICT_REUSE
-		// QuakeOG: the array is sized per map (SV_EdictsForMap), smaller than
+		// QuakeOG, the array is sized per map (SV_EdictsForMap), smaller than
 		// id's 600. Before giving up, take the free edict that has been free
 		// longest, even if less than 0.5 s, instead of stopping the game.
 		// Only runs where id's code above has no slot to give.
@@ -419,7 +420,7 @@ void ED_Free (edict_t *ed)
 
 	ed->free = true;
 	ed->v.model = 0;
-	EV_SETFLOAT(ed, takedamage, 0);	// QuakeOG: was ed->v.takedamage = 0
+	EV_SETFLOAT(ed, takedamage, 0);	// QuakeOG, was ed->v.takedamage = 0
 	ed->v.modelindex = 0;
 	EV_SETFLOAT(ed, colormap, 0);
 	EV_SETFLOAT(ed, skin, 0);
@@ -561,7 +562,7 @@ Done:
 		return NULL;
 
 #ifdef QOG_EDICT_SPARSE
-	return ED_FieldPtr (ed, def->ofs);	// QuakeOG: valid until the next field write
+	return ED_FieldPtr (ed, def->ofs);	// QuakeOG, valid until the next field write
 #else
 	return (eval_t *)((char *)&ed->v + def->ofs*4);
 #endif
@@ -684,7 +685,7 @@ char *PR_GlobalString (int ofs)
 	void	*val;
 	static char	line[128];
 	
-	val = (void *)PR_GlobalPtr (ofs);	// QuakeOG: was &pr_globals[ofs]
+	val = (void *)PR_GlobalPtr (ofs);	// QuakeOG, was &pr_globals[ofs]
 	def = ED_GlobalAtOfs(ofs);
 	if (!def)
 		sprintf (line,"%i(???)", ofs);
@@ -948,7 +949,7 @@ void ED_WriteGlobals (FILE *f)
 
 		name = pr_strings + def->s_name;		
 		fprintf (f,"\"%s\" ", name);
-		fprintf (f,"\"%s\"\n", PR_UglyValueString(type, (eval_t *)PR_GlobalPtr (def->ofs)));	// QuakeOG: was &pr_globals[def->ofs]
+		fprintf (f,"\"%s\"\n", PR_UglyValueString(type, (eval_t *)PR_GlobalPtr (def->ofs)));	// QuakeOG, was &pr_globals[def->ofs]
 	}
 	fprintf (f,"}\n");
 }
@@ -991,7 +992,7 @@ void ED_ParseGlobals (char *data)
 
 #ifdef QOG_AOT_GLOBALS
 		if (pr_aot_globals)
-		{	// QuakeOG: parse a copy, then store it where the global lives
+		{	// QuakeOG, parse a copy, then store it where the global lives
 			int		val[3], n, i, type = key->type & ~DEF_SAVEGLOBAL;
 			ddef_t	at0 = *key;
 
@@ -1034,7 +1035,7 @@ char *ED_NewString (char *string)
 	
 	l = strlen(string) + 1;
 #ifdef QOG_HUNK_PACKED
-	{	// QuakeOG: exactly the bytes the copy below writes, packed (zone.c)
+	{	// QuakeOG, exactly the bytes the copy below writes, packed (zone.c)
 		int		n = 0;
 
 		for (i=0 ; i< l ; i++, n++)
@@ -1119,7 +1120,7 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
 			Con_Printf ("Can't find field %s\n", s);
 			return false;
 		}
-		*(int *)d = *PR_GlobalPtr (def->ofs);	// QuakeOG: was G_INT(def->ofs)
+		*(int *)d = *PR_GlobalPtr (def->ofs);	// QuakeOG, was G_INT(def->ofs)
 		break;
 	
 	case ev_function:
@@ -1140,7 +1141,7 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
 
 #ifdef QOG_EDICT_SPARSE
 /*
-QuakeOG: ED_ParseEpair for an edict field: parse into a scratch copy, then
+QuakeOG, ED_ParseEpair for an edict field, parse into a scratch copy, then
 store the words the parse wrote.
 */
 static qboolean ED_ParseEpairEdict (edict_t *ent, ddef_t *key, char *s)
@@ -1183,7 +1184,7 @@ char *ED_ParseEdict (char *data, edict_t *ent)
 
 // clear it
 	if (ent != sv.edicts)	// hack
-		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
+		ED_CLEARFIELDS(ent);	// QuakeOG, was memset (&ent->v, 0, progs->entityfields * 4)
 
 // go through all the dictionary pairs
 	while (1)
@@ -1307,14 +1308,14 @@ void ED_LoadFromFile (char *data)
 // remove things from different skill levels or deathmatch
 		if (deathmatch.value)
 		{
-			if (((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_DEATHMATCH))	// QuakeOG: EV_
+			if (((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_DEATHMATCH))	// QuakeOG, EV_
 			{
 				ED_Free (ent);	
 				inhibit++;
 				continue;
 			}
 		}
-		else if ((current_skill == 0 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_EASY))	// QuakeOG: EV_
+		else if ((current_skill == 0 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_EASY))	// QuakeOG, EV_
 				|| (current_skill == 1 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_MEDIUM))
 				|| (current_skill >= 2 && ((int)EV_FLOAT(ent, spawnflags) & SPAWNFLAG_NOT_HARD)) )
 		{
@@ -1368,14 +1369,14 @@ void PR_LoadProgs (void)
 
 	CRC_Init (&pr_crc);
 
-	// QuakeOG: progs.dat is used in place from flash and only its globals
+	// QuakeOG, progs.dat is used in place from flash and only its globals
 	// are copied to RAM, whether QuakeC runs compiled or interpreted.
 	progs = NULL;
 	pr_inflash = false;
 	{
 		int		flen;
 		byte	*f = COM_FlashFile ("progs.dat", &flen);
-		// The interpreter can run from flash too: it no longer counts
+		// The interpreter can run from flash too, it no longer counts
 		// profile hits there (pr_exec.c), the only thing it wrote.
 		if (f && !(((int)f) & 3))
 		{
@@ -1411,16 +1412,16 @@ void PR_LoadProgs (void)
 
 	pr_global_struct = (globalvars_t *)((byte *)progs + progs->ofs_globals);
 #ifdef QOG_EDICT_SPARSE
-	pr_edict_size = sizeof (edict_t);	// QuakeOG: core fields only
+	pr_edict_size = sizeof (edict_t);	// QuakeOG, core fields only
 	ED_BuildFieldMap ();
 #else
 	pr_edict_size = progs->entityfields * 4 + sizeof (edict_t) - sizeof(entvars_t);
 #endif
 	pr_aot_globals = false;
 	if (pr_inflash)
-	{	// the globals change at run time: the only part that needs RAM
+	{	// the globals change at run time, the only part that needs RAM
 #ifdef QOG_AOT_GLOBALS
-		// QuakeOG: compiled QuakeC keeps constants in its code and most
+		// QuakeOG, compiled QuakeC keeps constants in its code and most
 		// temporaries in C locals, so it needs only the globals listed in
 		// pr_aot_globalmap, packed. Decide which code runs first.
 		PR_AOT_Check ();
@@ -1447,7 +1448,7 @@ void PR_LoadProgs (void)
 
 	if (pr_inflash)
 	{
-		PR_SizeLocalStack ();	// QuakeOG: locals stack sized for these progs
+		PR_SizeLocalStack ();	// QuakeOG, locals stack sized for these progs
 #ifndef QOG_AOT_GLOBALS
 		PR_AOT_Check ();
 #endif
@@ -1492,7 +1493,7 @@ void PR_LoadProgs (void)
 	for (i=0 ; i<progs->numglobals ; i++)
 		((int *)pr_globals)[i] = LittleLong (((int *)pr_globals)[i]);
 
-	PR_SizeLocalStack ();	// QuakeOG: locals stack sized for these progs
+	PR_SizeLocalStack ();	// QuakeOG, locals stack sized for these progs
 	PR_AOT_Check ();
 }
 
@@ -1500,16 +1501,16 @@ void PR_LoadProgs (void)
 ===============
 PR_AOT_Check
 
-QuakeOG: switch to the compiled QuakeC only if it was generated from this
+QuakeOG, switch to the compiled QuakeC only if it was generated from this
 exact progs.dat (same counts, same statement fingerprint). -noaot forces
 the interpreter, for comparison.
 ===============
 */
 qboolean	pr_inflash;
-qboolean	pr_aot_globals;	// QuakeOG: pr_globals holds only the compiled code's RAM globals
+qboolean	pr_aot_globals;	// QuakeOG, pr_globals holds only the compiled code's RAM globals
 
 /*
-QuakeOG: a global by its number in progs.dat. With QOG_AOT_GLOBALS active a
+QuakeOG, a global by its number in progs.dat. With QOG_AOT_GLOBALS active a
 constant is read from progs.dat in flash, so only RAM globals may be written
 through the pointer.
 */
@@ -1561,14 +1562,14 @@ void PR_AOT_Check (void)
 #ifdef QOG_EDICT_SPARSE
 	if (pr_aot_numfields != progs->entityfields
 		|| memcmp (pr_aot_coremap, pr_fieldmap, progs->entityfields))
-	{	// QuakeOG: the generated code inlines the core field words
+	{	// QuakeOG, the generated code inlines the core field words
 		Con_Printf ("QuakeC: interpreter (compiled progs assume another edict layout)\n");
 		return;
 	}
 #endif
 #ifdef QOG_AOT_GLOBALS
 	if (!pr_inflash || !pr_aot_numram)
-	{	// QuakeOG: the compiled code reads constants from progs.dat in place
+	{	// QuakeOG, the compiled code reads constants from progs.dat in place
 		Con_Printf ("QuakeC: interpreter (compiled progs need progs.dat in flash)\n");
 		return;
 	}

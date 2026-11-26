@@ -2,14 +2,14 @@
  *
  * id's client and renderer play the recorded demos from the board's data
  * image (tools/mkboard.py --demos) with no server, QuakeC, console or sound
- * (port/common/qog_demo.c): monsters, weapons, particles, explosions and the
+ * (port/common/qog_demo.c), monsters, weapons, particles, explosions and the
  * status bar, as the game draws them. Each frame goes to the LCD through
  * qog_video (core 1 scanout), and every 2 s the USB console gets
  *
  *   [qogdemo] demo1 t 23.4  fps 6.1  ms frame 150.2 wait 12.0  free 2100  hunk 80000/81920
  *
  * the demo playing and its time (cl.time), frames per second over the last
- * 2 s, the mean time per frame (qog_demo_frame: messages, R_RenderView, the
+ * 2 s, the mean time per frame (qog_demo_frame, messages, R_RenderView, the
  * status bar and VID_Update) and of it the time spent waiting for the
  * previous scanout, the RAM no one has claimed (heap left), and the hunk in
  * use of its size. The frame time is real time, which id clamps to 0.1 s,
@@ -17,12 +17,12 @@
  *
  * Gray skips to the next demo. Red stays the BSP's 6 s power-off.
  *
- * BSP rules (docs/lessons.md): no watchdog on this CPU, fwog_power_poll
- * every loop iteration (also between demo messages is not needed: a frame
+ * BSP rules (docs/lessons.md), no watchdog on this CPU, fwog_power_poll
+ * every loop iteration (also between demo messages is not needed, a frame
  * is well under a second), backlight on (qog_video_init does it), scanout
  * on core 1 through shared memory.
  *
- * Stack: id's R_EdgeDrawing keeps its surface table on the stack, far more
+ * Stack, id's R_EdgeDrawing keeps its surface table on the stack, far more
  * than the SDK's 4 KB scratch stack. main() moves the stack into a
  * QOG_DEMO_STACK_KB array in main RAM before anything else runs, so the
  * link counts it. */
@@ -55,7 +55,7 @@ static unsigned free_ram (void)
 	return brk == (char *)-1 ? 0 : (unsigned)(&__HeapLimit - brk);
 }
 
-/* The lowest stack address written so far: the array starts filled with a
+/* The lowest stack address written so far, the array starts filled with a
    pattern, and the first word that lost it is the deepest the stack went. */
 #define STACK_FILL	0x51F0A55Au
 

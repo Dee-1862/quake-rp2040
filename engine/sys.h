@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -36,11 +37,11 @@ int Sys_FileWrite (int handle, void *data, int count);
 int	Sys_FileTime (char *path);
 void Sys_mkdir (char *path);
 
-// QuakeOG: returns a read-only memory image of the whole file (flash on the
+// QuakeOG, returns a read-only memory image of the whole file (flash on the
 // RP2040, read-only pages on the PC), or NULL if the port cannot map files.
 // The image stays valid for the whole run and must never be written.
 void *Sys_FlashMap (char *path, int length);
-// QuakeOG: the address the next Sys_FlashMap image would get (PC only, used
+// QuakeOG, the address the next Sys_FlashMap image would get (PC only, used
 // by the map baker to build an image for the address it will be mapped at)
 void *Sys_FlashNext (void);
 
@@ -77,7 +78,7 @@ void Sys_LowFPPrecision (void);
 void Sys_HighFPPrecision (void);
 void Sys_SetFPCW (void);
 
-// QuakeOG: the system and flash clocks in kHz, for the board's benchmark
+// QuakeOG, the system and flash clocks in kHz, for the board's benchmark
 // result (menu.c). 0 where they are not known (the PC).
 unsigned Sys_QogClockKHz (void);
 unsigned Sys_QogFlashKHz (void);

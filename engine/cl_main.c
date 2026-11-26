@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -47,7 +48,7 @@ client_state_t	cl;
 #ifndef QOG_STATICS_ON_HUNK
 efrag_t			cl_efrags[MAX_EFRAGS];
 #endif
-entity_t		*cl_entities;	// QuakeOG: [cl_max_edicts], allocated per level in CL_ClearState
+entity_t		*cl_entities;	// QuakeOG, [cl_max_edicts], allocated per level in CL_ClearState
 int				cl_max_edicts;
 #ifdef QOG_CL_ENTSLOTS
 cl_slot_t		*cl_entslot;
@@ -59,13 +60,13 @@ entity_t		*cl_entblocks[(QOG_CL_ENTSLOTS + QOG_CL_ENTBLOCK - 1) / QOG_CL_ENTBLOC
 #define CL_MAXSLOTS		255
 #endif
 #ifdef QOG_CL_PEAKS
-int				cl_qog_peakslots, cl_qog_peaknum;	// QuakeOG (Agent S): measurement only, qog_mem prints them
+int				cl_qog_peakslots, cl_qog_peaknum;	// QuakeOG, measurement only, qog_mem prints them
 #endif
 #endif
 #ifndef QOG_STATICS_ON_HUNK
 entity_t		cl_static_entities[MAX_STATIC_ENTITIES];
 #else
-int				cl_statics_left;	// QuakeOG: see CL_AllocStatic
+int				cl_statics_left;	// QuakeOG, see CL_AllocStatic
 int				cl_efrags_made;
 #endif
 lightstyle_t	cl_lightstyle[MAX_LIGHTSTYLES];
@@ -94,18 +95,18 @@ void CL_ClearState (void)
 
 // clear other arrays	
 #ifdef QOG_STATICS_ON_HUNK
-	cl_statics_left = 0;	// QuakeOG: the hunk blocks of the last level are gone
+	cl_statics_left = 0;	// QuakeOG, the hunk blocks of the last level are gone
 	cl_efrags_made = 0;
 #else
 	memset (cl_efrags, 0, sizeof(cl_efrags));
 #endif
-	// QuakeOG: sized per level on the hunk (zeroed). With a local server the
+	// QuakeOG, sized per level on the hunk (zeroed). With a local server the
 	// client never sees an entity number past the server's array.
 	cl_max_edicts = sv.active ? sv.max_edicts : MAX_EDICTS;
 #ifdef QOG_CL_ENTSLOTS
-	// QuakeOG: slots for the entity numbers in use, see CL_EntitySlot
+	// QuakeOG, slots for the entity numbers in use, see CL_EntitySlot
 #ifdef QOG_CL_ENTBLOCK
-	// QuakeOG (Agent S): the world's block now, the others as numbers are used
+	// QuakeOG, the world's block now, the others as numbers are used
 	memset (cl_entblocks, 0, sizeof(cl_entblocks));
 	cl_entblocks[0] = cl_entities = Hunk_AllocName (QOG_CL_ENTBLOCK * sizeof(entity_t), "cl_ents");
 #else
@@ -119,13 +120,13 @@ void CL_ClearState (void)
 #endif
 	memset (cl_dlights, 0, sizeof(cl_dlights));
 #ifdef QOG_LIGHTSTYLE_ZONE
-	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)	// QuakeOG (Agent S): the texts are in the zone
+	for (i=0 ; i<MAX_LIGHTSTYLES ; i++)	// QuakeOG, the texts are in the zone
 		if (cl_lightstyle[i].map)
 			Z_Free (cl_lightstyle[i].map);
 #endif
 	memset (cl_lightstyle, 0, sizeof(cl_lightstyle));
 #ifdef QOG_TEMPENT_BLOCK
-	memset (cl_tempblocks, 0, sizeof(cl_tempblocks));	// QuakeOG: the last level's hunk is gone
+	memset (cl_tempblocks, 0, sizeof(cl_tempblocks));	// QuakeOG, the last level's hunk is gone
 #else
 	memset (cl_temp_entities, 0, sizeof(cl_temp_entities));
 #endif
@@ -135,7 +136,7 @@ void CL_ClearState (void)
 // allocate the efrags and chain together into a free list
 //
 #ifdef QOG_STATICS_ON_HUNK
-	cl.free_efrags = NULL;	// QuakeOG: filled on demand, see CL_LinkStatic
+	cl.free_efrags = NULL;	// QuakeOG, filled on demand, see CL_LinkStatic
 #else
 	cl.free_efrags = cl_efrags;
 	for (i=0 ; i<MAX_EFRAGS-1 ; i++)
@@ -149,7 +150,7 @@ void CL_ClearState (void)
 =====================
 CL_EntitySlot
 
-QuakeOG: id keeps an entity_t for every entity number up to the highest
+QuakeOG, id keeps an entity_t for every entity number up to the highest
 seen (600 on the hunk without a local server, 62 KB). A demo of an E1 map
 uses numbers up to 299 but at most 178 different ones. Here a number gets
 one of QOG_CL_ENTSLOTS slots when it is first used, zeroed like id's array,
@@ -170,7 +171,7 @@ entity_t *CL_EntitySlot (int num)
 	if (cl_numslots >= QOG_CL_ENTSLOTS || cl_numslots >= CL_MAXSLOTS)
 		Host_Error ("CL_EntitySlot: more than %i entities in use", cl_numslots);
 #ifdef QOG_CL_ENTBLOCK
-	if (!(cl_numslots % QOG_CL_ENTBLOCK))	// QuakeOG (Agent S): a new block, zeroed by the hunk
+	if (!(cl_numslots % QOG_CL_ENTBLOCK))	// QuakeOG, a new block, zeroed by the hunk
 		cl_entblocks[cl_numslots / QOG_CL_ENTBLOCK] =
 			Hunk_AllocName (QOG_CL_ENTBLOCK * sizeof(entity_t), "cl_ents");
 #endif
@@ -192,12 +193,12 @@ entity_t *CL_EntitySlot (int num)
 #ifdef QOG_STATICS_ON_HUNK
 /*
 =====================
-QuakeOG: static entities and their efrags on the hunk
+QuakeOG, static entities and their efrags on the hunk
 
 id keeps 128 static entities (23 KB) and 640 efrags (10 KB) in fixed
 arrays. Only static entities use efrags. Here both come from the hunk in
 small blocks as the signon brings them, and go away with the level like the
-rest of the hunk. Shareware peaks: 44 static entities, 197 efrags, 16 for
+rest of the hunk. Shareware peaks, 44 static entities, 197 efrags, 16 for
 one entity. The totals stay capped at id's MAX_STATIC_ENTITIES and
 MAX_EFRAGS, so running out behaves the same.
 =====================
@@ -212,7 +213,7 @@ entity_t *CL_AllocStatic (void)
 #ifdef QOG_ENTITY_TIGHT
 	entity_t	*ent;
 
-	// QuakeOG (Agent Y): a static entity is the part of entity_t before the
+	// QuakeOG, a static entity is the part of entity_t before the
 	// network state (render.h), which nothing reads for one
 	if (!cl_statics_left)
 	{
@@ -269,7 +270,7 @@ void CL_LinkStatic (entity_t *ent)
 	if (CL_FreeEfrags () < EFRAGS_BLOCK)
 		CL_MoreEfrags ();
 	R_AddEfrags (ent);
-	// the free list ran dry, so the entity may be missing leafs: take it
+	// the free list ran dry, so the entity may be missing leafs, take it
 	// out, add a block and link it again (never seen with the reserve)
 	while (!cl.free_efrags && CL_MoreEfrags ())
 	{
@@ -383,7 +384,7 @@ Con_DPrintf ("CL_SignonReply: %i\n", cls.signon);
 		MSG_WriteString (&cls.message, va("color %i %i\n", ((int)cl_color.value)>>4, ((int)cl_color.value)&15));
 	
 		MSG_WriteByte (&cls.message, clc_stringcmd);
-		// QuakeOG: same bytes as id's "spawn %s" string, without an 8 KB
+		// QuakeOG, same bytes as id's "spawn %s" string, without an 8 KB
 		// stack buffer to build it in
 		SZ_Write (&cls.message, "spawn ", 6);
 		MSG_WriteString (&cls.message, cls.spawnparms);
@@ -411,7 +412,7 @@ Called to play the next demo in the demo loop
 void CL_NextDemo (void)
 {
 #ifdef QOG_NEXTDEMO_STR
-	// QuakeOG (Agent S): "playdemo " and a name of at most MAX_DEMONAME - 1
+	// QuakeOG, "playdemo " and a name of at most MAX_DEMONAME - 1
 	// characters (Host_Startdemos_f) need 26 bytes, the 1 KB was under the
 	// loading plaque's whole render on the stack
 	char	str[16 + MAX_DEMONAME];
@@ -689,14 +690,14 @@ void CL_RelinkEntities (void)
 	for (i=1 ; i<cl.num_entities ; i++)
 	{
 		if (!(ent = CL_ENTITY_IFANY (i)))
-			continue;	// never used: id's entity there is empty and not forcelinked
+			continue;	// never used, id's entity there is empty and not forcelinked
 #else
 	for (i=1,ent=cl_entities+1 ; i<cl.num_entities ; i++,ent++)
 	{
 #endif
 		if (!ent->model)
 		{	// empty slot
-#ifndef QOG_ENTITY_NOEFRAG	// QuakeOG (Agent AD): a client entity's efrag is always NULL, the call did nothing (render.h)
+#ifndef QOG_ENTITY_NOEFRAG	// QuakeOG, a client entity's efrag is always NULL, the call did nothing (render.h)
 			if (ent->forcelink)
 				R_RemoveEfrags (ent);	// just became empty
 #endif
@@ -715,7 +716,7 @@ void CL_RelinkEntities (void)
 		if (ent->forcelink)
 		{	// the entity was not updated in the last message
 			// so move to the final spot
-			ENT_COORDCOPY (ent->msg_origins[0], ent->origin);	// QuakeOG: packed entity_t
+			ENT_COORDCOPY (ent->msg_origins[0], ent->origin);	// QuakeOG, packed entity_t
 			ENT_ANGLECOPY (ent->msg_angles[0], ent->angles);
 		}
 		else

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -37,10 +38,10 @@ int			pr_depth;
 
 #define	LOCALSTACK_SIZE		2048
 #ifdef QOG_LOCALSTACK_FROM_PROGS
-// QuakeOG: sized per progs on the hunk. Locals are saved for at most
+// QuakeOG, sized per progs on the hunk. Locals are saved for at most
 // MAX_STACK_DEPTH-1 nested calls (the depth check comes first), each at most
 // the largest function's locals, so this never overflows where id's 2048
-// would not. Shareware progs: 16 locals, so 496 ints instead of 2048.
+// would not. Shareware progs, 16 locals, so 496 ints instead of 2048.
 int			*localstack;
 int			localstack_size;
 
@@ -252,7 +253,7 @@ void PR_Profile_f (void)
 	int			i;
 
 	if (pr_inflash)
-	{	// QuakeOG: counts are not kept, and pr_functions is in read-only flash
+	{	// QuakeOG, counts are not kept, and pr_functions is in read-only flash
 		Con_Printf ("profile: not available with progs.dat in flash (use -noflash)\n");
 		return;
 	}
@@ -333,15 +334,15 @@ int PR_EnterFunction (dfunction_t *f)
 
 // save off any locals that the new function steps on
 	c = f->locals;
-	if (localstack_used + c > localstack_size)	// QuakeOG: was LOCALSTACK_SIZE
+	if (localstack_used + c > localstack_size)	// QuakeOG, was LOCALSTACK_SIZE
 		PR_RunError ("PR_ExecuteProgram: locals stack overflow\n");
 
 	for (i=0 ; i < c ; i++)
-		localstack[localstack_used+i] = ((int *)pr_globals)[PR_PARMSTART(f) + i];	// QuakeOG: was f->parm_start
+		localstack[localstack_used+i] = ((int *)pr_globals)[PR_PARMSTART(f) + i];	// QuakeOG, was f->parm_start
 	localstack_used += c;
 
 // copy parameters
-	o = PR_PARMSTART(f);	// QuakeOG: was f->parm_start
+	o = PR_PARMSTART(f);	// QuakeOG, was f->parm_start
 	for (i=0 ; i<f->numparms ; i++)
 	{
 		for (j=0 ; j<f->parm_size[i] ; j++)
@@ -374,7 +375,7 @@ int PR_LeaveFunction (void)
 		PR_RunError ("PR_ExecuteProgram: locals stack underflow\n");
 
 	for (i=0 ; i < c ; i++)
-		((int *)pr_globals)[PR_PARMSTART(pr_xfunction) + i] = localstack[localstack_used+i];	// QuakeOG: was pr_xfunction->parm_start
+		((int *)pr_globals)[PR_PARMSTART(pr_xfunction) + i] = localstack[localstack_used+i];	// QuakeOG, was pr_xfunction->parm_start
 
 // up stack
 	pr_depth--;
@@ -387,7 +388,7 @@ int PR_LeaveFunction (void)
 ====================
 PR_AOT_Call
 
-QuakeOG: OP_CALLn for compiled QuakeC (tools/qc2c.py). The caller has set
+QuakeOG, OP_CALLn for compiled QuakeC (tools/qc2c.py). The caller has set
 pr_argc and the parameter globals. Builtins and frames are handled exactly
 as the interpreter does, so recursion and dynamic calls behave the same.
 ====================
@@ -442,7 +443,7 @@ void PR_ExecuteProgram (func_t fnum)
 	f = &pr_functions[fnum];
 
 	if (pr_aot_active && pr_aot_functions[fnum])
-	{	// QuakeOG: compiled QuakeC, same frame handling as below
+	{	// QuakeOG, compiled QuakeC, same frame handling as below
 		pr_trace = false;
 		PR_EnterFunction (f);
 		pr_aot_functions[fnum] ();
@@ -470,7 +471,7 @@ while (1)
 	if (!--runaway)
 		PR_RunError ("runaway loop error");
 		
-	if (!pr_inflash)	// QuakeOG: pr_functions is read-only flash then
+	if (!pr_inflash)	// QuakeOG, pr_functions is read-only flash then
 		pr_xfunction->profile++;
 	pr_xstatement = s;
 	
@@ -616,7 +617,7 @@ while (1)
 		break;
 		
 #ifdef QOG_EDICT_SPARSE
-	// QuakeOG: a "pointer" from OP_ADDRESS is the edict's offset times 256
+	// QuakeOG, a "pointer" from OP_ADDRESS is the edict's offset times 256
 	// plus the field number, and only OP_STOREP ever reads it
 	case OP_STOREP_F:
 	case OP_STOREP_ENT:

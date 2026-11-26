@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -55,7 +56,7 @@ typedef struct
 
 extern	viddef_t	vid;				// global video state
 #ifdef QOG_VID_NO_8TO16
-// QuakeOG (Agent S): the board never fills or needs it (r_pixbytes 1), so
+// QuakeOG, the board never fills or needs it (r_pixbytes 1), so
 // its zeros stay in flash (port/rp2040/vid_rp2040.c)
 extern	const unsigned short	d_8to16table[256];
 #else
@@ -93,7 +94,7 @@ void VID_HandlePause (qboolean pause);
 #error QOG_VID_SCANRACE needs QOG_VID_LOCKWAIT
 #endif
 #ifdef QOG_VID_SCANRACE
-// QuakeOG (Agent AK): with QOG_VID_LOCKWAIT, SCR_UpdateScreen lets the 3D
+// QuakeOG, with QOG_VID_LOCKWAIT, SCR_UpdateScreen lets the 3D
 // view start while the last frame's scanout still runs. VID_LockBuffer does
 // not wait then, and each write into the frame or the z-buffer (whose start
 // holds the status bar rows) before VID_QogScanDone first waits until the
@@ -102,21 +103,21 @@ void VID_HandlePause (qboolean pause);
 void VID_QogRaceBegin (void);
 void VID_QogScanFree (const void *lo, const void *hi);
 void VID_QogScanDone (void);
-// QuakeOG (Agent AO): how many rows of the scanout in flight read a byte of
+// QuakeOG, how many rows of the scanout in flight read a byte of
 // [lo, hi), 0 for none (a Turbo frame's packed rows are half as wide)
 int VID_QogScanNeed (const void *lo, const void *hi);
-// QuakeOG (Agent AP): which part of the view runs now, for the PC's race
-// wait model (vid_pc.c -scanmodel): 1 the world's front end, 2 after
+// QuakeOG, which part of the view runs now, for the PC's race
+// wait model (vid_pc.c -scanmodel), 1 the world's front end, 2 after
 // R_RenderWorld, 3 after the brush entities, 0 from VID_Update on
 void VID_QogRaceMark (int phase);
 #ifdef QOG_VID_ROWRACE
-// QuakeOG (Agent AP): R_ScanEdges waits row by row (r_edge.c R_QogRowFree)
+// QuakeOG, R_ScanEdges waits row by row (r_edge.c R_QogRowFree)
 extern int	r_qog_rowrace;
 #endif
 #endif
 
 #ifdef QOG_RTURBO
-// QuakeOG (Agent AO): the Turbo render mode (r_fast 2, engine/r_qogturbo.c).
+// QuakeOG, the Turbo render mode (r_fast 2, engine/r_qogturbo.c).
 // The 3D view is drawn half as wide, its rows packed at the start of the
 // frame buffer (row r at vid.buffer + r * vid.width / 2), and the scanout
 // doubles each pixel sideways. r_qog_turbopacked is the number of such rows
@@ -127,12 +128,12 @@ extern int	r_qog_turboview;	// a Turbo view is being drawn (vid is the half widt
 extern int	r_qog_turbopacked;
 void R_QogTurboUnpack (void);
 void R_QogTurboChar (int x, int y, int num);	// the crosshair into a packed view
-// QuakeOG (Agent AP): a character wholly over a packed Turbo view is not
+// QuakeOG, a character wholly over a packed Turbo view is not
 // drawn into the frame but listed, and the scanout draws it over the
 // doubled pixels at full width (the same panel picture without spreading
 // the view, so the next view does not wait for the scanout). R_QogTurboText
 // returns 0 when the character must be drawn as usual. The list is runs of
-// characters side by side on one row, in drawing order: each run is
+// characters side by side on one row, in drawing order, each run is
 // x | y << 9 | length << 17 | first << 23, its characters chars[first] on.
 // VID_Update takes the frame's list.
 #ifndef QOG_TURBO_RUNS

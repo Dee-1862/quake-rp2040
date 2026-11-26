@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QuakeOG (Agent AN): write the board profiler's function table into a linked app.
+"""QuakeOG: write the board profiler's function table into a linked app.
 
 The app reserves a fixed size array, qog_prof_blob, in its flash image
 (port/rp2040/prof_table_rp2040.c) holding only the placeholder magic "QPR0".
@@ -72,7 +72,7 @@ def build(syms, size):
         if not (0x10000000 <= start < 0x11000000 or 0x20000000 <= start < 0x20042000):
             continue
         old = funcs.get(start)
-        # one name per address: a global over a local, then the longer size
+        # one name per address, a global over a local, then the longer size
         if old is None or (bind == 1 and old[2] != 1) or (bind == old[2] and fsize > old[1]):
             funcs[start] = (name, fsize, bind)
     starts = sorted(funcs)

@@ -1,15 +1,15 @@
 /* RP2040 sound output.
  *
- * QOG_SND_REMOTE (Agent W), the split game's client half on the display
- * CPU: the server half mixes (port/common/qog_snd.h) and this plays the
+ * QOG_SND_REMOTE, the split game's client half on the display
+ * CPU, the server half mixes (port/common/qog_snd.h) and this plays the
  * samples on the I2S amplifier (MAX98357, GPIO 4 DIN, 5 LRCLK, 6 BCLK) with
- * no work for the CPU between frames:
+ * no work for the CPU between frames.
  *
  *  - PIO runs the BSP's audio_i2s program (bsp/display_cpu/audio/i2s_audio.c,
  *    from rpI2S.cpp), clocked for 11025 Hz with the BSP's integer divider
  *    (200 MHz / (64 x 283) = 11042 Hz, 0.16% fast, and with the Quake apps'
- *    250 MHz (Agent AB, clock_rp2040.c) 250 MHz / (64 x 354) = 11035 Hz,
- *    0.09% fast: id's soundtime follows the samples played, so nothing
+ *    250 MHz (clock_rp2040.c) 250 MHz / (64 x 354) = 11035 Hz,
+ *    0.09% fast, id's soundtime follows the samples played, so nothing
  *    drifts). The divider is taken from clock_get_hz() at S_Init, after the
  *    clock is raised.
  *  - A DMA channel reads the ring of QOG_SND_RING signed 8-bit samples into
@@ -28,7 +28,7 @@
  * nothing new has replaced are silenced, so a stalled server half leaves
  * silence, not the last 186 ms looping.
  *
- * Without QOG_SND_REMOTE: id's SNDDMA calls report no device and the engine
+ * Without QOG_SND_REMOTE, id's SNDDMA calls report no device and the engine
  * runs silent. */
 #include "quakedef.h"
 
@@ -42,17 +42,19 @@
 #include "hardware/pio.h"
 #include "fwog_display.h"
 
+/* Not GPL. wiliOGbsp, Copyright (c) 2026 Dave Robins, FreeWili Hardware License,
+   see THIRD_PARTY_NOTICES.md. */
 /* the BSP's audio_i2s program, transcribed unchanged from i2s_audio.c (which
    carries 4 KB of its own buffers, so it is not linked for these 16 bytes) */
 static const uint16_t s_i2s_instr[8] = {
-    0x6801u, /* 0: out    pins, 1         side 1 */
-    0x1840u, /* 1: jmp    x--, 0          side 3 */
-    0x6001u, /* 2: out    pins, 1         side 0 */
-    0xf02eu, /* 3: set    x, 14           side 2 */
-    0x6001u, /* 4: out    pins, 1         side 0 */
-    0x1044u, /* 5: jmp    x--, 4          side 2 */
-    0x6801u, /* 6: out    pins, 1         side 1 */
-    0xf82eu, /* 7: set    x, 14           side 3 */
+    0x6801u, /* 0, out    pins, 1         side 1 */
+    0x1840u, /* 1, jmp    x--, 0          side 3 */
+    0x6001u, /* 2, out    pins, 1         side 0 */
+    0xf02eu, /* 3, set    x, 14           side 2 */
+    0x6001u, /* 4, out    pins, 1         side 0 */
+    0x1044u, /* 5, jmp    x--, 4          side 2 */
+    0x6801u, /* 6, out    pins, 1         side 1 */
+    0xf82eu, /* 7, set    x, 14           side 3 */
 };
 static const struct pio_program s_i2s_prog = { .instructions = s_i2s_instr, .length = 8, .origin = -1 };
 #define I2S_X_INIT 14u   /* the bit counter the program expects on entry (the BSP's trap note) */
@@ -94,7 +96,7 @@ int qog_snd_out_init(void) {
     s_dma_data = a;
     s_dma_ctrl = b;
 
-    /* the pins, as i2s_audio_init(): low outputs, then PIO's */
+    /* the pins, as i2s_audio_init(), low outputs, then PIO's */
     gpio_init(PIN_I2S_LRCLK); gpio_put(PIN_I2S_LRCLK, 0); gpio_set_dir(PIN_I2S_LRCLK, GPIO_OUT);
     gpio_init(PIN_I2S_BCLK);  gpio_put(PIN_I2S_BCLK, 0);  gpio_set_dir(PIN_I2S_BCLK, GPIO_OUT);
     gpio_init(PIN_I2S_DIN);   gpio_put(PIN_I2S_DIN, 0);   gpio_set_dir(PIN_I2S_DIN, GPIO_OUT);
@@ -112,7 +114,7 @@ int qog_snd_out_init(void) {
     const uint pin_mask = (1u << PIN_I2S_DIN) | (3u << PIN_I2S_LRCLK);
     pio_sm_set_pindirs_with_mask(s_pio, (uint)s_sm, pin_mask, pin_mask);
     pio_sm_set_pins(s_pio, (uint)s_sm, 0);
-    /* the BSP's integer divider (its trap 6): 64 PIO cycles a frame */
+    /* the BSP's integer divider (its trap 6), 64 PIO cycles a frame */
     uint32_t clk = clock_get_hz(clk_sys);
     uint32_t div = ((clk * 4u) / QOG_SND_RATE) >> 8u;
     pio_sm_set_clkdiv_int_frac(s_pio, (uint)s_sm, (uint16_t)div, 0);
@@ -136,7 +138,7 @@ int qog_snd_out_init(void) {
     channel_config_set_chain_to(&dc, (uint)s_dma_ctrl);
     dma_channel_configure((uint)s_dma_data, &dc, txf, s_ring, QOG_SND_RING, true);
 
-    /* start frame-aligned: restart, the bit counter, the entry (the BSP's trap 2 note) */
+    /* start frame-aligned, restart, the bit counter, the entry (the BSP's trap 2 note) */
     pio_sm_restart(s_pio, (uint)s_sm);
     pio_sm_exec(s_pio, (uint)s_sm, pio_encode_set(pio_x, I2S_X_INIT));
     pio_sm_exec(s_pio, (uint)s_sm, pio_encode_jmp((uint)s_offset));
@@ -147,7 +149,7 @@ int qog_snd_out_init(void) {
     return 1;
 }
 
-/* stop the bit clock: the amplifier has no shutdown line, and a stopped
+/* stop the bit clock, the amplifier has no shutdown line, and a stopped
    state machine is the only true silence (the BSP's trap 2) */
 void qog_snd_out_shutdown(void) {
     if (!s_on) return;

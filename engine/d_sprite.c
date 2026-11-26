@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -165,7 +166,7 @@ void D_SpriteDrawSpans (sspan_t *pspan)
 				{
 					int	z = izi >> 16;
 
-					z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
+					z = D_ZQ(z);	// QuakeOG, QOG_ZBUFFER8
 					if (*pz <= z)
 					{
 						*pz = z;

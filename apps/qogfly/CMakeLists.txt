@@ -1,11 +1,11 @@
-# QuakeOG E1M1 fly-through pair (Agent N). The display half runs id's renderer
+# QuakeOG E1M1 fly-through pair. The display half runs id's renderer
 # on the real E1M1 from the board's data image, with a camera moving along a
 # path and no game logic (port/common/qog_fly.c), and prints fps over USB.
 # The main half is the same minimal companion as apps/qogbench.
 #
 #   cmake --build build --target qogfly_main
 #
-# Not in the default build: until the engine's RAM cuts land, the display
+# Not in the default build, until the engine's RAM cuts land, the display
 # half may not fit in RAM, and the link then says by how much.
 set(QOG_ROOT ${CMAKE_SOURCE_DIR})
 set(QOGFLY_HUNK_KB 18 CACHE STRING "qogfly hunk in KB (18 is what ran on the board)")
@@ -42,7 +42,7 @@ add_library(qog_engine_fly STATIC EXCLUDE_FROM_ALL ${_fly_src} ${_fly_aot})
 target_include_directories(qog_engine_fly PUBLIC
     ${QOG_ROOT}/engine ${QOG_ROOT}/port/common ${QOG_ROOT}/platform)
 target_compile_definitions(qog_engine_fly PUBLIC ${_fly_defs} QOG_PARTICLES_PRESET)
-# Render phase times over USB every 2 s (engine/qog_phase.h, Agent P).
+# Render phase times over USB every 2 s (engine/qog_phase.h, earlier work).
 # About 2,000 timer reads and three walks of the span lists per frame.
 option(QOGFLY_PHASE "qogfly prints the render phase split" ON)
 if(QOGFLY_PHASE)

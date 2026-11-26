@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -30,7 +31,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define MAXWORKINGVERTS	(MAXVERTS+4)	// max points in an intermediate
 										//  polygon (while processing)
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
-// QuakeOG: the board's screen is fixed at 320x200, and every per-row or
+// QuakeOG, the board's screen is fixed at 320x200, and every per-row or
 // per-column table (scan tables, edge lists, model and sprite span lists,
 // the warp tables, the turbulence sine tables) is sized from these.
 // D_ViewChanged stops with an error if the video mode is larger.
@@ -66,7 +67,7 @@ extern int		r_drawnpolycount;
 
 extern cvar_t	r_clearcolor;
 
-// QuakeOG: with QOG_CONST_RTABLES the turbulence tables are constants in flash
+// QuakeOG, with QOG_CONST_RTABLES the turbulence tables are constants in flash
 #ifdef QOG_CONST_RTABLES
 #define QOG_RTABLE_CONST	const
 #else
@@ -80,9 +81,9 @@ extern	vec3_t	vpn, base_vpn;
 extern	vec3_t	vright, base_vright;
 extern	entity_t		*currententity;
 
-// QuakeOG: these live on the stack (R_EdgeDrawing, R_ScanEdges). Measured
-// peaks over the shareware demos and levels: 1030 edges, 435 surfaces.
-// Overflowing edges or surfaces drops polygons (id counts r_outofedges);
+// QuakeOG, these live on the stack (R_EdgeDrawing, R_ScanEdges). Measured
+// peaks over the shareware demos and levels, 1030 edges, 435 surfaces.
+// Overflowing edges or surfaces drops polygons (id counts r_outofedges).
 // a smaller span buffer only flushes to the screen more often.
 #ifdef QOG_NUMSTACKEDGES
 #define NUMSTACKEDGES		QOG_NUMSTACKEDGES
@@ -104,7 +105,7 @@ extern	entity_t		*currententity;
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 #ifdef QOG_ESPAN_T_PACKED
-// QuakeOG: 8 bytes, not 16. u, v and count are screen coordinates (at
+// QuakeOG, 8 bytes, not 16. u, v and count are screen coordinates (at
 // most MAXWIDTH), and every span lives in R_ScanEdges' span buffer, so the
 // link is a 16-bit byte offset from r_spanbase, one entry before the
 // buffer (SPAN_NONE is 0, which never addresses a span). surf_t.spans uses
@@ -136,16 +137,16 @@ typedef struct espan_s
 // FIXME: compress, make a union if that will help
 // insubmodel is only 1, flags is fewer than 32, spanstate could be a byte
 #ifdef QOG_SURF_T_SMALL
-// QuakeOG: 40 bytes (needs QOG_ESPAN_T_PACKED). The active surface stack
+// QuakeOG, 40 bytes (needs QOG_ESPAN_T_PACKED). The active surface stack
 // links are indices into surfaces[] (fewer than 65536, R_NewMap checks).
 // last_u is a screen column, flags are SURF_* (at most 0x40), insubmodel
-// is 0 or 1. key stays an int: the background surface uses 0x7FFFFFFF.
+// is 0 or 1. key stays an int, the background surface uses 0x7FFFFFFF.
 typedef unsigned short	surfref_t;
 #define SURF_PTR(r)		(surfaces + (r))
 #define SURF_REF(p)		((surfref_t)((p) - surfaces))
 
 #ifdef QOG_SURF_T_TINY
-// QuakeOG (Agent S): 32 bytes. The key is 16-bit (R_RenderFace and
+// QuakeOG, 32 bytes. The key is 16-bit (R_RenderFace and
 // R_RenderBmodelFace stop with an error past 0xFFFE, 0xFFFF is the
 // background's), spanstate a signed byte (it counts the open leading edges
 // of one surface on a scan line). A world surface (insubmodel 0) belongs to
@@ -198,11 +199,11 @@ typedef struct surf_s
 	struct surf_s	*next;			// active surface stack in r_edge.c
 	struct surf_s	*prev;			// used in r_edge.c for active surf stack
 	espanref_t	spans;				// pointer to linked list of spans to draw
-									// (QuakeOG: espanref_t, see espan_t)
+									// (QuakeOG, espanref_t, see espan_t)
 	int			key;				// sorting key (BSP order)
 	int			last_u;				// set during tracing
 #ifdef QOG_SURF_T_PACKED
-	// QuakeOG: id padded this to 64 bytes for its x86 assembly, which no
+	// QuakeOG, id padded this to 64 bytes for its x86 assembly, which no
 	// QuakeOG build uses. spanstate only counts overlapping edges of one
 	// surface and insubmodel is 0 or 1, so they share a word (52 bytes).
 	short		spanstate;			// 0 = not in span, 1 = in span, -1 = inverted
@@ -254,7 +255,7 @@ extern	float	xscaleinv, yscaleinv;
 extern	float	xscaleshrink, yscaleshrink;
 
 #ifdef QOG_LIGHTSTYLE_SHORT
-// QuakeOG (Agent AD): R_AnimateLight writes (char - 'a') * 22 or 256, which a
+// QuakeOG, R_AnimateLight writes (char - 'a') * 22 or 256, which a
 // short holds, and every reader widens it to an int as before (512 B)
 typedef short	lightstyleval_t;
 #else
@@ -278,13 +279,13 @@ extern int	ubasestep, errorterm, erroradjustup, erroradjustdown;
 #define ALIAS_BOTTOM_CLIP			0x0008
 #define ALIAS_Z_CLIP				0x0010
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
-#define ALIAS_ONSEAM				0x0020	// also defined in modelgen.h;
+#define ALIAS_ONSEAM				0x0020	// also defined in modelgen.h.
 											//  must be kept in sync
 #define ALIAS_XY_CLIP_MASK			0x000F
 
 // !!! if this is changed, it must be changed in asm_draw.h too !!!
 #ifdef QOG_EDGE_T_PACKED
-// QuakeOG: 24 bytes, not 32. Edges live only in the edge table of one
+// QuakeOG, 24 bytes, not 32. Edges live only in the edge table of one
 // R_EdgeDrawing call, so the links are 16-bit byte offsets from r_edgebase
 // (EDGE_NONE is 0, which never addresses an edge, see R_EdgeDrawing). The
 // four sentinel edges sit in front of r_edges in the same buffer, so they
@@ -327,17 +328,17 @@ typedef struct edge_s
 } edge_t;
 #endif
 
-// QuakeOG: the z-buffer as short-lived memory (QOG_EDGES_IN_ZBUFFER,
+// QuakeOG, the z-buffer as short-lived memory (QOG_EDGES_IN_ZBUFFER,
 // QOG_EDGECACHE_ZBUFFER). VID_Init sets r_ztemp_base and r_ztemp_bytes to
 // the whole z-buffer allocation (a multiple of 4 bytes, 4-byte aligned).
-// Who owns its bytes when:
-//  - from the end of one R_RenderView to the start of the next: the first
+// Who owns its bytes when.
+//  - from the end of one R_RenderView to the start of the next, the first
 //    320 x 48 bytes hold the status bar rows with QOG_HUD_IN_ZBUFFER (while
 //    the 2D overlay is drawn and the frame is shown), the rest is free
-//  - R_RenderView up to R_EdgeDrawing: free
-//  - R_EdgeDrawing: the edge cache, the brush clip buffers and the edge
+//  - R_RenderView up to R_EdgeDrawing, free
+//  - R_EdgeDrawing, the edge cache, the brush clip buffers and the edge
 //    table, see R_EdgeDrawing and R_QogScanRows
-//  - from R_EdgeDrawing's first drawn span to the end of R_RenderView: z
+//  - from R_EdgeDrawing's first drawn span to the end of R_RenderView, z
 #if defined(QOG_EDGES_IN_ZBUFFER) || defined(QOG_EDGECACHE_ZBUFFER)
 #define QOG_ZTEMP
 extern byte	*r_ztemp_base;

@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AI): sin of i/1024 of a turn in 2.14 fixed point, rounded,
+/* QuakeOG, sin of i/1024 of a turn in 2.14 fixed point, rounded,
  * i = 0 to 1024, for the Fast mode alias transform (r_alias.c,
  * QOG_ALIAS_FAST). Generated. */
 0, 101, 201, 302, 402, 503, 603, 704, 804, 904, 1005, 1105, 1205, 1306, 1406, 1506,

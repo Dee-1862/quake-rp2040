@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -32,7 +33,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 #ifdef QOG_ENTITY_NOTOPNODE
 /*
-QuakeOG (Agent AD): a bmodel's top node is set by R_DrawBEntitiesOnList just
+QuakeOG, a bmodel's top node is set by R_DrawBEntitiesOnList just
 before its faces are drawn, read only while they are (r_bsp.c) and set back
 to NULL after, so one variable for the entity being drawn holds it (r_efrag.c)
 and every entity is 4 bytes smaller. R_AddEfrags's top node of a static
@@ -55,10 +56,10 @@ typedef struct efrag_s
 
 #ifdef QOG_ENTITY_PACKED
 /*
-QuakeOG: packed client entity (184 bytes in id's layout, 104 here). Every
+QuakeOG, packed client entity (184 bytes in id's layout, 104 here). Every
 client entity_t is kept per level for each edict number, plus the beams and
 the static entities. The fields the renderer reads stay as they are. The
-client-only ones are kept as they arrive from the network:
+client-only ones are kept as they arrive from the network.
 - origins as the protocol's shorts (units of 1/8) and angles as its signed
   bytes (units of 360/256). ENT_COORD and ENT_ANGLE give back exactly the
   floats MSG_ReadCoord and MSG_ReadAngle return, so interpolation is the same.
@@ -85,7 +86,7 @@ typedef struct
 
 #ifdef QOG_ENTITY_TIGHT
 /*
-QuakeOG (Agent Y): 88 bytes, not 104. The frame, effects, skin and
+QuakeOG, 88 bytes, not 104. The frame, effects, skin and
 trivial_accept values fit the types below (the protocol sends frame, skin and
 effects as bytes, trivial_accept is 0 to 3), and the random animation start
 is kept as the 15-bit number id draws, the float is computed from it the way
@@ -95,13 +96,13 @@ entity, which never gets an update, is only the first ENT_STATIC_SIZE bytes
 */
 #ifdef QOG_ENTITY_NOEFRAG
 /*
-QuakeOG (Agent AD): 80 bytes (76 with QOG_ENTITY_NOTOPNODE). Only a static entity ever has efrags
+QuakeOG, 80 bytes (76 with QOG_ENTITY_NOTOPNODE). Only a static entity ever has efrags
 (R_AddEfrags is called for statics alone) and only R_StoreEfrags, through
 those efrags, reads visframe, so both share their 8 bytes with the network
 state, which only client entities have. A static entity is the first
 ENT_STATIC_SIZE bytes (52 or 48), a beam segment of a temp entity the
 first ENT_RENDER_SIZE (44 or 40, QOG_TEMPENT_SMALL). The client's
-R_RemoveEfrags of a client entity is left out (cl_main.c): its efrag was
+R_RemoveEfrags of a client entity is left out (cl_main.c), its efrag was
 always NULL, so id's call did nothing.
 */
 typedef struct entity_s
@@ -110,7 +111,7 @@ typedef struct entity_s
 	vec3_t					angles;
 	struct model_s			*model;			// NULL = no model
 	byte					*colormap;
-#ifndef QOG_ENTITY_NOTOPNODE	// QuakeOG (Agent AD): see ENT_TOPNODE above
+#ifndef QOG_ENTITY_NOTOPNODE	// QuakeOG, see ENT_TOPNODE above
 	struct mnode_s			*topnode;		// for bmodels, first world node
 											//  that splits bmodel, or NULL if
 											//  not split
@@ -238,7 +239,7 @@ typedef struct entity_s
 #define ENT_SYNCBASE(e)		((e)->syncbase)
 #define ENT_SETSYNC(e,r)	((e)->syncbase = (float)(r) / 0x7fff)
 #endif
-// QuakeOG: copy a network origin or angles into a float vector
+// QuakeOG, copy a network origin or angles into a float vector
 #define ENT_COORDCOPY(a,b)	{b[0]=ENT_COORD(a[0]);b[1]=ENT_COORD(a[1]);b[2]=ENT_COORD(a[2]);}
 #define ENT_ANGLECOPY(a,b)	{b[0]=ENT_ANGLE(a[0]);b[1]=ENT_ANGLE(a[1]);b[2]=ENT_ANGLE(a[2]);}
 

@@ -40,7 +40,7 @@ class ImageFormat(unittest.TestCase):
 
 
 class FlashMap(unittest.TestCase):
-    """Agent AC: the tools read platform/qog_flashmap.h, and the regions do not overlap."""
+    """earlier work: the tools read platform/qog_flashmap.h, and the regions do not overlap."""
 
     def test_offsets(self):
         self.assertEqual(mkdata.XIP_BASE + mkdata.DATA_OFFSET, 0x10100000)

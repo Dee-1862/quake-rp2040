@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -22,9 +23,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #ifdef QOG_NET_LINK
-#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#include "net_link.h"	// QuakeOG, the split game (net_link.c)
 #endif
-#include "qog_phase.h"	// QuakeOG (Agent V): frame phase times (QOG_PHASE_TIME)
+#include "qog_phase.h"	// QuakeOG, frame phase times (QOG_PHASE_TIME)
 
 /*
 
@@ -105,7 +106,7 @@ void Host_EndGame (char *message, ...)
 		Host_ShutdownServer (false);
 
 #ifdef QOG_SPLIT_SERVER
-	Link_ServerEndGame (string);	// QuakeOG: the client does the rest
+	Link_ServerEndGame (string);	// QuakeOG, the client does the rest
 #else
 	if (cls.state == ca_dedicated)
 		Sys_Error ("Host_EndGame: %s\n",string);	// dedicated servers exit
@@ -149,7 +150,7 @@ void Host_Error (char *error, ...)
 		Host_ShutdownServer (false);
 
 #ifdef QOG_SPLIT_SERVER
-	Link_ServerHostError (string);	// QuakeOG: the client stops its frame and disconnects
+	Link_ServerHostError (string);	// QuakeOG, the client stops its frame and disconnects
 #else
 	if (cls.state == ca_dedicated)
 		Sys_Error ("Host_Error: %s\n",string);	// dedicated servers exit
@@ -173,7 +174,7 @@ void	Host_FindMaxClients (void)
 	int		i;
 
 #ifdef QOG_SPLIT_CLIENT
-	// QuakeOG: the server half sets maxclients and deathmatch
+	// QuakeOG, the server half sets maxclients and deathmatch
 	if (COM_CheckParm ("-dedicated"))
 		Sys_Error ("the split client cannot be a dedicated server");
 	cls.state = ca_disconnected;
@@ -182,7 +183,7 @@ void	Host_FindMaxClients (void)
 		
 	i = COM_CheckParm ("-dedicated");
 #ifdef QOG_SPLIT_SERVER
-	i = 0;	// QuakeOG: the split server has one client, the client half
+	i = 0;	// QuakeOG, the split server has one client, the client half
 #endif
 	if (i)
 	{
@@ -218,7 +219,7 @@ void	Host_FindMaxClients (void)
 		svs.maxclients = MAX_SCOREBOARD;
 
 	svs.maxclientslimit = svs.maxclients;
-#ifndef QOG_SINGLE_PLAYER	// QuakeOG: one client slot and two loopback sockets, not four and five
+#ifndef QOG_SINGLE_PLAYER	// QuakeOG, one client slot and two loopback sockets, not four and five
 	if (svs.maxclientslimit < 4)
 		svs.maxclientslimit = 4;
 #endif
@@ -281,7 +282,7 @@ void Host_WriteConfiguration (void)
 // dedicated servers initialize the host but don't parse and set the
 // config.cfg cvars
 #ifdef QOG_SPLIT_SERVER
-	return;		// QuakeOG: the client half writes config.cfg
+	return;		// QuakeOG, the client half writes config.cfg
 #endif
 	if (host_initialized & !isDedicated)
 	{
@@ -300,7 +301,7 @@ void Host_WriteConfiguration (void)
 }
 
 
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server only
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server only
 /*
 =================
 SV_ClientPrintf
@@ -450,7 +451,7 @@ void Host_ShutdownServer(qboolean crash)
 
 	sv.active = false;
 
-#ifndef QOG_SPLIT_SERVER	// QuakeOG: the split client disconnected first (net_link.c)
+#ifndef QOG_SPLIT_SERVER	// QuakeOG, the split client disconnected first (net_link.c)
 // stop all client sounds immediately
 	if (cls.state == ca_connected)
 		CL_Disconnect ();
@@ -502,7 +503,7 @@ void Host_ShutdownServer(qboolean crash)
 	memset (svs.clients, 0, svs.maxclientslimit*sizeof(client_t));
 }
 #else	// QOG_SPLIT_CLIENT
-// QuakeOG: the server half shuts itself down when the client closes its
+// QuakeOG, the server half shuts itself down when the client closes its
 // connection. What the client sees of it is sv.active going false at once.
 void Host_ShutdownServer(qboolean crash)
 {
@@ -531,10 +532,10 @@ void Host_ClearMemory (void)
 
 #ifdef QOG_SPLIT_SERVER
 	memset (&sv, 0, sizeof(sv));
-	Link_ServerClearMemory ();	// QuakeOG: the client clears its half at the same point
+	Link_ServerClearMemory ();	// QuakeOG, the client clears its half at the same point
 #else
 	cls.signon = 0;
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the client's sv is the server's report, not cleared here
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, the client's sv is the server's report, not cleared here
 	memset (&sv, 0, sizeof(sv));
 #endif
 	memset (&cl, 0, sizeof(cl));
@@ -552,7 +553,7 @@ Host_FilterTime
 Returns false if the time is too short to run a frame
 ===================
 */
-#ifndef QOG_SPLIT_SERVER	// QuakeOG: the split server takes the client's times (net_link.c)
+#ifndef QOG_SPLIT_SERVER	// QuakeOG, the split server takes the client's times (net_link.c)
 qboolean Host_FilterTime (float time)
 {
 	realtime += time;
@@ -599,9 +600,9 @@ void Host_GetConsoleCommands (void)
 }
 
 
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server only
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server only
 #ifdef QOG_SPLIT_SERVER
-#define	key_dest	(link_keygame ? key_game : key_console)	// QuakeOG: the client's key_dest
+#define	key_dest	(link_keygame ? key_game : key_console)	// QuakeOG, the client's key_dest
 #endif
 /*
 ==================
@@ -659,7 +660,7 @@ void Host_ServerFrame (void)
 
 void Host_ServerFrame (void)
 {
-	QOG_PH_T (hp_phys);	// QuakeOG (Agent V)
+	QOG_PH_T (hp_phys);	// QuakeOG
 
 // run the world state
 	pr_global_struct->frametime = host_frametime;
@@ -702,7 +703,7 @@ Runs all active servers
 ==================
 */
 #ifdef QOG_SPLIT_SERVER
-// QuakeOG: the split server's frame. The client half drives it: its frame
+// QuakeOG, the split server's frame. The client half drives it, its frame
 // time, its realtime and its console lines arrive in Link_ServerWaitTick,
 // and the client counts the frame's rand () call. What is left of id's
 // frame is the server's part.
@@ -715,12 +716,12 @@ void _Host_Frame (float time)
 	}
 
 	{
-	QOG_PH_T (hp_wait);	// QuakeOG (Agent V)
+	QOG_PH_T (hp_wait);	// QuakeOG
 	Link_ServerWaitTick ();
 	QOG_HP_ADD (QOG_HP_SVWAIT, hp_wait);
 	}
 
-	Cbuf_Execute ();	// empty: the command buffer is the client's
+	Cbuf_Execute ();	// empty, the command buffer is the client's
 	NET_Poll();
 	Host_GetConsoleCommands ();
 	if (sv.active)
@@ -741,7 +742,7 @@ void _Host_Frame (float time)
 #ifdef QOG_LINK_PIPELINE
 /*
 ==================
-QuakeOG (Agent V): the split client draws while the server half runs
+QuakeOG, the split client draws while the server half runs
 
 In id's frame the server's frame sits between the client's input and its
 screen update, so in the split game the display chip waits for the main
@@ -751,7 +752,7 @@ update (SCR_UpdateScreen, S_Update, CL_DecayLights) pending, and the next
 frame runs it right after it has sent its input to the server half
 (Link_ClientTick), so the server's frame runs on the main chip while the
 display chip draws. The order of everything the two halves exchange is
-id's: the input and the frame time of frame k+1 never depend on frame k's
+id's, the input and the frame time of frame k+1 never depend on frame k's
 screen update, except for V_DriftPitch's change to the view angles, which
 runs at the end of frame k as in id's order, and except for console lines,
 which may read the frame (qog_shot) or change what it shows, so any line
@@ -765,7 +766,7 @@ keys, no intermission or pause, no loading plaque).
 extern qboolean	scr_drawloading, scr_initialized;	// screen.c
 void V_DriftPitch (void);
 qboolean Cbuf_QogIdle (void);	// cmd.c
-extern qboolean	v_qog_drifted;	// view.c: V_CalcRefdef skips V_DriftPitch
+extern qboolean	v_qog_drifted;	// view.c, V_CalcRefdef skips V_DriftPitch
 unsigned	host_qog_pipelined;	// frames whose screen update ran while the server half ran
 
 static qboolean	pl_pending;
@@ -778,7 +779,7 @@ static qboolean Host_PipelineCan (void)
 {
 	return cls.state == ca_connected && cls.signon == SIGNONS && cl.worldmodel
 #ifdef QOG_LINK_PIPELINE_DEMO
-		// QuakeOG (Agent AK): a demo's frames too, timedemo included. The
+		// QuakeOG, a demo's frames too, timedemo included. The
 		// server half has no frame to run, but the screen update's sound
 		// exchanges are then queued instead of each waiting for the server
 		// half, and the frame's one exchange overlaps the drawing. Frame k's
@@ -793,7 +794,7 @@ static qboolean Host_PipelineCan (void)
 		&& scr_initialized && con_initialized;
 }
 
-// the end of frame k when its screen update waits: what id's update would
+// the end of frame k when its screen update waits, what id's update would
 // have changed that frame k+1's input reads (V_CalcRefdef's pitch drift)
 static void Host_PipelineDefer (void)
 {
@@ -835,7 +836,7 @@ static void Host_PipelineFlush (void)
 	}
 	{
 	QOG_PH_T (hp_snd);
-	S_Update (r_origin, vpn, vright, vup);	// signed on: Host_PipelineCan
+	S_Update (r_origin, vpn, vright, vup);	// signed on, Host_PipelineCan
 	CL_DecayLights ();
 	CDAudio_Update();
 	QOG_HP_ADD (QOG_HP_SOUND, hp_snd);
@@ -860,7 +861,7 @@ void _Host_Frame (float time)
 	if (setjmp (host_abortserver) )
 	{
 #ifdef QOG_LINK_PIPELINE
-		pl_pending = false;	// QuakeOG: the frame it was for is gone
+		pl_pending = false;	// QuakeOG, the frame it was for is gone
 #endif
 		return;			// something bad happened, or the server disconnected
 	}
@@ -873,7 +874,7 @@ void _Host_Frame (float time)
 		return;			// don't run too fast, or packets will flood out
 
 	{
-	QOG_PH_T (hp_frame);	// QuakeOG (Agent V): frame phase times
+	QOG_PH_T (hp_frame);	// QuakeOG, frame phase times
 	QOG_PH_T (hp_in);
 
 // get new key events
@@ -884,7 +885,7 @@ void _Host_Frame (float time)
 
 #ifdef QOG_LINK_PIPELINE
 	if (!Cbuf_QogIdle ())
-		Host_PipelineFlush ();	// QuakeOG: a console line runs after the last frame's update, as in id's order
+		Host_PipelineFlush ();	// QuakeOG, a console line runs after the last frame's update, as in id's order
 #endif
 
 // process console commands
@@ -908,7 +909,7 @@ void _Host_Frame (float time)
 
 #ifdef QOG_SPLIT_CLIENT
 #ifdef QOG_LINK_PIPELINE
-	Link_ClientTick ();		// QuakeOG: the server half starts its frame
+	Link_ClientTick ();		// QuakeOG, the server half starts its frame
 	Host_PipelineFlush ();	// and the last frame's screen update runs meanwhile
 	{
 	QOG_PH_T (hp_link);
@@ -918,7 +919,7 @@ void _Host_Frame (float time)
 #else
 	{
 	QOG_PH_T (hp_link);	// QuakeOG
-	Link_ClientFrame ();	// QuakeOG: the server half runs its frame here (net_link.c)
+	Link_ClientFrame ();	// QuakeOG, the server half runs its frame here (net_link.c)
 	QOG_HP_ADD (QOG_HP_LINK, hp_link);
 	}
 #endif
@@ -950,7 +951,7 @@ void _Host_Frame (float time)
 
 #ifdef QOG_LINK_PIPELINE
 	if (Host_PipelineCan ())
-		Host_PipelineDefer ();	// QuakeOG: drawn while the server half runs the next frame
+		Host_PipelineDefer ();	// QuakeOG, drawn while the server half runs the next frame
 	else
 #endif
 	{
@@ -1029,7 +1030,7 @@ void Host_Frame (float time)
 	timecount = 0;
 	timetotal = 0;
 	c = 0;
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the split client has no server's clients
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, the split client has no server's clients
 	for (i=0 ; i<svs.maxclients ; i++)
 	{
 		if (svs.clients[i].active)
@@ -1118,7 +1119,7 @@ void Host_Init (quakeparms_t *parms)
 	else
 		minimum_memory = MINIMUM_MEMORY_LEVELPAK;
 #ifdef QOG_MIN_MEMORY
-	// QuakeOG: the board's hunk is sized from the measured need, far below
+	// QuakeOG, the board's hunk is sized from the measured need, far below
 	// id's 5.3 MB floor. A hunk that is too small still stops in Hunk_Alloc.
 	minimum_memory = QOG_MIN_MEMORY;
 #endif
@@ -1138,7 +1139,7 @@ void Host_Init (quakeparms_t *parms)
 	Cbuf_Init ();
 	Cmd_Init ();
 #ifdef QOG_SPLIT_SERVER
-	// QuakeOG: the split server, no client, console or menus (net_link.c)
+	// QuakeOG, the split server, no client, console or menus (net_link.c)
 	Host_InitVCR (parms);
 	COM_Init (parms->basedir);
 	Host_InitLocal ();
@@ -1148,7 +1149,7 @@ void Host_Init (quakeparms_t *parms)
 	NET_Init ();
 	SV_Init ();
 #ifdef QOG_SND_HOST
-	S_Init ();		// QuakeOG (Agent W): the mixer for the client half (snd_link.c)
+	S_Init ();		// QuakeOG, the mixer for the client half (snd_link.c)
 #endif
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
 	Con_Printf ("%4.1f megabyte heap\n",parms->memsize/ (1024*1024.0));
@@ -1162,7 +1163,7 @@ void Host_Init (quakeparms_t *parms)
 	Key_Init ();
 	Con_Init ();
 	M_Init ();
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the split client has no server
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, the split client has no server
 	PR_Init ();
 #endif
 	Mod_Init ();
@@ -1179,7 +1180,7 @@ void Host_Init (quakeparms_t *parms)
 	if (cls.state != ca_dedicated)
 	{
 #ifdef QOG_PALETTE_FLASH
-		// QuakeOG: the palette (768 bytes) is only ever read too, as the
+		// QuakeOG, the palette (768 bytes) is only ever read too, as the
 		// colormap below, so use it in place when the pack is mapped
 		host_basepal = COM_FlashFile ("gfx/palette.lmp", NULL);
 		if (!host_basepal)
@@ -1187,7 +1188,7 @@ void Host_Init (quakeparms_t *parms)
 		host_basepal = (byte *)COM_LoadHunkFile ("gfx/palette.lmp");
 		if (!host_basepal)
 			Sys_Error ("Couldn't load gfx/palette.lmp");
-		// QuakeOG: the colormap (16 KB) is only ever read, so use it in place
+		// QuakeOG, the colormap (16 KB) is only ever read, so use it in place
 		// when the pack is mapped. The image is aligned, so vid.fullbright can
 		// still read the int after the table.
 		host_colormap = COM_FlashFile ("gfx/colormap.lmp", NULL);
@@ -1256,14 +1257,14 @@ void Host_Shutdown(void)
 	isdown = true;
 
 #ifdef QOG_SPLIT_SERVER
-	NET_Shutdown ();	// QuakeOG: nothing else to shut down
+	NET_Shutdown ();	// QuakeOG, nothing else to shut down
 #else
 // keep Con_Printf from trying to update the screen
 	scr_disabled_for_loading = true;
 
 	Host_WriteConfiguration ();
 #ifdef QOG_SPLIT_CLIENT
-	Link_Quit ();		// QuakeOG: the server half quits with the client
+	Link_Quit ();		// QuakeOG, the server half quits with the client
 #endif
 
 	CDAudio_Shutdown ();

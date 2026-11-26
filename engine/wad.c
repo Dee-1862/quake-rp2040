@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -24,7 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 int			wad_numlumps;
 lumpinfo_t	*wad_lumps;
 byte		*wad_base;
-qboolean	wad_rawnames;	// QuakeOG: wad_lumps is the read-only directory in flash,
+qboolean	wad_rawnames;	// QuakeOG, wad_lumps is the read-only directory in flash,
 						// names not yet lowercased (see W_GetLumpinfo)
 
 void SwapPic (qpic_t *pic);
@@ -74,8 +75,8 @@ void W_LoadWadFile (char *filename)
 	unsigned		i;
 	int				infotableofs;
 	
-	// QuakeOG: read in place from flash when the port maps the pack. Only the
-	// lump directory is copied to RAM, because loading lowercases its names;
+	// QuakeOG, read in place from flash when the port maps the pack. Only the
+	// lump directory is copied to RAM, because loading lowercases its names.
 	// the pictures are never written (the swaps are no-ops on little-endian).
 	{
 		int		flen;
@@ -90,7 +91,7 @@ void W_LoadWadFile (char *filename)
 			wad_numlumps = LittleLong(header->numlumps);
 			infotableofs = LittleLong(header->infotableofs);
 			if (!(infotableofs & 3))
-			{	// QuakeOG: an aligned directory is used in place too (5 KB for
+			{	// QuakeOG, an aligned directory is used in place too (5 KB for
 				// gfx.wad). Its names are matched through W_CleanupName on
 				// lookup instead of being lowercased here.
 				wad_lumps = (lumpinfo_t *)(wad_base + infotableofs);
@@ -157,7 +158,7 @@ lumpinfo_t	*W_GetLumpinfo (char *name)
 	for (lump_p=wad_lumps, i=0 ; i<wad_numlumps ; i++,lump_p++)
 	{
 		if (wad_rawnames)
-		{	// QuakeOG: directory in flash, clean its name the same way first
+		{	// QuakeOG, directory in flash, clean its name the same way first
 			char	lname[16];
 
 			W_CleanupName (lump_p->name, lname);

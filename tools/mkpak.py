@@ -12,7 +12,7 @@ in place, and checks the result against the flash data region.
         --manifests build-pc-dev/manifests -o build/qogpak
     python tools/mkpak.py ... --maps start e1m1        # a subset of maps
     python tools/mkpak.py --pak data/id1/pak0.pak --pak data/id1/pak1.pak ...
-                                                       # registered: later paks win, like Quake's search order
+                                                       # registered, later paks win, like Quake's search order
 
 Writes <out>.pak (for the PC: put it in a game dir) and <out>.uf2 (the same
 bytes at the board's data region). Never commit or share the output: it is
@@ -34,7 +34,7 @@ MIX_RATE = 11025
 # Read by the engine at startup or by name from code, not via precache lists.
 ALWAYS = ["gfx.wad", "gfx/*.lmp", "progs.dat", "quake.rc", "default.cfg"]
 # Sounds the client loads by name with sound on (the manifests are recorded
-# without sound, so they miss these): the ambient loops (snd_dma.c S_Init),
+# without sound, so they miss these), the ambient loops (snd_dma.c S_Init),
 # the temp entity sounds (cl_tent.c CL_InitTEnts), the menu sounds (menu.c)
 # and the chat beep (console.c).
 ENGINE_SOUNDS = ["sound/ambience/water1.wav", "sound/ambience/wind2.wav",

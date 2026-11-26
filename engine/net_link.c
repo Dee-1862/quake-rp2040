@@ -13,7 +13,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// net_link.c -- QuakeOG: the split game's net driver (QOG_NET_LINK)
+// net_link.c -- QuakeOG, the split game's net driver (QOG_NET_LINK)
 //
 // The server (SV_*, QuakeC, edicts) runs on one chip or process
 // (QOG_SPLIT_SERVER) and the client (CL_*, renderer, input) on another
@@ -31,16 +31,16 @@ See the GNU General Public License for more details.
 // directly (start the client's reconnect, clear its memory, print on its
 // console, add to the shared command buffer) comes back as items the client
 // carries out at the same point. Shared globals cross with every item that
-// follows a change: the client's realtime, host_frametime and key_dest, the
+// follows a change, the client's realtime, host_frametime and key_dest, the
 // server's host_frametime and active state, and the position of the shared
 // random sequence (qog_rand), so both halves draw the same numbers.
 //
-// Quake's messages travel as items with loopback semantics: a reliable
+// Quake's messages travel as items with loopback semantics, a reliable
 // message makes the sender wait until the receiver has read it (canSend),
 // the receive buffers are the loopback's sizes and read in place
 // (QOG_LOOP_INPLACE), and an overflow behaves as there.
 //
-// Stream items: [kind][len lo][len hi][len bytes]
+// Stream items, [kind][len lo][len hi][len bytes]
 
 #include "quakedef.h"
 
@@ -54,8 +54,8 @@ See the GNU General Public License for more details.
 #endif
 
 #define LINK_TEXTMAX	4096	// console.c MAXPRINTMSG
-#define LINK_CLTEXT	256		// the client's text buffer: console lines it runs, pieces of the rest
-#define LINK_SVTEXT	1024	// the server's: a console line (Cbuf_Execute's line buffer)
+#define LINK_CLTEXT	256		// the client's text buffer, console lines it runs, pieces of the rest
+#define LINK_SVTEXT	1024	// the server's, a console line (Cbuf_Execute's line buffer)
 
 #ifndef QOG_SINGLE_PLAYER
 #error QOG_NET_LINK needs QOG_SINGLE_PLAYER
@@ -68,31 +68,31 @@ See the GNU General Public License for more details.
 #endif
 
 enum {
-	LK_CSTATE = 1,	// client: realtime, host_frametime, random calls, key_dest is key_game
-	LK_SSTATE,		// server: host_frametime, random calls, sv and svs fields the client reads
+	LK_CSTATE = 1,	// client, realtime, host_frametime, random calls, key_dest is key_game
+	LK_SSTATE,		// server, host_frametime, random calls, sv and svs fields the client reads
 	LK_REL,			// a reliable Quake message
 	LK_UNREL,		// an unreliable Quake message
-	LK_ACKREL,		// the last reliable message was read: the sender may send again
-	LK_CONNECT,		// client: connect local
-	LK_ACCEPT,		// server: the connection was taken (Loop_CheckNewConnections)
+	LK_ACKREL,		// the last reliable message was read, the sender may send again
+	LK_CONNECT,		// client, connect local
+	LK_ACCEPT,		// server, the connection was taken (Loop_CheckNewConnections)
 	LK_CLOSE,		// the sender closed its socket
-	LK_CMD,			// client: a console line for the server, answered by LK_SYNCDONE
-	LK_CVAR,		// "name" "value": a cvar set on the other half
-	LK_SAVEINFO,	// client: intermission flag and comment for the next save
-	LK_TICK,		// client: its part of the frame is done, run the server frame
-	LK_DONE,		// server: frame done
-	LK_SYNCDONE,	// server: LK_CMD done
-	LK_PRINT,		// server: console text (byte 0: safe)
-	LK_CBUF,		// server: text for the command buffer (byte 0: insert)
-	LK_CLEXEC,		// server: a console line the client runs now
-	LK_CLEARMEM,	// server: Host_ClearMemory ran
-	LK_CENTEROFF,	// server: scr_centertime_off = 0
-	LK_HOSTERROR,	// server: Host_Error, the client stops its frame too
-	LK_ENDGAME,		// server: Host_EndGame
-	LK_QUIT,		// client: the game quits
-	LK_SND,			// client: a sound operation (LKS_*, net_link.h), QuakeOG (Agent W)
-	LK_SNDPCM,		// server: mixed samples [time 4][8-bit samples]
-	LK_SNDDONE		// server: the answer to a sound operation [answer 2]
+	LK_CMD,			// client, a console line for the server, answered by LK_SYNCDONE
+	LK_CVAR,		// "name" "value", a cvar set on the other half
+	LK_SAVEINFO,	// client, intermission flag and comment for the next save
+	LK_TICK,		// client, its part of the frame is done, run the server frame
+	LK_DONE,		// server, frame done
+	LK_SYNCDONE,	// server, LK_CMD done
+	LK_PRINT,		// server, console text (byte 0, safe)
+	LK_CBUF,		// server, text for the command buffer (byte 0, insert)
+	LK_CLEXEC,		// server, a console line the client runs now
+	LK_CLEARMEM,	// server, Host_ClearMemory ran
+	LK_CENTEROFF,	// server, scr_centertime_off = 0
+	LK_HOSTERROR,	// server, Host_Error, the client stops its frame too
+	LK_ENDGAME,		// server, Host_EndGame
+	LK_QUIT,		// client, the game quits
+	LK_SND,			// client, a sound operation (LKS_*, net_link.h), QuakeOG
+	LK_SNDPCM,		// server, mixed samples [time 4][8-bit samples]
+	LK_SNDDONE		// server, the answer to a sound operation [answer 2]
 };
 
 qboolean	link_applying;
@@ -102,7 +102,7 @@ static byte		*link_rx;			// its receive buffer, as the loopback's
 static int		link_rxsize;
 static int		link_pending;		// delivered bytes still at the front (QOG_LOOP_INPLACE)
 
-// the server's state the client reads: host_frametime 8, random calls 4,
+// the server's state the client reads, host_frametime 8, random calls 4,
 // max_edicts, maxclients, maxclientslimit 12, active, paused, noclip_anglehack 3, map name 64
 #define SSTATE_SIZE	(12 + 12 + 3 + 64)
 static qboolean	link_started;
@@ -124,9 +124,9 @@ static qboolean	link_started;
 //=============================================================================
 // stream helpers
 
-// QuakeOG (Agent T): the save list of the load and save menus, a side frame
+// QuakeOG, the save list of the load and save menus, a side frame
 // pair outside the stream (QOG_LINK_T_SAVES_ASK, QOG_LINK_T_SAVES in
-// port/common/qog_link.h): slot i is a found byte and the comment M_ScanSaves
+// port/common/qog_link.h), slot i is a found byte and the comment M_ScanSaves
 // reads from s<i>.sav, 39 bytes padded with zeros
 #define LINK_SAVESLOTS	12		// menu.c MAX_SAVEGAMES
 #define LINK_SAVEENTRY	(1 + SAVEGAME_COMMENT_LENGTH)
@@ -166,7 +166,7 @@ static void Link_ItemText (int kind, int flag, const char *text)
 	if (n > LINK_TEXTMAX)
 		n = LINK_TEXTMAX;
 	Link_SyncState ();
-	h[0] = kind;		// written in pieces: no copy of the text
+	h[0] = kind;		// written in pieces, no copy of the text
 	put16 (h + 1, n + 2);
 	h[3] = flag;
 	qog_link_write (h, 4);
@@ -238,7 +238,7 @@ static void Link_Consume (void)
 		Q_memcpy (link_sock->receiveMessage, &link_sock->receiveMessage[length], link_sock->receiveMessageLength);
 }
 
-// a Quake message item arrived: into the receive buffer as Loop_Send* put it
+// a Quake message item arrived, into the receive buffer as Loop_Send* put it
 static void Link_Deliver (int type, int len)
 {
 	byte	*b;
@@ -270,10 +270,10 @@ static void Link_Deliver (int type, int len)
 
 #ifdef QOG_LINK_RX_ZTEMP
 /*
-QuakeOG (Agent Y): the client's receive buffer (7.5 KB, a reliable message
+QuakeOG, the client's receive buffer (7.5 KB, a reliable message
 and a datagram) in the z-buffer, not the hunk. It holds messages only from
 the item that delivers them until CL_ReadFromServer has read them all, and
-no view is drawn in between: the server half sends messages only in its
+no view is drawn in between, the server half sends messages only in its
 frame's answer and in the answer to a console line, both read after any
 pipelined view and before the frame's own, and sound answers carry none.
 R_RenderView checks that nothing is left (Link_RxCheckIdle), so a break of
@@ -344,7 +344,7 @@ static void Link_ApplyCvar (int len)
 }
 
 //=============================================================================
-// statistics: link bytes per client frame, from the client's side
+// statistics, link bytes per client frame, from the client's side
 
 static unsigned	ls_frames, ls_last_tx, ls_last_rx;
 static unsigned	ls_sum_c2s, ls_sum_s2c, ls_max_c2s, ls_max_s2c, ls_max_frame;
@@ -390,12 +390,12 @@ static char		link_errtext[256];
 static struct { double realtime, frametime; unsigned rand; int keygame; } cs_sent;
 
 #ifdef QOG_SND_REMOTE
-// QuakeOG (Agent W): the client's sound runs on the server half (snd_link.c)
+// QuakeOG, the client's sound runs on the server half (snd_link.c)
 static int		link_sndresult;
 unsigned		link_sndasync;		// operations sent without an answer from inside an exchange
 unsigned		link_sndasync_start;	// of them S_StartSound or S_LocalSound
 
-// mixed samples: into the output as they come off the link, no copy of the whole
+// mixed samples, into the output as they come off the link, no copy of the whole
 static void Link_SoundPcm (int len)
 {
 	byte		buf[64];
@@ -464,7 +464,7 @@ static void Link_ApplySState (int len)
 // read the server's items until the one that ends this exchange
 static void Link_ClientWait (int endkind)
 {
-	static byte	text[LINK_CLTEXT + 1];	// short lines; prints and added text come in pieces
+	static byte	text[LINK_CLTEXT + 1];	// short lines. Prints and added text come in pieces
 	double	t0 = Sys_FloatTime ();
 	int		kind, len, flag, n;
 
@@ -534,7 +534,7 @@ static void Link_ClientWait (int endkind)
 #ifdef QOG_SND_REMOTE
 		case LK_SNDPCM:		Link_SoundPcm (len); break;
 		case LK_SNDDONE:
-			{	// QuakeOG (Agent W): the answer to a sound operation
+			{	// QuakeOG, the answer to a sound operation
 				byte	r[2];
 				qog_link_read (r, 2);
 				Link_Skip (len - 2);
@@ -592,7 +592,7 @@ static void Link_ClientStats (void)
 		ls_max_frame = host_framecount;
 	}
 	if (ls_signed && cls.signon == SIGNONS)
-	{	// a frame of play: signed on before and after it
+	{	// a frame of play, signed on before and after it
 		ls_play++;
 		if (c2s > ls_play_c2s)
 			ls_play_c2s = c2s;
@@ -603,11 +603,11 @@ static void Link_ClientStats (void)
 }
 
 #ifdef QOG_SND_REMOTE
-// QuakeOG (Agent W): a sound operation. One that wants an answer is an
-// exchange like a console line: the server half runs it at once, inside the
+// QuakeOG, a sound operation. One that wants an answer is an
+// exchange like a console line, the server half runs it at once, inside the
 // client's frame, and the random numbers it draws come back with its state,
 // as in one process. Inside another exchange it is only queued, and the
-// answer is LINK_SNDQUEUED: the server half runs it after that exchange, in
+// answer is LINK_SNDQUEUED, the server half runs it after that exchange, in
 // the same order with the other sound operations, so it mixes the same
 // samples. Only a random number S_StartSound draws then is not where one
 // process draws it (link_sndasync_start counts those).
@@ -627,7 +627,7 @@ int Link_Sound (const byte *op, int len)
 		if (len > 1)
 			qog_link_write (op + 1, len - 1);
 #ifdef QOG_LINK_OVERLAP
-		// QuakeOG (Agent AK): inside an exchange (the pipelined screen
+		// QuakeOG, inside an exchange (the pipelined screen
 		// update, while the server half runs its frame and does not read) a
 		// frame could stall the render in the flow control. The operation
 		// waits in the ring and goes out when the client reads again, in the
@@ -657,7 +657,7 @@ void Link_ClientFrame (void)
 }
 
 #ifdef QOG_LINK_PIPELINE
-// QuakeOG (Agent V): Link_ClientFrame in two halves for host.c's pipelined
+// QuakeOG, Link_ClientFrame in two halves for host.c's pipelined
 // frame. The tick goes onto the wire at once, so the server half starts its
 // frame while this half draws the last one, then the client waits for the
 // answer as Link_ClientFrame does. No other exchange may start in between.
@@ -700,7 +700,7 @@ void Link_Quit (void)
 	qog_link_drain ();
 }
 
-// `qog_sv <command>`: run a console line on the server even if the client has
+// `qog_sv <command>`, run a console line on the server even if the client has
 // a command of that name (qog_mem, ...)
 static void Link_Sv_f (void)
 {
@@ -712,7 +712,7 @@ static void Link_Sv_f (void)
 	Link_ForwardCommand (Cmd_Args ());
 }
 
-// QuakeOG (Agent T): the save list (see LINK_SAVESLOTS). The client asks
+// QuakeOG, the save list (see LINK_SAVESLOTS). The client asks
 // between exchanges, while the server waits for its frame, and asks again
 // every 250 ms until the answer with its number arrives (5 s at most).
 static byte		link_saves[LINK_SAVESIZE];
@@ -773,7 +773,7 @@ void Link_ScanSaves (char names[][SAVEGAME_COMMENT_LENGTH+1], int *found, int co
 	}
 }
 
-// `qog_saves`: the save list the load and save menus show, for tests
+// `qog_saves`, the save list the load and save menus show, for tests
 static void Link_Saves_f (void)
 {
 	extern char	m_filenames[][SAVEGAME_COMMENT_LENGTH+1];
@@ -899,11 +899,11 @@ static void Link_ServerFinish (int kind)
 }
 
 #ifdef QOG_SND_HOST
-// QuakeOG (Agent W): the client half's sound calls run here, with id's mixer.
+// QuakeOG, the client half's sound calls run here, with id's mixer.
 // What the mixer read from client state comes with them (sound.h).
 extern sfx_t	*known_sfx;		// snd_dma.c
 extern int		num_sfx;
-#define SNDOP_MAX	(1 + 4 + 64)	// the longest: LKS_LOCAL, a view entity and a name
+#define SNDOP_MAX	(1 + 4 + 64)	// the longest, LKS_LOCAL, a view entity and a name
 
 static float LinkF (const byte *b) { float f; memcpy (&f, b, 4); return f; }
 static void LinkV (vec3_t v, const byte *b) { memcpy (v, b, 12); }
@@ -1005,7 +1005,7 @@ void Link_ServerSoundPcm (unsigned t, const byte *a, int an, const byte *b, int 
 }
 #endif
 
-// the client's part of the frame: items up to LK_TICK, console lines run as they come
+// the client's part of the frame, items up to LK_TICK, console lines run as they come
 void Link_ServerWaitTick (void)
 {
 	static byte	text[LINK_SVTEXT + 2];
@@ -1059,7 +1059,7 @@ void Link_ServerWaitTick (void)
 		case LK_QUIT:
 			Link_Skip (len);
 			Sys_Printf ("link: the client quit\n");
-			qog_link_flush ();	// QuakeOG (Agent AK): its acknowledgement goes out first
+			qog_link_flush ();	// QuakeOG, its acknowledgement goes out first
 			Sys_Quit ();
 			break;
 		default:
@@ -1074,7 +1074,7 @@ void Link_ServerFrameDone (void)
 	Link_ServerFinish (LK_DONE);
 }
 
-// Host_Error or Host_EndGame jumped out of the server's frame: the client
+// Host_Error or Host_EndGame jumped out of the server's frame, the client
 // still waits for the end of the command or the frame
 void Link_ServerAbort (void)
 {
@@ -1088,8 +1088,8 @@ void Link_ServerAbort (void)
 		Link_ServerFrameDone ();
 }
 
-// QuakeOG (Agent T): the client's load and save menus ask for the save list
-// (see LINK_SAVESLOTS). The saves are this half's files: main's FAT volume
+// QuakeOG, the client's load and save menus ask for the save list
+// (see LINK_SAVESLOTS). The saves are this half's files, main's FAT volume
 // on the board (port/rp2040/sys_rp2040.c), the gamedir on the PC. Each
 // slot is read as M_ScanSaves reads it. Runs from the link's pump, while
 // the server waits for the client's frame.
@@ -1135,11 +1135,11 @@ int Link_Init (void)
 	Cmd_AddCommand ("qog_link", Link_Stats_f);
 #ifdef QOG_SPLIT_CLIENT
 	Cmd_AddCommand ("qog_sv", Link_Sv_f);
-	Cmd_AddCommand ("qog_saves", Link_Saves_f);	// QuakeOG (Agent T)
+	Cmd_AddCommand ("qog_saves", Link_Saves_f);	// QuakeOG
 	Cvar_RegisterVariable (&sv_gravity);
 	qog_link_side = Link_ClientSide;
 #else
-	qog_link_side = Link_ServerSide;	// QuakeOG (Agent T): the save list
+	qog_link_side = Link_ServerSide;	// QuakeOG, the save list
 #endif
 	if (!COM_CheckParm ("-nolink"))
 	{
@@ -1168,7 +1168,7 @@ byte *Loop_DemoBuffer (void)
 	if (link_sock)
 		Sys_Error ("Loop_DemoBuffer: demo played while connected");
 #ifdef QOG_LINK_RX_ZTEMP
-	link_rx = Link_RxBuffer ();	// QuakeOG (Agent Y)
+	link_rx = Link_RxBuffer ();	// QuakeOG
 #endif
 	return link_rx;
 }

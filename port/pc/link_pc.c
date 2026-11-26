@@ -1,8 +1,8 @@
-/* QuakeOG: the inter-chip link on the PC, for the split game (port/common/qog_link.h).
+/* QuakeOG, the inter-chip link on the PC, for the split game (port/common/qog_link.h).
  *
  * A TCP connection on 127.0.0.1 stands for the UART between the two RP2040s.
  * The server process listens, the client connects. Writes are held back so
- * the bytes arrive no sooner than the UART would deliver them:
+ * the bytes arrive no sooner than the UART would deliver them.
  *
  *   -linkport N      TCP port (default 27511)
  *   -linkrate B      bytes per second (default 300000, 3 Mbaud 8N1)
@@ -16,7 +16,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
-/* engine functions, declared here: quakedef.h and winsock2.h clash (htonl) */
+/* engine functions, declared here, quakedef.h and winsock2.h clash (htonl) */
 int COM_CheckParm(char *parm);
 extern int com_argc;
 extern char **com_argv;
@@ -124,7 +124,7 @@ static void send_raw(const void *data, int len) {
 }
 
 #ifdef QOG_LINK_TXASYNC
-/* QuakeOG (Agent AK): the board's DMA transmit, emulated. A frame is held
+/* QuakeOG, the board's DMA transmit, emulated. A frame is held
    for its time on the simulated wire and handed to the socket at its end,
    while the game goes on, so qog_link.c's background frame state (replies
    held while a frame is out, the resend timer from a frame's end) runs as

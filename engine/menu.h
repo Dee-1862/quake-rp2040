@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -35,7 +36,7 @@ void M_Keydown (int key);
 void M_Draw (void);
 void M_ToggleMenu_f (void);
 #ifdef QOG_BOARD_MENU
-void M_BenchDone (qboolean whole);	// QuakeOG: a timedemo ended, show its result (menu.c)
+void M_BenchDone (qboolean whole);	// QuakeOG, a timedemo ended, show its result (menu.c)
 #endif
 
 

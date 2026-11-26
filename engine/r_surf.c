@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
+#include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
 
 drawsurf_t	r_drawsurf;
 
@@ -56,8 +57,8 @@ unsigned		blocklights[18*18];
 
 #ifdef QOG_LMAP_STATS
 /*
-QuakeOG (Agent AL): PC measurement only. Work counts of the light grid
-builder per view, printed every 100 views as sums since the start:
+QuakeOG, PC measurement only. Work counts of the light grid
+builder per view, printed every 100 views as sums since the start.
 qog_lmstats views, dlights alive, lightmap builds, distinct surfaces,
 builds of the surface built just before, luxels, luxel styles, builds with
 dlights, light and surface pairs, pairs past the minlight test, luxels of
@@ -125,25 +126,25 @@ static void R_QogLmStatsBuild (msurface_t *surf, int size, int styles)
 ===============
 R_QogDlightInt
 
-QuakeOG (Agent AL): one light's cells of R_AddDynamicLights in integers,
+QuakeOG, one light's cells of R_AddDynamicLights in integers,
 with id's result to the bit. Returns 0, having changed nothing, when the
 values are outside the range the proof below covers, and id's float loop
 runs instead.
 
-id's cell loop, per cell, all in float: sd = (int)(local[0] - s*16)
+id's cell loop, per cell, all in float, sd = (int)(local[0] - s*16)
 (truncated), the same for td, dist = sd + (td>>1) or td + (sd>>1) as a
 float, the test dist < minlight, and blocklights += (rad - dist)*256,
 which adds in float and truncates back to unsigned.
 
-- sd: with A = floor (local) and c = 1 when local is not a whole number,
+- sd, with A = floor (local) and c = 1 when local is not a whole number,
   local - 16s is A - 16s + frac. When |local - 16s| < 4096 its float
   rounding error is at most 2^-13, and when the fraction is 0 or at least
   2^-11 away from 0 and 1 the rounded value stays in the same open unit
   interval as the exact one, so the truncation is A - 16s when that is
   0 or more, else A - 16s + c, and sd is its magnitude.
-- The test: dist is a whole number, so dist < minlight is
+- The test, dist is a whole number, so dist < minlight is
   dist < ceil (minlight).
-- The add: with 1 <= rad < 32768 the float rad - dist (0 <= dist < rad)
+- The add, with 1 <= rad < 32768 the float rad - dist (0 <= dist < rad)
   is exact, and so is its product with 256. With X = rad * 2^24 (a whole
   number), 256 rad is (X >> 16) + F / 65536, F = X & 0xFFFF. The float sum
   S = b + 256 rad - 256 dist with b the cell's value has the whole part
@@ -186,7 +187,7 @@ static QOG_NOINLINE int R_QogDlightInt (const float *local, float rad, float min
 	G = 65536 - F;
 	for (k=0 ; (1u << k) < G ; k++)
 		;
-	thr = 1 << (8 + k);					// 2^24 when F is 0: never
+	thr = 1 << (8 + k);					// 2^24 when F is 0, never
 
 	bl = blocklights;
 	for (t = 0 ; t<tmax ; t++, bl += smax)
@@ -194,7 +195,7 @@ static QOG_NOINLINE int R_QogDlightInt (const float *local, float rad, float min
 		rowd = A[1] - t*16;
 		td = rowd >= 0 ? rowd : -rowd - c[1];
 		if (td >= M)
-			continue;		// dist >= td: no cell of this row
+			continue;		// dist >= td, no cell of this row
 		d = A[0];
 		for (s=0 ; s<smax ; s++, d -= 16)
 		{
@@ -217,7 +218,7 @@ static QOG_NOINLINE int R_QogDlightInt (const float *local, float rad, float min
 #endif
 
 #ifdef QOG_DLIGHT_CHECK
-/* QuakeOG (Agent AL): id's cell loop of one light, for the check build */
+/* QuakeOG, id's cell loop of one light, for the check build */
 static void R_QogDlightFloat (const float *local, float rad, float minlight, int smax, int tmax)
 {
 	int		s, t, sd, td;
@@ -269,7 +270,7 @@ void R_AddDynamicLights (void)
 	tmax = (surf->extents[1]>>4)+1;
 	tex = SURF_TEXINFO (r_drawsurf.model, surf);	// QuakeOG
 #ifdef QOG_DLIGHT_SPARSE
-	dlbits = R_DlightBits (r_drawsurf.model, surf);	// QuakeOG: kept only for lit surfaces
+	dlbits = R_DlightBits (r_drawsurf.model, surf);	// QuakeOG, kept only for lit surfaces
 #endif
 
 	for (lnum=0 ; lnum<MAX_DLIGHTS ; lnum++)
@@ -306,7 +307,7 @@ void R_AddDynamicLights (void)
 		local[1] -= surf->texturemins[1];
 #if defined(QOG_DLIGHT_INT) && !defined(QUAKE2)
 #ifdef QOG_DLIGHT_CHECK
-		// QuakeOG (Agent AL): PC check build, both ways on every pair
+		// QuakeOG, PC check build, both ways on every pair
 		{
 			static unsigned	qog_dlc_pairs, qog_dlc_bad, qog_dlc_int;
 			unsigned		save[18*18], intres[18*18];
@@ -329,16 +330,16 @@ void R_AddDynamicLights (void)
 			continue;
 		}
 #else
-		if (R_QogDlightInt (local, rad, minlight, smax, tmax))	// QuakeOG (Agent AL)
+		if (R_QogDlightInt (local, rad, minlight, smax, tmax))	// QuakeOG
 		{
-			QOG_BM (QOG_BM_DLPAIR_INT, 1);	// QuakeOG (Agent AS)
+			QOG_BM (QOG_BM_DLPAIR_INT, 1);	// QuakeOG
 			QOG_BM (QOG_BM_DLCELL_INT, smax * tmax);
 			continue;
 		}
 #endif
 #endif
 		
-		QOG_BM (QOG_BM_DLPAIR_FLT, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_DLPAIR_FLT, 1);	// QuakeOG
 		QOG_BM (QOG_BM_DLCELL_FLT, smax * tmax);
 		for (t = 0 ; t<tmax ; t++)
 		{
@@ -358,7 +359,7 @@ void R_AddDynamicLights (void)
 #ifdef QOG_LMAP_STATS
 				LMS (LMS_LIT, dist < minlight);
 #endif
-				QOG_BM (QOG_BM_DLLIT_FLT, dist < minlight);	// QuakeOG (Agent AS)
+				QOG_BM (QOG_BM_DLLIT_FLT, dist < minlight);	// QuakeOG
 				if (dist < minlight)
 #ifdef QUAKE2
 				{
@@ -431,7 +432,7 @@ void R_BuildLightMap (void)
 	}
 
 #if defined(QOG_LMAP_FUSE) && defined(QOG_LMAP_FUSE_CHECK)
-	// PC check build: id's passes into a copy, compared with the fused grid
+	// PC check build, id's passes into a copy, compared with the fused grid
 	if (!SURF_DLIGHTFRAME_IS (r_drawsurf.model, surf, r_framecount))
 	{
 		static unsigned	ref[18*18];
@@ -461,7 +462,7 @@ void R_BuildLightMap (void)
 #endif
 #ifdef QOG_LMAP_FUSE
 	/*
-	QuakeOG (Agent AQ): id's passes over the grid (clear to ambient, one
+	QuakeOG, id's passes over the grid (clear to ambient, one
 	per light style, bound and invert after the dynamic lights) in one or
 	two. The cell is an unsigned sum, which wraps the same in any order, so
 	ambient plus each style's sample times its scale in one statement is
@@ -500,7 +501,7 @@ void R_BuildLightMap (void)
 				l1 = l0;
 			if (!dl && nmaps == 1)
 			{
-				// one style, the common case: one product a cell
+				// one style, the common case, one product a cell
 				unsigned	*end = bl + size;
 				unsigned	*p = bl;
 				int			top = 255*256 - (int)amb;
@@ -532,7 +533,7 @@ void R_BuildLightMap (void)
 		}
 		else
 		{
-			// three or four styles: id's passes
+			// three or four styles, id's passes
 			for (i=0 ; i<size ; i++)
 				bl[i] = amb;
 			for (maps = 0 ; maps < nmaps ; maps++)
@@ -548,7 +549,7 @@ void R_BuildLightMap (void)
 			lightmap += size * nmaps;	// as id's loop leaves it
 
 #ifdef QOG_XIPSIM
-		{	// QuakeOG (Agent AH): PC measurement, the samples read from flash (d_xipsim.c)
+		{	// QuakeOG, PC measurement, the samples read from flash (d_xipsim.c)
 			void XipSim_Range (int kind, const unsigned char *p, int bytes);
 			if (surf->samples)
 				XipSim_Range (2, surf->samples, (int)(lightmap - surf->samples));
@@ -606,7 +607,7 @@ void R_BuildLightMap (void)
 		}
 
 #ifdef QOG_XIPSIM
-	{	// QuakeOG (Agent AH): PC measurement, the samples read from flash (d_xipsim.c)
+	{	// QuakeOG, PC measurement, the samples read from flash (d_xipsim.c)
 		void XipSim_Range (int kind, const unsigned char *p, int bytes);
 		if (surf->samples)
 			XipSim_Range (2, surf->samples, (int)(lightmap - surf->samples));

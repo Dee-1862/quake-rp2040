@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -448,7 +449,7 @@ void qog_stackprobe_alloca (int bytes);	// port/pc/stackprobe_pc.c, PC measureme
 ============
 SV_PushMove
 
-QuakeOG (Agent AC): QOG_PUSHMOVE_ALLOCA takes the lists of moved entities
+QuakeOG, QOG_PUSHMOVE_ALLOCA takes the lists of moved entities
 from the stack for sv.max_edicts entries, not MAX_EDICTS (9,600 B on the
 board's server stack, the deepest frame of the server half). The loop
 visits each edict below sv.num_edicts once and adds at most one entry for
@@ -1036,7 +1037,7 @@ void SV_WalkMove (edict_t *ent)
 	downmove[2] = -STEPSIZE + oldvel[2]*host_frametime;
 
 // move up
-	SV_PushEntity (ent, upmove);	// FIXME: don't link?
+	SV_PushEntity (ent, upmove);	// FIXME, don't link?
 
 // move forward
 	ent->v.velocity[0] = oldvel[0];
@@ -1060,7 +1061,7 @@ void SV_WalkMove (edict_t *ent)
 		SV_WallFriction (ent, &steptrace);
 
 // move down
-	downtrace = SV_PushEntity (ent, downmove);	// FIXME: don't link?
+	downtrace = SV_PushEntity (ent, downmove);	// FIXME, don't link?
 
 	if (downtrace.plane.normal[2] > 0.7)
 	{
@@ -1541,7 +1542,7 @@ void SV_Physics (void)
 	int		i;
 	edict_t	*ent;
 #ifdef QOG_EDICT_STATS
-	double	qog_t0 = Sys_FloatTime ();	// QuakeOG: server frame time for qog_mem
+	double	qog_t0 = Sys_FloatTime ();	// QuakeOG, server frame time for qog_mem
 #endif
 
 // let the progs know that a new frame has started
@@ -1597,7 +1598,7 @@ void SV_Physics (void)
 
 	sv.time += host_frametime;
 #ifdef QOG_EDICT_STATS
-	{	// QuakeOG: edict use peaks and server time for qog_mem (port/common/qog_mem.c)
+	{	// QuakeOG, edict use peaks and server time for qog_mem (port/common/qog_mem.c)
 		extern double qog_sv_seconds;
 		void qog_edict_sample (void);
 		qog_sv_seconds += Sys_FloatTime () - qog_t0;

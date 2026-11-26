@@ -20,12 +20,12 @@ extern particle_t	*particles;
 extern byte		*hunk_base;
 extern int		hunk_low_used;
 
-/* The route, on the level's low hunk: feet origins in loop order (a spot
+/* The route, on the level's low hunk, feet origins in loop order (a spot
    can appear more than once, the route goes back through spots it has seen
    rather than through walls) and the time at each, [fly_n] = loop length. */
 static vec3_t	*fly_pts;
 static float	*fly_start;
-static byte		*fly_cut;	/* 1: no line of sight to the next point, the camera cuts there */
+static byte		*fly_cut;	/* 1, no line of sight to the next point, the camera cuts there */
 static int		fly_n;
 static entity_t	fly_worldent;	/* cl_entities[0] when standalone */
 
@@ -218,7 +218,7 @@ static void fly_nudge (vec3_t feet)
 	}
 }
 
-/* A spot from the entity lump, kept as qog_tour keeps edict spots: not with
+/* A spot from the entity lump, kept as qog_tour keeps edict spots, not with
    the eye in solid, not closer than FLY_SPACING to one already kept. */
 static void fly_addspot (vec3_t *spots, int *n, const float *p)
 {
@@ -251,7 +251,7 @@ static qboolean fly_wanted (const char *classname)
 		|| !strncmp (classname, "monster_", 8);
 }
 
-/* Reads the entity lump twice: the player start first, then the rest in
+/* Reads the entity lump twice, the player start first, then the rest in
    lump order. */
 static int fly_findspots (vec3_t *spots)
 {
@@ -304,7 +304,7 @@ static int fly_findspots (vec3_t *spots)
 	return n;
 }
 
-/* Which spots see each other: one bit per pair. */
+/* Which spots see each other, one bit per pair. */
 #define FLY_SEES(vis, a, b)	((vis)[((a) * QOG_FLY_MAX_POINTS + (b)) >> 3] & (1 << (((a) * QOG_FLY_MAX_POINTS + (b)) & 7)))
 #define FLY_VIS_BYTES		(QOG_FLY_MAX_POINTS * QOG_FLY_MAX_POINTS / 8)
 
@@ -394,8 +394,8 @@ int qog_fly_use_world (void)
 			}
 
 	// from the start, always to the unvisited spot nearest along the
-	// sight lines, through spots already seen; the nearest straight
-	// line when none can be reached; at the end back to the start
+	// sight lines, through spots already seen. The nearest straight
+	// line when none can be reached. At the end back to the start
 	memset (used, 0, sizeof(used));
 	cur = 0;
 	used[0] = true;
@@ -508,7 +508,7 @@ static void fly_angles_from (const vec3_t dir, vec3_t angles)
 	angles[ROLL] = 0;
 }
 
-/* Closed Catmull-Rom spline through the route: position and direction at
+/* Closed Catmull-Rom spline through the route, position and direction at
    time t. Returns the index of the point last passed. */
 static int fly_eval (double t, vec3_t feet, vec3_t dir)
 {

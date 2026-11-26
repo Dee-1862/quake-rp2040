@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -20,12 +21,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "r_qogalias.h"	// QuakeOG (Agent AI)
+#include "r_qogalias.h"	// QuakeOG
 #ifdef QOG_PARTS_CORE1
-#include "d_local.h"	// QuakeOG (Agent AM): the core 1 job (Sys_QogCore1Start)
+#include "d_local.h"	// QuakeOG, the core 1 job (Sys_QogCore1Start)
 #endif
 
-#ifdef QOG_MAX_PARTICLES	// QuakeOG: smaller default (MG24Quake and RP2350-Quake use 512, id's own floor)
+#ifdef QOG_MAX_PARTICLES	// QuakeOG, smaller default (MG24Quake and RP2350-Quake use 512, id's own floor)
 #define MAX_PARTICLES			QOG_MAX_PARTICLES
 #else
 #define MAX_PARTICLES			2048	// default max # of particles at one
@@ -44,7 +45,7 @@ particle_t	*particles;
 int			r_numparticles;
 
 #ifdef QOG_PARTICLE_PACKED
-// QuakeOG: the list link is a 16-bit index + 1, 0 = NULL (d_iface.h)
+// QuakeOG, the list link is a 16-bit index + 1, 0 = NULL (d_iface.h)
 #define P_NEXT(p)		((p)->next ? particles + (p)->next - 1 : NULL)
 #define P_SETNEXT(p,q)	((p)->next = (q) ? (unsigned short)((particle_t *)(q) - particles + 1) : 0)
 #else
@@ -61,7 +62,7 @@ R_InitParticles
 ===============
 */
 #ifdef QOG_PARTICLES_PRESET
-// QuakeOG: a host that draws no particles (the fly-through, port/common/
+// QuakeOG, a host that draws no particles (the fly-through, port/common/
 // qog_fly.c) sets particles and r_numparticles itself before R_Init and sets
 // this, so no particle block is taken from the hunk at all.
 qboolean	r_particles_preset;
@@ -89,7 +90,7 @@ void R_InitParticles (void)
 	}
 #ifdef QOG_PARTICLE_PACKED
 	if (r_numparticles > 65535)
-		r_numparticles = 65535;	// QuakeOG: 16-bit list links
+		r_numparticles = 65535;	// QuakeOG, 16-bit list links
 #endif
 
 	particles = (particle_t *)
@@ -146,9 +147,9 @@ R_EntityParticles
 */
 
 #define NUMVERTEXNORMALS	162
-extern	QOG_RTABLE_CONST float	r_avertexnormals[NUMVERTEXNORMALS][3];	// QuakeOG: const with QOG_CONST_RTABLES (r_alias.c)
+extern	QOG_RTABLE_CONST float	r_avertexnormals[NUMVERTEXNORMALS][3];	// QuakeOG, const with QOG_CONST_RTABLES (r_alias.c)
 #ifdef QOG_PARTICLE_AVEL8
-// QuakeOG: each rate is (rand()&255) * 0.01, so keep the byte and scale it
+// QuakeOG, each rate is (rand()&255) * 0.01, so keep the byte and scale it
 // on use to the same float (486 bytes instead of 1,944)
 byte	avelocities[NUMVERTEXNORMALS][3];
 #define AVEL(x)		((float)((x) * 0.01))
@@ -487,7 +488,7 @@ void R_RunParticleEffect (vec3_t org, vec3_t dir, int color, int count)
 			for (j=0 ; j<3 ; j++)
 			{
 				p->org[j] = org[j] + ((rand()&15)-8);
-				p->vel[j] = dir[j]*15;// + (rand()%300)-150;
+				p->vel[j] = dir[j]*15;// + (rand()%300)-150.
 			}
 		}
 	}
@@ -688,7 +689,7 @@ void R_RocketTrail (vec3_t start, vec3_t end, int type)
 ===============
 R_QogDieBits
 
-QuakeOG (Agent AR): id's "p->die < cl.time" compares a float with a double,
+QuakeOG, id's "p->die < cl.time" compares a float with a double,
 a float to double conversion and a double compare through the M0+'s soft
 float routines, twice for every particle of every view. For a float die
 and a double t, die < t exactly when die < c, c the smallest float at or
@@ -707,7 +708,7 @@ static int R_QogDieBits (void)
 		return 0;
 	c.f = (float)cl.time;
 	if ((double)c.f < cl.time)
-		c.i++;			// the next float up: cl.time's float rounded down
+		c.i++;			// the next float up, cl.time's float rounded down
 	return c.i;
 }
 
@@ -726,11 +727,11 @@ static __inline int R_QogDieInt (const particle_t *p)
 #ifdef QOG_PARTS_CORE1
 /*
 ==============
-QuakeOG (Agent AM): particle physics on both cores (QOG_PARTS_CORE1)
+QuakeOG, particle physics on both cores (QOG_PARTS_CORE1)
 
 id's R_DrawParticles draws a particle and then moves it. The drawing stays
 on core 0 in id's order (particles can cover each other's pixels), and the
-moving, which reads and writes only that particle, is shared: core 0 moves
+moving, which reads and writes only that particle, is shared, core 0 moves
 two particles of every five and core 1 the other three, each only once core
 0 has drawn it and unlinked its dead successors (r_qogp_passed). A moved
 particle is never read again in this frame (the kill test looks at
@@ -851,9 +852,9 @@ void R_DrawParticles (void)
 	float			time1;
 	float			dvel;
 	float			frametime;
-	int				diebits = 0;	// QuakeOG (Agent AR): R_QogDieBits
+	int				diebits = 0;	// QuakeOG, R_QogDieBits
 #ifdef QOG_ALIAS_FAST
-	d_qogpview_t	qogpv;	// QuakeOG (Agent AI): Fast mode particles
+	d_qogpview_t	qogpv;	// QuakeOG, Fast mode particles
 #endif
 	
 #ifdef GLQUAKE
@@ -870,7 +871,7 @@ void R_DrawParticles (void)
 #else
 	D_StartParticles ();
 #ifdef QOG_ALIAS_STATS
-	R_QogAliasStatsView ();	// QuakeOG (Agent AI): PC measurement
+	R_QogAliasStatsView ();	// QuakeOG, PC measurement
 #endif
 
 	VectorScale (vright, xscaleshrink, r_pright);
@@ -883,12 +884,12 @@ void R_DrawParticles (void)
 #endif
 	frametime = cl.time - cl.oldtime;
 	time3 = frametime * 15;
-	time2 = frametime * 10; // 15;
+	time2 = frametime * 10; // 15.
 	time1 = frametime * 5;
 	grav = frametime * sv_gravity.value * 0.05;
 	dvel = 4*frametime;
 #ifdef QOG_PART_DIEBITS
-	diebits = R_QogDieBits ();	// QuakeOG (Agent AR): the kill checks in integers, exact
+	diebits = R_QogDieBits ();	// QuakeOG, the kill checks in integers, exact
 #endif
 	
 	for ( ;; ) 
@@ -905,7 +906,7 @@ void R_DrawParticles (void)
 	}
 
 #ifdef QOG_PARTS_CORE1
-	r_qogp_k.frametime = frametime;	// QuakeOG (Agent AM): the moving on both cores
+	r_qogp_k.frametime = frametime;	// QuakeOG, the moving on both cores
 	r_qogp_k.time1 = time1;
 	r_qogp_k.time2 = time2;
 	r_qogp_k.time3 = time3;
@@ -952,7 +953,7 @@ void R_DrawParticles (void)
 #else
 #ifdef QOG_ALIAS_FAST
 		if (r_qogfast)
-			D_QogDrawParticleFast (p, &qogpv);	// QuakeOG (Agent AI)
+			D_QogDrawParticleFast (p, &qogpv);	// QuakeOG
 		else
 #endif
 		D_DrawParticle (p);
@@ -1032,7 +1033,7 @@ void R_DrawParticles (void)
 			Sys_QogCore1Join ();
 	}
 	else
-		R_QogParticlesCore1 (NULL);	// PC test: core 1's share after core 0's, on this thread
+		R_QogParticlesCore1 (NULL);	// PC test, core 1's share after core 0's, on this thread
 	}
 #endif
 

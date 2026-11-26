@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -20,10 +21,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #ifdef QOG_NET_LINK
-#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#include "net_link.h"	// QuakeOG, the split game (net_link.c)
 #endif
 
-// QuakeOG: in the split game (QOG_NET_LINK) the client half keeps the
+// QuakeOG, in the split game (QOG_NET_LINK) the client half keeps the
 // console commands that act on the client, plus the client's part of map,
 // save and load. The server half keeps the rest, and console lines the
 // client does not know run there (Link_ForwardCommand). Commands that
@@ -70,7 +71,7 @@ void Host_Quit_f (void)
 Host_Status_f
 ==================
 */
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, up to Host_Ping_f
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server half only, up to Host_Ping_f
 void Host_Status_f (void)
 {
 	client_t	*client;
@@ -280,7 +281,7 @@ void Host_Map_f (void)
 	if (cmd_source != src_command)
 		return;
 
-#ifndef QOG_SPLIT_SERVER	// QuakeOG: the client's part
+#ifndef QOG_SPLIT_SERVER	// QuakeOG, the client's part
 	cls.demonum = -1;		// stop demo loop in case this fails
 
 	CL_Disconnect ();
@@ -301,7 +302,7 @@ void Host_Map_f (void)
 #endif
 
 #ifdef QOG_SPLIT_CLIENT
-	// QuakeOG: the spawn parms are taken now, as Cmd_Argv will not last;
+	// QuakeOG, the spawn parms are taken now, as Cmd_Argv will not last.
 	// the server spawns the map and sends "connect local" back if it ran
 	strcpy (cls.spawnparms, "");
 	for (i=2 ; i<Cmd_Argc() ; i++)
@@ -322,7 +323,7 @@ void Host_Map_f (void)
 		return;
 
 #ifdef QOG_SPLIT_SERVER
-	Link_ServerClientExec ("connect local");	// QuakeOG: the client connects now
+	Link_ServerClientExec ("connect local");	// QuakeOG, the client connects now
 #else
 	if (cls.state != ca_dedicated)
 	{
@@ -345,8 +346,8 @@ void Host_Map_f (void)
 ==================
 Host_QogBoot_f
 
-QuakeOG (Agent AG): "qog_boot" starts the level the data image names
-(COM_BootMap: qogboot.txt, else e1m1), so one board app starts any
+QuakeOG, "qog_boot" starts the level the data image names
+(COM_BootMap, qogboot.txt, else e1m1), so one board app starts any
 episode's image. The board's command line runs it where it ran "map e1m1".
 ==================
 */
@@ -369,7 +370,7 @@ void Host_QogBoot_f (void)
 ==================
 Host_QogLoadFailed_f
 
-QuakeOG (Agent AG): the server half did not load a save, its level is not
+QuakeOG, the server half did not load a save, its level is not
 in the data image. The menu put up the loading plaque before "load", so
 take it down now (id would wait 60 s) and say why. The level goes on.
 ==================
@@ -386,7 +387,7 @@ void Host_QogLoadFailed_f (void)
 ==================
 Host_QogNewSpawnparms
 
-QuakeOG (Agent AG): SV_SaveSpawnparms with the parms of a new player
+QuakeOG, SV_SaveSpawnparms with the parms of a new player
 (SetNewParms), what id's start gives a player who finished an episode.
 ==================
 */
@@ -410,12 +411,12 @@ static void Host_QogNewSpawnparms (void)
 ==================
 Host_QogMissingLevel
 
-QuakeOG (Agent AG): a board data image holds one episode. A level exit to
+QuakeOG, a board data image holds one episode. A level exit to
 a level it does not hold (start after the episode's last level, a gate of
 start to another episode, a secret level left out) would leave the server
 without a level and the client waiting. It goes to the image's own start
 level instead (COM_BootMap), with a new player's items, as id's start
-does after an episode. Returns false when name is in the packs: then
+does after an episode. Returns false when name is in the packs, then
 nothing changes.
 ==================
 */
@@ -442,7 +443,7 @@ Host_Changelevel_f
 Goes to a new map, taking all clients along
 ==================
 */
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, changelevel and restart
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server half only, changelevel and restart
 void Host_Changelevel_f (void)
 {
 #ifdef QUAKE2
@@ -480,7 +481,7 @@ void Host_Changelevel_f (void)
 		Con_Printf ("changelevel <levelname> : continue game on a new level\n");
 		return;
 	}
-	if (!sv.active || SPLIT_DEMOPLAYBACK)	// QuakeOG: SPLIT_DEMOPLAYBACK was cls.demoplayback
+	if (!sv.active || SPLIT_DEMOPLAYBACK)	// QuakeOG, SPLIT_DEMOPLAYBACK was cls.demoplayback
 	{
 		Con_Printf ("Only the server may changelevel\n");
 		return;
@@ -509,7 +510,7 @@ void Host_Restart_f (void)
 	char	startspot[MAX_QPATH];
 #endif
 
-	if (SPLIT_DEMOPLAYBACK || !sv.active)	// QuakeOG: was cls.demoplayback
+	if (SPLIT_DEMOPLAYBACK || !sv.active)	// QuakeOG, was cls.demoplayback
 		return;
 
 	if (cmd_source != src_command)
@@ -525,7 +526,7 @@ void Host_Restart_f (void)
 }
 #endif	// QOG_SPLIT_CLIENT
 
-#ifndef QOG_SPLIT_SERVER	// QuakeOG: client half only, reconnect and connect
+#ifndef QOG_SPLIT_SERVER	// QuakeOG, client half only, reconnect and connect
 /*
 ==================
 Host_Reconnect_f
@@ -587,7 +588,7 @@ void Host_SavegameComment (char *text)
 	char	kills[20];
 
 #ifdef QOG_SPLIT_SERVER
-	// QuakeOG: the client made it from its state and sent it with the save
+	// QuakeOG, the client made it from its state and sent it with the save
 	memcpy (text, link_save_comment, SAVEGAME_COMMENT_LENGTH + 1);
 	return;
 #endif
@@ -610,7 +611,7 @@ Host_Savegame_f
 ===============
 */
 #ifdef QOG_SPLIT_CLIENT
-// QuakeOG: the server saves. It needs the client's intermission flag and
+// QuakeOG, the server saves. It needs the client's intermission flag and
 // the comment, which come from client state.
 void Host_Savegame_f (void)
 {
@@ -624,7 +625,7 @@ void Host_Savegame_f (void)
 }
 #else
 #ifdef QOG_SPLIT_SERVER
-#define	cl_intermission	link_cl_intermission	// QuakeOG: sent with the save
+#define	cl_intermission	link_cl_intermission	// QuakeOG, sent with the save
 #else
 #define	cl_intermission	cl.intermission
 #endif
@@ -644,7 +645,7 @@ void Host_Savegame_f (void)
 		return;
 	}
 
-	if (cl_intermission)	// QuakeOG: was cl.intermission
+	if (cl_intermission)	// QuakeOG, was cl.intermission
 	{
 		Con_Printf ("Can't save in intermission.\n");
 		return;
@@ -726,11 +727,11 @@ void Host_Savegame_f (void)
 Host_Loadgame_f
 ===============
 */
-// QuakeOG: the 32 KB line buffer was on the stack. It now lives in a
+// QuakeOG, the 32 KB line buffer was on the stack. It now lives in a
 // temporary block on the high hunk, taken once for the header and again
 // after the map has loaded, so the level loads with that space free.
 #ifdef QOG_SPLIT_CLIENT
-// QuakeOG: the server loads. Its part that disconnects and reconnects the
+// QuakeOG, the server loads. Its part that disconnects and reconnects the
 // client comes back as "disconnect" and "connect local".
 void Host_Loadgame_f (void)
 {
@@ -742,17 +743,17 @@ void Host_Loadgame_f (void)
 }
 #else
 #ifdef QOG_LOADGAME_STRSIZE
-// QuakeOG (Agent R): the split server has no z-buffer to borrow, so the
+// QuakeOG, the split server has no z-buffer to borrow, so the
 // buffer is sized for the biggest brace block of a save instead (a fight
-// save of E1M1: the globals, 2,485 bytes). A bigger block still stops with
+// save of E1M1, the globals, 2,485 bytes). A bigger block still stops with
 // id's "Loadgame buffer overflow".
 #define LOADGAME_STRSIZE	QOG_LOADGAME_STRSIZE
 #else
 #define LOADGAME_STRSIZE	32768
 #endif
 #ifdef QOG_LOADGAME_ZTEMP
-// QuakeOG: the line buffer at the end of the z-buffer, which is free between
-// frames (r_shared.h): a load runs from the command buffer, before the
+// QuakeOG, the line buffer at the end of the z-buffer, which is free between
+// frames (r_shared.h), a load runs from the command buffer, before the
 // frame is drawn, and while it runs the client is not signed on, so no 3D
 // view is drawn. The status bar rows at the start of the z-buffer stay
 // clear. A z-buffer too small for both takes the high hunk block as before.
@@ -769,7 +770,7 @@ extern int	r_ztemp_bytes;
 ===============
 Host_LoadgameEdicts
 
-QuakeOG: the light styles, the globals and the edicts of a save, read with
+QuakeOG, the light styles, the globals and the edicts of a save, read with
 the line buffer str (id's code from Host_Loadgame_f). Returns the edicts.
 ===============
 */
@@ -786,7 +787,7 @@ static int Host_LoadgameEdicts (FILE *f, char *str)
 	{
 		fscanf (f, "%s\n", str);
 #ifdef QOG_HUNK_PACKED
-		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG: packed, zone.c
+		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG, packed, zone.c
 #else
 		sv.lightstyles[i] = Hunk_Alloc (strlen(str)+1);
 #endif
@@ -797,7 +798,7 @@ static int Host_LoadgameEdicts (FILE *f, char *str)
 	entnum = -1;		// -1 is the globals
 	while (!feof(f))
 	{
-		for (i=0 ; i<LOADGAME_STRSIZE-1 ; i++)	// QuakeOG: was sizeof(str)
+		for (i=0 ; i<LOADGAME_STRSIZE-1 ; i++)	// QuakeOG, was sizeof(str)
 		{
 			r = fgetc (f);
 			if (r == EOF || !r)
@@ -809,7 +810,7 @@ static int Host_LoadgameEdicts (FILE *f, char *str)
 				break;
 			}
 		}
-		if (i == LOADGAME_STRSIZE-1)	// QuakeOG: was sizeof(str)
+		if (i == LOADGAME_STRSIZE-1)	// QuakeOG, was sizeof(str)
 			Sys_Error ("Loadgame buffer overflow");
 		str[i] = 0;
 		start = str;
@@ -827,7 +828,7 @@ static int Host_LoadgameEdicts (FILE *f, char *str)
 		{	// parse an edict
 
 			ent = EDICT_NUM(entnum);
-			ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
+			ED_CLEARFIELDS(ent);	// QuakeOG, was memset (&ent->v, 0, progs->entityfields * 4)
 			ent->free = false;
 			ED_ParseEdict (start, ent);
 	
@@ -847,9 +848,9 @@ static int Host_LoadgameEdicts (FILE *f, char *str)
 ===============
 Host_LoadgameStack
 
-QuakeOG (Agent AG): the line buffer on the stack of a frame of its own,
+QuakeOG, the line buffer on the stack of a frame of its own,
 taken once the map has spawned, not on the high hunk under the loaded
-level: a load needed the level's hunk plus the 8 KB buffer, which was the
+level, a load needed the level's hunk plus the 8 KB buffer, which was the
 server's peak (e2m7 with sound 179 KB of the board's 174). The deep chains
 of the load (SV_SpawnServer, its physics frames) have returned by then.
 ===============
@@ -873,7 +874,7 @@ void Host_Loadgame_f (void)
 	FILE	*f;
 	char	mapname[MAX_QPATH];
 	float	time, tfloat;
-	char	*str, *start;	// QuakeOG: str was a stack array
+	char	*str, *start;	// QuakeOG, str was a stack array
 	int		himark;
 	int		i, r;
 	edict_t	*ent;
@@ -916,17 +917,17 @@ void Host_Loadgame_f (void)
 		Con_Printf ("Savegame is version %i, not %i\n", version, SAVEGAME_VERSION);
 		return;
 	}
-	himark = Hunk_HighMark ();	// QuakeOG: buffer for the comment line
+	himark = Hunk_HighMark ();	// QuakeOG, buffer for the comment line
 	str = LOADGAME_ALLOC ();
 	if (!str)
 		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
 	fscanf (f, "%s\n", str);
-	Hunk_FreeToHighMark (himark);	// QuakeOG: free while the map loads
+	Hunk_FreeToHighMark (himark);	// QuakeOG, free while the map loads
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		fscanf (f, "%f\n", &spawn_parms[i]);
 // this silliness is so we can load 1.06 save files, which have float skill values
 	fscanf (f, "%f\n", &tfloat);
-#ifndef QOG_MISSING_MAPS	// QuakeOG (Agent AG): set once the level is known to be here
+#ifndef QOG_MISSING_MAPS	// QuakeOG, set once the level is known to be here
 	current_skill = (int)(tfloat + 0.1);
 	Cvar_SetValue ("skill", (float)current_skill);
 #endif
@@ -941,7 +942,7 @@ void Host_Loadgame_f (void)
 	fscanf (f, "%f\n",&time);
 
 #ifdef QOG_MISSING_MAPS
-	// QuakeOG (Agent AG): the saves on main's volume outlive the episode
+	// QuakeOG, the saves on main's volume outlive the episode
 	// image they were made with. A save of a level this image does not
 	// hold is not loaded and the game goes on as it was, before anything
 	// is stopped (SV_SpawnServer would leave no level and the client
@@ -963,7 +964,7 @@ void Host_Loadgame_f (void)
 #endif
 
 #ifdef QOG_SPLIT_SERVER
-	// QuakeOG: CL_Disconnect_f, the client's part on the client, the
+	// QuakeOG, CL_Disconnect_f, the client's part on the client, the
 	// server's part (it closes the connection and stops this server) here
 	Link_ServerClientExec ("disconnect");
 	Link_ServerPeerClosed ();
@@ -987,7 +988,7 @@ void Host_Loadgame_f (void)
 #ifdef QOG_LOADGAME_STACKBUF
 	entnum = Host_LoadgameStack (f);
 #else
-	himark = Hunk_HighMark ();	// QuakeOG: buffer for the rest of the file
+	himark = Hunk_HighMark ();	// QuakeOG, buffer for the rest of the file
 	str = LOADGAME_ALLOC ();
 	if (!str)
 		Sys_Error ("Host_Loadgame_f: no room for the line buffer");
@@ -998,14 +999,14 @@ void Host_Loadgame_f (void)
 
 	fclose (f);
 #ifndef QOG_LOADGAME_STACKBUF
-	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the line buffer
+	Hunk_FreeToHighMark (himark);	// QuakeOG, done with the line buffer
 #endif
 
 	for (i=0 ; i<NUM_SPAWN_PARMS ; i++)
 		svs.clients->spawn_parms[i] = spawn_parms[i];
 
 #ifdef QOG_SPLIT_SERVER
-	Link_ServerClientExec ("connect local");	// QuakeOG: CL_EstablishConnection and Host_Reconnect_f
+	Link_ServerClientExec ("connect local");	// QuakeOG, CL_EstablishConnection and Host_Reconnect_f
 #else
 	if (cls.state != ca_dedicated)
 	{
@@ -1120,7 +1121,7 @@ int LoadGamestate(char *level, char *startspot)
 	{
 		fscanf (f, "%s\n", str);
 #ifdef QOG_HUNK_PACKED
-		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG: packed, zone.c
+		sv.lightstyles[i] = Hunk_AllocPacked (strlen(str)+1, 1);	// QuakeOG, packed, zone.c
 #else
 		sv.lightstyles[i] = Hunk_Alloc (strlen(str)+1);
 #endif
@@ -1156,7 +1157,7 @@ int LoadGamestate(char *level, char *startspot)
 		// parse an edict
 
 		ent = EDICT_NUM(entnum);
-		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
+		ED_CLEARFIELDS(ent);	// QuakeOG, was memset (&ent->v, 0, progs->entityfields * 4)
 		ent->free = false;
 		ED_ParseEdict (start, ent);
 	
@@ -1325,7 +1326,7 @@ void Host_Please_f (void)
 #endif
 
 
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, say and tell
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server half only, say and tell
 void Host_Say(qboolean teamonly)
 {
 	client_t *client;
@@ -1521,7 +1522,7 @@ void Host_Color_f(void)
 Host_Kill_f
 ==================
 */
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server half only, kill to the view commands
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server half only, kill to the view commands
 void Host_Kill_f (void)
 {
 	if (cmd_source == src_command)
@@ -1638,7 +1639,7 @@ void Host_Spawn_f (void)
 		// set up the edict
 		ent = host_client->edict;
 
-		ED_CLEARFIELDS(ent);	// QuakeOG: was memset (&ent->v, 0, progs->entityfields * 4)
+		ED_CLEARFIELDS(ent);	// QuakeOG, was memset (&ent->v, 0, progs->entityfields * 4)
 		EV_SETFLOAT(ent, colormap, NUM_FOR_EDICT(ent));
 		EV_SETFLOAT(ent, team, (host_client->colors & 15) + 1);
 		EV_SETINT(ent, netname, host_client->name - pr_strings);
@@ -1800,7 +1801,7 @@ void Host_Kick_f (void)
 	{
 		if (cmd_source == src_command)
 #ifdef QOG_SPLIT_SERVER
-			who = cl_name.string;	// QuakeOG: the client's name, copied from the client
+			who = cl_name.string;	// QuakeOG, the client's name, copied from the client
 #else
 			if (cls.state == ca_dedicated)
 				who = "Console";
@@ -2024,7 +2025,7 @@ edict_t	*FindViewthing (void)
 Host_Viewmodel_f
 ==================
 */
-#ifndef QOG_SPLIT_SERVER	// QuakeOG: these set and read the client's model list
+#ifndef QOG_SPLIT_SERVER	// QuakeOG, these set and read the client's model list
 void Host_Viewmodel_f (void)
 {
 	edict_t	*e;
@@ -2143,7 +2144,7 @@ DEMO LOOP CONTROL
 Host_Startdemos_f
 ==================
 */
-#ifndef QOG_SPLIT_SERVER	// QuakeOG: client half only, the demo commands
+#ifndef QOG_SPLIT_SERVER	// QuakeOG, client half only, the demo commands
 void Host_Startdemos_f (void)
 {
 	int		i, c;
@@ -2167,7 +2168,7 @@ void Host_Startdemos_f (void)
 		strncpy (cls.demos[i-1], Cmd_Argv(i), sizeof(cls.demos[0])-1);
 
 #ifdef QOG_DEMOS_OPTIONAL
-	// QuakeOG: the loop keeps only the demos that are present. Without any
+	// QuakeOG, the loop keeps only the demos that are present. Without any
 	// (the board's data image leaves them out) it does not start, so the
 	// game opens on the console instead of a missing file error.
 	{
@@ -2246,7 +2247,7 @@ Host_InitCommands
 void Host_InitCommands (void)
 {
 #ifdef QOG_SPLIT_CLIENT
-	// QuakeOG: the client half's commands. The ones id's code forwards to
+	// QuakeOG, the client half's commands. The ones id's code forwards to
 	// the server as a client message are that forward here. The server's
 	// own commands are not here, so they run on the server half.
 	Cmd_AddCommand ("quit", Host_Quit_f);
@@ -2274,13 +2275,13 @@ void Host_InitCommands (void)
 	Cmd_AddCommand ("stopdemo", Host_Stopdemo_f);
 	Cmd_AddCommand ("mcache", Mod_Print);
 #ifdef QOG_BOOT_ENTRY
-	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG (Agent AG)
+	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG
 #endif
 #ifdef QOG_MISSING_MAPS
-	Cmd_AddCommand ("qog_loadfailed", Host_QogLoadFailed_f);	// QuakeOG (Agent AG), sent by the server half
+	Cmd_AddCommand ("qog_loadfailed", Host_QogLoadFailed_f);	// QuakeOG, sent by the server half
 #endif
 #elif defined(QOG_SPLIT_SERVER)
-	// QuakeOG: the server half's commands, the client's are on the client
+	// QuakeOG, the server half's commands, the client's are on the client
 	Cmd_AddCommand ("status", Host_Status_f);
 	Cmd_AddCommand ("god", Host_God_f);
 	Cmd_AddCommand ("notarget", Host_Notarget_f);
@@ -2352,7 +2353,7 @@ void Host_InitCommands (void)
 
 	Cmd_AddCommand ("mcache", Mod_Print);
 #ifdef QOG_BOOT_ENTRY
-	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG (Agent AG)
+	Cmd_AddCommand ("qog_boot", Host_QogBoot_f);	// QuakeOG
 #endif
 #endif
 }

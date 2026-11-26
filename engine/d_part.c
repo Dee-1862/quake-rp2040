@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "d_local.h"
-#include "r_qogalias.h"	// QuakeOG (Agent AI)
+#include "r_qogalias.h"	// QuakeOG
 
 
 /*
@@ -52,7 +53,7 @@ void D_StartParticles (void)
 ==============
 D_ParticlePixels
 
-QuakeOG (Agent AI): id's pixel loops of D_DrawParticle, shared with the
+QuakeOG, id's pixel loops of D_DrawParticle, shared with the
 Fast mode drawer. izi is the depth as the z-buffer holds it.
 ==============
 */
@@ -174,7 +175,7 @@ static void D_ParticlePixels (byte *pdest, d_zval_t *pz, int izi, int pix,
 ==============
 D_QogParticleView, D_QogDrawParticleFast
 
-QuakeOG (Agent AI): particles in Fast mode (r_fast 1, QOG_ALIAS_FAST) with
+QuakeOG, particles in Fast mode (r_fast 1, QOG_ALIAS_FAST) with
 no float arithmetic. The position is read into 24.8 fixed point by its bits
 (R_QogFix), the eye's subtracted, and all three shifted right together
 until they are below 2^15, so the products with the view vectors in 2.14
@@ -276,13 +277,13 @@ void D_DrawParticle (particle_t *pparticle)
 	int		izi, pix, u, v;
 
 #ifdef QOG_ALIAS_STATS
-	qog_astat_vm = 0;	// QuakeOG (Agent AI)
+	qog_astat_vm = 0;	// QuakeOG
 	QOG_AST(QAS_PARTS, 1);
 #endif
 // transform point
 	VectorSubtract (pparticle->org, r_origin, local);
 
-// QuakeOG (Agent AI): depth first, so a particle behind the near plane
+// QuakeOG, depth first, so a particle behind the near plane
 // costs no more products. The compare in float is the same, 8 is exact.
 	transformed[2] = DotProduct(local, r_ppn);
 
@@ -294,7 +295,7 @@ void D_DrawParticle (particle_t *pparticle)
 
 // project the point
 // FIXME: preadjust xcenter and ycenter
-	zi = QOG_FRECIP (transformed[2]);	// QuakeOG: QOG_FLOAT_EXACT
+	zi = QOG_FRECIP (transformed[2]);	// QuakeOG, QOG_FLOAT_EXACT
 	u = (int)(xcenter + zi * transformed[0] + 0.5);
 	v = (int)(ycenter - zi * transformed[1] + 0.5);
 
@@ -307,21 +308,21 @@ void D_DrawParticle (particle_t *pparticle)
 	}
 
 	pz = d_pzbuffer + (d_zwidth * v) + u;
-	pdest = d_viewbuffer + D_SCANTABLE(v) + u;	// QuakeOG: QOG_NO_ROWTABLES
+	pdest = d_viewbuffer + D_SCANTABLE(v) + u;	// QuakeOG, QOG_NO_ROWTABLES
 	izi = (int)(zi * 0x8000);
 
 	pix = izi >> d_pix_shift;
-	QOG_AST(QAS_PARTVIS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+	QOG_AST(QAS_PARTVIS, 1);	// QuakeOG, QOG_ALIAS_STATS
 
 	if (pix < d_pix_min)
 		pix = d_pix_min;
 	else if (pix > d_pix_max)
 		pix = d_pix_max;
 
-	izi = D_ZQ(izi);	// QuakeOG: QOG_ZBUFFER8 (after the size, which uses id's value)
-	QOG_AST(QAS_PARTPIX, (pix * pix) << d_y_aspect_shift);	// QuakeOG (Agent AI)
+	izi = D_ZQ(izi);	// QuakeOG, QOG_ZBUFFER8 (after the size, which uses id's value)
+	QOG_AST(QAS_PARTPIX, (pix * pix) << d_y_aspect_shift);	// QuakeOG
 
-	D_ParticlePixels (pdest, pz, izi, pix, pparticle->color);	// QuakeOG (Agent AI)
+	D_ParticlePixels (pdest, pz, izi, pix, pparticle->color);	// QuakeOG
 }
 
 #endif	// !id386

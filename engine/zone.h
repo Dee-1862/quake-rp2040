@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -96,7 +97,7 @@ int Z_FreeMemory (void);
 void *Hunk_Alloc (int size);		// returns 0 filled memory
 void *Hunk_AllocName (int size, char *name);
 #ifdef QOG_HUNK_PACKED
-void *Hunk_AllocPacked (int size, int align);	// QuakeOG: small blocks sharing one header, zone.c
+void *Hunk_AllocPacked (int size, int align);	// QuakeOG, small blocks sharing one header, zone.c
 #endif
 
 void *Hunk_HighAllocName (int size, char *name);

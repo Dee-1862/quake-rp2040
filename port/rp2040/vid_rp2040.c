@@ -1,4 +1,4 @@
-/* RP2040 video and input: id's vid.h plus Sys_SendKeyEvents.
+/* RP2040 video and input, id's vid.h plus Sys_SendKeyEvents.
  *
  * The 8-bit frame goes to the LCD through platform/qog_video (core 1, DMA,
  * palette lookup per line). The z-buffer covers only the 3D view rows
@@ -20,7 +20,7 @@
 #define ZROWS H
 #endif
 
-/* z-buffer width and rows. QuakeOG: with QOG_RENDER_SCALE (changes the
+/* z-buffer width and rows. QuakeOG, with QOG_RENDER_SCALE (changes the
    picture, off in the shipped flag lists) the 3D view is drawn smaller and
    the z-buffer only covers it (QOG_ZBUFFER_VIEW, engine/d_local.h). */
 #ifdef QOG_RENDER_SCALE
@@ -34,14 +34,14 @@
 
 viddef_t vid;
 #ifdef QOG_VID_NO_8TO16
-const unsigned short d_8to16table[256];   /* QuakeOG (Agent S): see vid.h */
+const unsigned short d_8to16table[256];   /* QuakeOG, see vid.h */
 #else
 unsigned short d_8to16table[256];
 #endif
 unsigned d_8to24table[256];
 
 #ifdef QOG_HUD_IN_ZBUFFER
-/* QuakeOG: the frame's rows below the 3D view (the status bar) are the first
+/* QuakeOG, the frame's rows below the 3D view (the status bar) are the first
    bytes of the z-buffer. The z-buffer is idle while the 2D overlay is drawn
    and while core 1 scans the frame out (VID_Update waits for the scanout
    before the next frame can draw), and R_RenderView repaints those rows
@@ -61,11 +61,11 @@ static d_zval_t zbuffer[ZW * ZH];
 #define VIDEO_BYTES     ((int)(sizeof vid_buffer + sizeof zbuffer))
 #endif
 #ifdef QOG_VID_SURFCACHE_MIN
-/* QuakeOG (Agent S): nothing allocates from it without QOG_SURFCACHE, so
+/* QuakeOG, nothing allocates from it without QOG_SURFCACHE, so
    only D_InitCaches' header and guard (D_InitCaches prints 0k) */
 static byte  surfcache[64] __attribute__((aligned(4)));
 #else
-static byte  surfcache[1024];   /* no surface cache (engine/d_scanlit.c); D_InitCaches still writes a header */
+static byte  surfcache[1024];   /* no surface cache (engine/d_scanlit.c). D_InitCaches still writes a header */
 #endif
 
 static void vid_menu_draw(void) { Draw_String(8 * 8, 6 * 8, "Video mode is fixed: 320x200"); }
@@ -76,8 +76,8 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 
 #ifdef QOG_HUD_SKIP
 static bool s_pal_changed;
-unsigned vid_qog_frames, vid_qog_hudsent;   /* Agent AK: for the diag line (link_rp2040.c) */
-/* Agent AP: the last scanout's time and rows, for the same line */
+unsigned vid_qog_frames, vid_qog_hudsent;   /* Earlier work, for the diag line (link_rp2040.c) */
+/* Earlier work, the last scanout's time and rows, for the same line */
 void VID_QogScanStats(unsigned *us, unsigned *rows) {
     const qog_video_stats_t vs = qog_video_stats();
     *us = (unsigned)vs.last_scan_us;
@@ -97,7 +97,7 @@ void VID_Init(unsigned char *palette) {
     vid.aspect = ((float)vid.height / (float)vid.width) * (320.0f / 240.0f);
     vid.numpages = 1;
     vid.colormap = host_colormap;
-    vid.fullbright = 256 - vid.colormap[16384];   /* one byte after the 64x256 table; the colormap may be read in place from flash, where the 3 bytes after the file are not ours */
+    vid.fullbright = 256 - vid.colormap[16384];   /* one byte after the 64x256 table. The colormap may be read in place from flash, where the 3 bytes after the file are not ours */
     vid.buffer = vid.conbuffer = vid_buffer;
     vid.rowbytes = vid.conrowbytes = W;
     d_pzbuffer = zbuffer;
@@ -108,13 +108,13 @@ void VID_Init(unsigned char *palette) {
     r_zalias_row = ZROWS;
 #endif
 #ifdef QOG_ZTEMP
-    /* QuakeOG: short-lived renderer tables use the z-buffer (engine/r_shared.h) */
+    /* QuakeOG, short-lived renderer tables use the z-buffer (engine/r_shared.h) */
     r_ztemp_base = (byte *)zbuffer;
     r_ztemp_bytes = ZBUFFER_BYTES & ~3;
 #endif
     D_InitCaches(surfcache, sizeof surfcache);
 #ifdef QOG_LCD_PIO
-    /* QuakeOG (Agent AP): the pixels through PIO, the PL022's even
+    /* QuakeOG, the pixels through PIO, the PL022's even
        prescaler gives only 50 MHz at 300 MHz (apps/quake QOG_LCD_PIO) */
     qog_video_use_pio(QOG_LCD_PIO_KHZ);
 #endif
@@ -128,7 +128,7 @@ void VID_Init(unsigned char *palette) {
 void VID_Shutdown(void) {}
 
 #ifdef QOG_VID_LOCKWAIT
-/* QuakeOG (Agent V): VID_Update leaves the scanout running and the first
+/* QuakeOG, VID_Update leaves the scanout running and the first
    VID_LockBuffer after it (engine/quakedef.h) waits for its end, so the next
    frame's input, link exchange and parsing overlap the 22 ms scanout. Only
    drawing into the frame or the status bar rows needs the wait, and id's
@@ -137,10 +137,10 @@ void VID_Shutdown(void) {}
    QOG_LOADGAME_ZTEMP) stay clear of the status bar rows. */
 static bool s_scan_pending;
 #ifdef QOG_VID_SCANRACE
-static bool s_racing;           /* Agent AK: the 3D view runs beside the scanout */
+static bool s_racing;           /* Earlier work, the 3D view runs beside the scanout */
 static uint8_t s_scan_rows;     /* rows the scanout in flight sends */
-static uint8_t s_scan_packed;   /* Agent AO: its first rows that hold a packed Turbo view */
-static uint8_t s_scan_first;    /* Agent AP: rows [first, rows) go out first, 0 top to bottom */
+static uint8_t s_scan_packed;   /* Earlier work, its first rows that hold a packed Turbo view */
+static uint8_t s_scan_first;    /* Earlier work, rows [first, rows) go out first, 0 top to bottom */
 #endif
 
 void VID_LockBuffer(void) {
@@ -155,18 +155,18 @@ void VID_LockBuffer(void) {
 }
 
 #ifdef QOG_VID_SCANRACE
-/* QuakeOG (Agent AK): the scanout reads the frame's rows from the top down,
+/* QuakeOG, the scanout reads the frame's rows from the top down,
    each once into a line buffer (platform/qog_video.c), and the world's
    front end at the start of a view writes only its edge cache and vertex
    cache in the first rows and its edge table at the end of the z-buffer.
    So the view starts while the last frame is sent and waits only until the
    scanout has read the rows it is about to write (engine/r_main.c). Same
-   pixels on the panel: no row changes before it was sent. */
+   pixels on the panel, no row changes before it was sent. */
 void VID_QogRaceBegin(void) {
     if (s_scan_pending) s_racing = true;
 }
 
-/* QuakeOG (Agent AP): the place of scan row r in the order the scanout
+/* QuakeOG, the place of scan row r in the order the scanout
    sends its rows, from 1 (the status bar rows first when s_scan_first) */
 static int scan_pos(int r) {
     if (!s_scan_first) return r + 1;
@@ -183,7 +183,7 @@ static int scan_maxpos(int lo, int hi) {
     return m;
 }
 
-/* QuakeOG (Agent AO, Agent AP): how far into its order the scanout in
+/* QuakeOG, how far into its order the scanout in
    flight must be before no row it has still to send reads a byte of
    [lo, hi). Rows below s_scan_packed read W / 2 bytes each from the start
    of the frame (a Turbo view), the others their W bytes. */
@@ -213,7 +213,7 @@ void VID_QogScanFree(const void *lo, const void *hi) {
     QOG_HP_ADD(QOG_HP_RACEWAIT, hp_wait);
 }
 
-void VID_QogRaceMark(int phase) { (void)phase; }   /* Agent AP: the PC models the race with it */
+void VID_QogRaceMark(int phase) { (void)phase; }   /* Earlier work, the PC models the race with it */
 
 void VID_QogScanDone(void) {
     s_racing = false;
@@ -224,11 +224,11 @@ void VID_QogScanDone(void) {
 
 
 
-/* QuakeOG (Agent AO): the frame's first rows may hold a Turbo view packed
+/* QuakeOG, the frame's first rows may hold a Turbo view packed
    W / 2 bytes a row, which the scanout sends twice as wide (r_qogturbo.c) */
 #ifdef QOG_RTURBO
 #define TURBO_PACKED    r_qog_turbopacked
-/* Agent AP: the characters listed over the packed view go with the frame,
+/* Earlier work, the characters listed over the packed view go with the frame,
    core 1 draws them over the doubled rows (engine/r_qogturbo.c) */
 extern byte *draw_chars;
 #define TURBO_TEXT()    do { const r_qogtext_t *t_ = R_QogTurboTextTake(); \
@@ -239,9 +239,9 @@ extern byte *draw_chars;
 #define TURBO_TEXT()    ((void)0)
 #endif
 
-/* QuakeOG (Agent AP): a frame that sends the status bar rows sends them
+/* QuakeOG, a frame that sends the status bar rows sends them
    first, so the next view's writes into the z-buffer (whose start holds
-   them: the edge table, the brush clip buffers) wait for 48 rows instead of
+   them, the edge table, the brush clip buffers) wait for 48 rows instead of
    the whole scanout (QOG_VID_HUDFIRST, platform/qog_video.c) */
 #if defined(QOG_VID_HUDFIRST) && defined(QOG_VID_SCANRACE) && ZROWS < H
 #define HUD_FIRST(rows) do { s_scan_first = (uint8_t)((rows) >= H ? ZROWS : 0); \
@@ -251,10 +251,10 @@ extern byte *draw_chars;
 #endif
 
 void VID_Update(vrect_t *rects) {
-    QOG_PH_T(hp_present);   /* QuakeOG (Agent V) */
+    QOG_PH_T(hp_present);   /* QuakeOG */
     (void)rects;
 #if defined(QOG_HUD_SKIP)
-    /* QuakeOG (Agent AK): only the rows above the status bar when the panel
+    /* QuakeOG, only the rows above the status bar when the panel
        shows the status bar rows this frame has, in the same palette */
     {
         int rows = R_HudFrameEndRows(!s_pal_changed);
@@ -286,13 +286,13 @@ void VID_Update(vrect_t *rects) {
 #ifdef QOG_VID_LOCKWAIT
     s_scan_pending = true;
 #else
-    qog_video_wait();   /* single buffer: the next frame may not draw until scanout ends */
+    qog_video_wait();   /* single buffer, the next frame may not draw until scanout ends */
 #endif
     QOG_HP_ADD(QOG_HP_PRESENT, hp_present);
 }
 
 #ifdef QOG_SPANS_CORE1
-/* QuakeOG (Agent V): half of each lit surface's spans on core 1
+/* QuakeOG, half of each lit surface's spans on core 1
    (engine/d_scanlit.c). Spans are drawn only after the scanout ended (the
    frame is locked), so core 1 is free and starts at once. */
 void Sys_QogCore1Start(void (*fn)(void *), void *arg) { qog_video_core1_start(fn, arg); }
@@ -300,7 +300,7 @@ void Sys_QogCore1Join(void) { qog_video_core1_join(); }
 #endif
 
 #ifdef QOG_DRAW_CORE1
-/* QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+/* QuakeOG, the two-core pipeline of the world's surfaces
    (engine/d_edge.c). One hardware spinlock, claimed by core 0 before core 1
    first takes it. Core 1 waits for work in WFE, core 0 wakes it by SEV. */
 #include "hardware/sync.h"
@@ -317,7 +317,7 @@ void Sys_QogCore1Idle(void) { __wfe(); }
 #endif
 
 #if defined(QOG_PHASE_TIME) && defined(QOG_SPANS_CORE1)
-/* QuakeOG (Agent AM): core 1's time in scanouts and in jobs so far, in us
+/* QuakeOG, core 1's time in scanouts and in jobs so far, in us
    (port/common/qog_phase.c prints it per frame) */
 void Sys_QogCore1Times(unsigned *scan_us, unsigned *job_us) {
     uint32_t s, j;
@@ -360,13 +360,13 @@ static int action_key(int action) {
     return 0;
 }
 
-/* QuakeOG: menus and the console get a layout of their own, since the game's
+/* QuakeOG, menus and the console get a layout of their own, since the game's
    combos make them hard to drive (down was red + yellow, and left + right is
-   the menu chord). Each button press is one key press and release:
+   the menu chord). Each button press is one key press and release.
      yellow up, blue down, green left, red right, gray enter,
      green + blue escape (the same chord that opens the menu). */
 static bool s_in_menu;        /* the last step drove the menu layout */
-static bool s_wait_release;   /* back in the game: ignore buttons until all are up */
+static bool s_wait_release;   /* back in the game, ignore buttons until all are up */
 static uint8_t s_menu_prev;
 static bool s_menu_chord;
 

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -80,12 +81,12 @@ entity_t	*CL_EntityNum (int num)
 {
 	if (num >= cl.num_entities)
 	{
-		if (num >= cl_max_edicts)	// QuakeOG: was MAX_EDICTS, the array is sized per level
+		if (num >= cl_max_edicts)	// QuakeOG, was MAX_EDICTS, the array is sized per level
 			Host_Error ("CL_EntityNum: %i is an invalid number",num);
 		while (cl.num_entities<=num)
 		{
 #ifdef QOG_CL_ENTSLOTS
-			if (cl_entslot[cl.num_entities])	// QuakeOG: a slot given before (CL_EntitySlot)
+			if (cl_entslot[cl.num_entities])	// QuakeOG, a slot given before (CL_EntitySlot)
 				CL_SLOTENT (cl_entslot[cl.num_entities] - 1)->colormap = vid.colormap;
 #else
 			cl_entities[cl.num_entities].colormap = vid.colormap;
@@ -148,7 +149,7 @@ void CL_ParseStartSoundPacket(void)
 #define QOG_NOINLINE
 #endif
 
-// QuakeOG: the 8 KB copy of net_message is only made with a remote server,
+// QuakeOG, the 8 KB copy of net_message is only made with a remote server,
 // so it gets its own stack frame instead of sitting in every keepalive call
 // (CL_ParseServerInfo calls it for every model and sound)
 static QOG_NOINLINE void CL_KeepaliveRead (void)
@@ -202,7 +203,7 @@ void CL_KeepaliveMessage (void)
 	if (cls.demoplayback)
 		return;
 
-	CL_KeepaliveRead ();	// QuakeOG: read messages from server, should just be nops
+	CL_KeepaliveRead ();	// QuakeOG, read messages from server, should just be nops
 
 
 // check time
@@ -224,14 +225,14 @@ void CL_KeepaliveMessage (void)
 CL_ParseServerInfo
 ==================
 */
-// QuakeOG: the precache names were two 16 KB arrays on the stack. They are
+// QuakeOG, the precache names were two 16 KB arrays on the stack. They are
 // now packed into a temporary block on the high hunk, sized to what is left
 // of the server info message (the names come from it, so they always fit),
 // and freed before the level starts.
 static char	*cl_precachenames;
 static int	cl_precacheleft;
 #ifdef QOG_PRECACHE_ZTEMP
-extern byte	*r_ztemp_base;	// QuakeOG: the z-buffer as temporary memory (r_shared.h)
+extern byte	*r_ztemp_base;	// QuakeOG, the z-buffer as temporary memory (r_shared.h)
 extern int	r_ztemp_bytes;
 #endif
 
@@ -255,7 +256,7 @@ void CL_ParseServerInfo (void)
 	char	*str;
 	int		i;
 	int		nummodels, numsounds;
-	char	*model_precache[MAX_MODELS];	// QuakeOG: names on the high hunk, see above
+	char	*model_precache[MAX_MODELS];	// QuakeOG, names on the high hunk, see above
 	char	*sound_precache[MAX_SOUNDS];
 	int		himark;
 	
@@ -299,11 +300,11 @@ void CL_ParseServerInfo (void)
 // needlessly purge it
 //
 
-// QuakeOG: temporary block for the precache names, freed below
+// QuakeOG, temporary block for the precache names, freed below
 	himark = Hunk_HighMark ();
 	cl_precacheleft = net_message.cursize - msg_readcount + 1;
 #ifdef QOG_PRECACHE_ZTEMP
-	// QuakeOG: at the end of the z-buffer, which is free between frames
+	// QuakeOG, at the end of the z-buffer, which is free between frames
 	// (r_shared.h). Server info is read before the frame is drawn, and until
 	// the client is signed on no 3D view is drawn. The status bar rows at the
 	// start of the z-buffer stay clear.
@@ -322,13 +323,13 @@ void CL_ParseServerInfo (void)
 		str = MSG_ReadString ();
 		if (!str[0])
 			break;
-		if (nummodels==CL_MAX_MODELS)	// QuakeOG: MAX_MODELS or the server's size
+		if (nummodels==CL_MAX_MODELS)	// QuakeOG, MAX_MODELS or the server's size
 		{
 			Con_Printf ("Server sent too many model precaches\n");
 			Hunk_FreeToHighMark (himark);	// QuakeOG
 			return;
 		}
-		model_precache[nummodels] = CL_KeepPrecacheName (str);	// QuakeOG: was strcpy
+		model_precache[nummodels] = CL_KeepPrecacheName (str);	// QuakeOG, was strcpy
 		Mod_TouchModel (str);
 	}
 
@@ -339,13 +340,13 @@ void CL_ParseServerInfo (void)
 		str = MSG_ReadString ();
 		if (!str[0])
 			break;
-		if (numsounds==CL_MAX_SOUNDS)	// QuakeOG: MAX_SOUNDS or the server's size
+		if (numsounds==CL_MAX_SOUNDS)	// QuakeOG, MAX_SOUNDS or the server's size
 		{
 			Con_Printf ("Server sent too many sound precaches\n");
 			Hunk_FreeToHighMark (himark);	// QuakeOG
 			return;
 		}
-		sound_precache[numsounds] = CL_KeepPrecacheName (str);	// QuakeOG: was strcpy
+		sound_precache[numsounds] = CL_KeepPrecacheName (str);	// QuakeOG, was strcpy
 		S_TouchSound (str);
 	}
 
@@ -372,7 +373,7 @@ void CL_ParseServerInfo (void)
 		CL_KeepaliveMessage ();
 	}
 	S_EndPrecaching ();
-	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the precache names
+	Hunk_FreeToHighMark (himark);	// QuakeOG, done with the precache names
 
 
 // local state
@@ -440,7 +441,7 @@ if (bits&(1<<i))
 	if (bits & U_MODEL)
 	{
 		modnum = MSG_ReadByte ();
-		if (modnum >= CL_MAX_MODELS)	// QuakeOG: MAX_MODELS or the server's size
+		if (modnum >= CL_MAX_MODELS)	// QuakeOG, MAX_MODELS or the server's size
 			Host_Error ("CL_ParseModel: bad modnum");
 	}
 	else
@@ -455,7 +456,7 @@ if (bits&(1<<i))
 		if (model)
 		{
 			if (model->synctype == ST_RAND)
-				ENT_SETSYNC (ent, rand()&0x7fff);	// QuakeOG: render.h
+				ENT_SETSYNC (ent, rand()&0x7fff);	// QuakeOG, render.h
 			else
 				ENT_SETSYNC (ent, 0);
 		}
@@ -483,7 +484,7 @@ if (bits&(1<<i))
 		if (i > cl.maxclients)
 			Sys_Error ("i >= cl.maxclients");
 #ifdef QOG_TRANSLATE_ONDRAW
-		ent->colormap = (byte *)&cl.scores[i-1];	// QuakeOG: see client.h
+		ent->colormap = (byte *)&cl.scores[i-1];	// QuakeOG, see client.h
 #else
 		ent->colormap = cl.scores[i-1].translations;
 #endif
@@ -518,7 +519,7 @@ if (bits&(1<<i))
 	VectorCopy (ent->msg_angles[0], ent->msg_angles[1]);
 
 	if (bits & U_ORIGIN1)
-		ent->msg_origins[0][0] = ENT_READCOORD ();	// QuakeOG: see render.h
+		ent->msg_origins[0][0] = ENT_READCOORD ();	// QuakeOG, see render.h
 	else
 		ent->msg_origins[0][0] = ent->baseline.origin[0];
 	if (bits & U_ANGLE1)
@@ -527,7 +528,7 @@ if (bits&(1<<i))
 		ent->msg_angles[0][0] = ent->baseline.angles[0];
 
 	if (bits & U_ORIGIN2)
-		ent->msg_origins[0][1] = ENT_READCOORD ();	// QuakeOG: see render.h
+		ent->msg_origins[0][1] = ENT_READCOORD ();	// QuakeOG, see render.h
 	else
 		ent->msg_origins[0][1] = ent->baseline.origin[1];
 	if (bits & U_ANGLE2)
@@ -536,7 +537,7 @@ if (bits&(1<<i))
 		ent->msg_angles[0][1] = ent->baseline.angles[1];
 
 	if (bits & U_ORIGIN3)
-		ent->msg_origins[0][2] = ENT_READCOORD ();	// QuakeOG: see render.h
+		ent->msg_origins[0][2] = ENT_READCOORD ();	// QuakeOG, see render.h
 	else
 		ent->msg_origins[0][2] = ent->baseline.origin[2];
 	if (bits & U_ANGLE3)
@@ -550,7 +551,7 @@ if (bits&(1<<i))
 	if ( forcelink )
 	{	// didn't have an update last message
 		VectorCopy (ent->msg_origins[0], ent->msg_origins[1]);
-		ENT_COORDCOPY (ent->msg_origins[0], ent->origin);	// QuakeOG: packed entity_t
+		ENT_COORDCOPY (ent->msg_origins[0], ent->origin);	// QuakeOG, packed entity_t
 		VectorCopy (ent->msg_angles[0], ent->msg_angles[1]);
 		ENT_ANGLECOPY (ent->msg_angles[0], ent->angles);
 		ent->forcelink = true;
@@ -572,7 +573,7 @@ void CL_ParseBaseline (entity_t *ent)
 	ent->baseline.skin = MSG_ReadByte();
 	for (i=0 ; i<3 ; i++)
 	{
-		ent->baseline.origin[i] = ENT_READCOORD ();	// QuakeOG: see render.h
+		ent->baseline.origin[i] = ENT_READCOORD ();	// QuakeOG, see render.h
 		ent->baseline.angles[i] = ENT_READANGLE ();
 	}
 }
@@ -710,14 +711,14 @@ void CL_NewTranslation (int slot)
 	if (slot > cl.maxclients)
 		Sys_Error ("CL_NewTranslation: slot > cl.maxclients");
 #ifdef QOG_TRANSLATE_ONDRAW
-	cl.scores[slot].translated = true;	// QuakeOG: the table is built when drawn
+	cl.scores[slot].translated = true;	// QuakeOG, the table is built when drawn
 }
 
 /*
 =====================
 CL_TranslationSlot
 
-QuakeOG: the scoreboard slot whose colours an entity colormap stands for
+QuakeOG, the scoreboard slot whose colours an entity colormap stands for
 (client.h), or -1 for a real colormap.
 =====================
 */
@@ -737,7 +738,7 @@ int CL_TranslationSlot (void *colormap)
 =====================
 CL_BuildTranslation
 
-QuakeOG: id's CL_NewTranslation table for the slot's current colours, into
+QuakeOG, id's CL_NewTranslation table for the slot's current colours, into
 dest (VID_GRADES*256 bytes). Before the first colour update id's table was
 the zero filled hunk, so it is here too.
 =====================
@@ -796,13 +797,13 @@ void CL_ParseStatic (void)
 	if (i >= MAX_STATIC_ENTITIES)
 		Host_Error ("Too many static entities");
 #ifdef QOG_STATICS_ON_HUNK
-	ent = CL_AllocStatic ();	// QuakeOG: from the hunk, see cl_main.c
+	ent = CL_AllocStatic ();	// QuakeOG, from the hunk, see cl_main.c
 #else
 	ent = &cl_static_entities[i];
 #endif
 	cl.num_statics++;
 #ifdef QOG_ENTITY_TIGHT
-	{	// QuakeOG (Agent Y): a static entity has no network state (render.h)
+	{	// QuakeOG, a static entity has no network state (render.h)
 		entity_t	scratch;
 
 		memset (&scratch, 0, sizeof(scratch));	// the baseline's effects stay 0, as on the zeroed hunk
@@ -825,11 +826,11 @@ void CL_ParseStatic (void)
 	ent->skinnum = ent->baseline.skin;
 	ent->effects = ent->baseline.effects;
 
-	ENT_COORDCOPY (ent->baseline.origin, ent->origin);	// QuakeOG: packed entity_t
+	ENT_COORDCOPY (ent->baseline.origin, ent->origin);	// QuakeOG, packed entity_t
 	ENT_ANGLECOPY (ent->baseline.angles, ent->angles);	
 #endif
 #ifdef QOG_STATICS_ON_HUNK
-	CL_LinkStatic (ent);	// QuakeOG: R_AddEfrags with efrags from the hunk
+	CL_LinkStatic (ent);	// QuakeOG, R_AddEfrags with efrags from the hunk
 #else
 	R_AddEfrags (ent);
 #endif
@@ -970,7 +971,7 @@ void CL_ParseServerMessage (void)
 			if (i >= MAX_LIGHTSTYLES)
 				Sys_Error ("svc_lightstyle > MAX_LIGHTSTYLES");
 #ifdef QOG_LIGHTSTYLE_ZONE
-			{	// QuakeOG (Agent S): the style's text in the zone, as long as it is
+			{	// QuakeOG, the style's text in the zone, as long as it is
 				char	*text = MSG_ReadString ();
 
 				if (cl_lightstyle[i].map)

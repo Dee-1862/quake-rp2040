@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -175,28 +176,28 @@ void COM_CloseFile (int h);
 byte *COM_LoadStackFile (char *path, void *buffer, int bufsize);
 byte *COM_LoadTempFile (char *path);
 byte *COM_LoadHunkFile (char *path);
-// QuakeOG: pointer to the file inside a flash-mapped pack, read only, or NULL
+// QuakeOG, pointer to the file inside a flash-mapped pack, read only, or NULL
 // if it is not in one (then load it the normal way).
 byte *COM_FlashFile (char *path, int *length);
 #if defined(QOG_SFX_NAMEPTR) || defined(QOG_CACHEPIC_NAMEPTR)
-char *COM_FlashName (char *path);	// QuakeOG (Agent W): the name in a mapped pack's directory
+char *COM_FlashName (char *path);	// QuakeOG, the name in a mapped pack's directory
 #endif
-// QuakeOG: true if p is inside a mapped pack image (map baker)
+// QuakeOG, true if p is inside a mapped pack image (map baker)
 qboolean COM_InFlash (void *p);
-// QuakeOG: calls fn with every file name in every pack (map baker)
+// QuakeOG, calls fn with every file name in every pack (map baker)
 void COM_ForEachPackFile (void (*fn) (char *name));
 #ifdef QOG_BOARD_MENU
-// QuakeOG: calls fn with each level in the packs, base pack first (board's
+// QuakeOG, calls fn with each level in the packs, base pack first (board's
 // Levels menu). name is not terminated, n counts from 0. Returns the count.
 int COM_ForEachMap (void (*fn) (const char *name, int len, int n, void *ctx), void *ctx);
 #endif
-// QuakeOG: true if the search path holds path, nothing opened or printed
+// QuakeOG, true if the search path holds path, nothing opened or printed
 qboolean COM_HasFile (char *path);
 #if defined(QOG_BOOT_ENTRY) || defined(QOG_MISSING_MAPS)
-// QuakeOG (Agent AG): the data image's start level (qogboot.txt, else e1m1)
+// QuakeOG, the data image's start level (qogboot.txt, else e1m1)
 void COM_BootMap (char *out);
 #endif
-// QuakeOG: called with every file found in a pack when set (asset manifests)
+// QuakeOG, called with every file found in a pack when set (asset manifests)
 extern void (*com_fileopened) (char *path);
 void COM_LoadCacheFile (char *path, struct cache_user_s *cu);
 

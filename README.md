@@ -120,7 +120,7 @@ Choose them in **Options, Render**.
 | [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24, Cortex-M33 | yes | about 29 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
 
-QuakeOG is **not** the fastest. What sets it apart is the hardware: no floating point unit, no external RAM, and the game split across two chips. A search in November 2026 found no other Quake port on the RP2040, which does not prove there is none.
+QuakeOG is **not** the fastest. What sets it apart is the hardware. It has no floating point unit and no external RAM, and the game is split across two chips. A search in November 2026 found no other Quake port on the RP2040, which does not prove there is none.
 
 The numbers are not perfectly like for like. Each project chooses its own picture shortcuts. QuakeOG's Fast picture stays closer to the original than MG24Quake's method does on our test frames.
 
@@ -142,13 +142,13 @@ To stay within the flash rating add `-DQOG_FLASH_MAX_KHZ=133000`. To keep the st
 
 Quake's game data belongs to id Software. **None of it is in this repository, and nothing made from it should ever be committed.** `data/`, `*.pak` and board images are git-ignored. You supply your own copy and the tools convert it on your PC.
 
-Use the registered game (Steam or GOG): put `id1\pak0.pak` and `id1\pak1.pak` in `data\id1\`. The shareware licence does not allow modified or derived copies of its data, and board images are derived. See [docs/game-data.md](docs/game-data.md).
+Use the registered game (Steam or GOG). Put `id1\pak0.pak` and `id1\pak1.pak` in `data\id1\`. The shareware licence does not allow modified or derived copies of its data, and board images are derived. See [docs/game-data.md](docs/game-data.md).
 
 ## Build it
 
-You need:
-- the toolchain of the Raspberry Pi Pico VS Code extension (`~/.pico-sdk`: SDK 2.3.0, GCC `15_2_Rel1`, ninja 1.13.2, picotool 2.3.0);
-- CMake 3.21 or newer and Python 3;
+You need these tools.
+- the toolchain of the Raspberry Pi Pico VS Code extension (`~/.pico-sdk` with SDK 2.3.0, GCC `15_2_Rel1`, ninja 1.13.2, picotool 2.3.0).
+- CMake 3.21 or newer and Python 3.
 - Visual Studio Build Tools 2022, for the PC version used to prepare level data.
 
 ```bash
@@ -164,7 +164,7 @@ If your board has never had the BSP's display bootloader, install it once (`fw b
 
 Run these from the repo root. Put only one chip in BOOTSEL at a time. **Read [docs/lessons.md](docs/lessons.md) before your first flash.**
 
-1. Build the PC version and record the asset lists ([docs/game-data.md](docs/game-data.md)). Then make both data images:
+1. Build the PC version and record the asset lists ([docs/game-data.md](docs/game-data.md)). Then make both data images.
 
    ```powershell
    python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
@@ -172,7 +172,7 @@ Run these from the repo root. Put only one chip in BOOTSEL at a time. **Read [do
        --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
    ```
 
-2. Build the game. Give every option each time, because the build folder remembers old values:
+2. Build the game. Give every option each time, because the build folder remembers old values.
 
    ```bash
    cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON
@@ -181,9 +181,9 @@ Run these from the repo root. Put only one chip in BOOTSEL at a time. **Read [do
 
    `QOG_FAT_FORMAT_IF_MISSING` formats the save area on the main chip if it finds none.
 
-3. Write the display's data: `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display`, then copy `build-board\qb.uf2` to the RPI-RP2 drive.
-4. Flash the game: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2`
-5. Write the server's data: `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build-board\qb_main.uf2`
+3. Write the display's data with `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display`, then copy `build-board\qb.uf2` to the RPI-RP2 drive.
+4. Flash the game with `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2`
+5. Write the server's data with `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build-board\qb_main.uf2`
 
 Never copy a display *application* by hand ([lessons](docs/lessons.md), L4). Both chips print timing lines over USB serial.
 
@@ -226,6 +226,8 @@ Start with [docs/README.md](docs/README.md).
 
 ## Licences
 
-- `engine/` comes from id Software's GPL release of Quake and stays under the GNU GPL, version 2 or later ([engine/COPYING](engine/COPYING), [engine/PROVENANCE.md](engine/PROVENANCE.md)). It is not affiliated with or endorsed by id Software.
-- The board support package is under the FreeWili Hardware License, which is not an open source licence. Whether it can be combined with GPL code is an **open question**.
-- Quake's game data and trademarks belong to their owners.
+- This code is under the GNU GPL, version 2 or later ([LICENSE](LICENSE)). `engine/` comes from id Software's GPL release of Quake ([engine/PROVENANCE.md](engine/PROVENANCE.md)).
+- Parts under other terms are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- The board support package is not included. It is under the FreeWili Hardware License, which allows use on FreeWili hardware only and is not open source.
+- **Source code only.** Do not share built firmware (`.uf2`, `.elf`, `.bin`). It combines GPL code with the board support package, whose hardware restriction the GPL does not allow, and board images also contain Quake game data.
+- Quake is a trademark of its owner. This project is not affiliated with or endorsed by id Software, Bethesda or FreeWili.

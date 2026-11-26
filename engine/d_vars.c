@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -42,10 +43,10 @@ fixed16_t	sadjust, tadjust, bbextents, bbextentt;
 pixel_t			*cacheblock;
 int				cachewidth;
 pixel_t			*d_viewbuffer;
-#include "d_local.h"	// QuakeOG: d_zval_t
+#include "d_local.h"	// QuakeOG, d_zval_t
 d_zval_t		*d_pzbuffer;
 #if defined(QOG_ZBUFFER_VIEW) || defined(QOG_RENDER_SCALE)
-d_zval_t		*d_zbase;		// QuakeOG: start of the z-buffer memory (d_local.h)
+d_zval_t		*d_zbase;		// QuakeOG, start of the z-buffer memory (d_local.h)
 #endif
 unsigned int	d_zrowbytes;
 unsigned int	d_zwidth;

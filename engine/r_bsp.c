@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,9 +22,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "qog_phase.h"	// QuakeOG (Agent Z): world work counts (QOG_PHASE_XIP)
-#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
-#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
+#include "qog_phase.h"	// QuakeOG, world work counts (QOG_PHASE_XIP)
+#include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG, front end work counts (QOG_AQ_STATS)
 
 //
 // current entity info
@@ -44,7 +45,7 @@ int				r_currentbkey;
 
 typedef enum {touchessolid, drawnode, nodrawnode} solidstate_t;
 
-// QuakeOG: these hold one brush entity polygon after clipping against the
+// QuakeOG, these hold one brush entity polygon after clipping against the
 // world, and are reset for every polygon. Shareware peaks are 22 vertices
 // and 74 edges over all three demos (qog_mem prints them). Overflow only
 // drops that fragment with a console message, as in id's code.
@@ -52,7 +53,7 @@ typedef enum {touchessolid, drawnode, nodrawnode} solidstate_t;
 static mvertex_t	*pbverts;
 static bedge_t		*pbedges;
 static int			numbverts, numbedges;
-int					r_qog_peakbverts, r_qog_peakbedges;	// QuakeOG: high-water marks, printed by qog_mem
+int					r_qog_peakbverts, r_qog_peakbedges;	// QuakeOG, high-water marks, printed by qog_mem
 
 static mvertex_t	*pfrontenter, *pfrontexit;
 
@@ -84,7 +85,7 @@ R_RotateBmodel
 */
 #ifdef QOG_BMODEL_ZEROANGLE
 /*
-QuakeOG (Agent AJ): a brush entity that does not turn (doors, plats,
+QuakeOG, a brush entity that does not turn (doors, plats,
 buttons, nearly all of them) has zero angles, and sin (+-0) is +-0 and
 cos (+-0) is 1 exactly, so the angle conversion and the double sine and
 cosine are left out for a zero angle. The board pays about 5,000 cycles
@@ -107,21 +108,21 @@ for each of its surfaces in D_DrawSurfaces.
 	}
 
 /*
-QuakeOG (Agent AJ): with all three angles +0 the code below builds
+QuakeOG, with all three angles +0 the code below builds
 entity_rotation as the identity with every zero +0 (worked through by
-hand: each entry is a sum of products of 1, +0 and -0 that rounds to 1 or
+hand, each entry is a sum of products of 1, +0 and -0 that rounds to 1 or
 +0). R_EntityRotate by that matrix computes, for each component,
-(t0 * r0 + t1 * r1) + t2 * r2 with one r 1 and two r +0: a nonzero t
+(t0 * r0 + t1 * r1) + t2 * r2 with one r 1 and two r +0, a nonzero t
 comes out unchanged, a zero comes out -0 only if all three products are
 -0, that is if all three components have the sign bit set. Infinities or
 NaNs would make NaNs from 0 * t, so such a vector takes id's dot products.
 */
 static const float	r_qog_identity[3][3] = { {1, 0, 0}, {0, 1, 0}, {0, 0, 1} };
 #if defined(QOG_BPOLY_AXIAL) || defined(QOG_DSURF_NOFRUSTUM)
-static byte			r_qog_entident;	// QuakeOG (Agent AQ): entity_rotation is r_qog_identity
+static byte			r_qog_entident;	// QuakeOG, entity_rotation is r_qog_identity
 #endif
 #if defined(QOG_DSURF_NOFRUSTUM) || defined(QOG_BMODEL_FRUSTUM)
-static byte			r_qog_nofrustum;	// QuakeOG (Agent AQ): R_QogRotateBmodelVecs
+static byte			r_qog_nofrustum;	// QuakeOG, R_QogRotateBmodelVecs
 #endif
 
 static void R_QogIdentityRotate (vec3_t vec)
@@ -137,7 +138,7 @@ static void R_QogIdentityRotate (vec3_t vec)
 		if (e == 0x7F800000 || (e == 0 && (b[i] & 0x007FFFFF)))
 		{
 			// not finite, or denormal (which the RP2040's float routines
-			// take as zero): id's arithmetic
+			// take as zero), id's arithmetic
 			R_EntityRotate (vec);
 			return;
 		}
@@ -159,7 +160,7 @@ void R_RotateBmodel (void)
 // TODO: could cache lazily, stored in the entity
 // TODO: share work with R_SetUpAliasTransform
 
-	QOG_WC (QOG_WC_ROTATE);	// QuakeOG (Agent AJ)
+	QOG_WC (QOG_WC_ROTATE);	// QuakeOG
 #ifdef QOG_BMODEL_ZEROANGLE
 	{
 		unsigned	ab[3];
@@ -170,7 +171,7 @@ void R_RotateBmodel (void)
 		memcpy (ab, currententity->angles, sizeof ab);
 		if (!(ab[0] | ab[1] | ab[2]))
 		{
-			// QuakeOG (Agent AJ): no turn, the same values without the
+			// QuakeOG, no turn, the same values without the
 			// matrix products
 			memcpy (entity_rotation, r_qog_identity, sizeof entity_rotation);
 #if defined(QOG_BPOLY_AXIAL) || defined(QOG_DSURF_NOFRUSTUM)
@@ -269,8 +270,8 @@ void R_RotateBmodel (void)
 
 #if defined(QOG_DSURF_NOFRUSTUM) || defined(QOG_BMODEL_FRUSTUM)
 /*
-QuakeOG (Agent AQ): R_RotateBmodel without the view planes. D_DrawSurfaces
-needs the turned vectors and modelorg but never the view planes: nothing
+QuakeOG, R_RotateBmodel without the view planes. D_DrawSurfaces
+needs the turned vectors and modelorg but never the view planes, nothing
 that draws spans reads view_clipplanes, so D_DrawSurfaces leaves them alone
 and sets them back once at its end (d_edge.c). R_DrawBEntitiesOnList makes
 the planes itself from what it made for the entity before (r_main.c).
@@ -289,7 +290,7 @@ void R_QogRotateBmodelVecs (void)
 #error "QOG_BPOLY_AXIAL and QOG_BMODEL_FACING need QOG_BMODEL_ZEROANGLE"
 #endif
 /*
-QuakeOG (Agent AQ): R_RecursiveClipBPoly on an axial plane of a brush
+QuakeOG, R_RecursiveClipBPoly on an axial plane of a brush
 entity that does not turn, without float arithmetic for the sides.
 
 With entity_rotation the identity, tplane's normal is id's identity product
@@ -363,7 +364,7 @@ static int R_QogAxis (const float *n)
 
 #ifdef QOG_BMODEL_FACING
 #ifdef QOG_BMODEL_FACING_CHECK
-/* PC check build: both ways on every brush surface */
+/* PC check build, both ways on every brush surface */
 static void R_QogFacingCheck (int a, int b)
 {
 	static unsigned	n, bad;
@@ -376,8 +377,8 @@ static void R_QogFacingCheck (int a, int b)
 }
 #endif
 /*
-QuakeOG (Agent AQ): whether a brush entity surface faces the eye, as id
-decides it: dot = DotProduct (modelorg, normal) - dist in float, compared
+QuakeOG, whether a brush entity surface faces the eye, as id
+decides it, dot = DotProduct (modelorg, normal) - dist in float, compared
 in double with -BACKFACE_EPSILON or BACKFACE_EPSILON. For a float x, x <
 -0.01 and x > 0.01 are x < -0.01f and x > 0.01f (0.01f is the float just
 below 0.01), so the compare needs no double. On an axial plane the dot
@@ -429,7 +430,7 @@ static int R_QogAxPlane (mplane_t *splitplane, mplane_t *tp)
 
 #ifdef QOG_BPOLY_SIDES
 /*
-QuakeOG (Agent AQ): the sides of one call's edges without a call per point.
+QuakeOG, the sides of one call's edges without a call per point.
 R_QogAxSidesBegin keeps the axis, the sign of tplane's normal there and
 tplane.dist's key in statics, R_QogAxEdgeSides decides a point as
 R_QogAxSide does (the same tests, inline), and a point that ends or starts
@@ -473,7 +474,7 @@ static int R_QogAxPointSide (mvertex_t *pv)
 	return R_QogFKey (bk ^ r_qog_axsign) > r_qog_axtkey ? 0 : 1;
 }
 
-/* the sides of an edge: bit 0 its first point's, bit 1 its second's */
+/* the sides of an edge, bit 0 its first point's, bit 1 its second's */
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
@@ -511,7 +512,7 @@ static int R_QogAxSide (mvertex_t *pv, mplane_t *tp, float *pdist)
 #endif
 
 #ifdef QOG_BPOLY_CHECK
-/* PC check build: id's tplane, sides and dists beside the axial ones */
+/* PC check build, id's tplane, sides and dists beside the axial ones */
 static unsigned	r_qog_bpn, r_qog_bpbad;
 
 static void R_QogBpolyCount (int bad)
@@ -566,7 +567,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	mnode_t		*pn;
 
 	psideedges[0] = psideedges[1] = NULL;
-	QOG_BM (QOG_BM_BPOLY, 1);	// QuakeOG (Agent AS)
+	QOG_BM (QOG_BM_BPOLY, 1);	// QuakeOG
 	QOG_AQ (AQ_BPOLY, 1);
 
 	makeclippededge = false;
@@ -576,7 +577,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	splitplane = pnode->plane;
 	QOG_AQ (AQ_BPOLYAX, splitplane->type < 3);
 #ifdef QOG_BPOLY_AXIAL
-	// QuakeOG (Agent AQ): tplane.type holds the axis, or 0xFF for id's
+	// QuakeOG, tplane.type holds the axis, or 0xFF for id's
 	// arithmetic (no more locals in this recursion's frame)
 	tplane.type = 0xFF;
 	if (R_QogAxPlane (splitplane, &tplane) < 0)
@@ -600,7 +601,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	for ( ; pedges ; pedges = pnextedge)
 	{
 		pnextedge = pedges->pnext;
-		QOG_BM (QOG_BM_BPOLYEDGE, 1);	// QuakeOG (Agent AS)
+		QOG_BM (QOG_BM_BPOLYEDGE, 1);	// QuakeOG
 		QOG_AQ (AQ_BPOLYEDGE, 1);
 
 	// set the status for the last point as the previous point
@@ -610,7 +611,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 #ifdef QOG_BPOLY_AXIAL
 		if (tplane.type != 0xFF)
 		{
-			// QuakeOG (Agent AQ): the sides by integer compares, the dists
+			// QuakeOG, the sides by integer compares, the dists
 			// only for a split edge
 #ifdef QOG_BPOLY_SIDES
 			side = R_QogAxEdgeSides (plastvert, pvert);
@@ -680,7 +681,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 		// FIXME: share the clip edge by having a winding direction flag?
 			if (numbedges >= (MAX_BMODEL_EDGES - 1))
 			{
-				CON_PRINTTEXT ("Out of edges for bmodel\n");	// QuakeOG: no 4 KB buffer this deep
+				CON_PRINTTEXT ("Out of edges for bmodel\n");	// QuakeOG, no 4 KB buffer this deep
 				return;
 			}
 
@@ -724,7 +725,7 @@ void R_RecursiveClipBPoly (bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 	{
 		if (numbedges >= (MAX_BMODEL_EDGES - 2))
 		{
-			CON_PRINTTEXT ("Out of edges for bmodel\n");	// QuakeOG: no 4 KB buffer this deep
+			CON_PRINTTEXT ("Out of edges for bmodel\n");	// QuakeOG, no 4 KB buffer this deep
 			return;
 		}
 
@@ -787,14 +788,14 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 	int			numsurfaces;
 	mplane_t	*pplane;
 #if defined(QOG_EDGES_IN_ZBUFFER)
-	// QuakeOG: the clip buffers sit at the start of the z-buffer, which
+	// QuakeOG, the clip buffers sit at the start of the z-buffer, which
 	// holds no z yet. With QOG_EDGECACHE_ZBUFFER the world's edge cache was
 	// there, which nothing reads after R_RenderWorld (R_EdgeDrawing, R_NewMap
 	// checks the room).
 	mvertex_t	*bverts = (mvertex_t *)r_ztemp_base;
 	bedge_t		*bedges = (bedge_t *)(bverts + MAX_BMODEL_VERTS), *pbedge;
 #elif defined(QOG_SPANS_IN_EDGES)
-	// QuakeOG: the clip buffers sit in the edge table past the edge limit,
+	// QuakeOG, the clip buffers sit in the edge table past the edge limit,
 	// which only R_ScanEdges uses later (r_local.h)
 	mvertex_t	*bverts = (mvertex_t *)(r_spanpool_end - SPAN_RESERVE_EDGES * sizeof(edge_t));
 	bedge_t		*bedges = (bedge_t *)(bverts + MAX_BMODEL_VERTS), *pbedge;
@@ -822,7 +823,7 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 		R_QogFacingCheck (R_QogFacing (psurf, pplane), ((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)));
 #endif
-		if (R_QogFacing (psurf, pplane))	// QuakeOG (Agent AQ)
+		if (R_QogFacing (psurf, pplane))	// QuakeOG
 #else
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
@@ -872,7 +873,7 @@ void R_DrawSolidClippedSubmodelPolygons (model_t *pmodel)
 
 				R_RecursiveClipBPoly (pbedge, ENT_TOPNODE (currententity), psurf);
 
-				// QuakeOG: high-water marks, to size bverts and bedges from measurements
+				// QuakeOG, high-water marks, to size bverts and bedges from measurements
 				if (numbverts > r_qog_peakbverts)
 					r_qog_peakbverts = numbverts;
 				if (numbedges > r_qog_peakbedges)
@@ -917,7 +918,7 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 		R_QogFacingCheck (R_QogFacing (psurf, pplane), ((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
 			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)));
 #endif
-		if (R_QogFacing (psurf, pplane))	// QuakeOG (Agent AQ)
+		if (R_QogFacing (psurf, pplane))	// QuakeOG
 #else
 		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
 
@@ -941,7 +942,7 @@ void R_DrawSubmodelPolygons (model_t *pmodel, int clipflags)
 ================
 R_QogCullNode
 
-QuakeOG (Agent Z): R_RecursiveWorldNode's frustum tests without double
+QuakeOG, R_RecursiveWorldNode's frustum tests without double
 arithmetic. id's d holds the float dot product, and (double)dot -
 (double)dist is exact in sign and zero only when the two are equal, so
 d <= 0 and d >= 0 are the float comparisons dot <= dist and dot >= dist.
@@ -962,7 +963,7 @@ inlined, so its locals are not in every level of the recursion.
 #error "QOG_WORLDNODE_INT needs QOG_FRONT_FAST (the planes live in its header)"
 #endif
 /*
-QuakeOG (Agent AJ): the same tests in integers first. With the corners c
+QuakeOG, the same tests in integers first. With the corners c
 (shorts), the plane's normal N and dist D in 1/16384 (rounded, R_QogFxSetup)
 the integer d = c.N - D is within 0.5 (|c0| + |c1| + |c2|) + 0.5 of
 16384 (c.n - dist), and id's float dot product within 0.003 (|c0| + |c1| +
@@ -994,7 +995,7 @@ static QOG_NOINLINE int R_QogCullNodeInt (mnode_t *node, int clipflags, const in
 
 		pindex = pfrustum_indexes[i];
 
-		// reject: id's dot (rejectpt) <= dist
+		// reject, id's dot (rejectpt) <= dist
 		c0 = node->minmaxs[pindex[0]];
 		c1 = node->minmaxs[pindex[1]];
 		c2 = node->minmaxs[pindex[2]];
@@ -1005,7 +1006,7 @@ static QOG_NOINLINE int R_QogCullNodeInt (mnode_t *node, int clipflags, const in
 		if (d < e && R_QogCullFloat (node, i, pindex))
 			return -1;
 
-		// accept: id's dot (acceptpt) >= dist
+		// accept, id's dot (acceptpt) >= dist
 		c0 = node->minmaxs[pindex[3+0]];
 		c1 = node->minmaxs[pindex[3+1]];
 		c2 = node->minmaxs[pindex[3+2]];
@@ -1070,8 +1071,8 @@ static QOG_NOINLINE int R_QogCullNode (mnode_t *node, int clipflags)
 
 #if defined(QOG_NODESIDE_BITS) && defined(QOG_WORLDNODE_FAST)
 /*
-QuakeOG (Agent AQ): R_RecursiveWorldNode's three float compares of fdot (a
-finite float difference, computed here as there) by its bits: fdot >= 0 for +-0 and every positive
+QuakeOG, R_RecursiveWorldNode's three float compares of fdot (a
+finite float difference, computed here as there) by its bits, fdot >= 0 for +-0 and every positive
 value, and |fdot| > 0.01f exactly when its magnitude's bits are above
 0.01f's. No float call. Not inlined, so the recursion's frame keeps its size.
 Returns side + 2 (facing + 1).
@@ -1132,10 +1133,10 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	vec3_t		acceptpt, rejectpt;
 	mplane_t	*plane;
 	msurface_t	*surf;
-	marksurf_t	*mark;	// QuakeOG: a pointer or a 16-bit surface number
+	marksurf_t	*mark;	// QuakeOG, a pointer or a 16-bit surface number
 	mleaf_t		*pleaf;
 #ifdef QOG_FLOAT_EXACT
-	// QuakeOG (Agent AA): id's doubles here only ever hold a float expression
+	// QuakeOG, id's doubles here only ever hold a float expression
 	// or the difference of two floats, and are only compared with 0 or with
 	// BACKFACE_EPSILON. A float difference rounds to the same sign and zero,
 	// and no float lies between 0.01 and (float)0.01, so every test is the same.
@@ -1146,10 +1147,10 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 #define QOG_BFEPS	BACKFACE_EPSILON
 #endif
 #ifdef QOG_WORLDNODE_FAST
-	int			facing;	// QuakeOG (Agent Z): -1 back, 1 front, 0 neither
+	int			facing;	// QuakeOG, -1 back, 1 front, 0 neither
 #endif
 
-	QOG_WC (QOG_WC_NODES);	// QuakeOG (Agent Z)
+	QOG_WC (QOG_WC_NODES);	// QuakeOG
 	if (node->contents == CONTENTS_SOLID)
 		return;		// solid
 
@@ -1162,7 +1163,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 #ifdef QOG_WORLDNODE_FAST
 	if (clipflags)
 	{
-		clipflags = R_QogCullNode (node, clipflags);	// QuakeOG (Agent Z)
+		clipflags = R_QogCullNode (node, clipflags);	// QuakeOG
 		if (clipflags < 0)
 			return;
 	}
@@ -1207,7 +1208,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	if (node->contents < 0)
 	{
 		pleaf = (mleaf_t *)node;
-		QOG_WC (QOG_WC_LEAFS);	// QuakeOG (Agent Z)
+		QOG_WC (QOG_WC_LEAFS);	// QuakeOG
 
 		mark = LEAF_MARKSURFACES (cl.worldmodel, pleaf);	// QuakeOG
 		c = pleaf->nummarksurfaces;
@@ -1216,7 +1217,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		{
 			do
 			{
-				SURF_VISFRAME_SETNUM (cl.worldmodel, MARKSURF_NUM (cl.worldmodel, mark), r_framecount);	// QuakeOG: MODFRAME, QOG_MOD_FLASH, QOG_FRAMEBITS
+				SURF_VISFRAME_SETNUM (cl.worldmodel, MARKSURF_NUM (cl.worldmodel, mark), r_framecount);	// QuakeOG, MODFRAME, QOG_MOD_FLASH, QOG_FRAMEBITS
 				mark++;
 			} while (--c);
 		}
@@ -1225,13 +1226,13 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		if (LEAF_EFRAGS (cl.worldmodel, pleaf))
 		{
 #ifdef QOG_LEAF16
-			R_StoreLeafEfrags (pleaf);	// QuakeOG: the leaf's head may be shared
+			R_StoreLeafEfrags (pleaf);	// QuakeOG, the leaf's head may be shared
 #else
 			R_StoreEfrags (&LEAF_EFRAGS (cl.worldmodel, pleaf));
 #endif
 		}
 
-		LEAF_KEY_SET (cl.worldmodel, pleaf, r_currentkey);	// QuakeOG: QOG_LEAF16
+		LEAF_KEY_SET (cl.worldmodel, pleaf, r_currentkey);	// QuakeOG, QOG_LEAF16
 		r_currentkey++;		// all bmodels in a leaf share the same key
 	}
 	else
@@ -1242,13 +1243,13 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 		plane = node->plane;
 
 #ifdef QOG_WORLDNODE_FAST
-	// QuakeOG (Agent Z): id's dot is a double holding a float difference,
+	// QuakeOG, id's dot is a double holding a float difference,
 	// compared with 0 and with the double 0.01. For a float x, x < -0.01 and
 	// x > 0.01 are x < -0.01f and x > 0.01f (0.01f is the float just below
 	// 0.01), so the side and the face tests need no double arithmetic.
 		{
 #ifdef QOG_NODESIDE_BITS
-		side = R_QogNodeSide (plane);	// QuakeOG (Agent AQ)
+		side = R_QogNodeSide (plane);	// QuakeOG
 		facing = (side >> 1) - 1;
 		side &= 1;
 #else
@@ -1409,7 +1410,7 @@ void R_RenderWorld (void)
 
 	pbtofpolys = btofpolys;
 #else
-	// QuakeOG: back to front list compiled out (r_local.h)
+	// QuakeOG, back to front list compiled out (r_local.h)
 	if (r_worldpolysbacktofront)
 		Sys_Error ("R_RenderWorld: back to front polygons need QOG_MAX_BTOFPOLYS");
 	pbtofpolys = NULL;
@@ -1420,7 +1421,7 @@ void R_RenderWorld (void)
 	clmodel = currententity->model;
 	r_pcurrentvertbase = clmodel->vertexes;
 #ifdef QOG_FRONT_FAST
-	R_QogFxSetup ();	// QuakeOG (Agent AJ): Fast mode's integer front end
+	R_QogFxSetup ();	// QuakeOG, Fast mode's integer front end
 #endif
 
 	R_RecursiveWorldNode (clmodel->nodes, 15);
@@ -1431,7 +1432,7 @@ void R_RenderWorld (void)
 	{
 		for (i=numbtofpolys-1 ; i>=0 ; i--)
 		{
-			R_RenderPoly (pbtofpolys[i].psurf, pbtofpolys[i].clipflags);	// QuakeOG: was btofpolys
+			R_RenderPoly (pbtofpolys[i].psurf, pbtofpolys[i].clipflags);	// QuakeOG, was btofpolys
 		}
 	}
 }

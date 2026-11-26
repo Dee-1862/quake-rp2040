@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -27,15 +28,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define DWORD	unsigned long
 #endif
 
-#ifndef QOG_SND_REMOTE	// QuakeOG (Agent W): a split client's sound runs on the server half (snd_link.c)
+#ifndef QOG_SND_REMOTE	// QuakeOG, a split client's sound runs on the server half (snd_link.c)
 
 #define	PAINTBUFFER_SIZE	512
 #ifdef QOG_SND_ONINIT
-portable_samplepair_t *paintbuffer;	// QuakeOG: PAINTBUFFER_SIZE entries on the hunk, from S_Init
+portable_samplepair_t *paintbuffer;	// QuakeOG, PAINTBUFFER_SIZE entries on the hunk, from S_Init
 #else
 portable_samplepair_t paintbuffer[PAINTBUFFER_SIZE];
 #endif
-// QuakeOG: snd_scaletable removed, see SND_PaintChannelFrom8
+// QuakeOG, snd_scaletable removed, see SND_PaintChannelFrom8
 int 	*snd_p, snd_linear_count, snd_vol;
 short	*snd_out;
 
@@ -143,7 +144,7 @@ void S_TransferStereo16 (int endtime)
 }
 
 #ifdef QOG_SND_HASH
-// QuakeOG (Agent W): FNV-1a over what the mixer made, in time order
+// QuakeOG, FNV-1a over what the mixer made, in time order
 unsigned	qog_snd_painthash = 0x811C9DC5, qog_snd_paintcount, qog_snd_outhash = 0x811C9DC5, qog_snd_outcount;
 
 static unsigned S_QogHash (unsigned h, unsigned v)
@@ -383,7 +384,7 @@ void S_PaintChannels(int endtime)
 
 void SND_InitScaletable (void)
 {
-	// QuakeOG: nothing to build, the mixer multiplies instead
+	// QuakeOG, nothing to build, the mixer multiplies instead
 }
 
 
@@ -401,14 +402,14 @@ void SND_PaintChannelFrom8 (channel_t *ch, sfxcache_t *sc, int count)
 	if (ch->rightvol > 255)
 		ch->rightvol = 255;
 		
-	// QuakeOG: id looked these up in snd_scaletable[vol >> 3][byte], which
+	// QuakeOG, id looked these up in snd_scaletable[vol >> 3][byte], which
 	// held (signed char)byte * (vol >> 3) * 8. Multiplying gives the same
 	// integers without the 32 KB table.
 	lmul = (ch->leftvol >> 3) * 8;
 	rmul = (ch->rightvol >> 3) * 8;
 
 	if (sc->flash)
-	{	// QuakeOG: unsigned samples in flash; flipping the top bit gives the
+	{	// QuakeOG, unsigned samples in flash. Flipping the top bit gives the
 		// same signed byte ResampleSfx would have stored (u - 128)
 		sfx = sc->flash + ch->pos;
 		for (i=0 ; i<count ; i++)

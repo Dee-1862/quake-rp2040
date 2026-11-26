@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "qog_phase.h"	// QuakeOG (Agent V): frame phase times (QOG_PHASE_TIME)
+#include "qog_phase.h"	// QuakeOG, frame phase times (QOG_PHASE_TIME)
 
 // only the refresh window will be updated unless these variables are flagged 
 int			scr_copytop;
@@ -109,7 +110,7 @@ void SCR_CenterPrint (char *str)
 ==============
 SCR_QogViewCovers
 
-QuakeOG (Agent AP): the 3D view this frame draws (V_RenderView runs after
+QuakeOG, the 3D view this frame draws (V_RenderView runs after
 SCR_SetUpToDrawConsole and SCR_EraseCenterString, and returns early only
 with con_forcedup) writes every pixel of rows [y, y + h) over the whole
 width, so a clear of those rows is drawn over before any scanout reads
@@ -152,8 +153,8 @@ void SCR_EraseCenterString (void)
 	scr_copytop = 1;
 #ifdef QOG_VID_SCANRACE
 	if (SCR_QogViewCovers (y, 8*scr_erase_lines))
-		return;		// QuakeOG (Agent AP): the view draws over these rows
-	VID_QogScanDone ();	// QuakeOG (Agent AK): the last scanout must be over
+		return;		// QuakeOG, the view draws over these rows
+	VID_QogScanDone ();	// QuakeOG, the last scanout must be over
 #endif
 	Draw_TileClear (0, y,vid.width, 8*scr_erase_lines);
 }
@@ -210,9 +211,9 @@ void SCR_DrawCenterString (void)
 ==============
 SCR_QogHudQuiet
 
-QuakeOG (Agent AK): R_RenderView asks, after the view, whether anything but
+QuakeOG, R_RenderView asks, after the view, whether anything but
 Sbar_Draw draws into the status bar rows (from r_zalias_row down) in the
-rest of this frame's SCR_UpdateScreen: the dialog, the loading plaque, the
+rest of this frame's SCR_UpdateScreen, the dialog, the loading plaque, the
 intermission screens, the console, menus and the message line do, and a
 centre print whose lines reach the rows does. The notify lines, the ram,
 net, turtle and pause icons and the crosshair stay in the 3D view's rows.
@@ -304,12 +305,12 @@ static void SCR_CalcRefdef (void)
 		Cvar_Set ("viewsize","30");
 	if (scr_viewsize.value > 120)
 		Cvar_Set ("viewsize","120");
-#ifdef QOG_MAX_VIEWSIZE	// QuakeOG: the 3D view never grows past the status bar, so the
+#ifdef QOG_MAX_VIEWSIZE	// QuakeOG, the 3D view never grows past the status bar, so the
 						// z-buffer only covers those rows (MG24Quake does the same)
 	if (scr_viewsize.value > QOG_MAX_VIEWSIZE)
 		Cvar_SetValue ("viewsize", QOG_MAX_VIEWSIZE);
 #endif
-#ifdef QOG_EDGECACHE_FRAME	// QuakeOG: the edge cache lives in the frame buffer rows the
+#ifdef QOG_EDGECACHE_FRAME	// QuakeOG, the edge cache lives in the frame buffer rows the
 						// view draws over, so the view stays full width from the top
 						// (R_EdgeDrawing stops the game otherwise)
 	if (scr_viewsize.value < 100)
@@ -331,7 +332,7 @@ static void SCR_CalcRefdef (void)
 	else
 		size = scr_viewsize.value;
 #ifdef QOG_MAX_VIEWSIZE
-	if (size > QOG_MAX_VIEWSIZE)	// intermission too: keep the 3D view inside the z-buffer
+	if (size > QOG_MAX_VIEWSIZE)	// intermission too, keep the 3D view inside the z-buffer
 		size = QOG_MAX_VIEWSIZE;
 #endif
 
@@ -565,7 +566,7 @@ void SCR_SetUpToDrawConsole (void)
 	{
 		scr_copytop = 1;
 #ifdef QOG_VID_SCANRACE
-		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
+		VID_QogScanDone ();		// QuakeOG, the last scanout must be over
 #endif
 		Draw_TileClear (0,(int)scr_con_current,vid.width, vid.height - (int)scr_con_current);
 		Sbar_Changed ();
@@ -574,9 +575,9 @@ void SCR_SetUpToDrawConsole (void)
 	{
 		scr_copytop = 1;
 #ifdef QOG_VID_SCANRACE
-		if (!SCR_QogViewCovers (0, con_notifylines))	// QuakeOG (Agent AP): else the view draws over them
+		if (!SCR_QogViewCovers (0, con_notifylines))	// QuakeOG, else the view draws over them
 		{
-		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
+		VID_QogScanDone ();		// QuakeOG, the last scanout must be over
 #endif
 		Draw_TileClear (0,0,vid.width, con_notifylines);
 #ifdef QOG_VID_SCANRACE
@@ -966,7 +967,7 @@ void SCR_UpdateScreen (void)
 // do 3D refresh drawing, and then update the screen
 //
 #ifdef QOG_VID_SCANRACE
-	// QuakeOG (Agent AK): the 3D view may start while the last frame is
+	// QuakeOG, the 3D view may start while the last frame is
 	// still sent to the panel, it waits where it writes (vid.h). The 2D
 	// drawing before and after it waits for the scanout's end.
 	VID_QogRaceBegin ();
@@ -977,7 +978,7 @@ void SCR_UpdateScreen (void)
 	{	// clear the entire screen
 		scr_copyeverything = 1;
 #ifdef QOG_VID_SCANRACE
-		VID_QogScanDone ();		// QuakeOG (Agent AK): the last scanout must be over
+		VID_QogScanDone ();		// QuakeOG, the last scanout must be over
 #endif
 		Draw_TileClear (0,0,vid.width,vid.height);
 		Sbar_Changed ();
@@ -995,14 +996,14 @@ void SCR_UpdateScreen (void)
 	VID_LockBuffer ();
 
 	{
-	QOG_PH_T (hp_view);	// QuakeOG (Agent V)
+	QOG_PH_T (hp_view);	// QuakeOG
 	V_RenderView ();
 	QOG_HP_ADD (QOG_HP_VIEW, hp_view);
 	}
 
 	VID_UnlockBuffer ();
 #ifdef QOG_VID_SCANRACE
-	VID_QogScanDone ();	// QuakeOG (Agent AK): the last scanout must be over
+	VID_QogScanDone ();	// QuakeOG, the last scanout must be over
 #endif
 
 	D_EnableBackBufferAccess ();	// of all overlay stuff if drawing directly

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the split client keeps only the hull trace (chase.c)
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, the split client keeps only the hull trace (chase.c)
 /*
 
 entities never clip against themselves, or their owner

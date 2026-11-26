@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -40,8 +41,8 @@ qpic_t		*draw_backtile;
 //=============================================================================
 /* Support Routines */
 
-// QuakeOG: every cached pic name is a constant in the engine (menu.c,
-// screen.c, sbar.c): 39 names plus gfx/menudot1-6 and gfx/help0-5, 51 in
+// QuakeOG, every cached pic name is a constant in the engine (menu.c,
+// screen.c, sbar.c), 39 names plus gfx/menudot1-6 and gfx/help0-5, 51 in
 // all, the longest 16 characters. Both limits error out like id's when hit.
 #ifdef QOG_CACHEPIC_NAME
 #define	CACHEPIC_NAME		QOG_CACHEPIC_NAME
@@ -55,13 +56,13 @@ qpic_t		*draw_backtile;
 typedef struct cachepic_s
 {
 #ifdef QOG_CACHEPIC_NAMEPTR
-	const char	*name;		// QuakeOG (Agent AD): the name in the mapped pack's directory
+	const char	*name;		// QuakeOG, the name in the mapped pack's directory
 #else
 	char		name[CACHEPIC_NAME];
 #endif
 	cache_user_t	cache;
 #ifdef QOG_CACHEPIC_FLASH
-	qpic_t		*flash;		// QuakeOG: the pic in a mapped pack, or NULL
+	qpic_t		*flash;		// QuakeOG, the pic in a mapped pack, or NULL
 #endif
 } cachepic_t;
 
@@ -98,10 +99,10 @@ qpic_t	*Draw_CachePic (char *path)
 	{
 		if (menu_numcachepics == MAX_CACHED_PICS)
 			Sys_Error ("menu_numcachepics == MAX_CACHED_PICS");
-		if (strlen (path) >= CACHEPIC_NAME)	// QuakeOG: names are shorter than MAX_QPATH
+		if (strlen (path) >= CACHEPIC_NAME)	// QuakeOG, names are shorter than MAX_QPATH
 			Sys_Error ("Draw_CachePic: %s is too long", path);
 #ifdef QOG_CACHEPIC_NAMEPTR
-		// QuakeOG (Agent AD): the name lasts as long as the game in the
+		// QuakeOG, the name lasts as long as the game in the
 		// mapped pack's directory (as the mixer keeps sound names), so a
 		// slot holds a pointer, 12 bytes, not a copy, 32. Every pic the
 		// engine names is in the pack, a pic that is not stops as id's
@@ -115,11 +116,11 @@ qpic_t	*Draw_CachePic (char *path)
 		strcpy (pic->name, path);
 #endif
 #ifdef QOG_CACHEPIC_FLASH
-		// QuakeOG: menu, intermission, finale and plaque pics are only ever
+		// QuakeOG, menu, intermission, finale and plaque pics are only ever
 		// read, so a pic in a mapped pack is used in place instead of being
 		// copied into the cache (30.6 KB at an intermission). The console
 		// background is not, because id writes the version into it (see
-		// Draw_ConsoleBackground). Little endian only: SwapPic would write.
+		// Draw_ConsoleBackground). Little endian only, SwapPic would write.
 		if (!bigendien && strcmp (path, "gfx/conback.lmp"))
 			pic->flash = (qpic_t *)COM_FlashFile (path, NULL);
 #endif
@@ -196,9 +197,9 @@ void Draw_Character (int x, int y, int num)
 		return;			// totally off screen
 #ifdef QOG_RTURBO
 	if (R_QogTurboText (x, y, num))
-		return;			// QuakeOG (Agent AP): the scanout draws it over the packed view
+		return;			// QuakeOG, the scanout draws it over the packed view
 #endif
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view under it is spread to full width first
 
 #ifdef PARANOID
 	if (y > vid.height - 8 || x < 0 || x > vid.width - 8)
@@ -354,7 +355,7 @@ void Draw_Pic (int x, int y, qpic_t *pic)
 	{
 		Sys_Error ("Draw_Pic: bad coordinates");
 	}
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view under it is spread to full width first
 
 	source = pic->data;
 
@@ -404,7 +405,7 @@ void Draw_TransPic (int x, int y, qpic_t *pic)
 	{
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view under it is spread to full width first
 		
 	source = pic->data;
 
@@ -492,7 +493,7 @@ void Draw_TransPicTranslate (int x, int y, qpic_t *pic, byte *translation)
 	{
 		Sys_Error ("Draw_TransPic: bad coordinates");
 	}
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view under it is spread to full width first
 		
 	source = pic->data;
 
@@ -593,7 +594,7 @@ void Draw_CharToConback (int num, byte *dest)
 ================
 Draw_ConsoleBackgroundFlash
 
-QuakeOG: id copies gfx/conback.lmp (62.6 KB) into the cache only so the
+QuakeOG, id copies gfx/conback.lmp (62.6 KB) into the cache only so the
 version number can be written into it. When the pack is mapped, the picture
 is read in place instead, and the version characters go into a copy of each
 of the 8 rows they cover just before that row is drawn. The output is the
@@ -685,9 +686,9 @@ void Draw_ConsoleBackground (int lines)
 	qpic_t			*conback;
 	char			ver[100];
 
-	QOG_TURBO_2D (0);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (0);	// QuakeOG, a Turbo view under it is spread to full width first
 #ifdef QOG_CONBACK_FLASH
-	if (Draw_ConsoleBackgroundFlash (lines))	// QuakeOG: read in place
+	if (Draw_ConsoleBackgroundFlash (lines))	// QuakeOG, read in place
 		return;
 #endif
 	conback = Draw_CachePic ("gfx/conback.lmp");
@@ -888,7 +889,7 @@ void Draw_TileClear (int x, int y, int w, int h)
 	byte			*psrc;
 	vrect_t			vr;
 
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view under it is spread to full width first
 	r_rectdesc.rect.x = x;
 	r_rectdesc.rect.y = y;
 	r_rectdesc.rect.width = w;
@@ -962,7 +963,7 @@ void Draw_Fill (int x, int y, int w, int h, int c)
 	unsigned		uc;
 	int				u, v;
 
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view under it is spread to full width first
 	if (r_pixbytes == 1)
 	{
 		dest = vid.buffer + y*vid.rowbytes + x;
@@ -996,7 +997,7 @@ void Draw_FadeScreen (void)
 	VID_UnlockBuffer ();
 	S_ExtraUpdate ();
 	VID_LockBuffer ();
-	QOG_TURBO_2D (0);	// QuakeOG (Agent AO): a Turbo view under it is spread to full width first
+	QOG_TURBO_2D (0);	// QuakeOG, a Turbo view under it is spread to full width first
 
 	for (y=0 ; y<vid.height ; y++)
 	{

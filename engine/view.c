@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -862,7 +863,7 @@ V_CalcRefdef
 ==================
 */
 #ifdef QOG_LINK_PIPELINE
-qboolean	v_qog_drifted;	// QuakeOG (Agent V): host.c ran V_DriftPitch at the frame's end
+qboolean	v_qog_drifted;	// QuakeOG, host.c ran V_DriftPitch at the frame's end
 #endif
 
 void V_CalcRefdef (void)
@@ -1058,7 +1059,7 @@ void V_RenderView (void)
 	else
 	{
 #ifdef QOG_ZEDGE_COMPARE
-		// QuakeOG (Agent AC), PC test builds only: a view that reached the
+		// QuakeOG, PC test builds only, a view that reached the
 		// edge fallback is drawn again from the same state with the board's
 		// graceful path (r_edge.c, R_QogFlushNoZ), both pictures are saved,
 		// and the exact one stays on the screen
@@ -1096,7 +1097,7 @@ void V_RenderView (void)
 #ifndef GLQUAKE
 	if (crosshair.value)
 #ifdef QOG_RTURBO
-	if (r_qog_turbopacked)	// QuakeOG (Agent AO): into the packed Turbo view, which then stays packed
+	if (r_qog_turbopacked)	// QuakeOG, into the packed Turbo view, which then stays packed
 		R_QogTurboChar (scr_vrect.x + scr_vrect.width/2 + cl_crossx.value,
 			scr_vrect.y + scr_vrect.height/2 + cl_crossy.value, '+');
 	else

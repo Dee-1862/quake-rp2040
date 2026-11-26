@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #ifdef QOG_NET_LINK
-#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#include "net_link.h"	// QuakeOG, the split game (net_link.c)
 #endif
 
 cvar_t	*cvar_vars;
@@ -123,7 +124,7 @@ void Cvar_Set (char *var_name, char *value)
 	changed = Q_strcmp(var->string, value);
 	
 #ifdef QOG_CVAR_LITERAL
-	// QuakeOG (Agent S): a value still at the C code's initial string (not
+	// QuakeOG, a value still at the C code's initial string (not
 	// in the hunk, where the zone is) is never freed, and a set to the same
 	// text keeps it. Every other set is id's.
 	if ((byte *)var->string < hunk_base || (byte *)var->string >= hunk_base + hunk_size)
@@ -147,7 +148,7 @@ void Cvar_Set (char *var_name, char *value)
 	Q_strcpy (var->string, value);
 #endif
 	var->value = Q_atof (var->string);
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the server half announces it when it sets its copy
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, the server half announces it when it sets its copy
 	if (var->server && changed)
 	{
 		if (sv.active)
@@ -155,7 +156,7 @@ void Cvar_Set (char *var_name, char *value)
 	}
 #endif
 #ifdef QOG_NET_LINK
-	Link_CvarChanged (var);	// QuakeOG: the other half sets its copy too
+	Link_CvarChanged (var);	// QuakeOG, the other half sets its copy too
 #endif
 }
 
@@ -200,7 +201,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 		
 // copy the value off, because future sets will Z_Free it
 #ifdef QOG_CVAR_LITERAL
-	// QuakeOG (Agent S): no copy, the initial string stays where it is until
+	// QuakeOG, no copy, the initial string stays where it is until
 	// a set changes it (Cvar_Set)
 	(void)oldstr;
 #else

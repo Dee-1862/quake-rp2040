@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -36,15 +37,15 @@ int r_skymade;
 int r_skydirect;		// not used?
 
 
-// QuakeOG: the sky is composited straight from the texture (read in place
+// QuakeOG, the sky is composited straight from the texture (read in place
 // from flash). id kept two pre-masked 128x131 copies of the front layer
 // (bottomsky, bottommask) and a back-layer copy in the right half of a
-// 256-wide newsky; the result is the same pixel rule, front if non-zero
+// 256-wide newsky. The result is the same pixel rule, front if non-zero
 // else back, so only the 128x128 output remains in RAM (49 KB less).
 
-static byte	*r_skytex;			// 256x128: left half front layer (0 = clear), right half back layer
+static byte	*r_skytex;			// 256x128, left half front layer (0 = clear), right half back layer
 #ifdef QOG_SKY_DIRECT
-// QuakeOG: no composited copy at all (16 KB less). R_MakeSky only records
+// QuakeOG, no composited copy at all (16 KB less). R_MakeSky only records
 // what it would have composited (the texture and the layer shift), and
 // D_DrawSkyScans8 applies SkyPixel's rule to each pixel it draws. id kept
 // the old composite while the shift did not change, even across a map

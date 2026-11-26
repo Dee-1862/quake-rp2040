@@ -1,7 +1,7 @@
-/* QuakeOG (Agent W): the split client's sound output on the PC
+/* QuakeOG, the split client's sound output on the PC
  * (QOG_SND_REMOTE, port/common/qog_snd.h). Never opens an audio device.
  *
- * It stands for the board's I2S output in tests: the play position advances
+ * It stands for the board's I2S output in tests, the play position advances
  * by game time after every update the server half mixed, exactly as
  * snd_pc.c's silent mode (-hidden) advances id's DMA position after every
  * SNDDMA_Submit, so the server half mixes what the single-process game

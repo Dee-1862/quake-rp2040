@@ -1,12 +1,12 @@
 /*
-QuakeOG (Agent AO): the Turbo render mode, r_fast 2.
+QuakeOG, the Turbo render mode, r_fast 2.
 
 The 3D view is drawn at half width (160x152 for the board's 320x152 view)
 with Fast mode's shortcuts, and the LCD scanout doubles each of its pixels
 sideways (platform/qog_video.c), blocky like Doom's low detail. The 2D parts
 (status bar, menus, console, text) stay at full width and sharp.
 
-Frame buffer layout while a Turbo view is in it (P rows of view, W = 320):
+Frame buffer layout while a Turbo view is in it (P rows of view, W = 320).
   [0, P * W/2)         the view's pixels, row r at r * W/2 (packed)
   [P * W/2, P * W)     its one-byte z-buffer while it is drawn (else free)
   [P * W, ...)         the status bar rows as always
@@ -18,14 +18,14 @@ about 0.3 ms on the board) and the frame then goes out as a normal one.
 While R_RenderView_ draws a Turbo view, vid says the screen is half as wide
 (vid.width and vid.rowbytes W/2, vid.aspect twice id's, as id's lcd_x mode
 does with the rows), so R_SetupFrame, R_ViewChanged and D_ViewChanged make
-a view of half the width with the same field of view: pixelAspect doubles,
+a view of half the width with the same field of view, pixelAspect doubles,
 yscale stays, xscale halves. The edge, span, alias, particle and sprite code
 then see an ordinary 160x152 view.
 
 The world's edge cache and vertex cache live in frame buffer rows that the
 view draws over (QOG_EDGECACHE_FRAME). In a Turbo view they go after the
 packed pixels, into the bytes the z-buffer takes later, which a Turbo
-frame's scanout never reads: the view starts at once instead of waiting for
+frame's scanout never reads, the view starts at once instead of waiting for
 the last scanout to pass those rows (QOG_VID_SCANRACE).
 */
 #include "quakedef.h"
@@ -35,12 +35,12 @@ the last scanout to pass those rows (QOG_VID_SCANRACE).
 #ifdef QOG_RTURBO
 
 #if defined(_WIN32) && !defined(QOG_TURBO_TEXT_STATS)
-#define QOG_TURBO_TEXT_STATS	// Agent AP: the PC counts the listed characters (vid_pc.c)
+#define QOG_TURBO_TEXT_STATS	// Earlier work, the PC counts the listed characters (vid_pc.c)
 #endif
 
 int		r_qog_turboview;		// vid.h
 int		r_qog_turbopacked;		// vid.h
-byte	*r_qog_turbocachelo, *r_qog_turbocachehi;	// r_draw.c: room for the vertex cache, hi NULL outside a Turbo view
+byte	*r_qog_turbocachelo, *r_qog_turbocachehi;	// r_draw.c, room for the vertex cache, hi NULL outside a Turbo view
 
 extern vrect_t	scr_vrect;		// screen.c
 
@@ -57,7 +57,7 @@ static short			r_qog_turboscrw;	// scr_vrect.width outside the view
 static d_zval_t			*r_qog_turbozbuf;	// d_pzbuffer outside the view
 static unsigned short	*r_qog_turboedgecache;	// r_qog_edgecache outside the view
 
-// Agent AP: characters over the packed view (vid.h R_QogTurboText), two
+// Earlier work, characters over the packed view (vid.h R_QogTurboText), two
 // lists so the one the scanout in flight reads stays as it is
 static r_qogtext_t		r_qog_turbotext[2];
 static r_qogtext_t		*r_qog_text = &r_qog_turbotext[0];	// the frame's
@@ -86,7 +86,7 @@ void R_QogTurboBegin (void)
 		r_qog_turbolast = turbo;
 	}
 	r_qog_turbopacked = 0;		// this view draws over the rows (a Turbo view packs them again)
-	r_qog_text->numruns = r_qog_text->numchars = 0;	// Agent AP: and over any character listed before it
+	r_qog_text->numruns = r_qog_text->numchars = 0;	// Earlier work, and over any character listed before it
 	if (!turbo)
 		return;
 
@@ -134,11 +134,11 @@ void R_QogTurboEnd (void)
 R_QogTurboCaches
 
 R_EdgeDrawing in a Turbo view, when the world's edge cache lives in the
-frame buffer (r_qog_edgecache == vid.buffer): places the edge cache and
+frame buffer (r_qog_edgecache == vid.buffer), places the edge cache and
 the vertex cache for this view. The view owns the frame's first P full
-rows (P * W bytes): its packed pixels fill the first half, its z-buffer
+rows (P * W bytes), its packed pixels fill the first half, its z-buffer
 or nothing the second. A Turbo frame's scanout never reads the second
-half, a normal frame's reads it last. Three ways:
+half, a normal frame's reads it last. Three ways.
  a. both caches in the second half, on into the z-buffer memory up to the
     edge table when a big map needs it (the status bar rows there are
     repainted after the view, R_HudRepaint)
@@ -199,7 +199,7 @@ void R_QogTurboCaches (void)
 R_QogTurboUnpack
 
 Spreads the packed rows of a Turbo view to full width in place, each pixel
-twice, from the last row to the first: row r's full width bytes
+twice, from the last row to the first, row r's full width bytes
 [r * W, r * W + W) only cover packed rows 2r and 2r + 1, which are done
 by then, and within row 0 each word is read before it is written over.
 ==============
@@ -230,7 +230,7 @@ void R_QogTurboUnpack (void)
 			dst[2 * i + 1] = hi * 0x101;
 		}
 	}
-	// Agent AP: the characters listed so far go into the frame now, in
+	// Earlier work, the characters listed so far go into the frame now, in
 	// their order, before whatever spread the view draws over them
 	n = r_qog_text->numruns;
 	r_qog_text->numruns = r_qog_text->numchars = 0;
@@ -246,10 +246,10 @@ void R_QogTurboUnpack (void)
 ==============
 R_QogTurboText
 
-Agent AP: Draw_Character over a packed Turbo view. A character wholly
+Earlier work, Draw_Character over a packed Turbo view. A character wholly
 inside the packed rows is listed instead of drawn (vid.h), when the list
 has room. The scanout draws it over the doubled pixels as Draw_Character
-would draw it over the spread view: a pixel of index 0 is see-through.
+would draw it over the spread view, a pixel of index 0 is see-through.
 ==============
 */
 int R_QogTurboText (int x, int y, int num)
@@ -288,7 +288,7 @@ int R_QogTurboText (int x, int y, int num)
 ==============
 R_QogTurboTextTake
 
-Agent AP: VID_Update hands the frame's list to the scanout and the next
+Earlier work, VID_Update hands the frame's list to the scanout and the next
 frame lists into the other one. Empty when the frame holds no packed view.
 ==============
 */
@@ -313,7 +313,7 @@ const r_qogtext_t *R_QogTurboTextTake (void)
 ==============
 R_QogTurboChar
 
-The crosshair over a packed Turbo view: each lit pixel of the character
+The crosshair over a packed Turbo view, each lit pixel of the character
 lands on the packed pixel under it, so the frame stays packed (no spread
 to full width every frame). Anywhere else Draw_Character draws it.
 ==============
@@ -325,7 +325,7 @@ void R_QogTurboChar (int x, int y, int num)
 	int			r, c, half = vid.rowbytes >> 1;
 
 	if (y < 0 || y + 8 > r_qog_turbopacked || x < 0 || x + 8 > (int)vid.width
-		|| r_qog_text->numruns)	// Agent AP: over listed characters it must stay above them
+		|| r_qog_text->numruns)	// Earlier work, over listed characters it must stay above them
 	{
 		Draw_Character (x, y, num);
 		return;

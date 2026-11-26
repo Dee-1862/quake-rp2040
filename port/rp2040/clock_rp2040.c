@@ -1,13 +1,13 @@
-/* QuakeOG (Agents AB and AN): the Quake apps' faster clocks, set at run time.
+/* QuakeOG, the Quake apps' faster clocks, set at run time.
  *
- * Why here and not in the BSP: the BSP's 200 MHz and flash CLKDIV 4 are also
+ * Why here and not in the BSP, the BSP's 200 MHz and flash CLKDIV 4 are also
  * the display bootloader's, and the display CPU has no BOOTSEL button, so a
  * bootloader that failed at a faster setting could never be reflashed. The
  * bootloader and every other app keep the BSP's settings. Only quake_display
  * and quake_main call qog_clock_boost(), right after board_init().
  *
- * 1. Voltage, then clock (QOG_SYS_KHZ 300000 at QOG_SYS_MV 1250 since Agent
- *    AN, 250000 at 1200 before). The core voltage goes up first and settles
+ * 1. Voltage, then clock (QOG_SYS_KHZ 300000 at QOG_SYS_MV 1250 since earlier work
+ *    , 250000 at 1200 before). The core voltage goes up first and settles
  *    for 10 ms as the BSP's fwog_clocks_init does, then set_sys_clock_pll
  *    (300 MHz is VCO 1500 MHz over 5 and 1). clk_peri follows clk_sys
  *    (PICO_CLOCK_ADJUST_PERI_CLOCK_WITH_SYS_CLOCK in the board header), so
@@ -16,7 +16,7 @@
  *    would need 300 / 4.8). clk_ref, the 1 MHz timer tick, PLL_USB, USB and
  *    the ADC do not change. docs/changes.md has the whole table.
  *
- * 2. What board_init() already derived from 200 MHz is derived again:
+ * 2. What board_init() already derived from 200 MHz is derived again.
  *    display  the backlight PWM divider (board.c, 10 kHz with wrap 255) and
  *             the I2C1 rate (charger, RTC, accelerometer, expander)
  *    main     the FPGA clock on GPOUT1 (fpga_clk.c, at most 25 MHz). Its
@@ -28,16 +28,16 @@
  * 3. The flash divider. The display app runs after the bootloader, whose XIP
  *    setup stays in force (the app's boot2 is skipped), and main's flash
  *    writes run boot2 again, so the divider is switched here at run time on
- *    both chips: from RAM, interrupts off, core 1 not started yet. The
+ *    both chips, from RAM, interrupts off, core 1 not started yet. The
  *    W25Q128JV reads quad I/O (0xEB, continuous mode, 4 dummy clocks) at up
  *    to 133 MHz. clk_sys / 2 is tried when it is at most QOG_FLASH_MAX_KHZ
- *    (150 MHz by default, so 300 MHz tries 150 MHz, 13% above the rating;
+ *    (150 MHz by default, so 300 MHz tries 150 MHz, 13% above the rating.
  *    133000 keeps the part's rating and gives div 4 at 300 MHz).
- *    Agent AN: every RX sample delay from 1 to QOG_FLASH_DLY_MAX (3) is
+ *    Earlier work, every RX sample delay from 1 to QOG_FLASH_DLY_MAX (3) is
  *    checked, and the middle of the run of delays that pass is kept, so the
  *    sample point sits away from both edges of the data eye (on the board at
  *    125 MHz main once needed delay 2 where the display took 1).
- *    Check: the app's own image (up to QOG_FLASH_CHECK_KB) and 16 blocks of
+ *    Check, the app's own image (up to QOG_FLASH_CHECK_KB) and 16 blocks of
  *    4 KB spread over the data region are read in 16 KB chunks through the
  *    uncached alias, each chunk first at the old divider with interrupts on,
  *    then twice at every candidate setting with interrupts off, and the old
@@ -115,7 +115,7 @@ static uint32_t s_bsp_khz;          /* clk_sys before the boost */
 static int      s_clock_state;      /* 0 off, 1 raised, -1 unreachable */
 static int      s_flash_state;      /* 0 off, 1 fast, -1 check failed, -2 above QOG_FLASH_MAX_KHZ, -3 recheck failed */
 static uint32_t s_flash_div, s_flash_dly, s_old_div, s_old_dly;
-static uint32_t s_pass_mask;        /* bit d: RX delay d passed the whole check */
+static uint32_t s_pass_mask;        /* bit d, RX delay d passed the whole check */
 static uint32_t s_checked_kb;
 static uint32_t s_reapplied;
 #if QOG_FLASH_FAST
@@ -258,7 +258,7 @@ static void flash_recheck(void) {
     s_recheck_bad++;
     if (bad < 3) return;            /* one or two misreads, counted, setting kept */
 #ifndef QOG_SYS_MAIN
-    /* core 1 runs from flash too: it waits in RAM while the SSI is off */
+    /* core 1 runs from flash too, it waits in RAM while the SSI is off */
     const bool lock = multicore_lockout_victim_is_initialized(1);
     if (lock) multicore_lockout_start_blocking();
 #endif
@@ -300,7 +300,7 @@ void qog_clock_boost(void) {
         s_clock_state = -1;
     } else if (QOG_SYS_KHZ != s_bsp_khz) {
 #ifdef QOG_SYS_MAIN
-        /* the FPGA's clock divider for the new clock first: at the old clock
+        /* the FPGA's clock divider for the new clock first, at the old clock
            it gives less than 25 MHz, never more */
         (void)fwog_fpga_clk_start_div(fwog_fpga_clk_divider(QOG_SYS_KHZ * 1000u), 0u);
 #endif
@@ -310,7 +310,7 @@ void qog_clock_boost(void) {
 #ifdef QOG_SYS_MAIN
         (void)fwog_fpga_clk_start();
 #else
-        /* board.c's backlight PWM: FWOG_BACKLIGHT_HZ 10 kHz, wrap 255 */
+        /* board.c's backlight PWM, FWOG_BACKLIGHT_HZ 10 kHz, wrap 255 */
         pwm_set_clkdiv(pwm_gpio_to_slice_num(PIN_LCD_BL),
                        (float)clock_get_hz(clk_sys) / (10000.0f * 256.0f));
         i2c_set_baudrate(FWOG_I2C, FWOG_I2C_HZ);
@@ -322,7 +322,7 @@ void qog_clock_boost(void) {
     flash_fast();
 #endif
 #if QOG_TEMP_S
-    /* the die's temperature sensor: ADC channel 4, clk_adc stays on PLL_USB's
+    /* the die's temperature sensor, ADC channel 4, clk_adc stays on PLL_USB's
        48 MHz. Nothing else in either app uses the ADC. */
     adc_init();
     adc_set_temp_sensor_enabled(true);
@@ -388,7 +388,7 @@ static int temp_tenths(void) {
 }
 #endif
 
-/* called once a frame by both main loops: the clock and flash report once,
+/* called once a frame by both main loops, the clock and flash report once,
    about 6 s after boot when USB is up, then every QOG_TEMP_S seconds the
    temperature line and one flash recheck, and the profiler's report */
 void qog_clock_report_once(void) {

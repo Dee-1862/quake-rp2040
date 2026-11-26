@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -36,7 +37,7 @@ typedef enum {
 } ptype_t;
 
 #ifdef QOG_PARTICLE_PACKED
-// QuakeOG: 36 bytes instead of 44 (r_part.c). The colour is always a whole
+// QuakeOG, 36 bytes instead of 44 (r_part.c). The colour is always a whole
 // palette index and the type fits a byte. The list link is a 16-bit index
 // (r_part.c's P_NEXT). The drivers read only org and color.
 typedef struct particle_s
@@ -83,7 +84,7 @@ typedef struct finalvert_s {
 	int		v[6];		// u, v, s, t, l, 1/z
 	int		flags;
 #ifndef QOG_FINALVERT_PACKED
-	float	reserved;	// QuakeOG: padding for id's x86 assembly only (28 bytes without)
+	float	reserved;	// QuakeOG, padding for id's x86 assembly only (28 bytes without)
 #endif
 } finalvert_t;
 
@@ -193,7 +194,7 @@ void D_PolysetUpdateTables (void);
 extern int				r_skydirect;
 extern byte				*r_skysource;
 #ifdef QOG_SKY_DIRECT
-extern byte				*r_skycomposed;		// QuakeOG: r_sky.c
+extern byte				*r_skycomposed;		// QuakeOG, r_sky.c
 extern int				r_skyxshift, r_skyyshift;
 #endif
 
@@ -204,7 +205,7 @@ extern int				r_skyxshift, r_skyyshift;
 // !!! must be kept the same as in quakeasm.h !!!
 #define TRANSPARENT_COLOR	0xFF
 
-extern void *acolormap;	// FIXME: should go away
+extern void *acolormap;	// FIXME, should go away
 
 //=======================================================================//
 
@@ -221,7 +222,7 @@ typedef struct
 	int			surfmip;	// mipmapped ratio of surface texels / world pixels
 	int			surfwidth;	// in mipmapped texels
 	int			surfheight;	// in mipmapped texels
-	struct model_s	*model;	// QuakeOG: model owning surf, for its per-frame state arrays
+	struct model_s	*model;	// QuakeOG, model owning surf, for its per-frame state arrays
 } drawsurf_t;
 
 extern drawsurf_t	r_drawsurf;

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -182,10 +183,10 @@ float CL_KeyState (kbutton_t *key)
 		if (down)
 			val = 0.5;	// pressed and held this frame
 		else
-			val = 0;	//	I_Error ();
+			val = 0;	//	I_Error ().
 	if (impulseup && !impulsedown)
 		if (down)
-			val = 0;	//	I_Error ();
+			val = 0;	//	I_Error ().
 		else
 			val = 0;	// released this frame
 	if (!impulsedown && !impulseup)

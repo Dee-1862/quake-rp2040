@@ -20,8 +20,8 @@ void qog_aim_register(void) {
 void qog_aim_apply_defaults(void) {
     /* Called after the first Host_Frame, once quake.rc and config.cfg have
        run, so a saved "crosshair 0" cannot win. Queuing it with Cbuf_AddText
-       was fragile: it sat behind everything quake.rc stuffs in. Players can
-       still type `crosshair 0` for the session; it just starts on. */
+       was fragile, it sat behind everything quake.rc stuffs in. Players can
+       still type `crosshair 0` for the session. It just starts on. */
     Cvar_Set("crosshair", "1");
 }
 
@@ -39,7 +39,7 @@ void qog_aim_update(double now) {
         const double k = aim_ramp.value > 0.0 ? (t - aim_hold.value) / aim_ramp.value : 1.0;
         speed = aim_slow.value + (aim_fast.value - aim_slow.value) * (k > 1.0 ? 1.0 : k);
     }
-    /* Written straight into the value: CL_AdjustAngles reads .value, and
+    /* Written straight into the value, CL_AdjustAngles reads .value, and
        Cvar_SetValue would churn the zone with a string every frame. */
     cl_yawspeed.value = (float)speed;
 }

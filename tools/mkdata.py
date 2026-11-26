@@ -34,7 +34,7 @@ FLASHMAP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "platf
 
 def flashmap_define(name, path=FLASHMAP):
     """A hex or decimal #define of platform/qog_flashmap.h, so the tools and
-    the firmware read one flash map (Agent AC)."""
+    the firmware read one flash map."""
     with open(path, encoding="utf-8") as f:
         m = re.search(r"#define\s+%s\s+(0x[0-9A-Fa-f]+|\d+)u?\b" % name, f.read())
     if not m:

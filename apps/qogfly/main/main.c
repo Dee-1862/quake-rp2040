@@ -9,7 +9,7 @@ int main(void) {
     board_init();
     fwog_display_result_t d = fwog_display_update_run();
 
-    /* Repeat for 10 s: anything printed before USB CDC enumerates is lost. */
+    /* Repeat for 10 s, anything printed before USB CDC enumerates is lost. */
     const absolute_time_t announce_until = make_timeout_time_ms(10000);
     while (true) {
         board_watchdog_kick();

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,9 +22,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "qog_phase.h"	// QuakeOG: render phase times (QOG_PHASE_TIME)
-#include "qog_bmodel.h"	// QuakeOG (Agent AS): board cost model counts (QOG_BOARDMODEL)
-#include "qog_aqstats.h"	// QuakeOG (Agent AQ): front end work counts (QOG_AQ_STATS)
+#include "qog_phase.h"	// QuakeOG, render phase times (QOG_PHASE_TIME)
+#include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
+#include "qog_aqstats.h"	// QuakeOG, front end work counts (QOG_AQ_STATS)
 #ifdef QOG_AQ_STATS
 unsigned	qog_aq[AQ_N];
 #endif
@@ -36,17 +37,17 @@ alight_t	r_viewlighting = {128, 192, viewlightvec};
 float		r_time1;
 int			r_numallocatededges;
 #ifdef QOG_ZTEMP
-byte		*r_ztemp_base;	// QuakeOG: the z-buffer memory, set by VID_Init (r_shared.h)
+byte		*r_ztemp_base;	// QuakeOG, the z-buffer memory, set by VID_Init (r_shared.h)
 int			r_ztemp_bytes;
 #endif
 #ifdef QOG_EDGECACHE_ZBUFFER
-unsigned short	*r_qog_edgecache;	// QuakeOG: the world's edge cache (r_draw.c), see R_NewMap
+unsigned short	*r_qog_edgecache;	// QuakeOG, the world's edge cache (r_draw.c), see R_NewMap
 int				r_qog_edgecachebytes;
 #endif
 #ifdef QOG_HUD_IN_ZBUFFER
-int			r_zalias_row = 0x7fff;	// QuakeOG: first screen row stored in the z-buffer (set by VID_Init)
+int			r_zalias_row = 0x7fff;	// QuakeOG, first screen row stored in the z-buffer (set by VID_Init)
 
-// QuakeOG: what Sbar_Draw reads from cl in single player, as it was the
+// QuakeOG, what Sbar_Draw reads from cl in single player, as it was the
 // last time the status bar was drawn (see R_RenderView)
 typedef struct
 {
@@ -64,8 +65,8 @@ static qboolean		r_hudshot_valid;
 #if defined(QOG_HUD_CAP) && defined(QOG_HUD_SKIP) && defined(QOG_RFAST)
 #define QOG_HUD_CAP_ON
 /*
-QuakeOG (Agent AP): in Turbo (r_fast 2) the status bar rows go to the panel
-at most once every r_hudcap ms (0: every change, as in the other modes).
+QuakeOG, in Turbo (r_fast 2) the status bar rows go to the panel
+at most once every r_hudcap ms (0, every change, as in the other modes).
 A change in between, of the status bar or of the palette, leaves the panel
 showing the last status bar sent, and the first frame after the gap sends
 the newest one, so the last state always shows. The gap counts from the
@@ -112,7 +113,7 @@ static void R_HudStateSet (const r_hudstate_t *s)
 ===============
 R_HudFrameEnd
 
-QuakeOG: called by VID_Update. If Sbar_Draw drew the status bar in this
+QuakeOG, called by VID_Update. If Sbar_Draw drew the status bar in this
 frame (sb_updates went up from below vid.numpages), keep the state it drew
 from, so R_RenderView can draw the same picture again in frames where id's
 code would have left it on screen.
@@ -120,7 +121,7 @@ code would have left it on screen.
 */
 #ifdef QOG_HUD_SKIP
 /*
-QuakeOG (Agent AK): the status bar rows are sent to the panel only when they
+QuakeOG, the status bar rows are sent to the panel only when they
 change, as id's own VID_Update leaves the status bar out when nothing drew
 it. The panel keeps what it shows. A frame whose rows would be the repaint
 below (the tile and the status bar drawn again from r_hudshot) with nothing
@@ -139,7 +140,7 @@ static byte			r_hud_fromshot;	// it drew the status bar from r_hudshot
 static byte			r_hud_skipnow;	// it left the rows alone
 #endif
 
-// QuakeOG: the rows the view's z-buffer overwrote, as a separate frame
+// QuakeOG, the rows the view's z-buffer overwrote, as a separate frame
 // buffer would still hold them (see R_RenderView)
 static void R_HudRepaint (void)
 {
@@ -186,7 +187,7 @@ void R_HudFrameEnd (void)
 #endif
 	}
 #ifdef QOG_HUD_SKIP
-	// what the panel shows in the status bar rows after this frame: the
+	// what the panel shows in the status bar rows after this frame, the
 	// repaint of a known r_hudshot, Sbar_Draw's own drawing over the tile,
 	// which equals the repaint of the state saved just now, or anything else
 	if (!r_hud_skipnow)
@@ -199,10 +200,10 @@ void R_HudFrameEnd (void)
 
 #ifdef QOG_HUD_SKIP
 /*
-QuakeOG (Agent AK): VID_Update's R_HudFrameEnd. Returns the rows to send:
+QuakeOG, VID_Update's R_HudFrameEnd. Returns the rows to send.
 r_zalias_row when the status bar rows were left alone and the panel shows
 them, else vid.height. palette_same is false when the palette changed since
-the panel last got every row: then the rows left alone are repainted now
+the panel last got every row, then the rows left alone are repainted now
 (nothing drew over them since the view, SCR_QogHudQuiet) and all are sent.
 */
 int R_HudFrameEndRows (qboolean palette_same)
@@ -213,7 +214,7 @@ int R_HudFrameEndRows (qboolean palette_same)
 	{
 		if (palette_same
 #ifdef QOG_HUD_CAP_ON
-			|| R_QogHudCapHold ()	// QuakeOG (Agent AP): the new palette's rows wait for the next slot
+			|| R_QogHudCapHold ()	// QuakeOG, the new palette's rows wait for the next slot
 #endif
 			)
 			rows = r_zalias_row;
@@ -226,7 +227,7 @@ int R_HudFrameEndRows (qboolean palette_same)
 	R_HudFrameEnd ();
 #ifdef QOG_HUD_CAP_ON
 	if (rows >= vid.height)
-		r_hud_lastsend = realtime;	// QuakeOG (Agent AP)
+		r_hud_lastsend = realtime;	// QuakeOG
 #endif
 	return rows;
 }
@@ -311,7 +312,7 @@ texture_t	*r_notexture_mip;
 
 float		r_aliastransition, r_resfudge;
 
-lightstyleval_t	d_lightstylevalue[256];	// 8.8 fraction of base light value (QuakeOG: a short with QOG_LIGHTSTYLE_SHORT, r_shared.h)
+lightstyleval_t	d_lightstylevalue[256];	// 8.8 fraction of base light value (QuakeOG, a short with QOG_LIGHTSTYLE_SHORT, r_shared.h)
 
 float	dp_time1, dp_time2, db_time1, db_time2, rw_time1, rw_time2;
 float	se_time1, se_time2, de_time1, de_time2, dv_time1, dv_time2;
@@ -340,7 +341,7 @@ cvar_t	r_numedges = {"r_numedges", "0"};
 cvar_t	r_aliastransbase = {"r_aliastransbase", "200"};
 cvar_t	r_aliastransadj = {"r_aliastransadj", "100"};
 #ifdef QOG_RFAST
-// QuakeOG (Agent AA): r_fast 1 draws the world with the Fast lit span drawer
+// QuakeOG, r_fast 1 draws the world with the Fast lit span drawer
 // (d_litspan.h), approximate and hard to see, r_fast 0 exactly as before.
 // Archived. The board client (QOG_RFAST_ON) defaults to 1, every other
 // build to 0.
@@ -429,15 +430,15 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_aliastransbase);
 	Cvar_RegisterVariable (&r_aliastransadj);
 #ifdef QOG_RFAST
-	Cvar_RegisterVariable (&r_fast);	// QuakeOG (Agent AA)
+	Cvar_RegisterVariable (&r_fast);	// QuakeOG
 #endif
 #ifdef QOG_HUD_CAP_ON
-	Cvar_RegisterVariable (&r_hudcap);	// QuakeOG (Agent AP)
+	Cvar_RegisterVariable (&r_hudcap);	// QuakeOG
 #endif
 #ifdef QOG_RFAST_STATS
 	{
 		void D_QogRfastStats_f (void);
-		Cmd_AddCommand ("qog_rfaststats", D_QogRfastStats_f);	// QuakeOG (Agent AA), PC measurement
+		Cmd_AddCommand ("qog_rfaststats", D_QogRfastStats_f);	// QuakeOG, PC measurement
 	}
 #endif
 
@@ -490,7 +491,7 @@ void R_NewMap (void)
 	if (r_cnumsurfs > NUMSTACKSURFACES)
 	{
 #ifdef QOG_EDGES_IN_ZBUFFER
-		// QuakeOG: with room for QOG_SPAN_MIN spans past the last surface
+		// QuakeOG, with room for QOG_SPAN_MIN spans past the last surface
 		surfaces = Hunk_AllocName ((r_cnumsurfs + SPAN_RESERVE_SURFS) * sizeof(surf_t), "surfaces");
 #else
 		surfaces = Hunk_AllocName (r_cnumsurfs * sizeof(surf_t), "surfaces");
@@ -517,7 +518,7 @@ void R_NewMap (void)
 		r_numallocatededges = MINEDGES;
 
 #ifdef QOG_SURF_T_SMALL
-	// QuakeOG: 16-bit surface links and 8-bit flags (r_shared.h)
+	// QuakeOG, 16-bit surface links and 8-bit flags (r_shared.h)
 	if (r_cnumsurfs >= 0x10000)
 		Sys_Error ("R_NewMap: %d surfaces, 16-bit surface links allow %d",
 			r_cnumsurfs, 0xFFFF);
@@ -527,7 +528,7 @@ void R_NewMap (void)
 #endif
 
 #ifdef QOG_EDGE_T_PACKED
-	// QuakeOG: packed edges link with 16-bit byte offsets and name their
+	// QuakeOG, packed edges link with 16-bit byte offsets and name their
 	// owner by a 16-bit world edge index (r_shared.h)
 	if ((r_numallocatededges + EDGE_SENTINELS + 1) * sizeof(edge_t) > 0x10000)
 		Sys_Error ("R_NewMap: %d edges, 16-bit edge links allow %d",
@@ -538,7 +539,7 @@ void R_NewMap (void)
 #endif
 
 #ifdef QOG_EDGES_IN_ZBUFFER
-	// QuakeOG: the edge table ends at the end of the z-buffer, the brush clip
+	// QuakeOG, the edge table ends at the end of the z-buffer, the brush clip
 	// buffers sit at its start (R_EdgeDrawing). auxedges, if any, is only
 	// where R_QogEdgesToStack moves the edges (r_edge.c).
 	if (!r_ztemp_base || ZEDGE_BYTES (r_numallocatededges) + (int)BMODEL_CLIP_BYTES > r_ztemp_bytes)
@@ -553,7 +554,7 @@ void R_NewMap (void)
 	else
 	{
 #ifdef QOG_EDGE_T_PACKED
-		// QuakeOG: room for the sentinels in front, see R_EdgeDrawing
+		// QuakeOG, room for the sentinels in front, see R_EdgeDrawing
 #ifdef QOG_SPANS_IN_EDGES
 		auxedges = Hunk_AllocName ((r_numallocatededges + EDGE_SENTINELS + SPAN_RESERVE_EDGES) *
 								   sizeof(edge_t), "edges");
@@ -568,7 +569,7 @@ void R_NewMap (void)
 	}
 
 #ifdef QOG_EDGECACHE_ZBUFFER
-	// QuakeOG: the world's 16-bit edge cache (r_draw.c) is only used while
+	// QuakeOG, the world's 16-bit edge cache (r_draw.c) is only used while
 	// R_RenderWorld runs, so it lives at the start of the z-buffer, in front
 	// of the edge table with QOG_EDGES_IN_ZBUFFER (R_EdgeDrawing). A map with
 	// more edges than that room has it on the hunk, as the model loader did.
@@ -588,7 +589,7 @@ void R_NewMap (void)
 		if (r_ztemp_base && r_qog_edgecachebytes <= room)
 			r_qog_edgecache = (unsigned short *)r_ztemp_base;
 #ifdef QOG_EDGECACHE_FRAME
-		// QuakeOG: else in the frame buffer's first rows, which nothing
+		// QuakeOG, else in the frame buffer's first rows, which nothing
 		// reads before the world's spans draw over them (R_EdgeDrawing
 		// checks every frame that the 3D view covers them). For a smaller
 		// z-buffer (QOG_ZBUFFER8), whose room the edge table takes.
@@ -622,7 +623,7 @@ void R_SetVrect (vrect_t *pvrectin, vrect_t *pvrect, int lineadj)
 	if (cl.intermission)
 	{
 		size = 100;
-#ifndef QOG_MAX_VIEWSIZE	// QuakeOG: keep the status bar rows out of the 3D view (z-buffer size)
+#ifndef QOG_MAX_VIEWSIZE	// QuakeOG, keep the status bar rows out of the 3D view (z-buffer size)
 		lineadj = 0;
 #endif
 	}
@@ -664,13 +665,13 @@ Guaranteed to be called before the first refresh
 ===============
 */
 #ifdef QOG_RENDER_SCALE
-vrect_t		r_qog_screenvrect;	// QuakeOG: where the scaled view goes on screen
+vrect_t		r_qog_screenvrect;	// QuakeOG, where the scaled view goes on screen
 
 /*
 ===============
 R_QogScaleUp
 
-QuakeOG: enlarges the view drawn in r_refdef.vrect to r_qog_screenvrect
+QuakeOG, enlarges the view drawn in r_refdef.vrect to r_qog_screenvrect
 (same top left corner) in place, nearest pixel. Rows and pixels are written
 from the last to the first, and each one reads a source pixel at or before
 its own position that is not yet overwritten.
@@ -707,7 +708,7 @@ void R_ViewChanged (vrect_t *pvrect, int lineadj, float aspect)
 	R_SetVrect (pvrect, &r_refdef.vrect, lineadj);
 
 #ifdef QOG_RENDER_SCALE
-	// QuakeOG (changes the picture, off in the shipped flag lists): the 3D
+	// QuakeOG (changes the picture, off in the shipped flag lists), the 3D
 	// view is drawn at QOG_RENDER_SCALE percent of its screen size into the
 	// top left of its screen rectangle, and R_QogScaleUp enlarges it in place
 	// before the 2D overlay is drawn at full resolution. The field of view is
@@ -1036,8 +1037,8 @@ R_BmodelCheckBBox
 #endif
 #ifdef QOG_BMODEL_BBOXINT
 /*
-QuakeOG (Agent AQ): R_BmodelCheckBBox's plane tests in integers first, as
-Agent AJ's node test (r_bsp.c R_QogCullNodeInt). A corner c in 1/4 unit
+QuakeOG, R_BmodelCheckBBox's plane tests in integers first, as
+The earlier node test (r_bsp.c R_QogCullNodeInt). A corner c in 1/4 unit
 (rounded from its float bits, |c| below 4096 units), the view plane's
 normal N and dist in 1/16384 (R_QogFxWorldPlanes, rounded), give I =
 c.N - 4 dist, within 14,190 + |c|/2 (the roundings, |c| the sum of the
@@ -1087,7 +1088,7 @@ static int R_QogBoxPlaneInt (const int *c, const int *pl)
 #endif
 
 #ifdef QOG_BMODEL_BBOX_CHECK
-/* PC check build: id's box test without the integer path */
+/* PC check build, id's box test without the integer path */
 static int R_QogBBoxIds (float *minmaxs)
 {
 	int		i, *pindex, clipflags = 0;
@@ -1175,7 +1176,7 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 #ifdef QOG_BMODEL_BBOXINT
 			if (i == 0 || !pl)
 			{
-				// once a box: the planes and the corners in integers, or not
+				// once a box, the planes and the corners in integers, or not
 				if (i == 0)
 				{
 					pl = R_QogFxWorldPlanes ();
@@ -1223,7 +1224,7 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 			rejectpt[2] = minmaxs[pindex[2]];
 			
 #ifdef QOG_BMODEL_BBOXF
-			// QuakeOG (Agent AQ): id's d is a float dot product less a float
+			// QuakeOG, id's d is a float dot product less a float
 			// dist in double, which is exact in sign and zero only when the
 			// two are equal, so d <= 0 is the float compare dot <= dist
 			if (DotProduct (rejectpt, view_clipplanes[i].normal) <= view_clipplanes[i].dist)
@@ -1262,7 +1263,7 @@ int R_BmodelCheckBBox (model_t *clmodel, float *minmaxs)
 
 #ifdef QOG_BMODEL_FRUSTUM
 /*
-QuakeOG (Agent AQ): R_TransformFrustum makes each view plane's normal from
+QuakeOG, R_TransformFrustum makes each view plane's normal from
 vright, vup and vpn alone and its dist as DotProduct (modelorg, normal).
 A brush entity that does not turn usually keeps the world's vectors bit for
 bit (R_QogIdentityRotate changes only the sign of some zeros), and the
@@ -1316,7 +1317,7 @@ void R_DrawBEntitiesOnList (void)
 	model_t		*clmodel;
 	float		minmaxs[6];
 #ifdef QOG_BMODEL_FRUSTUM
-	qboolean	qworld = false;	// QuakeOG (Agent AQ): R_QogFrustum
+	qboolean	qworld = false;	// QuakeOG, R_QogFrustum
 #endif
 
 	if (!r_drawentities.value)
@@ -1330,7 +1331,7 @@ void R_DrawBEntitiesOnList (void)
 	{
 		currententity = cl_visedicts[i];
 #ifdef QOG_SURF_T_TINY
-		r_qog_visedict = i;		// QuakeOG (Agent S): the surfaces' entity (SURF_ENTITY)
+		r_qog_visedict = i;		// QuakeOG, the surfaces' entity (SURF_ENTITY)
 #endif
 
 		switch (currententity->model->type)
@@ -1349,7 +1350,7 @@ void R_DrawBEntitiesOnList (void)
 						clmodel->maxs[j];
 			}
 
-			QOG_BM (QOG_BM_BMCHECK, 1);	// QuakeOG (Agent AS)
+			QOG_BM (QOG_BM_BMCHECK, 1);	// QuakeOG
 			clipflags = R_BmodelCheckBBox (clmodel, minmaxs);
 			QOG_AQ (AQ_BENTS, 1);
 			QOG_AQ (AQ_BBOXREJ, clipflags == BMODEL_FULLY_CLIPPED);
@@ -1370,13 +1371,13 @@ void R_DrawBEntitiesOnList (void)
 		
 			// FIXME: stop transforming twice
 #ifdef QOG_BMODEL_FRUSTUM
-				R_QogRotateBmodelVecs ();	// QuakeOG (Agent AQ)
+				R_QogRotateBmodelVecs ();	// QuakeOG
 				R_QogFrustum (&qworld);
 #else
 				R_RotateBmodel ();
 #endif
 #ifdef QOG_FRONT_FAST
-				R_QogFxSetup ();	// QuakeOG (Agent AJ): Fast mode's integer front end
+				R_QogFxSetup ();	// QuakeOG, Fast mode's integer front end
 #endif
 
 			// calculate dynamic lighting for bmodel if it's not an
@@ -1454,7 +1455,7 @@ void R_DrawBEntitiesOnList (void)
 				VectorCopy (base_modelorg, modelorg);
 				VectorCopy (oldorigin, modelorg);
 #ifdef QOG_BMODEL_FRUSTUM
-				R_QogFrustum (&qworld);	// QuakeOG (Agent AQ)
+				R_QogFrustum (&qworld);	// QuakeOG
 #else
 				R_TransformFrustum ();
 #endif
@@ -1476,7 +1477,7 @@ void R_DrawBEntitiesOnList (void)
 ================
 R_QogEdgeCacheTail
 
-QuakeOG (Agent AP): a view that is not a Turbo one kept the world's edge
+QuakeOG, a view that is not a Turbo one kept the world's edge
 cache in the first rows of the frame buffer, which the last frame's
 scanout sends first, so R_RenderWorld waited for about 65 rows (e1m6, 85
 on e1m1) before it could start. The end of the z-buffer region lies past
@@ -1492,7 +1493,7 @@ its whole room back, so every view still gets every edge it needs.
 int		r_qog_ectail;	// the cache is at the end of the z-buffer region now
 static int	r_qog_ecplaced;	// this view moved the cache from the frame buffer's start
 #ifdef _WIN32
-int		r_qog_ecmoves;	// PC measurement: views whose world edges reached the cache
+int		r_qog_ecmoves;	// PC measurement, views whose world edges reached the cache
 #endif
 
 static void R_QogEdgeCacheTail (void)
@@ -1524,7 +1525,7 @@ static void R_QogEdgeCacheTail (void)
 R_QogEdgeCacheOut
 
 R_RenderFace when the world's edges reach the cache at the end of the
-z-buffer region: the cache moves to the frame buffer rows after the vertex
+z-buffer region, the cache moves to the frame buffer rows after the vertex
 cache (R_QogVertCacheBegin put it at the frame's start), once the last
 scanout has sent them, and the table gets its whole room back. Returns
 false when nothing was moved.
@@ -1558,25 +1559,25 @@ qboolean R_QogEdgeCacheOut (void)
 R_EdgeDrawing
 ================
 */
-int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG: see the end of R_EdgeDrawing
+int		r_qog_peakedges, r_qog_peaksurfs;	// QuakeOG, see the end of R_EdgeDrawing
 #ifdef QOG_SURF_T_TINY
-int		r_qog_visedict;						// QuakeOG (Agent S): see r_shared.h
+int		r_qog_visedict;						// QuakeOG, see r_shared.h
 #endif
-int		r_qog_peakedgesurfbytes;			// QuakeOG: most edge plus surface bytes in one frame
+int		r_qog_peakedgesurfbytes;			// QuakeOG, most edge plus surface bytes in one frame
 
 void R_EdgeDrawing (void)
 {
 #ifdef QOG_EDGE_T_PACKED
-	// QuakeOG: the four sentinel edges come first, then the edge table.
+	// QuakeOG, the four sentinel edges come first, then the edge table.
 	// r_edgebase is one entry before the sentinels, so offset 0 (EDGE_NONE)
 	// never addresses an edge. 24-byte edges gain nothing from id's cache
 	// line alignment, so the table is not aligned.
 	extern medge_t		*r_qog_owneredges;
 	extern unsigned int	r_qog_ownerbytes;
 #if defined(QOG_EDGES_IN_ZBUFFER)
-	// QuakeOG: no edge table here, it is at the end of the z-buffer (below)
+	// QuakeOG, no edge table here, it is at the end of the z-buffer (below)
 #elif defined(QOG_SPANS_IN_EDGES)
-	// QuakeOG: R_ScanEdges keeps its spans in the part of this table the
+	// QuakeOG, R_ScanEdges keeps its spans in the part of this table the
 	// edges left free, with QOG_SPAN_MIN spans of room past the edge limit
 	edge_t	ledges[EDGE_SENTINELS + NUMSTACKEDGES + SPAN_RESERVE_EDGES];
 #else
@@ -1587,7 +1588,7 @@ void R_EdgeDrawing (void)
 				((CACHE_SIZE - 1) / sizeof(edge_t)) + 1];
 #endif
 #ifdef QOG_EDGES_IN_ZBUFFER
-	// QuakeOG: R_ScanEdges keeps its spans in the part of this table the
+	// QuakeOG, R_ScanEdges keeps its spans in the part of this table the
 	// surfaces left free, with QOG_SPAN_MIN spans of room past the limit
 	surf_t	lsurfs[NUMSTACKSURFACES + SPAN_RESERVE_SURFS +
 				((CACHE_SIZE - 1) / sizeof(surf_t)) + 1];
@@ -1598,11 +1599,11 @@ void R_EdgeDrawing (void)
 
 #ifdef QOG_EDGE_T_PACKED
 #ifdef QOG_EDGES_IN_ZBUFFER
-	// QuakeOG: z-buffer layout while the edges are built (R_RenderWorld and
-	// R_DrawBEntitiesOnList), byte offsets from r_ztemp_base:
-	//   0: the world's edge cache with QOG_EDGECACHE_ZBUFFER (R_RenderWorld
+	// QuakeOG, z-buffer layout while the edges are built (R_RenderWorld and
+	// R_DrawBEntitiesOnList), byte offsets from r_ztemp_base.
+	//   0, the world's edge cache with QOG_EDGECACHE_ZBUFFER (R_RenderWorld
 	//      only), then the brush clip buffers (r_bsp.c, brush entities only)
-	//   r_ztemp_bytes - ZEDGE_BYTES: the four sentinels and the edge table
+	//   r_ztemp_bytes - ZEDGE_BYTES, the four sentinels and the edge table
 	// Nothing has drawn into the z-buffer yet this frame. R_ScanEdges moves
 	// the used part of the table to the end and draws spans above it only.
 	r_edgesentinels = (edge_t *)(r_ztemp_base + r_ztemp_bytes - ZEDGE_BYTES (r_numallocatededges));
@@ -1617,10 +1618,10 @@ void R_EdgeDrawing (void)
 #endif
 	// id's sentinels were zeroed statics, and R_ScanEdges sets only some fields
 #ifdef QOG_VID_SCANRACE
-	VID_QogRaceMark (1);	// QuakeOG (Agent AP): the world's front end
+	VID_QogRaceMark (1);	// QuakeOG, the world's front end
 #endif
 #if defined(QOG_VID_SCANRACE) && defined(QOG_EDGES_IN_ZBUFFER)
-	// QuakeOG (Agent AK): the last frame's scanout may still read the start
+	// QuakeOG, the last frame's scanout may still read the start
 	// of the z-buffer (the status bar rows), which a big edge table reaches
 	VID_QogScanFree (r_edgesentinels, r_ztemp_base + r_ztemp_bytes);
 #endif
@@ -1660,12 +1661,12 @@ void R_EdgeDrawing (void)
 #ifdef QOG_EDGECACHE_FRAME
 	extern pixel_t	*d_viewbuffer;	// d_local.h
 
-	// QuakeOG: a cache in the frame buffer needs the 3D view to draw over
+	// QuakeOG, a cache in the frame buffer needs the 3D view to draw over
 	// all of it in this frame (a full-width view from the top, drawn in the
 	// frame buffer itself) and nothing on screen (the previous frame's
 	// scanout has ended, VID_Update waits for it)
 #ifdef QOG_RTURBO
-	// QuakeOG (Agent AO): a Turbo view places the caches itself, after its
+	// QuakeOG, a Turbo view places the caches itself, after its
 	// packed pixels when that saves the wait for the last scanout (r_qogturbo.c)
 	void	R_QogTurboCaches (void);
 
@@ -1684,10 +1685,10 @@ void R_EdgeDrawing (void)
 			|| d_viewbuffer != vid.buffer))
 		Sys_Error ("R_EdgeDrawing: the 3D view does not cover the edge cache in the frame buffer");
 #endif
-	// QuakeOG: entries from earlier frames never match (r_draw.c), and the
+	// QuakeOG, entries from earlier frames never match (r_draw.c), and the
 	// z-buffer has held z since, so the cache starts empty every frame
 #ifdef QOG_VID_SCANRACE
-	// QuakeOG (Agent AK): in the frame buffer's first rows, which the last
+	// QuakeOG, in the frame buffer's first rows, which the last
 	// frame's scanout reads first
 	VID_QogScanFree (r_qog_edgecache, (byte *)r_qog_edgecache + r_qog_edgecachebytes);
 #endif
@@ -1702,7 +1703,7 @@ void R_EdgeDrawing (void)
 	{
 	QOG_PH_T (ph);	// QuakeOG
 #ifdef QOG_VERTCACHE
-	R_QogVertCacheBegin ();	// QuakeOG (Agent Z): world vertices projected once (r_draw.c)
+	R_QogVertCacheBegin ();	// QuakeOG, world vertices projected once (r_draw.c)
 #endif
 	R_RenderWorld ();
 #if defined(QOG_VERTCACHE) && !defined(QOG_FRONT_FAST)
@@ -1710,7 +1711,7 @@ void R_EdgeDrawing (void)
 #endif
 #ifdef QOG_EDGECACHE_TAIL
 	if (r_qog_ecplaced)
-	{	// QuakeOG (Agent AP): only world faces use the cache, the brush
+	{	// QuakeOG, only world faces use the cache, the brush
 		// entities' edges may grow over it (also after R_QogEdgeCacheOut)
 		r_qog_ecplaced = r_qog_ectail = 0;
 		edge_max = &r_edges[r_numallocatededges];
@@ -1721,8 +1722,8 @@ void R_EdgeDrawing (void)
 	}
 
 #ifdef QOG_VID_SCANRACE
-	VID_QogRaceMark (2);	// QuakeOG (Agent AP): after the world's front end
-	// QuakeOG (Agent AP): the brush entities' front end overlaps the last
+	VID_QogRaceMark (2);	// QuakeOG, after the world's front end
+	// QuakeOG, the brush entities' front end overlaps the last
 	// frame's scanout too. Of the frame and the z-buffer it writes only the
 	// edge table (released above) and the brush clip buffers at the start
 	// of the z-buffer, which hold the status bar rows a scanout may still
@@ -1756,29 +1757,29 @@ void R_EdgeDrawing (void)
 	{
 	QOG_PH_T (ph);	// QuakeOG
 #ifdef QOG_BOARDMODEL
-	qog_bm_bmodels (1);	// QuakeOG (Agent AS)
+	qog_bm_bmodels (1);	// QuakeOG
 #endif
 	R_DrawBEntitiesOnList ();
 #ifdef QOG_BOARDMODEL
 	qog_bm_bmodels (0);
 #endif
 #ifdef QOG_FRONT_FAST
-	// QuakeOG (Agent AJ): the Fast header after the cache serves the brush
+	// QuakeOG, the Fast header after the cache serves the brush
 	// entities too (the cache itself is for world faces only)
 	R_QogVertCacheEnd ();
 #endif
 	QOG_PH_ADD (QOG_PH_BMODELS, ph);
 	}
 #ifdef QOG_VID_SCANRACE
-	VID_QogRaceMark (3);	// QuakeOG (Agent AP): after the brush entities
+	VID_QogRaceMark (3);	// QuakeOG, after the brush entities
 #ifdef QOG_VID_ROWRACE
-	// QuakeOG (Agent AP): R_ScanEdges waits for the rows it writes, row by
+	// QuakeOG, R_ScanEdges waits for the rows it writes, row by
 	// row (r_edge.c R_QogRowFree), so the scanout runs beside the edge scan
 	r_qog_rowrace = 1;
 #else
-	// QuakeOG (Agent AK): from here on the view draws anywhere in the frame
-	// and the z-buffer (spans): the last frame's scanout has to be over. The
-	// front end above (world and, Agent AP, brush entities) overlapped it.
+	// QuakeOG, from here on the view draws anywhere in the frame
+	// and the z-buffer (spans), the last frame's scanout has to be over. The
+	// front end above (world and, earlier work, brush entities) overlapped it.
 	VID_QogScanDone ();
 #endif
 #endif
@@ -1796,7 +1797,7 @@ void R_EdgeDrawing (void)
 		VID_LockBuffer ();
 	}
 	
-	// QuakeOG: high-water marks, to size these tables from measurements
+	// QuakeOG, high-water marks, to size these tables from measurements
 	// (qog_mem prints them)
 	if (edge_p - r_edges > r_qog_peakedges)
 		r_qog_peakedges = edge_p - r_edges;
@@ -1812,7 +1813,7 @@ void R_EdgeDrawing (void)
 		QOG_PH_ADD (QOG_PH_SCAN, ph);
 	}
 #ifdef QOG_VID_ROWRACE
-	// QuakeOG (Agent AP): models, particles and the warp draw anywhere
+	// QuakeOG, models, particles and the warp draw anywhere
 	r_qog_rowrace = 0;
 	VID_QogRaceMark (4);
 	VID_QogScanDone ();
@@ -1830,11 +1831,11 @@ r_refdef must be set before the first call
 void R_RenderView_ (void)
 {
 #ifdef QOG_WARP_INPLACE
-	// QuakeOG: underwater, the view is drawn into the frame buffer and
+	// QuakeOG, underwater, the view is drawn into the frame buffer and
 	// D_WarpScreen distorts it in place, so no 64 KB warp buffer on the stack
 	if (vid.rowbytes != WARP_WIDTH
 #ifdef QOG_RTURBO
-		&& !r_qog_turboview	// QuakeOG (Agent AO): a Turbo view's rows are half as wide (r_qogturbo.c)
+		&& !r_qog_turboview	// QuakeOG, a Turbo view's rows are half as wide (r_qogturbo.c)
 #endif
 		)
 		Sys_Error ("R_RenderView: in-place underwater warp needs %d bytes per row", WARP_WIDTH);
@@ -1852,7 +1853,7 @@ void R_RenderView_ (void)
 		r_time1 = Sys_FloatTime ();
 
 #ifdef QOG_RFAST
-	r_qogfast = r_fast.value != 0;	// QuakeOG (Agent AA): one mode for the whole view
+	r_qogfast = r_fast.value != 0;	// QuakeOG, one mode for the whole view
 #endif
 	R_SetupFrame ();
 
@@ -1931,7 +1932,7 @@ SetVisibilityByPassages ();
 	R_QogScaleUp ();
 	if (r_dowarp)
 	{
-		// QuakeOG: the scaled up view fills the screen rectangle, so warp that
+		// QuakeOG, the scaled up view fills the screen rectangle, so warp that
 		vrect_t	drawn = r_refdef.vrect;
 
 		r_refdef.vrect = r_qog_screenvrect;
@@ -1968,7 +1969,7 @@ SetVisibilityByPassages ();
 	QOG_PH_ADD (QOG_PH_TOTAL, ph_total);	// QuakeOG
 	QOG_PH_COUNT (QOG_PC_FRAMES, 1);
 #ifdef QOG_AQ_STATS
-	// QuakeOG (Agent AQ): PC measurement, sums since the start every 100 views
+	// QuakeOG, PC measurement, sums since the start every 100 views
 	if (++qog_aq[AQ_VIEWS] % 100 == 0)
 	{
 		int		i;
@@ -2007,13 +2008,13 @@ void R_RenderView (void)
 		Sys_Error ("Globals are missaligned");
 
 #ifdef QOG_LINK_RX_ZTEMP
-	{	// QuakeOG (Agent Y): the link's receive buffer shares the z-buffer (net_link.c)
+	{	// QuakeOG, the link's receive buffer shares the z-buffer (net_link.c)
 		void Link_RxCheckIdle (void);
 		Link_RxCheckIdle ();
 	}
 #endif
 #ifdef QOG_RTURBO
-	{	// QuakeOG (Agent AO): r_fast 2 draws the view at half width (r_qogturbo.c)
+	{	// QuakeOG, r_fast 2 draws the view at half width (r_qogturbo.c)
 		void	R_QogTurboBegin (void), R_QogTurboEnd (void);
 
 		R_QogTurboBegin ();
@@ -2025,28 +2026,28 @@ void R_RenderView (void)
 #endif
 
 #ifdef QOG_HUD_IN_ZBUFFER
-	// QuakeOG: the screen rows from r_zalias_row down (the status bar) share
+	// QuakeOG, the screen rows from r_zalias_row down (the status bar) share
 	// memory with the start of the z-buffer, which this view has just
-	// overwritten. Repaint what a separate frame buffer would still hold:
+	// overwritten. Repaint what a separate frame buffer would still hold.
 	// the tile background a full screen update leaves there, and, when
 	// Sbar_Draw is going to skip this frame (sb_updates), the status bar as
 	// it was last drawn, from the state saved by R_HudFrameEnd. Sbar_Draw
 	// redraws by itself in the other frames. The 2D overlay comes after this.
 	if (r_zalias_row < vid.height)
 	{
-		QOG_PH_T (hp_hud);	// QuakeOG (Agent V)
+		QOG_PH_T (hp_hud);	// QuakeOG
 #ifdef QOG_HUD_SKIP
 		extern int	sb_updates;
 		qboolean	SCR_QogHudQuiet (void);
 
-		// QuakeOG (Agent AK): the panel already shows the repaint of this
-		// r_hudshot and nothing else will draw there: leave the rows
+		// QuakeOG, the panel already shows the repaint of this
+		// r_hudshot and nothing else will draw there, leave the rows
 		r_hud_viewed = true;
 		r_hud_quiet = SCR_QogHudQuiet ();
 		if (r_hud_quiet && !cl.intermission && r_hudshot_valid
 			&& ((sb_updates >= vid.numpages && r_hudpanel_gen == r_hudshot_gen)
 #ifdef QOG_HUD_CAP_ON
-				// QuakeOG (Agent AP): in Turbo a changed status bar waits for the
+				// QuakeOG, in Turbo a changed status bar waits for the
 				// next slot while the panel shows an earlier one. Sbar_Draw still
 				// draws it this frame and R_HudFrameEnd keeps its state
 				|| (r_hudpanel_gen >= 0 && R_QogHudCapHold ())
@@ -2056,7 +2057,7 @@ void R_RenderView (void)
 			r_hud_sbbefore = sb_updates;
 			r_hud_skipnow = true;
 #ifdef QOG_HUD_SKIP_CHECK
-			R_HudRepaint ();	// PC test builds: vid_pc.c checks it against the panel
+			R_HudRepaint ();	// PC test builds, vid_pc.c checks it against the panel
 #endif
 		}
 		else
@@ -2075,7 +2076,7 @@ R_InitTurb
 void R_InitTurb (void)
 {
 #ifdef QOG_CONST_RTABLES
-// QuakeOG: the tables are constants (r_turbtab.h). The PC build checks them
+// QuakeOG, the tables are constants (r_turbtab.h). The PC build checks them
 // against id's formulas once, so a changed formula or size cannot go unseen.
 #ifdef HOST_TEST
 	int		i;

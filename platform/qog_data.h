@@ -57,7 +57,7 @@ _Static_assert(sizeof(qogd_entry_t) == 32, "QOGD entry is 32 bytes");
 
 typedef enum {
     QOG_DATA_OK = 0,
-    QOG_DATA_EMPTY,        /* erased flash: nothing written yet */
+    QOG_DATA_EMPTY,        /* erased flash, nothing written yet */
     QOG_DATA_BAD_MAGIC,
     QOG_DATA_BAD_VERSION,
     QOG_DATA_BAD_HEADER,   /* header CRC or bounds */

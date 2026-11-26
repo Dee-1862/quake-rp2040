@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Level exits of each map: the "map" of every trigger_changelevel in its
-entity lump (Agent AG). Shows which levels an episode's image needs and
+entity lump. Shows which levels an episode's image needs and
 where its exits lead outside it (e2m6 and e3m6 lead to start).
 
     python tools/level_exits.py data/id1/pak0.pak,data/id1/pak1.pak e2m1 e2m6 start

@@ -13,11 +13,11 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// d_lit_q.h -- QuakeOG (Agent AR): the Fast and Turbo lit span drawer
+// d_lit_q.h -- QuakeOG, the Fast and Turbo lit span drawer
 // (QOG_LITSPAN_Q), included by d_scanlit.c before D_LitFixSetup, which
 // fills its surface values.
 //
-// It draws what Agent AH's fixed point drawer (D_LITSPANS_FIX_BODY,
+// It draws what the earlier fixed point drawer (D_LITSPANS_FIX_BODY,
 // d_litspan.h) draws, with the work per span cut down for the M0+:
 //
 // - The span start in 32 bits. D_LitFixSetup also keeps the surface's
@@ -28,13 +28,13 @@ See the GNU General Public License for more details.
 //   ones). The coefficients lose at most one unit each, so a start is off
 //   by at most |du| + |dv| + 1 units of D. A span whose D falls below
 //   LITQ_DMIN at either end (more than 16 times farther than the nearest
-//   point) takes Agent AH's 64-bit start. In timedemo demo3 no span does.
+//   point) takes the earlier 64-bit start. In timedemo demo3 no span does.
 // - The z of a span far enough for the one-byte z-buffer's plain steps is
 //   written by the pixel loop, not by a second walk (D_QogZSpanI).
 // - The divides go straight to the SIO divider, not through the SDK's
 //   wrapper, and a span of one pixel computes its end once.
 // - A span's sub-spans, light runs and pixels are one routine
-//   (litq_span): the light blend from one code path for every mip level
+//   (litq_span), the light blend from one code path for every mip level
 //   (S << mip puts the light cell at bit 20), the light of a sub-span's
 //   runs blended in a pass before its pixels, and the interpolator's
 //   texture accumulators carried from run to run. On the board it is
@@ -42,7 +42,7 @@ See the GNU General Public License for more details.
 //   litq_span_c below, which the board also keeps and checks the
 //   assembly against at start-up (D_QogLitQCheck).
 //
-// QOG_LITQ_SHARELIGHT (on for the board): each light run ends at the next
+// QOG_LITQ_SHARELIGHT (on for the board), each light run ends at the next
 // run's first pixel, not at its own last one, so a run's end is the next
 // run's start and a run of 8 pixels blends the light once, not twice. The
 // light along a span is then one continuous line through every eighth
@@ -93,39 +93,39 @@ static __inline int litq_sdiv (int a, int b)
 // layout is the assembly's.
 typedef struct
 {
-	const unsigned	*lbase;		// 0: blocklights moved back by the origin's cells
+	const unsigned	*lbase;		// 0, blocklights moved back by the origin's cells
 	int				lrowbytes;	// 4
 	int				mip;		// 8
 	int				tshift;		// 12
-	const int		*recip;		// 16: litspan_recip
-	int				ssw, tsw;	// 20, 24: litfix_sw, litfix_tw
-	int				exts, extt;	// 28, 32: bbextents, bbextentt
-	int				soff16;		// 36: lit_soff16
-	int				toff16;		// 40: lit_toff16
+	const int		*recip;		// 16, litspan_recip
+	int				ssw, tsw;	// 20, 24, litfix_sw, litfix_tw
+	int				exts, extt;	// 28, 32, bbextents, bbextentt
+	int				soff16;		// 36, lit_soff16
+	int				toff16;		// 40, lit_toff16
 } litq_surf_t;
 
-// One span for litq_span: its start values, its pixels and z. The layout
+// One span for litq_span, its start values, its pixels and z. The layout
 // is the assembly's, which also keeps its own values at the end.
 typedef struct
 {
-	int				D, Ns, Nt;	// 0, 4, 8: 1/z * 2^k and s, t times it, at the first pixel
-	int				DU, SU, TU;	// 12, 16, 20: their steps a pixel
-	int				m;			// 24: the divisor's shift, kept from span to span
-	int				count;		// 28: pixels
-	unsigned char	*pd;		// 32: the first pixel
-	d_zval_t		*pz;		// 36: its z, NULL when D_QogZSpanI wrote it
-	int				izi;		// 40: 1/z * 2^31 at the first pixel
+	int				D, Ns, Nt;	// 0, 4, 8, 1/z * 2^k and s, t times it, at the first pixel
+	int				DU, SU, TU;	// 12, 16, 20, their steps a pixel
+	int				m;			// 24, the divisor's shift, kept from span to span
+	int				count;		// 28, pixels
+	unsigned char	*pd;		// 32, the first pixel
+	d_zval_t		*pz;		// 36, its z, NULL when D_QogZSpanI wrote it
+	int				izi;		// 40, 1/z * 2^31 at the first pixel
 	int				izistep;	// 44
-	int				share;		// 48: a run's light ends at the next run's start
-	const litq_surf_t	*surf;	// 52: the surface's values (each core's copy of this file has its own)
-	int				own[22];	// 56: the assembly's (s, t, the next ones, steps, the runs' light)
+	int				share;		// 48, a run's light ends at the next run's start
+	const litq_surf_t	*surf;	// 52, the surface's values (each core's copy of this file has its own)
+	int				own[22];	// 56, the assembly's (s, t, the next ones, steps, the runs' light)
 } litq_span_t;
 
 static litq_surf_t	litq_surf;
 
 
 // id's four-sample light at S, T (with the origin added), every mip level
-// through one path: S << mip puts the light column at bit 20 and the
+// through one path, S << mip puts the light column at bit 20 and the
 // fraction in bits 12 to 19, as S >> (lshift + 16) and S << (16 - lshift)
 // >> 24 do (d_litspan.h's LITSPAN_BLEND)
 static __inline int litq_blend (const unsigned *lb, int rb, int m, int S, int T)
@@ -145,7 +145,7 @@ static __inline int litq_blend (const unsigned *lb, int rb, int m, int S, int T)
 	return top + (((bot - top) * f) >> 8);
 }
 
-// The runs of one sub-span of n pixels from S, T (origin added): runs of
+// The runs of one sub-span of n pixels from S, T (origin added), runs of
 // up to 8 pixels, the light blended at a run's first and last pixel and
 // stepped between them on interpolator 1, the texel addresses on
 // interpolator 0, whose accumulators carry over to the next run (8 steps
@@ -234,8 +234,8 @@ static int litq_runs_c (unsigned char *pd, d_zval_t *pz, int izi, int izs,
 ================
 litq_span_c
 
-QuakeOG (Agent AR): one span from its start values: Agent AH's sub-spans
-(D_LITSPANS_FIX_BODY: the length by how fast 1/z changes, the ends by one
+QuakeOG, one span from its start values, the earlier sub-spans
+(D_LITSPANS_FIX_BODY, the length by how fast 1/z changes, the ends by one
 divide, the steps) and litq_runs_c for the pixels. The board's assembly
 (litq_span_asm) does the same.
 ================
@@ -289,7 +289,7 @@ static QOG_NOINLINE void litq_span_c (litq_span_t *c)
 				D = 1;
 			else if (D >= 0x20000000)
 			{
-			// nearer along the span: four bits less, the ratio stays
+			// nearer along the span, four bits less, the ratio stays
 				D >>= 4; Ns >>= 4; Nt >>= 4;
 				DU >>= 4; SU >>= 4; TU >>= 4;
 			}
@@ -321,7 +321,7 @@ static QOG_NOINLINE void litq_span_c (litq_span_t *c)
 
 #if defined(QOG_LITQ_ASM) && !defined(_WIN32)
 void litq_span_asm (litq_span_t *c);	// port/rp2040/d_litq_rp2040.S, shared by both cores
-// D_QogLitQCheck found the assembly equal to litq_span_c: one flag for both
+// D_QogLitQCheck found the assembly equal to litq_span_c, one flag for both
 // cores' copies of this file, written once at start-up before core 1 draws
 #ifdef QOG_C1_COPY
 extern int	litq_asm_ok;
@@ -335,8 +335,8 @@ int			litq_asm_ok;
 ================
 D_QogLitQCheck
 
-QuakeOG (Agent AR): once at start-up (from D_QogLitInterpCheck), the
-assembly draws made-up spans next to litq_span_c: 1 to 80 pixels, every mip
+QuakeOG, once at start-up (from D_QogLitInterpCheck), the
+assembly draws made-up spans next to litq_span_c, 1 to 80 pixels, every mip
 level, with and without z and shared light, 1/z and its steps over the
 range D_DrawSpans8LitQ gives, a light grid of pseudo-random values, texels
 and colour map rows read from flash. litq_asm_ok only when every pixel and
@@ -411,7 +411,7 @@ void D_QogLitQCheck (void)
 #endif	// !QOG_C1_COPY
 #endif
 
-// Agent AH's span start (D_LITSPANS_FIX_BODY), for the rare span that
+// The earlier span start (D_LITSPANS_FIX_BODY), for the rare span that
 // reaches too far for the 32-bit one, out of the drawer so its 64-bit code
 // stays in flash
 static QOG_NOINLINE void litq_start64 (int du_, int dv_, litq_span_t *c)
@@ -455,13 +455,13 @@ static QOG_NOINLINE void litq_start64 (int du_, int dv_, litq_span_t *c)
 // each core's copy of this file has its own (lessons L245).
 typedef struct
 {
-	int				d0, du, dv;		// 0, 4, 8: the 32-bit coefficients
+	int				d0, du, dv;		// 0, 4, 8, the 32-bit coefficients
 	int				s0, su, sv;		// 12, 16, 20
 	int				t0, tu, tv;		// 24, 28, 32
 	int				uref, vref;		// 36, 40
-	unsigned		zmax;			// 44: D from here up gives izi 0x7FFFFFFF
-	int				zl, zr;			// 48, 52: else izi is D << zl >> zr
-	int				zfast;			// 56: the z step allows the pixel loop's z
+	unsigned		zmax;			// 44, D from here up gives izi 0x7FFFFFFF
+	int				zl, zr;			// 48, 52, else izi is D << zl >> zr
+	int				zfast;			// 56, the z step allows the pixel loop's z
 	int				rowbytes;		// 60
 	unsigned char	*vbuf;			// 64
 	d_zval_t		*zbuf;			// 68
@@ -477,7 +477,7 @@ typedef struct
 ================
 litq_wrap_c
 
-QuakeOG (Agent AR): every step-th span from pspan (1, or 2 with both cores):
+QuakeOG, every step-th span from pspan (1, or 2 with both cores).
 the 32-bit start, the z, then the span. The board's assembly (litq_wrap_asm)
 does the same.
 ================
@@ -503,13 +503,13 @@ static LITQ_RAM QOG_NOINLINE void litq_wrap_c (const litq_wrap_t *w, litq_span_t
 		}
 		else
 		{
-			w->start64 (du_, dv_, c);	// Agent AH's exact 64-bit start
+			w->start64 (du_, dv_, c);	// The earlier exact 64-bit start
 			izi = c->izi;
 			if (c->D < 1)
 				c->D = 1;
 		}
 
-		// the z: by the pixel loop when every pixel's is z >> 3 (D_QogZSpanI's
+		// the z, by the pixel loop when every pixel's is z >> 3 (D_QogZSpanI's
 		// far case), else by D_QogZSpanI
 		c->izi = izi;
 		if (w->zfast && (unsigned)izi < (1024u << 16) &&
@@ -549,7 +549,7 @@ extern int	litq_wrap_ok;
 #else
 int			litq_wrap_ok;
 
-// stand-ins for the three calls: they add what they were given to a sum,
+// stand-ins for the three calls, they add what they were given to a sum,
 // and the span one then spoils the values the loop must write again
 static unsigned	litq_wsum;
 
@@ -593,7 +593,7 @@ static void litq_wspan (litq_span_t *c)
 ================
 D_QogLitWrapCheck
 
-QuakeOG (Agent AR): once at start-up, the span loop's assembly runs made-up
+QuakeOG, once at start-up, the span loop's assembly runs made-up
 surfaces and span lists next to litq_wrap_c, with stand-ins for the calls.
 Nothing is drawn, the values handed to the calls must be the same.
 ================
@@ -669,19 +669,19 @@ void D_QogLitWrapCheck (void) {}	// no span loop assembly in this build
 ================
 D_DrawSpans8LitQ
 
-QuakeOG (Agent AR): every step-th span from pspan (1, or 2 with both cores):
+QuakeOG, every step-th span from pspan (1, or 2 with both cores).
 the surface's values, then the span loop.
 ================
 */
-static QOG_NOINLINE void D_DrawSpans8LitQ (espan_t *pspan, int step)	// out of line: its frame never under Agent AH's drawer
+static QOG_NOINLINE void D_DrawSpans8LitQ (espan_t *pspan, int step)	// out of line, its frame never under the earlier drawer
 {
 	const int		zsh = 32 - litfix_zsh;	// 1/z * 2^31 is D << zsh, or D >> -zsh (litfix_zsh is k - 31)
 	int				izistep = (int)(d_zistepu * 0x8000 * 0x10000);
 	litq_wrap_t		w;
 	litq_span_t		c;
 
-	LITI_PROLOGUE	// a power-of-two texture (D_LITFAST sends the others to Agent AH's drawer)
-	// the surface's 32-bit coefficients: the high words of Agent AH's 64-bit
+	LITI_PROLOGUE	// a power-of-two texture (D_LITFAST sends the others to the earlier drawer)
+	// the surface's 32-bit coefficients, the high words of the earlier 64-bit
 	// values (D_LitFixSetup), so D is 2^28 to 2^29 at the nearest point
 	w.d0 = (int)(litfix_d0 >> 32); w.du = (int)(litfix_du >> 32); w.dv = (int)(litfix_dv >> 32);
 	w.s0 = (int)(litfix_s0 >> 32); w.su = (int)(litfix_su >> 32); w.sv = (int)(litfix_sv >> 32);

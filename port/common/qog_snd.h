@@ -1,9 +1,9 @@
-/* QuakeOG (Agent W): the split game's sound.
+/* QuakeOG, the split game's sound.
  *
  * The server half (main chip) runs id's mixer for the client half's sound
  * calls (engine/snd_link.c, engine/net_link.c) and sends the samples it
  * writes to its DMA buffer, id's 8-bit mono format at 11025 Hz, back over
- * the link. The client half (display chip) plays them: on the board through
+ * the link. The client half (display chip) plays them, on the board through
  * the I2S amplifier (port/rp2040/snd_rp2040.c), on the PC silently, counting
  * game time as snd_pc.c's silent mode does (port/pc/snd_link_pc.c).
  *
@@ -16,7 +16,7 @@
 
 #define QOG_SND_RATE 11025
 #ifndef QOG_SND_RING
-#define QOG_SND_RING 2048       /* samples, a power of two: 186 ms */
+#define QOG_SND_RING 2048       /* samples, a power of two, 186 ms */
 #endif
 #if QOG_SND_RING & (QOG_SND_RING - 1)
 #error QOG_SND_RING must be a power of two
@@ -27,7 +27,7 @@
 #define QOG_SND_SCRATCH (QOG_SND_PAINT + QOG_SND_RING)
 
 /* ---- the client half's output, supplied by the port ---- */
-int      qog_snd_out_init(void);            /* 0: no output, sound stays off */
+int      qog_snd_out_init(void);            /* 0, no output, sound stays off */
 void     qog_snd_out_shutdown(void);
 unsigned qog_snd_out_samples(void);         /* samples played so far, never wraps */
 void     qog_snd_out_submitted(void);       /* the server mixed for an update (the PC's silent clock) */

@@ -13,14 +13,14 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// d_litspan.h -- QuakeOG: the lit span drawer's body (QOG_LITSPAN_FAST),
+// d_litspan.h -- QuakeOG, the lit span drawer's body (QOG_LITSPAN_FAST),
 // shared by engine/d_scanlit.c and the board benchmark (apps/qogbench), so
 // the benchmark times exactly the engine's code. No engine headers needed.
 //
-// It draws the same pixels as d_scanlit.c's D_DrawSpans8Lit with LitPixel:
+// It draws the same pixels as d_scanlit.c's D_DrawSpans8Lit with LitPixel.
 // id's D_DrawSpans8 float stepping, unchanged, then per pixel the texel,
 // the 4-sample light blend and the colormap. What changed is only how the
-// integer work is done:
+// integer work is done.
 //
 // - Texture wrap without modulo. s and t never go below 0 (id clamps the
 //   run ends to [0 or 8, bbextent] and steps between them), so
@@ -34,20 +34,20 @@ See the GNU General Public License for more details.
 //   S >> (lshift + 16) is the light column plus soff >> lshift and the
 //   fraction bits are the same, so one base pointer moved back by the origin
 //   serves both, and the loop keeps only S and T.
-// - lshift as a constant: one copy of the pixel loop per mip level, so every
+// - lshift as a constant, one copy of the pixel loop per mip level, so every
 //   shift is an immediate (the M0+ shifts a register by a register in place,
 //   which costs a copy and a register).
 //
 // The includer defines LITSPAN_NEXT(pspan), an expression that advances
 // pspan and is false at the end of the list, and provides the variables
-// the macros name: the lit_* state D_SetupLitSurface sets (d_scanlit.c),
+// the macros name, the lit_* state D_SetupLitSurface sets (d_scanlit.c),
 // id's d_* gradients, sadjust, tadjust, bbextents, bbextentt,
 // d_viewbuffer, screenwidth and the fixed16_t type.
 
 #ifndef D_LITSPAN_H
 #define D_LITSPAN_H
 
-// QuakeOG (Agent AH): every flash read of the drawer goes through
+// QuakeOG, every flash read of the drawer goes through
 // LITSPAN_RD (kind 0 texel, 1 colour map), so the PC measurement build
 // (QOG_XIPSIM, engine/d_xipsim.c) can model the board's XIP cache
 #ifdef QOG_XIPSIM
@@ -57,7 +57,7 @@ const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
 #define LITSPAN_RD(kind, base, idx)	((base)[idx])
 #endif
 
-// Power-of-two texture, lshift L (4 - mip): a run of n pixels (1 to 8) in
+// Power-of-two texture, lshift L (4 - mip), a run of n pixels (1 to 8) in
 // two passes, so each pass keeps its values in the M0+'s eight low
 // registers. Pass 1 blends the light of each pixel and stores the colormap
 // row in lrow[]. Pass 2 fetches the texels and maps them. Both passes jump
@@ -66,7 +66,7 @@ const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
 //
 // fx is (S >> (L + 8)) & 0xFF as two shifts (no mask register). The texel
 // row uses T scaled by the texture width (T2 = T << tshift, unsigned and
-// wrapping): (T2 >> 16) & (tmask << tshift) is ((T >> 16) & tmask) << tshift
+// wrapping), (T2 >> 16) & (tmask << tshift) is ((T >> 16) & tmask) << tshift
 // as long as tshift + log2 height <= 16, which D_SetupLitSurface checks.
 #define LITSPAN_LIGHT(L, i)												\
 	{																	\
@@ -133,7 +133,7 @@ const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
 		}																\
 	}
 
-// Any texture size: wrapped 16.16 texture coordinates, the light from the
+// Any texture size, wrapped 16.16 texture coordinates, the light from the
 // unshifted s and t through blocklights itself, lshift in a register.
 #define LITSPAN_RUN_ANY(rs_, rt_, rn_, rpd_)								\
 	{																	\
@@ -166,7 +166,7 @@ const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
 		} while (--n > 0);												\
 	}
 
-// QOG_LITSPAN_LINLIGHT (approximate, off): power-of-two texture, the light
+// QOG_LITSPAN_LINLIGHT (approximate, off), power-of-two texture, the light
 // blended exactly at the first and the last pixel of the run and stepped
 // linearly between them (16.16), one pass of up to 16 pixels.
 #define LITSPAN_BLEND(L, S_, T_, out_)									\
@@ -184,18 +184,18 @@ const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
 		(out_) = top_ + (((bot_ - top_) * f_) >> 8);					\
 	}
 
-// QOG_LITSPAN_INTERP (Agent AH, exact, board client): the linear light run
+// QOG_LITSPAN_INTERP (exact, board client), the linear light run
 // below with its texel address and colour map row from the RP2040's SIO
 // interpolators, which each core has a pair of. Interpolator 0 holds S
-// and T2 in its accumulators and the texture in BASE2: its FULL result is
+// and T2 in its accumulators and the texture in BASE2, its FULL result is
 // tx + ((S >> 16) & smask) + ((T2 >> 16) & tmask2), the texel's address,
 // and reading it adds sstep and tstep2 (BASE0, BASE1) to S and T2, as the
 // pixel loop does. Interpolator 1 holds the light accumulator and the
-// colour map: FULL is cm + ((lacc >> 16) & 0x3F00), the light row
+// colour map, FULL is cm + ((lacc >> 16) & 0x3F00), the light row
 // (lacc >> 24 << 8 while the light is below 64 rows, which the blend
 // guarantees), and the read steps lacc. So a pixel is two register reads,
 // two byte loads and a store, about 11 cycles in place of about 32, with
-// the same values. Lane control words (both lanes ADD_RAW, shift 16):
+// the same values. Lane control words (both lanes ADD_RAW, shift 16).
 // interpolator 0 lane 0 masks bits 0 to log2 width - 1, lane 1 bits tshift
 // to tshift + log2 height - 1. Interpolator 1 lane 0 masks bits 8 to 13,
 // lane 1 is 0 (accumulator and base 0). The PC emulates the registers
@@ -211,7 +211,7 @@ const unsigned char *XipSim_Rd (int kind, const unsigned char *p);
 #define LITI_ADD_RAW	(1u << 18)
 #define LITI_CTRL(shift, lsb, msb)	(LITI_ADD_RAW | ((unsigned)(msb) << 10) | ((unsigned)(lsb) << 5) | (unsigned)(shift))
 #if defined(_WIN32)
-// PC: the SIO registers of one core, as words at the hardware's offsets
+// PC, the SIO registers of one core, as words at the hardware's offsets
 // (ACCUM0, ACCUM1, BASE0 to BASE2 at words 0 to 4, POP at 5 to 7, PEEK at
 // 8 to 10, CTRL_LANE0 and CTRL_LANE1 at 11 and 12)
 extern __declspec(thread) unsigned	liti_regs[2][16];
@@ -235,7 +235,7 @@ static __inline unsigned liti_popfull (int n)
 #define LITI_SET(n, reg, v)	(liti_regs[n][reg] = (unsigned)(v))
 #define LITI_POPFULL(n)		liti_popfull (n)
 #else
-// the board: SIO_BASE 0xD0000000, INTERP0 at 0x80, INTERP1 at 0xC0
+// the board, SIO_BASE 0xD0000000, INTERP0 at 0x80, INTERP1 at 0xC0
 #define LITI_REG(n, reg)	(((volatile unsigned *)(0xD0000080u + 0x40u * (n)))[reg])
 #define LITI_SET(n, reg, v)	(LITI_REG (n, reg) = (unsigned)(v))
 #define LITI_POPFULL(n)		LITI_REG (n, 7)
@@ -351,7 +351,7 @@ static const int	litspan_recip[32] =
 // The last run of a span steps the float gradients by spancount - 1. id
 // multiplies each time (an int to float conversion and three float
 // multiplies per span). QOG_LITSPAN_TAILMUL (exact) keeps each product the
-// first time this surface needs it: the same float values, computed at most
+// first time this surface needs it, the same float values, computed at most
 // once per span length per surface (96 bytes of stack, 192 with 16-pixel
 // runs).
 #ifdef QOG_LITSPAN_TAILMUL
@@ -383,7 +383,7 @@ static const int	litspan_recip[32] =
 #endif
 
 
-// QOG_LITSPAN_ZFUSE (exact): the includer may write each span's z from the
+// QOG_LITSPAN_ZFUSE (exact), the includer may write each span's z from the
 // 1/z this drawer computes at the span start anyway (the same expression as
 // D_DrawZSpans), instead of D_DrawZSpans walking the spans again.
 #ifndef LITSPAN_ZSPAN
@@ -416,9 +416,9 @@ static const int	litspan_recip[32] =
 	}
 
 // id's D_DrawSpans8 (d_scan.c), the pixel loop replaced by the runs above.
-// SH is log2 of the run length: 3 is id's 8 (exact), 4 one float divide per
+// SH is log2 of the run length, 3 is id's 8 (exact), 4 one float divide per
 // 16 pixels (QOG_LITSPAN16, approximate, as id's D_DrawSpans16 did on x86).
-// lit_kind: 0 to 3 power-of-two texture at mip 0 to 3, 4 any texture.
+// lit_kind, 0 to 3 power-of-two texture at mip 0 to 3, 4 any texture.
 #define D_LITSPANS_BODY(SH, P2RUN, P2MAX)								\
 	int				count, spancount;									\
 	unsigned char	*pdest;												\
@@ -547,9 +547,9 @@ static const int	litspan_recip[32] =
 
 
 // Fast mode (QOG_RFAST, the r_fast cvar, approximate and hard to see). The
-// same float stepping and clamping as id's D_DrawSpans8, with three changes:
+// same float stepping and clamping as id's D_DrawSpans8, with three changes.
 //
-// - The perspective divide is redone every 8, 16 or 32 pixels: before each
+// - The perspective divide is redone every 8, 16 or 32 pixels, before each
 //   sub-span, the longest one over which 1/z changes by at most
 //   LITSPAN_FAST_ZREL of its value. Affine stepping between two exact points
 //   is off by at most about (texels crossed) * ZREL / 4, so floors and
@@ -561,7 +561,7 @@ static const int	litspan_recip[32] =
 //   per-pixel light.
 // - 0x10000 / zi comes from an integer divide of the mantissa (the RP2040's
 //   hardware divider) with about 16 good bits, not a float divide.
-// QuakeOG (Agent AH): the Fast drawer without float work per span (below)
+// QuakeOG, the Fast drawer without float work per span (below)
 #if defined(QOG_RFAST) && !defined(QOG_RFAST_FLOATSETUP) && !defined(QOG_RFAST_FIX)
 #define QOG_RFAST_FIX
 #endif
@@ -580,7 +580,7 @@ static const int	litspan_recip[32] =
 #define LITSPAN_FAST_RECIP	1		// 0 keeps the float divide
 #endif
 
-// 0x10000 / x through a 32-bit integer divide: x = M * 2^e, M in [1, 2),
+// 0x10000 / x through a 32-bit integer divide, x = M * 2^e, M in [1, 2),
 // q = (2^32 - 1) / (M's top 16 bits) is 2 / M in 16.16 with 16 or 17 good
 // bits, and the exponent is set directly. Zero, negative, tiny, huge and
 // non-finite x take the float divide.
@@ -597,7 +597,7 @@ static float litspan_frecip (float x)
 	return v.f;
 }
 
-// PC measurement only (QOG_RFAST_STATS): sub-spans by length (8, 16, 32),
+// PC measurement only (QOG_RFAST_STATS), sub-spans by length (8, 16, 32),
 // then pixels, spans and the exact drawer's runs of 8 for the same spans,
 // read with qog_rfaststats (d_scanlit.c)
 #ifdef QOG_RFAST_STATS
@@ -655,7 +655,7 @@ extern unsigned	litfast_stats[6];
 	sstep = 0;															\
 	tstep = 0;															\
 	{																	\
-		/* per surface: the steps of each sub-span length, and the 1/z	\
+		/* per surface, the steps of each sub-span length, and the 1/z	\
 		   above which 1/z changes by at most ZREL over that length */	\
 		float	az_ = d_zistepu < 0 ? -d_zistepu : d_zistepu;			\
 		int		k_;														\
@@ -780,19 +780,19 @@ extern unsigned	litfast_stats[6];
 	} while (LITSPAN_NEXT (pspan));
 
 
-// QOG_RFAST_FIX (Agent AH, Fast mode, on with QOG_RFAST unless
-// QOG_RFAST_FLOATSETUP is defined): the Fast drawer above with every float
+// QOG_RFAST_FIX (Fast mode, on with QOG_RFAST unless
+// QOG_RFAST_FLOATSETUP is defined), the Fast drawer above with every float
 // operation of a span moved out of the span. Per span the float drawer
 // evaluates s/z, t/z and 1/z at the span start (two int to float, six
 // multiplies and six adds) and at each sub-span end three adds, a
 // reciprocal, two multiplies and two float to int conversions, all through
 // the M0+'s software float routines, about 2,000 cycles a span (1,760 spans
-// a view in demo3). Here they are integers:
+// a view in demo3). Here they are integers.
 //
 // - Per surface, on core 0 (D_LitFixSetup, d_scanlit.c, about 40 float
 //   operations), the three linear functions of the screen position are
 //   turned into 64-bit fixed point at a reference point on the surface (its
-//   first span): D = 1/z * 2^k, and Ns, Nt = (s or t) * (1/z) * 2^(k - w),
+//   first span), D = 1/z * 2^k, and Ns, Nt = (s or t) * (1/z) * 2^(k - w),
 //   with sadjust and tadjust folded in, so Ns / D is the texture coordinate
 //   in [0, 2^w) over the surface (w from its extent, at most 10 bits for
 //   Quake's 256-texel surfaces). 2^k puts the surface's nearest 1/z near
@@ -869,7 +869,7 @@ static __inline litfix_i64 litfix_mul (int k, litfix_i64 x)
 			(out_) = (lo_);												\
 	}
 
-// sub-span length limits of the float drawer: 1/z above |d(1/z)/du| times
+// sub-span length limits of the float drawer, 1/z above |d(1/z)/du| times
 // these takes 16 or 32 pixels
 #define LITFIX_LIM16	((unsigned)(16.0f / LITSPAN_FAST_ZREL))
 #define LITFIX_LIM32	((unsigned)(32.0f / LITSPAN_FAST_ZREL))
@@ -900,7 +900,7 @@ static __inline litfix_i64 litfix_mul (int k, litfix_i64 x)
 		LITSPAN_FAST_STAT (4, 1);										\
 		LITSPAN_FAST_STAT (5, (count + 7) >> 3);						\
 																		\
-		/* the span start: exact 64-bit values, then one shift to 32 bits	\
+		/* the span start, exact 64-bit values, then one shift to 32 bits	\
 		   that puts D (or the largest step) near 2^25 */				\
 		{																\
 			int			du_ = pspan->u - litfix_uref, dv_ = pspan->v - litfix_vref;	\
@@ -971,7 +971,7 @@ static __inline litfix_i64 litfix_mul (int k, litfix_i64 x)
 				D = 1;													\
 			else if (D >= 0x20000000)									\
 			{															\
-			/* nearer along the span: four bits less, the ratio stays */	\
+			/* nearer along the span, four bits less, the ratio stays */	\
 				D >>= 4; Ns >>= 4; Nt >>= 4;							\
 				DU >>= 4; SU >>= 4; TU >>= 4;							\
 			}															\

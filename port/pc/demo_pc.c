@@ -5,7 +5,7 @@
  *                  [-demoseed 0] [-demoframes 100000] [-demohash]
  *                  [-demodump <first> <last>] [-demoshots 0] [-demohunk]
  *                  [-demomanifest <file>]
- *       The host the board app apps/qogdemo runs: id's client and renderer
+ *       The host the board app apps/qogdemo runs, id's client and renderer
  *       with no server, QuakeC, console or sound. Plays the demos once in
  *       order (frame time -demodt, fixed as host_framerate), the random
  *       sequence restarting from -demoseed as the loop starts.
@@ -19,7 +19,7 @@
  *       tools/mkboard.py. Then it exits.
  *
  *   qog_demoloop <seed> <demo> [<demo> ...]   (console)
- *       After the current frame: restarts the shared random sequence from
+ *       After the current frame, restarts the shared random sequence from
  *       seed (port/common/qog_rand.c) and starts a demo loop of these demos
  *       as "startdemos" would, so the next frame runs "playdemo" just as the
  *       host's first frame does. The game then presents the same frames as

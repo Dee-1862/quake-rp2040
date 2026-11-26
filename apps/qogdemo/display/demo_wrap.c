@@ -31,11 +31,11 @@ byte		*host_colormap;
 cvar_t		teamplay = {"teamplay","0",false,true};	// Sbar's deathmatch overlay reads it
 cvar_t		developer = {"developer","0"};
 
-/* ---- sv_phys.c: the client's particles fall by the server's gravity ---- */
+/* ---- sv_phys.c, the client's particles fall by the server's gravity ---- */
 
 cvar_t		sv_gravity = {"sv_gravity","800",false,true};
 
-/* id's: it shuts the server down if one runs, which never happens here,
+/* id's, it shuts the server down if one runs, which never happens here,
    then plays the next demo of the loop or disconnects, and leaves the
    frame (port/common/qog_demo.c sets host_abortserver). */
 void Host_EndGame (char *message, ...)
@@ -48,7 +48,7 @@ void Host_EndGame (char *message, ...)
 	longjmp (host_abortserver, 1);
 }
 
-/* No server to abort: id's Host_Error would longjmp to it. Stop with the
+/* No server to abort, id's Host_Error would longjmp to it. Stop with the
    message instead, as apps/qogfly does. */
 void Host_Error (char *error, ...)
 {
@@ -87,7 +87,7 @@ void SV_BroadcastPrintf (char *fmt, ...)
 /* ---- host_cmd.c, keys.c, menu.c ---------------------------------------- */
 
 qboolean	noclip_anglehack;	// only the server's noclip command sets it
-keydest_t	key_dest;			// key_game: no console or menu ever opens
+keydest_t	key_dest;			// key_game, no console or menu ever opens
 int			key_count;			// SCR_ModalMessage's key wait, never run here
 int			key_lastpress;
 
@@ -117,7 +117,7 @@ void Key_Event (int key, qboolean down)
 
 /* ---- console.c --------------------------------------------------------- */
 
-qboolean	con_initialized;	// false: Con_Init never runs
+qboolean	con_initialized;	// false, Con_Init never runs
 qboolean	con_forcedup;		// only SCR_SetUpToDrawConsole sets it
 int			con_notifylines;
 
@@ -160,7 +160,7 @@ void Con_DrawConsole (int lines, qboolean drawinput) { (void)lines; (void)drawin
 void Con_DrawCharacter (int cx, int line, int num) { (void)cx; (void)line; (void)num; }
 void Con_NotifyBox (char *text) { (void)text; }
 
-/* ---- sound: S_Init never runs, so id's functions return at once -------- */
+/* ---- sound, S_Init never runs, so id's functions return at once -------- */
 
 void S_StartSound (int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float fvol, float attenuation) {}
 void S_StaticSound (sfx_t *sfx, vec3_t origin, float vol, float attenuation) {}
@@ -175,7 +175,7 @@ void S_BeginPrecaching (void) {}
 void S_EndPrecaching (void) {}
 void S_LocalSound (char *s) {}
 
-/* ---- network: a demo client is never connected ------------------------- */
+/* ---- network, a demo client is never connected ------------------------- */
 
 sizebuf_t	net_message;		// a demo's messages are parsed in place (QOG_DEMO_FLASH)
 
@@ -194,7 +194,7 @@ int NET_GetMessage (struct qsocket_s *sock) { return -1; }
 void NET_Close (struct qsocket_s *sock) {}
 struct qsocket_s *NET_Connect (char *host) { return NULL; }
 
-/* ---- world.c: chase.c's TraceLine, used only with chase_active on ------ */
+/* ---- world.c, chase.c's TraceLine, used only with chase_active on ------ */
 
 qboolean SV_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec3_t p1, vec3_t p2, trace_t *trace)
 {

@@ -2,7 +2,7 @@
 #include "quakedef.h"
 #include "qog_rand.h"
 
-/* QuakeOG (Agent R): the split game's halves have no server (QOG_SPLIT_CLIENT)
+/* QuakeOG, the split game's halves have no server (QOG_SPLIT_CLIENT)
    or no renderer (QOG_SPLIT_SERVER), so their reports leave those parts out. */
 #ifdef QOG_SPLIT_CLIENT
 #undef QOG_EDICT_STATS
@@ -88,7 +88,7 @@ const qog_mem_t *qog_mem_sample(void) {
 }
 
 #ifdef QOG_EDICT_STATS
-/* Edict use, sampled after every server frame (end of SV_Physics): live
+/* Edict use, sampled after every server frame (end of SV_Physics), live
    (not free) edicts, the slot high-water mark, and field words that are not
    zero, in total and per field. A sparse edict layout pays only for the
    non-zero words, so these peaks size it. */
@@ -145,7 +145,7 @@ void qog_mem_reset_peaks(void) {
     r_qog_peakedges = r_qog_peaksurfs = r_qog_peakbverts = r_qog_peakbedges = 0;
 #endif
 #ifdef QOG_CL_PEAKS
-    {   /* QuakeOG (Agent S): client entity and temp entity peaks (cl_main.c, cl_tent.c) */
+    {   /* QuakeOG, client entity and temp entity peaks (cl_main.c, cl_tent.c) */
         extern int cl_qog_peaktemp, cl_qog_tempdrops, cl_qog_peakbeams;
         cl_qog_peaktemp = cl_qog_tempdrops = cl_qog_peakbeams = 0;
 #ifdef QOG_CL_ENTSLOTS
@@ -182,7 +182,7 @@ static void cmd_qog_mem(void) {
     kb_line("TOTAL", m->total, m->peak_total);
     {
         int known, refd, peakmod;
-        Mod_KnownStats(&known, &refd, &peakmod);   /* QuakeOG: model.c owns the table layout */
+        Mod_KnownStats(&known, &refd, &peakmod);   /* QuakeOG, model.c owns the table layout */
 #if QOG_MEM_SERVER
         Con_Printf("  models known %d, referenced by this level %d, edicts %d of %d\n", known, refd,
                    sv.active ? sv.num_edicts : 0, sv.active ? sv.max_edicts : 0);
@@ -199,7 +199,7 @@ static void cmd_qog_mem(void) {
                    r_qog_peakedges, r_qog_peaksurfs, r_qog_peakbverts, r_qog_peakbedges);
 #endif
 #ifdef QOG_CL_PEAKS
-        {   /* QuakeOG (Agent S): client entity and temp entity peaks (cl_main.c, cl_tent.c) */
+        {   /* QuakeOG, client entity and temp entity peaks (cl_main.c, cl_tent.c) */
             extern int cl_qog_peaktemp, cl_qog_tempdrops, cl_qog_peakbeams;
 #ifdef QOG_CL_ENTSLOTS
             extern int cl_qog_peakslots, cl_qog_peaknum;
@@ -215,7 +215,7 @@ static void cmd_qog_mem(void) {
             Con_Printf("  map %s, signon %d of %d bytes\n", sv.name, sv.signon.cursize, sv.signon.maxsize);
 #endif
 #ifdef QOG_SV_TABLES
-            if (sv.active) {   /* QuakeOG: precache list use against the sizes in server.h */
+            if (sv.active) {   /* QuakeOG, precache list use against the sizes in server.h */
                 int nm = 0, ns = 0;
                 while (nm < SV_MAX_MODELS && sv.model_precache[nm]) nm++;
                 while (ns < SV_MAX_SOUNDS && sv.sound_precache[ns]) ns++;
@@ -241,7 +241,7 @@ static void cmd_qog_mem(void) {
 }
 
 #if QOG_MEM_SERVER
-/* `qog_statehash`: FNV-1a over every edict and the QuakeC globals. Two runs
+/* `qog_statehash`, FNV-1a over every edict and the QuakeC globals. Two runs
    with the same fixed frame time (host_framerate) must print the same value,
    which is how compiled QuakeC is checked against the interpreter (-noaot). */
 static unsigned fnv(unsigned h, const void *data, int n) {
@@ -250,7 +250,7 @@ static unsigned fnv(unsigned h, const void *data, int n) {
     return h;
 }
 
-/* Hash by meaning, not bytes, using QuakeC's own type information: strings
+/* Hash by meaning, not bytes, using QuakeC's own type information, strings
    by their text (their offsets move when progs.dat moves to flash), entity
    references relative to sv.edicts, numbers and functions by value. Engine
    link pointers are skipped. So two runs that behave the same hash the same
@@ -287,7 +287,7 @@ static void cmd_qog_statehash(void) {
     unsigned h = 0x811C9DC5u, e = 0x811C9DC5u;
     for (int i = 0; i < progs->numglobaldefs; i++) {
         const ddef_t *d = &pr_globaldefs[i];
-        int copy[3];   /* PR_GlobalPtr: QOG_AOT_GLOBALS packs the RAM globals */
+        int copy[3];   /* PR_GlobalPtr, QOG_AOT_GLOBALS packs the RAM globals */
         for (int k = 0; k < 3 && d->ofs + k < progs->numglobals; k++) copy[k] = *PR_GlobalPtr(d->ofs + k);
         h = hash_value(h, d->type, copy);
     }
@@ -305,13 +305,13 @@ static void cmd_qog_statehash(void) {
                sv.time, sv.num_edicts, h, e, qog_rand_calls);
 }
 
-/* `qog_statedump <file>`: raw globals then edicts, for diffing two runs. */
+/* `qog_statedump <file>`, raw globals then edicts, for diffing two runs. */
 static void cmd_qog_statedump(void) {
     if (!sv.active || !progs || Cmd_Argc() < 2) { Con_Printf("usage: qog_statedump <file>\n"); return; }
     FILE *f = fopen(Cmd_Argv(1), "wb");
     if (!f) { Con_Printf("qog_statedump: cannot write %s\n", Cmd_Argv(1)); return; }
 #ifdef QOG_EDICT_SPARSE
-    /* id's layout: a header of id's size that holds only the free flag,
+    /* id's layout, a header of id's size that holds only the free flag,
        then every field word */
     static byte head[ED_ID_HEADERSIZE];
     int hdr[3] = { progs->numglobals, sv.num_edicts, ED_ID_HEADERSIZE + progs->entityfields * 4 };
@@ -338,7 +338,7 @@ static void cmd_qog_statedump(void) {
 
 #endif  /* QOG_MEM_SERVER */
 
-/* Scripted runs: `quit` can open the "are you sure" menu and wait forever. */
+/* Scripted runs. `quit` can open the "are you sure" menu and wait forever. */
 static void cmd_qog_quit(void) { Sys_Quit(); }
 
 void qog_mem_register(void) {

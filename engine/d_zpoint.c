@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -35,9 +36,9 @@ void D_DrawZPoint (void)
 	int		izi;
 	
 	pz = d_pzbuffer + (d_zwidth * r_zpointdesc.v) + r_zpointdesc.u;
-	pdest = d_viewbuffer + D_SCANTABLE(r_zpointdesc.v) + r_zpointdesc.u;	// QuakeOG: QOG_NO_ROWTABLES
+	pdest = d_viewbuffer + D_SCANTABLE(r_zpointdesc.v) + r_zpointdesc.u;	// QuakeOG, QOG_NO_ROWTABLES
 	izi = (int)(r_zpointdesc.zi * 0x8000);
-	izi = D_ZQ(izi);	// QuakeOG: QOG_ZBUFFER8
+	izi = D_ZQ(izi);	// QuakeOG, QOG_ZBUFFER8
 
 	if (*pz <= izi)
 	{

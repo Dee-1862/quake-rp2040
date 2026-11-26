@@ -1,7 +1,7 @@
-# QuakeOG: a Quake port to ONE RP2040 (the FreeWili OG's display CPU).
+# QuakeOG, a Quake port to ONE RP2040 (the FreeWili OG's display CPU).
 #
 # This project consumes the FreeWili OG BSP (third_party/wiliOGbsp) the way
-# its AGENTS.md "Consuming this BSP from another project" section describes:
+# its AGENTS.md "Consuming this BSP from another project" section describes.
 # we supply PICO_BOARD, the board header dir, PICO_STDIO_UART 0 and Python3,
 # then add_subdirectory(bsp). The BSP's own apps are not built here.
 cmake_minimum_required(VERSION 3.13)
@@ -26,7 +26,7 @@ pico_sdk_init()
 
 add_subdirectory(${QOG_BSP_DIR}/bsp ${CMAKE_BINARY_DIR}/fwog_bsp)
 
-# The BSP's top-level CMakeLists normally provides these two; the UF2 record
+# The BSP's top-level CMakeLists normally provides these two. The UF2 record
 # of the main image carries them.
 execute_process(COMMAND git describe --always --dirty
     WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}

@@ -1,8 +1,8 @@
 /* Win32 window, 8-bit video and keyboard for the PC development build.
  * Implements id's vid.h plus Sys_SendKeyEvents, so the engine is unchanged.
  *
- * Keyboard mode (default): normal Quake keys.
- * Board mode (F12 toggles): keys 1..5 are the FreeWili OG's buttons
+ * Keyboard mode (default), normal Quake keys.
+ * Board mode (F12 toggles), keys 1..5 are the FreeWili OG's buttons
  *   1 gray  2 yellow  3 green  4 blue  5 red
  * fed through platform/qog_input.c, the same code the firmware runs, so the
  * five-button scheme can be playtested here.
@@ -17,7 +17,7 @@
 #include "qog_input.h"
 #include "qog_mem.h"
 #include "qog_aim.h"
-#include "qog_bmodel.h"   /* QuakeOG (Agent AS) */
+#include "qog_bmodel.h"   /* QuakeOG */
 
 #ifndef QOG_PC_W
 #define QOG_PC_W 320
@@ -31,7 +31,7 @@ viddef_t vid;
 unsigned short d_8to16table[256];
 unsigned d_8to24table[256];
 
-/* id's Options > Video menu calls these unconditionally; NULL crashed the
+/* id's Options > Video menu calls these unconditionally. NULL crashed the
    game. The mode is fixed on this port (and on the board), so just say so. */
 void M_Menu_Options_f(void);
 static void vid_menu_draw(void) {
@@ -52,7 +52,7 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 #else
 #define QOG_PC_ZROWS QOG_PC_H
 #endif
-/* z-buffer width and rows. QuakeOG: with QOG_RENDER_SCALE (changes the
+/* z-buffer width and rows. QuakeOG, with QOG_RENDER_SCALE (changes the
    picture, off in the shipped flag lists) the 3D view is drawn smaller and
    the z-buffer only covers it (QOG_ZBUFFER_VIEW, engine/d_local.h). */
 #ifdef QOG_RENDER_SCALE
@@ -65,7 +65,7 @@ void (*vid_menukeyfn)(int key) = vid_menu_key;
 #define ZBUFFER_BYTES   (QOG_PC_ZW * QOG_PC_ZH * (int)sizeof(d_zval_t))
 #define FRAME_BYTES     (QOG_PC_W * QOG_PC_H)
 #ifdef QOG_HUD_IN_ZBUFFER
-/* QuakeOG: the frame's rows below the 3D view (the status bar) are the first
+/* QuakeOG, the frame's rows below the 3D view (the status bar) are the first
    bytes of the z-buffer, which is idle while the 2D overlay is drawn and the
    frame is shown. R_RenderView repaints them after each 3D view
    (engine/r_main.c), so the frame holds the same pixels as with two arrays. */
@@ -88,7 +88,7 @@ static int   surfcache_size;
 
 static HWND s_wnd;
 static struct { BITMAPINFOHEADER h; RGBQUAD pal[256]; } s_bmi;
-static qboolean s_pal_changed;   /* QuakeOG (Agent AK): since the last full update */
+static qboolean s_pal_changed;   /* QuakeOG, since the last full update */
 
 static qboolean s_board_mode;
 static uint8_t s_board_btns;
@@ -109,7 +109,7 @@ void VID_SetPalette(unsigned char *palette) {
 void VID_ShiftPalette(unsigned char *palette) { VID_SetPalette(palette); }
 
 #ifdef QOG_HUD_SKIP
-/* QuakeOG (Agent AK): what the board's panel shows. VID_Update copies the
+/* QuakeOG, what the board's panel shows. VID_Update copies the
    rows it sends (the status bar rows only when they changed, r_main.c), and
    shots and frame hashes are taken from here, so they show what the LCD
    shows. With QOG_HUD_SKIP_CHECK the status bar rows are still repainted
@@ -119,7 +119,7 @@ static byte s_panel[QOG_PC_W * QOG_PC_H];
 static unsigned s_hud_frames, s_hud_skips, s_hud_bad;
 #define SHOT_PIXELS s_panel
 #elif defined(QOG_RTURBO)
-/* QuakeOG (Agent AO): a Turbo frame's packed rows as the panel shows them */
+/* QuakeOG, a Turbo frame's packed rows as the panel shows them */
 static byte s_panel[QOG_PC_W * QOG_PC_H];
 static qboolean s_panel_turbo;   /* the last frame presented was a Turbo one */
 #define SHOT_PIXELS (s_panel_turbo ? s_panel : vid_buffer)
@@ -133,7 +133,7 @@ static qboolean s_panel_turbo;   /* the last frame presented was a Turbo one */
 #endif
 
 #ifdef QOG_RTURBO
-/* QuakeOG (Agent AP): the characters listed over a packed Turbo view
+/* QuakeOG, the characters listed over a packed Turbo view
    (engine/r_qogturbo.c R_QogTurboText), drawn over the doubled rows as the
    board's scanout draws them. Takes the frame's list every frame. */
 static void panel_text(byte *panel) {
@@ -154,8 +154,8 @@ static void panel_text(byte *panel) {
 }
 #endif
 
-/* QuakeOG (Agent AO): the panel's first rows, as the board's scanout sends
-   them: rows below `packed` hold QOG_PC_W / 2 pixels each from the start of
+/* QuakeOG, the panel's first rows, as the board's scanout sends
+   them, rows below `packed` hold QOG_PC_W / 2 pixels each from the start of
    the frame (a Turbo view, engine/r_qogturbo.c), each sent twice */
 static void panel_rows(byte *panel, int rows, int packed) {
     int r, x;
@@ -193,7 +193,7 @@ static void update_title(void) {
    stops it. stdout only, so the console and the frame stay untouched.
    `qog_framehash 1 <first> <last>` also saves the frames with those
    positions in the hash list (counted from 0) as shots fd_<position>.
-   While hashing, the console cursor does not blink: its blink follows real
+   While hashing, the console cursor does not blink, its blink follows real
    time, which would make the same frame differ between runs. */
 static int s_framehash, s_fh_index, s_fh_first = -1, s_fh_last = -1;
 static void write_shot(const char *name);
@@ -220,9 +220,9 @@ static void framehash_print(void) {
 }
 
 #ifdef QOG_VID_LOCKWAIT
-/* QuakeOG (Agent V): the board's VID_Update leaves the LCD scanout running
+/* QuakeOG, the board's VID_Update leaves the LCD scanout running
    and its VID_LockBuffer waits for it (port/rp2040/vid_rp2040.c). The PC
-   checks the rule that makes this safe: from VID_Update to the next
+   checks the rule that makes this safe, from VID_Update to the next
    VID_LockBuffer nothing may change the 320x200 bytes the scanout reads
    (the 3D rows and the status bar rows at the start of the z-buffer).
    `qog_lockcheck` prints the counts. */
@@ -236,13 +236,13 @@ static unsigned lockcheck_hash(void) {
 }
 
 #ifdef QOG_VID_SCANRACE
-/* QuakeOG (Agent AK): the board's 3D view starts while the last scanout
+/* QuakeOG, the board's 3D view starts while the last scanout
    runs and waits only for the rows it writes (port/rp2040/vid_rp2040.c).
-   The PC checks the rule at every wait: no byte the scanout sends and has
+   The PC checks the rule at every wait, no byte the scanout sends and has
    not released yet may have changed since VID_Update. */
 static byte s_sr_copy[QOG_PC_W * QOG_PC_H];
-static int s_sr_relpos, s_sr_rows, s_sr_packed;   /* Agent AO: rows released, sent, packed (Turbo) */
-static int s_sr_first;   /* Agent AP: rows [first, rows) go out first (the status bar), 0 for in order */
+static int s_sr_relpos, s_sr_rows, s_sr_packed;   /* Earlier work, rows released, sent, packed (Turbo) */
+static int s_sr_first;   /* Earlier work, rows [first, rows) go out first (the status bar), 0 for in order */
 #ifdef QOG_VID_HUDFIRST
 #define s_scan_hudfirst 1
 #else
@@ -251,14 +251,14 @@ static int s_sr_first;   /* Agent AP: rows [first, rows) go out first (the statu
 static unsigned s_sr_checks, s_sr_waits, s_sr_bad;
 static qboolean s_racing;
 
-/* QuakeOG (Agent AP): the place of scan row r in the order the scanout
+/* QuakeOG, the place of scan row r in the order the scanout
    sends its rows, from 1 (port/rp2040/vid_rp2040.c) */
 static int scan_pos(int r) {
     if (!s_sr_first) return r + 1;
     return r >= s_sr_first ? r - s_sr_first + 1 : s_sr_rows - s_sr_first + r + 1;
 }
 
-/* the bytes scan row r reads: a packed Turbo row QOG_PC_W / 2 from the
+/* the bytes scan row r reads, a packed Turbo row QOG_PC_W / 2 from the
    frame's start, the others their own QOG_PC_W */
 static void scanrace_check(void) {
     int r;
@@ -285,7 +285,7 @@ static int scan_maxpos(int lo, int hi) {
     return m;
 }
 
-/* QuakeOG (Agent AO, Agent AP): how far into its order the scanout in
+/* QuakeOG, how far into its order the scanout in
    flight must be before no row it has still to send reads a byte of
    [lo, hi), as port/rp2040/vid_rp2040.c */
 int VID_QogScanNeed(const void *lo, const void *hi) {
@@ -303,8 +303,8 @@ int VID_QogScanNeed(const void *lo, const void *hi) {
     return need;
 }
 
-/* QuakeOG (Agent AP): per frame, how far into the scan the next frame
-   waited in each part of its view (VID_QogRaceMark: 0 before the view,
+/* QuakeOG, per frame, how far into the scan the next frame
+   waited in each part of its view (VID_QogRaceMark, 0 before the view,
    1 the world's front end before R_RenderWorld, 2 after it, 3 after the
    brush entities), so `-scanmodel` can work out the board's race wait at
    each LCD rate. */
@@ -337,7 +337,7 @@ void VID_QogRaceBegin(void) {
 void VID_QogScanFree(const void *lo, const void *hi) {
     int need = VID_QogScanNeed(lo, hi);
 #ifdef QOG_BOARDMODEL
-    qog_bm_scanfree((const byte *)lo - vid_buffer, (const byte *)hi - vid_buffer);   /* QuakeOG (Agent AS): the board waits for these bytes */
+    qog_bm_scanfree((const byte *)lo - vid_buffer, (const byte *)hi - vid_buffer);   /* QuakeOG, the board waits for these bytes */
 #endif
     if (!need) return;
     if (need >= s_sr_rows) {
@@ -346,7 +346,7 @@ void VID_QogScanFree(const void *lo, const void *hi) {
     }
     scanrace_check();
     s_sr_waits++;
-    scanmodel_need(need);   /* Agent AP */
+    scanmodel_need(need);   /* Earlier work */
     if (need > s_sr_relpos) s_sr_relpos = need;
 }
 
@@ -357,9 +357,9 @@ void VID_QogScanDone(void) {
 
 static void scanmodel_print(void (*pr)(char *fmt, ...), double pre, double world, double bmodels) {
 #ifdef QOG_VID_ROWRACE
-    const double edgescan = 3.8;   /* Agent AP: the edge scan's own time (boardbench), row waits during it bind at its end */
+    const double edgescan = 3.8;   /* Earlier work, the edge scan's own time (boardbench), row waits during it bind at its end */
 #endif
-    /* us per row: the PL022 at 50 MHz (Agent V's 22.4 ms for 200 rows on
+    /* us per row, the PL022 at 50 MHz (the earlier 22.4 ms for 200 rows on
        the board) and PIO at 60 MHz (5,120 bits a row, about 0.4 us a line) */
     static const struct { const char *name; double us; } rate[] = { { "pio 60 MHz", 85.7 }, { "spi 50 MHz", 112.0 } };
     for (int t = 0; t < 2; t++) {
@@ -416,7 +416,7 @@ void VID_LockBuffer(void) {
 #ifdef QOG_VID_SCANRACE
     if (s_racing) return;
     scanrace_check();
-    scanmodel_record();   /* Agent AP */
+    scanmodel_record();   /* Earlier work */
     s_lk_pending = false;
     s_lk_frames++;
 #else
@@ -437,7 +437,7 @@ static void cmd_qog_lockcheck(void) {
 #endif
 
 #ifdef QOG_SPANS_CORE1
-/* QuakeOG (Agent V): the board draws half of each lit surface's spans on its
+/* QuakeOG, the board draws half of each lit surface's spans on its
    second core (engine/d_scanlit.c). The PC runs that half on a second
    thread at the same time (default), or on the game's thread before
    (-core1first) or after (-core1last) the first half. */
@@ -484,7 +484,7 @@ void Sys_QogCore1Join(void) {
 #endif
 
 #ifdef QOG_DRAW_CORE1
-/* QuakeOG (Agent AM): the two-core pipeline of the world's surfaces
+/* QuakeOG, the two-core pipeline of the world's surfaces
    (engine/d_edge.c). On a second thread by default, or with -core1first and
    -core1last core 1's surfaces are drawn on the game's thread, each as soon
    as it is handed on, or at each flush after core 0's. */
@@ -501,7 +501,7 @@ void VID_Update(vrect_t *rects) {
     int rows = QOG_PC_H;
     (void)rects;
 #if defined(QOG_HUD_SKIP)
-    /* QuakeOG (Agent AK): the rows the board sends this frame */
+    /* QuakeOG, the rows the board sends this frame */
     rows = R_HudFrameEndRows(!s_pal_changed);
     s_hud_frames++;
     if (rows < QOG_PC_H) {
@@ -512,9 +512,9 @@ void VID_Update(vrect_t *rects) {
             Con_Printf("qog_hudskip: the status bar rows not sent differ from the panel's (frame %d)\n", host_framecount);
 #endif
     }
-    panel_rows(s_panel, rows, TURBO_PACKED);   /* Agent AO: a Turbo view doubled as on the panel */
+    panel_rows(s_panel, rows, TURBO_PACKED);   /* Earlier work, a Turbo view doubled as on the panel */
 #ifdef QOG_RTURBO
-    panel_text(s_panel);   /* Agent AP: and the characters listed over it */
+    panel_text(s_panel);   /* Earlier work, and the characters listed over it */
 #endif
 #elif defined(QOG_HUD_IN_ZBUFFER)
     R_HudFrameEnd();
@@ -522,14 +522,14 @@ void VID_Update(vrect_t *rects) {
 #if !defined(QOG_HUD_SKIP) && defined(QOG_RTURBO)
     s_panel_turbo = TURBO_PACKED > 0;
     if (s_panel_turbo) panel_rows(s_panel, QOG_PC_H, TURBO_PACKED);
-    panel_text(s_panel);   /* Agent AP */
+    panel_text(s_panel);   /* Earlier work */
 #endif
     if (rows >= QOG_PC_H) s_pal_changed = false;
 #ifdef QOG_BOARDMODEL
-    qog_bm_frame(rows, TURBO_PACKED);   /* QuakeOG (Agent AS): one line of work counts a frame */
+    qog_bm_frame(rows, TURBO_PACKED);   /* QuakeOG, one line of work counts a frame */
 #endif
 #ifdef QOG_VID_LOCKWAIT
-    s_lk_hash = lockcheck_hash();   /* QuakeOG (Agent V): the board's scanout starts here */
+    s_lk_hash = lockcheck_hash();   /* QuakeOG, the board's scanout starts here */
     s_lk_pending = true;
 #endif
 #ifdef QOG_VID_SCANRACE
@@ -537,14 +537,14 @@ void VID_Update(vrect_t *rects) {
     s_sr_relpos = 0;
     s_sr_rows = rows;
     s_sr_packed = TURBO_PACKED;
-    s_sr_first = (rows == QOG_PC_H && s_scan_hudfirst) ? QOG_PC_H - 48 : 0;   /* Agent AP: the status bar rows first */
+    s_sr_first = (rows == QOG_PC_H && s_scan_hudfirst) ? QOG_PC_H - 48 : 0;   /* Earlier work, the status bar rows first */
     s_racing = false;
-    s_sm_ph = 0;   /* Agent AP */
+    s_sm_ph = 0;   /* Earlier work */
     memset(s_sm_cur, 0, sizeof s_sm_cur);
 #endif
     if (s_framehash) framehash_print();
 #ifdef QOG_EDGES_IN_ZBUFFER
-    {   /* QuakeOG (Agent AC): -zedgeshots saves every frame in which the edge
+    {   /* QuakeOG, -zedgeshots saves every frame in which the edge
            fallback ran (engine/r_edge.c, R_QogEdgesToStack) as zedge_<frame> */
         extern int r_qog_zstack;
         static int s_zstack_seen;
@@ -564,7 +564,7 @@ void VID_Update(vrect_t *rects) {
     GetClientRect(s_wnd, &r);
     StretchDIBits(dc, 0, 0, r.right, r.bottom, 0, 0, QOG_PC_W, QOG_PC_H,
 #ifdef QOG_RTURBO
-                  SHOT_PIXELS,   /* Agent AO: what the panel shows */
+                  SHOT_PIXELS,   /* Earlier work, what the panel shows */
 #else
                   vid_buffer,
 #endif
@@ -582,7 +582,7 @@ void VID_HandlePause(qboolean pause) { (void)pause; }
 /* `qog_shot [name]` writes the current 8-bit frame as build-pc-shots/<name>.bmp
    so renderer changes can be compared frame by frame. */
 /* `qog_rpeaks [reset]` prints renderer table measurements kept by the engine
-   (r_main.c, r_edge.c): edge plus surface bytes in one frame, spans in one
+   (r_main.c, r_edge.c), edge plus surface bytes in one frame, spans in one
    frame and in one flush, and the span room R_ScanEdges had. */
 static void cmd_qog_rpeaks(void) {
     extern int r_qog_peakedgesurfbytes, r_qog_peakspanroom, r_qog_minspanroom,
@@ -591,7 +591,7 @@ static void cmd_qog_rpeaks(void) {
                r_qog_peakedgesurfbytes, r_qog_peakframespans, r_qog_peakflushspans,
                r_qog_minspanroom, r_qog_peakspanroom);
 #ifdef QOG_EDGES_IN_ZBUFFER
-    {   /* QuakeOG: edges in the z-buffer (engine/r_edge.c, R_QogScanRows) */
+    {   /* QuakeOG, edges in the z-buffer (engine/r_edge.c, R_QogScanRows) */
         extern int r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans;
         Con_Printf("qog_rpeaks: z edges, flushes before the edges %d, edge moves %d, "
                    "stack fallbacks %d, most waiting spans %d\n",
@@ -606,7 +606,7 @@ static void cmd_qog_rpeaks(void) {
 }
 
 #ifdef QOG_BOARD_MENU
-/* QuakeOG (Agent X): `qog_key <key> ...` presses and releases each key, so a
+/* QuakeOG. `qog_key <key> ...` presses and releases each key, so a
    test script can drive the board's menus (engine/menu.c) as the buttons do
    (enter, escape and the arrows). Test builds with QOG_BOARD_MENU only. */
 static void cmd_qog_key(void) {
@@ -620,7 +620,7 @@ static void cmd_qog_key(void) {
 #endif
 
 #ifdef QOG_ZEDGE_COMPARE
-/* Agent AC: a view that reached the edge fallback, drawn exactly (exact) and
+/* Earlier work, a view that reached the edge fallback, drawn exactly (exact) and
    again with the board's graceful path (in the frame now), engine/view.c */
 void qog_zedge_compare_shots(byte *exact) {
     static byte noz[QOG_PC_W * QOG_PC_H];
@@ -722,7 +722,7 @@ static void board_tick(void) {
     qog_input_t in = qog_input_step(&s_board_state, s_board_btns, (uint32_t)(Sys_FloatTime() * 1000.0));
     for (int a = 0; a < QOG_ACT_COUNT; a++) {
         if (in.pressed & QOG_ACT_BIT(a)) {
-            held_key[a] = action_key(a);   /* remember it: FIRE's key depends on focus */
+            held_key[a] = action_key(a);   /* remember it, FIRE's key depends on focus */
             if (held_key[a]) Key_Event(held_key[a], true);
         }
         if ((in.released & QOG_ACT_BIT(a)) && held_key[a]) {
@@ -781,7 +781,7 @@ void VID_Init(unsigned char *palette) {
     vid.aspect = ((float)vid.height / (float)vid.width) * (320.0f / 240.0f);
     vid.numpages = 1;
     vid.colormap = host_colormap;
-    vid.fullbright = 256 - vid.colormap[16384];   /* one byte after the 64x256 table; the colormap may be read in place from flash, where the 3 bytes after the file are not ours */
+    vid.fullbright = 256 - vid.colormap[16384];   /* one byte after the 64x256 table. The colormap may be read in place from flash, where the 3 bytes after the file are not ours */
     vid.buffer = vid.conbuffer = vid_buffer;
     vid.rowbytes = vid.conrowbytes = QOG_PC_W;
 
@@ -793,7 +793,7 @@ void VID_Init(unsigned char *palette) {
     r_zalias_row = QOG_PC_ZROWS;
 #endif
 #ifdef QOG_ZTEMP
-    /* QuakeOG: short-lived renderer tables use the z-buffer (engine/r_shared.h) */
+    /* QuakeOG, short-lived renderer tables use the z-buffer (engine/r_shared.h) */
     r_ztemp_base = (byte *)zbuffer;
     r_ztemp_bytes = ZBUFFER_BYTES & ~3;
 #endif
@@ -823,10 +823,10 @@ void VID_Init(unsigned char *palette) {
     qog_aim_register();
     Cmd_AddCommand("qog_shot", cmd_qog_shot);
 #ifdef QOG_VID_LOCKWAIT
-    Cmd_AddCommand("qog_lockcheck", cmd_qog_lockcheck);   /* QuakeOG (Agent V) */
+    Cmd_AddCommand("qog_lockcheck", cmd_qog_lockcheck);   /* QuakeOG */
 #endif
 #ifdef QOG_VID_SCANRACE
-    Cmd_AddCommand("qog_scanmodel", cmd_qog_scanmodel);   /* QuakeOG (Agent AP) */
+    Cmd_AddCommand("qog_scanmodel", cmd_qog_scanmodel);   /* QuakeOG */
 #endif
     Cmd_AddCommand("qog_framehash", cmd_qog_framehash);
     Cmd_AddCommand("qog_rpeaks", cmd_qog_rpeaks);
@@ -853,7 +853,7 @@ void VID_Init(unsigned char *palette) {
     RegisterClassA(&wc);
     RECT r = { 0, 0, QOG_PC_W * WIN_SCALE, QOG_PC_H * WIN_SCALE };
     AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
-    /* -hidden: scripted test runs render and take screenshots without
+    /* -hidden, scripted test runs render and take screenshots without
        opening a visible window on the user's desktop. */
     const DWORD vis = COM_CheckParm("-hidden") ? 0 : WS_VISIBLE;
     s_wnd = CreateWindowA("QuakeOGPC", "QuakeOG PC", WS_OVERLAPPEDWINDOW | vis, CW_USEDEFAULT,
@@ -869,19 +869,19 @@ void VID_Shutdown(void) {
     Sys_Printf("qog_scanrace: %u checks, %u waits for rows, %u writes before the scanout passed\n",
                s_sr_checks, s_sr_waits, s_sr_bad);
 #ifdef QOG_RTURBO
-    {   /* Agent AP: characters over packed Turbo views (engine/r_qogturbo.c) */
+    {   /* Earlier work, characters over packed Turbo views (engine/r_qogturbo.c) */
         extern int r_qog_turbotextmax, r_qog_turbotextover, r_qog_turbotextframes;
         Sys_Printf("qog_turbotext: %d frames with characters over a packed view, most in a frame %d of %d, %d did not fit\n",
                    r_qog_turbotextframes, r_qog_turbotextmax, QOG_TURBO_CHARS, r_qog_turbotextover);
     }
 #endif
 #ifdef QOG_EDGECACHE_TAIL
-    {   /* Agent AP: views whose world edges reached the edge cache at the end of the z-buffer region */
+    {   /* Earlier work, views whose world edges reached the edge cache at the end of the z-buffer region */
         extern int r_qog_ecmoves;
         Sys_Printf("qog_ectail: the edge cache moved to the frame rows in %d views\n", r_qog_ecmoves);
     }
 #endif
-    if (COM_CheckParm("-scanmodel")) {   /* Agent AP: the board's race wait, a few guesses of pre */
+    if (COM_CheckParm("-scanmodel")) {   /* Earlier work, the board's race wait, a few guesses of pre */
         scanmodel_print(Sys_Printf, 3.0, 8.6, 5.7);
         scanmodel_print(Sys_Printf, 5.0, 8.6, 5.7);
         scanmodel_print(Sys_Printf, 7.0, 8.6, 5.7);
@@ -897,7 +897,7 @@ void VID_Shutdown(void) {
                s_hud_frames, s_hud_skips, s_hud_bad, HUDCHK);
 #endif
 #ifdef QOG_EDGES_IN_ZBUFFER
-    {   /* QuakeOG: the whole run's figures for the edges in the z-buffer */
+    {   /* QuakeOG, the whole run's figures for the edges in the z-buffer */
         extern int r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans,
                    r_qog_minspanroom, r_qog_peakframespans;
         Sys_Printf("z edges at exit: flushes before the edges %d, edge moves %d, stack fallbacks %d, "
@@ -905,13 +905,13 @@ void VID_Shutdown(void) {
                    r_qog_zforced, r_qog_zcompacts, r_qog_zstack, r_qog_peakheldspans,
                    r_qog_minspanroom, r_qog_peakframespans);
 #ifdef QOG_CL_PEAKS
-        {   /* QuakeOG (Agent S) */
+        {   /* QuakeOG */
             extern int r_qog_zstackedges;
             Sys_Printf("z edges at exit: most edges in one stack fallback %d\n", r_qog_zstackedges);
         }
 #endif
 #if defined(QOG_ZEDGE_STACK_GUARD) || defined(QOG_ZEDGE_FORCE_NOZ)
-        {   /* QuakeOG (Agent AC): the graceful fallback, R_QogFlushNoZ */
+        {   /* QuakeOG, the graceful fallback, R_QogFlushNoZ */
             extern int r_qog_znoz, r_qog_znozrows;
             Sys_Printf("z edges at exit: flushes without z %d, rows drawn without z %d\n", r_qog_znoz, r_qog_znozrows);
         }

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -32,7 +33,7 @@ int 		con_linewidth;
 
 float		con_cursorspeed = 4;
 
-// QuakeOG: QOG_CON_TEXTSIZE shrinks the scrollback; Con_CheckResize also
+// QuakeOG, QOG_CON_TEXTSIZE shrinks the scrollback. Con_CheckResize also
 // puts a copy of it on the stack, so this cuts peak stack too
 #ifdef QOG_CON_TEXTSIZE
 #define		CON_TEXTSIZE	QOG_CON_TEXTSIZE
@@ -363,7 +364,7 @@ void Con_DebugLog(char *file, char *fmt, ...)
 {
     va_list argptr; 
 #ifdef QOG_CON_DEBUGLOG_DIRECT
-    // QuakeOG (Agent Y): both callers pass "%s" and the text, so the text is
+    // QuakeOG, both callers pass "%s" and the text, so the text is
     // written as it is, without a 1 KB static copy (which a text over 1023
     // characters overran)
     char *data;
@@ -446,7 +447,7 @@ A Con_Printf that only shows up if the "developer" cvar is set
 ================
 Con_PrintText
 
-QuakeOG (Agent S): Con_Printf of a text with no format, without the 4 KB
+QuakeOG, Con_Printf of a text with no format, without the 4 KB
 message buffer on the stack, for prints deep in the renderer. The same
 steps as Con_Printf, which formats into msg first.
 ================

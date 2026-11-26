@@ -1,10 +1,10 @@
-/* QuakeOG: reliable byte stream over the BSP's link frames. See qog_link.h.
+/* QuakeOG, reliable byte stream over the BSP's link frames. See qog_link.h.
  *
  * Pure C. The frame format, its constants and its CRC are the BSP's
  * (bsp/common/link/link_frame.h, common/crc.c, which have no SDK dependency,
  * so the PC build compiles the very same files). The encoder writes a frame
  * in three pieces and the decoder follows link_frame.c's state machine with a
- * buffer sized for our largest frame instead of the BSP's 4,160 bytes: the
+ * buffer sized for our largest frame instead of the BSP's 4,160 bytes, the
  * display has little RAM to spare. A longer frame (only the bootloader's
  * update chunks are longer, and they never reach a running app) is dropped
  * and the decoder resynchronizes, as it does after a bad CRC. */
@@ -19,23 +19,23 @@
 
 qog_link_stats_t qog_link_stats;
 int qog_link_peer_restarted;
-void (*qog_link_side)(const uint8_t *payload, int len);   /* QuakeOG (Agent T) */
+void (*qog_link_side)(const uint8_t *payload, int len);   /* QuakeOG */
 
 static int      s_role;
 static int      s_up;
 static uint32_t s_session;          /* ours */
 static uint32_t s_peer_session;
 
-/* QuakeOG (Agent T): QOG_LINK_SCRATCH puts the two rings in the RP2040's
+/* QuakeOG, QOG_LINK_SCRATCH puts the two rings in the RP2040's
    SCRATCH_X bank (4 KB), which the main chip's server half does not use
-   otherwise: core1 never starts there, so no core1 stack is linked. */
+   otherwise, core1 never starts there, so no core1 stack is linked. */
 #ifdef QOG_LINK_SCRATCH
 #define LINK_RING_PLACE __attribute__((section(".scratch_x.qog_link")))
 #else
 #define LINK_RING_PLACE
 #endif
 
-/* transmit: bytes [tx_acked, tx_head) are unacknowledged, of which the
+/* transmit, bytes [tx_acked, tx_head) are unacknowledged, of which the
    first tx_inflight were sent in the frame with sequence tx_seq */
 static uint8_t  s_tx[QOG_LINK_TXRING] LINK_RING_PLACE;
 static uint32_t s_tx_head, s_tx_acked;
@@ -44,7 +44,7 @@ static uint8_t  s_tx_seq;
 static uint32_t s_tx_sent_ms, s_tx_timeout_ms;
 static int      s_tx_tries;
 
-/* receive: [rx_tail, rx_head) are delivered and not yet read */
+/* receive, [rx_tail, rx_head) are delivered and not yet read */
 static uint8_t  s_rx[QOG_LINK_RXRING] LINK_RING_PLACE;
 static uint32_t s_rx_head, s_rx_tail;
 static uint8_t  s_rx_expect;
@@ -94,7 +94,7 @@ static int dec_byte(uint8_t b) {
     }
 }
 
-/* QuakeOG: while a frame is being written, hardware flow control can hold us
+/* QuakeOG, while a frame is being written, hardware flow control can hold us
    until the peer reads, and the peer may be holding on us the same way. So
    the port keeps decoding what arrives (qog_link_rx_drain) while it waits,
    and any reply that decoding asks for is remembered here and sent once the
@@ -108,7 +108,7 @@ static void send_hello(uint8_t type);
 static void poll_rx(void);
 
 #ifdef QOG_LINK_TXASYNC
-/* QuakeOG (Agent AK): every frame is built here and sent in the background
+/* QuakeOG, every frame is built here and sent in the background
    (qog_link_hw_tx_frame). The payload starts at s_txf + 3. */
 static uint8_t s_txf[3 + QOG_LINK_CHUNK + 2 + 2];
 
@@ -122,7 +122,7 @@ static void tx_wait_idle(void) {
     }
 }
 
-/* the payload is in place at s_txf + 3: frame it and start it */
+/* the payload is in place at s_txf + 3, frame it and start it */
 static void tx_start(int len) {
     uint16_t crc;
     s_txf[0] = FWOG_LINK_SOF;
@@ -142,7 +142,7 @@ static void send_payload(const uint8_t *payload, int len) {
     tx_start(len);
 }
 
-/* replies never wait: with a frame on the wire they go after it (pump_tx) */
+/* replies never wait, with a frame on the wire they go after it (pump_tx) */
 static void reply_ack(uint8_t seq) {
     if (s_in_write || qog_link_hw_tx_busy()) s_pend_ack = seq;
     else send_small(QOG_LINK_T_ACK, seq);
@@ -192,7 +192,7 @@ static void reply_hellok(void) {
 }
 #endif
 
-/* QuakeOG (Agent T): a side frame, sent at once (see qog_link.h) */
+/* QuakeOG, a side frame, sent at once (see qog_link.h) */
 void qog_link_send_side(const void *payload, int len) {
     if (len > 0 && len <= DEC_MAX) send_payload(payload, len);
 }
@@ -209,7 +209,7 @@ static void send_hello(uint8_t type) {
     send_payload(p, 6);
 }
 
-/* A new session from the peer: it starts its sequence at 0 and so do we.
+/* A new session from the peer, it starts its sequence at 0 and so do we.
    Unacknowledged bytes stay queued and go out again from the start. */
 static void peer_session(uint32_t session) {
     if (session == s_peer_session && s_up) return;
@@ -240,7 +240,7 @@ static void handle_payload(const uint8_t *p, int len) {
         if (len < 2 || !s_up) return;
         if (p[1] == s_rx_expect) {
             if ((uint32_t)n > QOG_LINK_RXRING - (s_rx_head - s_rx_tail)) {
-                qog_link_stats.full_drops++;   /* no room: no ack, the sender waits */
+                qog_link_stats.full_drops++;   /* no room, no ack, the sender waits */
                 return;
             }
             for (int i = 0; i < n; i++)
@@ -251,7 +251,7 @@ static void handle_payload(const uint8_t *p, int len) {
             qog_link_stats.frames_rx++;
             reply_ack(p[1]);
         } else if ((uint8_t)(p[1] + 1) == s_rx_expect) {
-            qog_link_stats.dups++;             /* our ack was lost: say it again */
+            qog_link_stats.dups++;             /* our ack was lost, say it again */
             reply_ack(p[1]);
         }
         return;
@@ -277,9 +277,9 @@ static void handle_payload(const uint8_t *p, int len) {
     default:
         qog_link_stats.other_rx++;
         if (s_in_write)
-            return;     /* their handlers may send at once: dropped, both are resent */
+            return;     /* their handlers may send at once, dropped, both are resent */
         if (p[0] >= QOG_LINK_T_SAVES_ASK && p[0] <= QOG_LINK_T_SIDE_LAST) {
-            if (qog_link_side) qog_link_side(p, len);   /* QuakeOG (Agent T): side frames */
+            if (qog_link_side) qog_link_side(p, len);   /* QuakeOG, side frames */
             return;
         }
         qog_link_hw_other(p, len);
@@ -301,7 +301,7 @@ static void poll_rx(void) {
 }
 
 #ifdef QOG_LINK_TXRINGSEND
-/* QuakeOG (Agent AK): CRC-16/XMODEM (common/crc.h) carried over pieces */
+/* QuakeOG, CRC-16/XMODEM (common/crc.h) carried over pieces */
 static uint16_t crc16_add(uint16_t crc, const uint8_t *p, uint32_t n) {
     while (n--) {
         crc ^= (uint16_t)(*p++ << 8);
@@ -311,7 +311,7 @@ static uint16_t crc16_add(uint16_t crc, const uint8_t *p, uint32_t n) {
     return crc;
 }
 
-/* QuakeOG (Agent AK): a DATA frame written straight from the transmit ring,
+/* QuakeOG, a DATA frame written straight from the transmit ring,
    the same bytes as copying it into a frame buffer first (no 514-byte
    buffer). The ring's unacknowledged bytes do not change meanwhile. */
 static void send_ring_frame(void) {
@@ -345,7 +345,7 @@ static void pump_tx(void) {
     uint32_t now;
     if (!s_up) return;
 #ifdef QOG_LINK_TXASYNC
-    /* Agent AK: one frame on the wire at a time, replies first. While a
+    /* Earlier work, one frame on the wire at a time, replies first. While a
        frame waits in the flow control the resend timer starts again, so it
        counts from the frame's end. */
     if (qog_link_hw_tx_busy()) {
@@ -382,7 +382,7 @@ static void pump_tx(void) {
 #else
     {
 #ifdef QOG_LINK_TXASYNC
-        uint8_t *p = s_txf + 3;     /* Agent AK: built in place, sent in the background */
+        uint8_t *p = s_txf + 3;     /* Earlier work, built in place, sent in the background */
 #else
         static uint8_t p[QOG_LINK_CHUNK + 2];
 #endif
@@ -402,12 +402,12 @@ static void pump_tx(void) {
 }
 
 #if QOG_LINK_LISTEN_GAP
-static uint32_t s_last_pump_ms;     /* Agent AK */
+static uint32_t s_last_pump_ms;     /* Earlier work */
 #endif
 
 void qog_link_pump(void) {
 #if QOG_LINK_LISTEN_GAP
-    /* Agent AK: after a long time without reading (the display draws), the
+    /* Earlier work, after a long time without reading (the display draws), the
        answer to the frame in flight may only now be on its way */
     uint32_t now = qog_link_hw_ms();
     if (s_tx_inflight && (uint32_t)(now - s_last_pump_ms) > QOG_LINK_LISTEN_GAP)

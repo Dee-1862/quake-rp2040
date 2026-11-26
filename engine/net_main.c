@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -719,7 +720,7 @@ qboolean NET_CanSendMessage (qsocket_t *sock)
 }
 
 
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: server only
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, server only
 int NET_SendToAll(sizebuf_t *data, int blocktime)
 {
 	double		start;
@@ -834,7 +835,7 @@ void NET_Init (void)
 	net_hostport = DEFAULTnet_hostport;
 
 #ifdef QOG_SPLIT_SERVER
-	// QuakeOG: the split server has no client of its own, like a dedicated one
+	// QuakeOG, the split server has no client of its own, like a dedicated one
 	listening = true;
 	net_numsockets = svs.maxclientslimit;
 #else
@@ -857,10 +858,10 @@ void NET_Init (void)
 
 	// allocate space for network message buffer
 #if defined(QOG_LOOP_INPLACE)
-	// QuakeOG: none, messages are read in place in the loopback buffers
+	// QuakeOG, none, messages are read in place in the loopback buffers
 	// and demos in the idle client buffer (net_loop.c)
 #elif defined(QOG_SINGLE_PLAYER)
-	// QuakeOG: loopback and demos never deliver more than MAX_MSGLEN (the
+	// QuakeOG, loopback and demos never deliver more than MAX_MSGLEN (the
 	// size of client_t.message, and the limit cl_demo.c checks)
 	SZ_Alloc (&net_message, MAX_MSGLEN);
 #else
@@ -883,7 +884,7 @@ void NET_Init (void)
 
 	Cmd_AddCommand ("slist", NET_Slist_f);
 	Cmd_AddCommand ("listen", NET_Listen_f);
-#ifndef QOG_SPLIT_CLIENT	// QuakeOG: the split client sends it to the server half
+#ifndef QOG_SPLIT_CLIENT	// QuakeOG, the split client sends it to the server half
 	Cmd_AddCommand ("maxplayers", MaxPlayers_f);
 #endif
 	Cmd_AddCommand ("port", NET_Port_f);

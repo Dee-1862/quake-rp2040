@@ -8,7 +8,7 @@
  *
  *   [qogfly] fps 7.9  ms render 112.3 present 14.1  pt 12/79  free 3120  hunk 97536/102400
  *   [phase] frames 16 ms setup 0.41 world 9.80 ... total 110.2 edgescan 8.1
- *   [phase] per frame: litsurfs 180 lmcells 9000 litspans 1500 litpx 45000 ...
+ *   [phase] per frame, litsurfs 180 lmcells 9000 litspans 1500 litpx 45000 ...
  *
  * fps over the last 2 s, the mean time per frame spent drawing (R_RenderView
  * plus the text) and in VID_Update (waiting for the previous scanout and
@@ -16,11 +16,11 @@
  * length, the RAM no one has claimed (heap left), and the hunk in use of its
  * size.
  *
- * BSP rules (docs/lessons.md): no watchdog on this CPU, fwog_power_poll
+ * BSP rules (docs/lessons.md), no watchdog on this CPU, fwog_power_poll
  * every loop iteration, backlight on (qog_video_init does it), scanout on
  * core 1 through shared memory.
  *
- * Stack: id's R_EdgeDrawing keeps its edge and surface tables on the stack
+ * Stack, id's R_EdgeDrawing keeps its edge and surface tables on the stack
  * (about 85 KB with the current flags), far more than the SDK's 4 KB
  * scratch stack. main() moves the stack into a QOG_FLY_STACK_KB array in
  * main RAM before anything else runs, so the link counts it. */
@@ -100,7 +100,7 @@ static void __attribute__((noreturn)) fly_main (void)
 		qog_fly_render (feet, ang, (a - t0) * 1e-6);
 		qog_fly_overlay (line1, line2);
 		b = time_us_64 ();
-		VID_Update (NULL);		/* present, then wait: one frame buffer */
+		VID_Update (NULL);		/* present, then wait, one frame buffer */
 		c = time_us_64 ();
 		render_us += b - a;
 		present_us += c - b;

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -20,13 +21,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #ifdef QOG_LOOP_INPLACE
-#include "net_loop.h"	// QuakeOG: Loop_DemoBuffer
+#include "net_loop.h"	// QuakeOG, Loop_DemoBuffer
 #endif
 
 void CL_FinishTimeDemo (void);
 
 #ifdef QOG_DEMO_FLASH
-// QuakeOG: a demo in a mapped pack (COM_FlashFile) is read in place, and
+// QuakeOG, a demo in a mapped pack (COM_FlashFile) is read in place, and
 // each message is parsed where it lies, so playback needs no FILE and no
 // message buffer. cls.demofile stays NULL while such a demo plays. A demo
 // that is not in a mapped pack plays from a FILE as in id's code.
@@ -103,7 +104,7 @@ Called when a demo file runs out, or the user starts a game
 void CL_StopPlayback (void)
 {
 #ifdef QOG_BOARD_MENU
-	qboolean	whole = true;	// QuakeOG: the demo ran to its end (the board's benchmark)
+	qboolean	whole = true;	// QuakeOG, the demo ran to its end (the board's benchmark)
 #endif
 
 	if (!cls.demoplayback)
@@ -132,7 +133,7 @@ void CL_StopPlayback (void)
 	{
 		CL_FinishTimeDemo ();
 #ifdef QOG_BOARD_MENU
-		M_BenchDone (whole);	// QuakeOG: the board shows the result (menu.c)
+		M_BenchDone (whole);	// QuakeOG, the board shows the result (menu.c)
 #endif
 	}
 }
@@ -211,7 +212,7 @@ int CL_GetMessage (void)
 		if (net_message.cursize > MAX_MSGLEN)
 			Sys_Error ("Demo message > MAX_MSGLEN");
 #ifdef QOG_LOOP_INPLACE
-		net_message.data = Loop_DemoBuffer ();	// QuakeOG: net_message has no buffer of its own
+		net_message.data = Loop_DemoBuffer ();	// QuakeOG, net_message has no buffer of its own
 		net_message.maxsize = MAX_MSGLEN;
 #endif
 		r = fread (net_message.data, net_message.cursize, 1, cls.demofile);
@@ -265,7 +266,7 @@ void CL_Stop_f (void)
 
 // write a disconnect message to the demo file
 #ifdef QOG_LOOP_INPLACE
-	{	// QuakeOG: net_message points into a receive buffer, write elsewhere
+	{	// QuakeOG, net_message points into a receive buffer, write elsewhere
 		byte		one[4];
 		sizebuf_t	saved = net_message;
 
@@ -465,7 +466,7 @@ void CL_FinishTimeDemo (void)
 		time = 1;
 	Con_Printf ("%i frames %5.1f seconds %5.1f fps\n", frames, time, frames/time);
 #ifdef QOG_BOARD_MENU
-	// QuakeOG: the result for the board's benchmark page (M_BenchDone). Nothing
+	// QuakeOG, the result for the board's benchmark page (M_BenchDone). Nothing
 	// reads these fields once the timedemo is over, the next one sets them.
 	cls.td_startframe = frames;
 	cls.td_starttime = time;
@@ -492,7 +493,7 @@ void CL_TimeDemo_f (void)
 
 	CL_PlayDemo_f ();
 #ifdef QOG_BOARD_MENU
-	// QuakeOG: the demo's name for the board's result. id's map command writes
+	// QuakeOG, the demo's name for the board's result. id's map command writes
 	// cls.mapstring and nothing reads it.
 	Q_strncpy (cls.mapstring, Cmd_Argv(1), sizeof(cls.mapstring) - 1);
 	cls.mapstring[sizeof(cls.mapstring) - 1] = 0;

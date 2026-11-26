@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -27,12 +28,12 @@ qsocket_t	*loop_client = NULL;
 qsocket_t	*loop_server = NULL;
 
 #ifdef QOG_SINGLE_PLAYER
-// QuakeOG: one receive buffer per direction instead of two 8 KB buffers in
+// QuakeOG, one receive buffer per direction instead of two 8 KB buffers in
 // every socket. The client side holds one reliable message (at most
 // MAX_MSGLEN, the size of client_t.message) plus queued datagrams. The server
 // side only gets cls.message (1 KB) and movement datagrams. Overflow behaves
-// as in id's code: a reliable message stops with Sys_Error, a datagram is
-// dropped. Measured peaks over every shareware level and demo: 3844 bytes
+// as in id's code, a reliable message stops with Sys_Error, a datagram is
+// dropped. Measured peaks over every shareware level and demo, 3844 bytes
 // to the client, 40 to the server.
 #ifndef QOG_LOOP_CLIENT_RX
 #define QOG_LOOP_CLIENT_RX	NET_MAXMESSAGE
@@ -40,9 +41,9 @@ qsocket_t	*loop_server = NULL;
 #ifndef QOG_LOOP_SERVER_RX
 #define QOG_LOOP_SERVER_RX	NET_MAXMESSAGE
 #endif
-// 4 spare bytes: id's datagram check counts a 3-byte header but writes 4
+// 4 spare bytes, id's datagram check counts a 3-byte header but writes 4
 #ifdef QOG_LOOP_ONINIT
-// QuakeOG: on the hunk from Loop_Init, so a host without networking pays nothing
+// QuakeOG, on the hunk from Loop_Init, so a host without networking pays nothing
 static byte	*loop_client_rx;
 static byte	*loop_server_rx;
 #else
@@ -58,10 +59,10 @@ static byte	loop_server_rx[QOG_LOOP_SERVER_RX + 4];
 #ifndef QOG_SINGLE_PLAYER
 #error QOG_LOOP_INPLACE needs QOG_SINGLE_PLAYER
 #endif
-// QuakeOG: net_message is read where the message lies in the receive
+// QuakeOG, net_message is read where the message lies in the receive
 // buffer, so it needs no 6.5 KB buffer of its own. id moved the rest of the
 // buffer down as soon as it copied a message out. Here that move waits until
-// the message has been parsed: the next read of the buffer or the next send
+// the message has been parsed, the next read of the buffer or the next send
 // into it does it first, so every check and every byte stored is as in id's
 // code. Demos are read into the client buffer, which is idle while one
 // plays (Loop_DemoBuffer).
@@ -227,7 +228,7 @@ int Loop_GetMessage (qsocket_t *sock)
 	length = sock->receiveMessage[1] + (sock->receiveMessage[2] << 8);
 	// alignment byte skipped here
 #ifdef QOG_LOOP_INPLACE
-	net_message.data = &sock->receiveMessage[4];	// QuakeOG: in place, see above
+	net_message.data = &sock->receiveMessage[4];	// QuakeOG, in place, see above
 	net_message.maxsize = net_message.cursize = length;
 	*Loop_Pending (sock) = IntAlign(length + 4);
 #else
@@ -261,7 +262,7 @@ int Loop_SendMessage (qsocket_t *sock, sizebuf_t *data)
 
 	bufferLength = &((qsocket_t *)sock->driverdata)->receiveMessageLength;
 
-	if ((*bufferLength + data->cursize + 4) > LOOP_RXSIZE((qsocket_t *)sock->driverdata))	// QuakeOG: was NET_MAXMESSAGE
+	if ((*bufferLength + data->cursize + 4) > LOOP_RXSIZE((qsocket_t *)sock->driverdata))	// QuakeOG, was NET_MAXMESSAGE
 		Sys_Error("Loop_SendMessage: overflow\n");
 
 	buffer = ((qsocket_t *)sock->driverdata)->receiveMessage + *bufferLength;
@@ -298,7 +299,7 @@ int Loop_SendUnreliableMessage (qsocket_t *sock, sizebuf_t *data)
 
 	bufferLength = &((qsocket_t *)sock->driverdata)->receiveMessageLength;
 
-	if ((*bufferLength + data->cursize + sizeof(byte) + sizeof(short)) > LOOP_RXSIZE((qsocket_t *)sock->driverdata))	// QuakeOG: was NET_MAXMESSAGE
+	if ((*bufferLength + data->cursize + sizeof(byte) + sizeof(short)) > LOOP_RXSIZE((qsocket_t *)sock->driverdata))	// QuakeOG, was NET_MAXMESSAGE
 		return 0;
 
 	buffer = ((qsocket_t *)sock->driverdata)->receiveMessage + *bufferLength;

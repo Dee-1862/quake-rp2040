@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -696,7 +697,7 @@ float MSG_ReadFloat (void)
 
 #ifdef QOG_MSG_STRING_INPLACE
 /*
-QuakeOG (Agent Y): the string as it is in the message, not copied into a
+QuakeOG, the string as it is in the message, not copied into a
 2 KB static buffer. id's loop below stops at a 0 byte, at a 0xFF byte (the
 signed char -1 MSG_ReadChar returns), at the end of the message or after
 2047 characters, and consumes the stop byte in the first two cases. A string
@@ -978,7 +979,7 @@ skipwhite:
 	while ( (c = *data) <= ' ')
 	{
 		if (c == 0)
-			return NULL;                    // end of file;
+			return NULL;                    // end of file.
 		data++;
 	}
 	
@@ -1270,23 +1271,23 @@ typedef struct pack_s
 	char    filename[MAX_OSPATH];
 	int             handle;
 	int             numfiles;
-	packfile_t      *files;         // QuakeOG: NULL when the pack is mapped (fdir)
-	byte            *flash;         // QuakeOG: read-only image of the pack, or NULL
-	struct dpackfile_s *fdir;       // QuakeOG: the image's own directory, used in place
-	int             *diskpos;       // QuakeOG: file positions on disk where the image is
+	packfile_t      *files;         // QuakeOG, NULL when the pack is mapped (fdir)
+	byte            *flash;         // QuakeOG, read-only image of the pack, or NULL
+	struct dpackfile_s *fdir;       // QuakeOG, the image's own directory, used in place
+	int             *diskpos;       // QuakeOG, file positions on disk where the image is
 	                                // laid out differently (PC), NULL when they are the same
 } pack_t;
 
 //
 // on disk
 //
-typedef struct dpackfile_s	// QuakeOG: tagged so pack_t can point at it
+typedef struct dpackfile_s	// QuakeOG, tagged so pack_t can point at it
 {
 	char    name[56];
 	int             filepos, filelen;
 } dpackfile_t;
 
-// QuakeOG: a mapped pack keeps no copy of its directory (25 KB with id's
+// QuakeOG, a mapped pack keeps no copy of its directory (25 KB with id's
 // 64-byte names for pak0). Names, lengths and image positions are read from
 // the directory in the image.
 static char *Pak_Name (pack_t *pak, int i)
@@ -1472,10 +1473,10 @@ int COM_FindFile (char *filename, int *handle, FILE **file)
 		// look through all the pak file elements
 			pak = search->pack;
 			for (i=0 ; i<pak->numfiles ; i++)
-				if (!strcmp (Pak_Name (pak, i), filename))	// QuakeOG: Pak_ accessors
+				if (!strcmp (Pak_Name (pak, i), filename))	// QuakeOG, Pak_ accessors
 				{       // found it!
 					if (com_fileopened)
-						com_fileopened (filename);	// QuakeOG: asset manifests
+						com_fileopened (filename);	// QuakeOG, asset manifests
 					Sys_Printf ("PackFile: %s : %s\n",pak->filename, filename);
 					if (handle)
 					{
@@ -1704,11 +1705,11 @@ pack_t *COM_LoadPackFile (char *packfile)
 	int                             numpackfiles;
 	pack_t                  *pack;
 	int                             packhandle;
-	dpackfile_t             *info;	// QuakeOG: was a 128 KB stack array, see below
+	dpackfile_t             *info;	// QuakeOG, was a 128 KB stack array, see below
 	int                     himark;
 	unsigned short          crc;
 	int                     packlen;
-	byte                    *flash;		// QuakeOG: mapped image, see below
+	byte                    *flash;		// QuakeOG, mapped image, see below
 	dpackfile_t             *fdir;
 	int                     *diskpos;
 
@@ -1733,7 +1734,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 	if (numpackfiles != PAK0_COUNT)
 		com_modified = true;    // not the original file
 
-	// QuakeOG: a pack mapped in flash is looked up through the image's own
+	// QuakeOG, a pack mapped in flash is looked up through the image's own
 	// directory, so no copy is made (see Pak_Name). The image is mapped first
 	// to know which way this pack goes.
 	flash = Sys_FlashMap (packfile, packlen);
@@ -1743,7 +1744,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 		newfiles = Hunk_AllocName (numpackfiles * sizeof(packfile_t), "packfile");
 
 #ifdef QOG_PACKDIR_CHUNKED
-	// QuakeOG: the directory is read 32 entries (2 KB) at a time into a
+	// QuakeOG, the directory is read 32 entries (2 KB) at a time into a
 	// stack buffer, so opening a pack needs no temporary block the size of
 	// its whole directory (21 KB for pak0). The CRC runs over the same bytes
 	// in the same order, the same checks are made, and the hunk gets the
@@ -1818,7 +1819,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 	(void)himark;
 	(void)info;
 #else
-	// QuakeOG: the directory goes into a temporary block on the high hunk,
+	// QuakeOG, the directory goes into a temporary block on the high hunk,
 	// sized to this pack (21 KB for pak0), instead of a MAX_FILES_IN_PACK
 	// array on the stack (128 KB, more than the RP2040's whole stack)
 	himark = Hunk_HighMark ();
@@ -1834,7 +1835,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 		com_modified = true;
 
 	if (flash)
-	{	// QuakeOG: the image may be laid out differently from the file (files
+	{	// QuakeOG, the image may be laid out differently from the file (files
 		// aligned for reading in place). Its directory must name the same
 		// files. Disk positions are kept only where they differ (the PC).
 		dpackheader_t	*fh = (dpackheader_t *)flash;
@@ -1869,7 +1870,7 @@ pack_t *COM_LoadPackFile (char *packfile)
 			newfiles[i].filelen = LittleLong(info[i].filelen);
 		}
 	}
-	Hunk_FreeToHighMark (himark);	// QuakeOG: done with the temporary directory
+	Hunk_FreeToHighMark (himark);	// QuakeOG, done with the temporary directory
 #endif
 
 	pack = Hunk_Alloc (sizeof (pack_t));
@@ -1890,13 +1891,13 @@ pack_t *COM_LoadPackFile (char *packfile)
 ============
 COM_FlashFile
 
-QuakeOG: finds a file the same way COM_FindFile does, and returns a pointer
+QuakeOG, finds a file the same way COM_FindFile does, and returns a pointer
 into the read-only image of its pack. NULL means it is not available that
 way (no image, or a loose file earlier in the search path wins) and the
 caller should load it normally.
 ============
 */
-// QuakeOG: if set, called with the name of every file found in a pack, so a
+// QuakeOG, if set, called with the name of every file found in a pack, so a
 // port can record which files a session really uses (asset manifests).
 void (*com_fileopened) (char *path);
 
@@ -1941,7 +1942,7 @@ byte *COM_FlashFile (char *path, int *length)
 ============
 COM_FlashName
 
-QuakeOG (Agent W): the file COM_FlashFile would find, as the name in its
+QuakeOG, the file COM_FlashFile would find, as the name in its
 pack's directory in the read-only image, which lasts as long as the game.
 The mixer keeps sound names there (snd_dma.c). NULL as for COM_FlashFile.
 ============
@@ -1979,7 +1980,7 @@ char *COM_FlashName (char *path)
 ============
 COM_InFlash
 
-QuakeOG: true if p points into the read-only image of a mapped pack. The
+QuakeOG, true if p points into the read-only image of a mapped pack. The
 map baker (qog_bake in model.c) keeps such pointers as they are.
 ============
 */
@@ -2004,7 +2005,7 @@ qboolean COM_InFlash (void *p)
 ============
 COM_ForEachPackFile
 
-QuakeOG: calls fn with the name of every file in every pack, in search
+QuakeOG, calls fn with the name of every file in every pack, in search
 order (a name can come more than once). Used by the map baker.
 ============
 */
@@ -2024,7 +2025,7 @@ void COM_ForEachPackFile (void (*fn) (char *name))
 ============
 COM_ForEachMap
 
-QuakeOG: the board's Levels menu (menu.c). Calls fn with the name of every
+QuakeOG, the board's Levels menu (menu.c). Calls fn with the name of every
 maps/<name>.bsp in the packs, without "maps/" and ".bsp", base pack first,
 so the list is the board's data image and nothing else. The item box
 models (maps/b_*.bsp) are not levels. The name points into the pack's
@@ -2065,7 +2066,7 @@ int COM_ForEachMap (void (*fn) (const char *name, int len, int n, void *ctx), vo
 ============
 COM_HasFile
 
-QuakeOG: true if COM_FindFile would find path, without opening it or
+QuakeOG, true if COM_FindFile would find path, without opening it or
 printing anything (QOG_DEMOS_OPTIONAL in host_cmd.c).
 ============
 */
@@ -2100,7 +2101,7 @@ qboolean COM_HasFile (char *path)
 ============
 COM_BootMap
 
-QuakeOG (Agent AG): the level the data image starts in. tools/mkboard.py
+QuakeOG, the level the data image starts in. tools/mkboard.py
 writes its name into the pack as qogboot.txt (the episode's first level,
 or start when the image holds it), so one board app runs any episode's
 image. Without that file, or when it names a level the packs do not hold,

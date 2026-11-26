@@ -1,9 +1,9 @@
-/* QuakeOG (Agents AB and AN): the Quake apps' faster clocks (port/rp2040/clock_rp2040.c).
+/* QuakeOG, the Quake apps' faster clocks (port/rp2040/clock_rp2040.c).
  *
  * The BSP brings both chips up at 200 MHz with the flash at clk_sys / 4, and
  * the display bootloader keeps those settings. The Quake apps raise them at
  * run time, right after board_init(), through their own build options
- * (apps/quake/CMakeLists.txt):
+ * (apps/quake/CMakeLists.txt).
  *
  *   QOG_SYS_KHZ        clk_sys in kHz (300000), 0 keeps the BSP's clock
  *   QOG_SYS_MV         core voltage in mV for it (1250), set before the clock
@@ -27,13 +27,13 @@ void qog_clock_boost(void);
 /* Print the outcome over USB (also printed by qog_clock_boost, usually
    before USB is up, so the main loops print it again once, a few seconds
    after boot, with qog_clock_report_once). qog_clock_report_once runs every
-   frame: after that first report it prints the temperature line every
+   frame, after that first report it prints the temperature line every
    QOG_TEMP_S seconds, rereads one flash block, and runs the profiler's
    report when QOG_PROF is on. */
 void qog_clock_report(void);
 void qog_clock_report_once(void);
 
-/* Main chip: the SDK's flash erase and program end by running boot2 again,
+/* Main chip, the SDK's flash erase and program end by running boot2 again,
    which puts the divider back to 4. Called after the FAT volume's writes,
    it restores the divider the check accepted. Costs a register read when
    nothing changed. */

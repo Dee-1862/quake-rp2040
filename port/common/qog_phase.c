@@ -1,4 +1,4 @@
-/* QuakeOG: render phase times and work counts (see engine/qog_phase.h). */
+/* QuakeOG, render phase times and work counts (see engine/qog_phase.h). */
 #ifdef QOG_PHASE_TIME
 #include <stdio.h>
 #include <string.h>
@@ -6,12 +6,12 @@
 
 unsigned	qog_ph_time[QOG_PH_N];
 unsigned	qog_ph_count[QOG_PC_N];
-unsigned	qog_hp_time[QOG_HP_N];	/* QuakeOG (Agent V) */
+unsigned	qog_hp_time[QOG_HP_N];	/* QuakeOG */
 unsigned	qog_hp_frames;
-unsigned	qog_c1_stat[QOG_C1_N];	/* QuakeOG (Agent AM) */
+unsigned	qog_c1_stat[QOG_C1_N];	/* QuakeOG */
 #ifdef QOG_PHASE_XIP
-unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];	/* QuakeOG (Agent Z) */
-#ifdef QOG_PHASE_FPCOUNT	/* Agent AQ: only the float count build keeps these 112 bytes */
+unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];	/* QuakeOG */
+#ifdef QOG_PHASE_FPCOUNT	/* Earlier work, only the float count build keeps these 112 bytes */
 unsigned	qog_ph_fcalls[QOG_PH_N], qog_ph_dcalls[QOG_PH_N];
 #endif
 unsigned	qog_wc_count[QOG_WC_N];
@@ -55,7 +55,7 @@ float qog_phase_us (unsigned ticks)
 #endif
 
 #ifdef QOG_PHASE_XIP
-/* QuakeOG (Agent Z): phase marks with the XIP cache counters and core 0's
+/* QuakeOG, phase marks with the XIP cache counters and core 0's
    helper call counts (engine/qog_phase.h). On the board they run from RAM,
    so taking a mark adds no XIP accesses of its own. */
 #if defined(_WIN32)
@@ -151,7 +151,7 @@ void qog_phase_report (void (*print) (char *fmt, ...))
 		   qog_wc_count[QOG_WC_ROTATE] / n, qog_wc_count[QOG_WC_ROTTRIG] / n);
 	qog_phase_clear_xip ();
 #endif
-	if (qog_c1_stat[QOG_C1_SURFS])	/* QuakeOG (Agent AM), QOG_DRAW_CORE1 */
+	if (qog_c1_stat[QOG_C1_SURFS])	/* QuakeOG, QOG_DRAW_CORE1 */
 		print ("[phase] core1 pipeline per frame: surfs %u by core1 %u early %u, pixels %u early %u, core1 ms draw %.2f wait %.2f\n",
 			   qog_c1_stat[QOG_C1_SURFS] / n, qog_c1_stat[QOG_C1_C1SURFS] / n, qog_c1_stat[QOG_C1_EARLY] / n,
 			   qog_c1_stat[QOG_C1_PX] / n, qog_c1_stat[QOG_C1_EARLYPX] / n,
@@ -161,8 +161,8 @@ void qog_phase_report (void (*print) (char *fmt, ...))
 	memset (qog_ph_count, 0, sizeof qog_ph_count);
 }
 
-/* QuakeOG (Agent V): the board's report (engine/qog_phase.h). Integers only,
-   so it needs no float printf: each time is the mean per frame in ms with
+/* QuakeOG, the board's report (engine/qog_phase.h). Integers only,
+   so it needs no float printf, each time is the mean per frame in ms with
    one decimal. Sums over 2 s stay far below 2^32 us. */
 static unsigned ph_us (unsigned ticks)
 {
@@ -183,7 +183,7 @@ static int ph_put (char *out, int room, const char *name, unsigned sum, unsigned
 }
 
 #ifdef QOG_PHASE_XIP
-/* QuakeOG (Agent Z): the measurement lines, per view means over the report
+/* QuakeOG, the measurement lines, per view means over the report
    (engine/qog_phase.h, docs/changes.md). edgescan is scan less the surface
    drawing inside it, as in the time line. */
 static unsigned ph_edgescan (const unsigned *a)
@@ -235,10 +235,10 @@ static void qog_phase_board_xip (void (*print) (char *fmt, ...), const char *who
 }
 #endif
 
-/* QuakeOG (Agent AM): where the display's core 1 spends a frame. scan is
-   the LCD scanouts, jobs every job core 0 handed it (Agent V's span halves,
-   Agent Z's alias vertices, the surface pipeline), busy both less the
-   pipeline job's waiting, idle the frame less busy. Per view: pipe is the
+/* QuakeOG, where the display's core 1 spends a frame. scan is
+   the LCD scanouts, jobs every job core 0 handed it (the earlier span halves,
+   The earlier alias vertices, the surface pipeline), busy both less the
+   pipeline job's waiting, idle the frame less busy. Per view, pipe is the
    pipeline job's surface drawing and wait its waiting, c0wait core 0's
    waiting for core 1's last surface at a flush (inside edgescan), surfs the lit world
    surfaces drawn through the pipeline, c1 those core 1 drew, early those

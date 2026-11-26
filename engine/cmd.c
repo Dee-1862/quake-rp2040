@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #ifdef QOG_NET_LINK
-#include "net_link.h"	// QuakeOG: the split game (net_link.c)
+#include "net_link.h"	// QuakeOG, the split game (net_link.c)
 #endif
 
 void Cmd_ForwardToServer (void);
@@ -74,10 +75,10 @@ Cbuf_Init
 ============
 */
 #ifndef QOG_CMDBUF_SIZE
-// QuakeOG: board-only size in apps/quake/CMakeLists.txt. The measured peak
+// QuakeOG, board-only size in apps/quake/CMakeLists.txt. The measured peak
 // is 2,158 bytes (default.cfg inserted ahead of the rest of quake.rc). The
 // PC builds keep id's size for the long test scripts. Overflow is id's
-// "Cbuf_AddText: overflow" message, the text is dropped.
+// "Cbuf_AddText, overflow" message, the text is dropped.
 #define	QOG_CMDBUF_SIZE	8192
 #endif
 void Cbuf_Init (void)
@@ -98,7 +99,7 @@ void Cbuf_AddText (char *text)
 	int		l;
 
 #ifdef QOG_SPLIT_SERVER
-	// QuakeOG: the command buffer is the client's, the server's text joins it
+	// QuakeOG, the command buffer is the client's, the server's text joins it
 	Link_ServerCbuf (text, false);
 	return;
 #endif
@@ -129,11 +130,11 @@ void Cbuf_InsertText (char *text)
 	int		templen;
 
 #ifdef QOG_SPLIT_SERVER
-	Link_ServerCbuf (text, true);	// QuakeOG: as Cbuf_AddText
+	Link_ServerCbuf (text, true);	// QuakeOG, as Cbuf_AddText
 	return;
 #endif
 #ifdef QOG_CBUF_INPLACE
-	// QuakeOG: when both parts fit, move the waiting commands up in place
+	// QuakeOG, when both parts fit, move the waiting commands up in place
 	// instead of copying them through the zone (up to the whole buffer, the
 	// zone's largest use). The result is what id's copy produces. Other
 	// cases take id's path, with its overflow message or error.
@@ -173,7 +174,7 @@ void Cbuf_InsertText (char *text)
 ============
 Cbuf_QogIdle
 
-QuakeOG (Agent V): true when Cbuf_Execute would run nothing but a "wait"
+QuakeOG, true when Cbuf_Execute would run nothing but a "wait"
 (the buffer is empty or its next line is the wait command), for host.c's
 pipelined frame
 ============
@@ -538,7 +539,7 @@ Parses the given string into command line tokens.
 ============
 */
 #ifdef QOG_CMD_ARGV_ARENA
-// QuakeOG (Agent S): the tokens of one command line go one after another
+// QuakeOG, the tokens of one command line go one after another
 // into this buffer, and only those that do not fit into the zone. id put
 // every token in the zone and freed it at the next line, the churn that
 // fragments a small zone.
@@ -638,7 +639,7 @@ void	Cmd_AddCommand (char *cmd_name, xcommand_t function)
 	}
 
 #ifdef QOG_HUNK_PACKED
-	cmd = Hunk_AllocPacked (sizeof(cmd_function_t), sizeof(void *));	// QuakeOG: packed, zone.c
+	cmd = Hunk_AllocPacked (sizeof(cmd_function_t), sizeof(void *));	// QuakeOG, packed, zone.c
 #else
 	cmd = Hunk_Alloc (sizeof(cmd_function_t));
 #endif
@@ -735,7 +736,7 @@ void	Cmd_ExecuteString (char *text, cmd_source_t src)
 	if (!Cvar_Command ())
 	{
 #ifdef QOG_SPLIT_CLIENT
-		// QuakeOG: a command of the server half runs there, now
+		// QuakeOG, a command of the server half runs there, now
 		if (src == src_command)
 		{
 			Link_ForwardCommand (text);
@@ -758,7 +759,7 @@ Sends the entire command line over to the server
 void Cmd_ForwardToServer (void)
 {
 #ifdef QOG_SPLIT_SERVER
-	// QuakeOG: only reached when no server runs, when the local client
+	// QuakeOG, only reached when no server runs, when the local client
 	// would not be connected either
 	Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
 	return;

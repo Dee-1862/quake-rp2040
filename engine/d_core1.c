@@ -12,7 +12,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// d_core1.c -- QuakeOG (Agent AM): core 1's copy of the lit surface drawing
+// d_core1.c -- QuakeOG, core 1's copy of the lit surface drawing
 // for the two-core pipeline of the world's surfaces (QOG_DRAW_CORE1, see
 // d_edge.c). id's code is compiled a second time here, unchanged, with
 // core 1's own names for what it writes (d_core1.h), so both cores can
@@ -69,7 +69,7 @@ void D_QogC1Draw (surf_t *s, espan_t *spans)
 ==============
 D_QogC1Worker
 
-Core 1's job while R_ScanEdges runs (d_edge.c D_QogPipeBegin): draw each
+Core 1's job while R_ScanEdges runs (d_edge.c D_QogPipeBegin), draw each
 surface core 0 hands on or a flush shares, wait for more, return once core
 0 says the view's surfaces are done.
 ==============

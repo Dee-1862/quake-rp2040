@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QuakeOG (Agent AQ): count how the hot render code shares the XIP cache sets.
+"""QuakeOG: count how the hot render code shares the XIP cache sets.
 
 The RP2040's XIP cache has 1024 sets of two 8-byte lines, a line's set is
 bits 3 to 12 of its address. Code that runs at the same time and puts three

@@ -1,18 +1,18 @@
 /*
- * d_aspan_rp2040.S -- QuakeOG (Agent AR): id's alias span drawer
- * (D_PolysetDrawSpans8, engine/d_polyse.c, Agent AI's QOG_ALIASSPAN_FAST
+ * d_aspan_rp2040.S -- QuakeOG, id's alias span drawer
+ * (D_PolysetDrawSpans8, engine/d_polyse.c, the earlier QOG_ALIASSPAN_FAST
  * form) in hand-scheduled Thumb for the M0+, from flash.
  *
- *   void d_aspans_asm (spanpackage_t *p, aspan_asm_t *k);
+ *   void d_aspans_asm (spanpackage_t *p, aspan_asm_t *k).
  *
- * It names no globals: d_aspancount, errorterm, the steps, the skin width
+ * It names no globals, d_aspancount, errorterm, the steps, the skin width
  * and the colour map come in through k (d_polyse.c), and the count and the
  * error term are left there for the caller, as the C leaves its globals.
  *
  * GCC keeps about 14 values live through each pixel and spills them to the
  * stack. Here interpolator 1 holds the light (its FULL result is the colour
  * map row, cmap + (light & 0xFF00), and reading it steps the light), and
- * interpolator 0 the depth: in the one-byte z-buffer's two linear pieces
+ * interpolator 0 the depth, in the one-byte z-buffer's two linear pieces
  * (z below 1024, or z from 1024 on with its near steps, both ends of the span
  * in the same piece, as the C tests) its FULL result is the stored depth
  * byte, lzi >> 19 or ((lzi - 2^26) >> 23) + 128, and reading it steps lzi.
@@ -79,7 +79,7 @@
 	.equ	CTL_Z16, (1 << 18) | (1 << 15) | (15 << 10) | 16	@ lzi >> 16, signed
 	.equ	CTL_OFF, 0
 
-	/* LOAD: the span's pixel state from the package (lr), r5 = lcount:
+	/* LOAD, the span's pixel state from the package (lr), r5 = lcount.
 	   r1 = pd, r12 = its end, r2 = pz, r3 = s, r4 = t, r8 = ptex, and the
 	   light on interpolator 1 */
 	.macro	LOAD

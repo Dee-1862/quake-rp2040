@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -23,7 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "d_local.h"
-#include "r_qogalias.h"	// QuakeOG (Agent AI)
+#include "r_qogalias.h"	// QuakeOG
 
 // TODO: put in span spilling to shrink list size
 // !!! if this is changed, it must be changed in d_polysa.s too !!!
@@ -55,7 +56,7 @@ int	r_p0[6], r_p1[6], r_p2[6];
 
 byte		*d_pcolormap;
 #ifdef QOG_TRANSLATE_INLINE
-// QuakeOG (Agent S): while an entity in player colours is drawn, its skin
+// QuakeOG, while an entity in player colours is drawn, its skin
 // texels go through this 256-byte map before the colour map (r_alias.c),
 // in place of id's 16 KB translated colour map
 byte		*d_atranslate;
@@ -67,7 +68,7 @@ byte		*d_atranslate;
 int			d_aflatcolor;
 int			d_xdenom;
 
-// QuakeOG: the triangle edge table is only read, so with QOG_CONST_RTABLES
+// QuakeOG, the triangle edge table is only read, so with QOG_CONST_RTABLES
 // it stays in flash
 QOG_RTABLE_CONST edgetable	*pedgetable;
 
@@ -115,7 +116,7 @@ static adivtab_t	adivtab[32*32] = {
 };
 
 #ifdef QOG_NO_ROWTABLES
-// QuakeOG: skin rows are computed (one multiply) instead of read from the
+// QuakeOG, skin rows are computed (one multiply) instead of read from the
 // 480-entry skintable (1.9 KB of RAM). Same addresses.
 #define D_SKINROW(t)	(skinstart + (t) * skinwidth)
 #else
@@ -179,15 +180,15 @@ void D_PolysetDrawFinalVerts (finalvert_t *fv, int numverts)
 			(fv->v[1] < r_refdef.vrectbottom))
 		{
 			z = fv->v[5]>>16;
-			z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
-			zbuf = D_ZSPANTABLE(fv->v[1]) + fv->v[0];	// QuakeOG: QOG_NO_ROWTABLES
+			z = D_ZQ(z);	// QuakeOG, QOG_ZBUFFER8
+			zbuf = D_ZSPANTABLE(fv->v[1]) + fv->v[0];	// QuakeOG, QOG_NO_ROWTABLES
 			if (z >= *zbuf)
 			{
 				int		pix;
 				
 				*zbuf = z;
 				pix = D_SKINROW(fv->v[3]>>16)[fv->v[2]>>16];
-				pix = ((byte *)acolormap)[D_ATEX (pix) + (fv->v[4] & 0xFF00) ];	// QuakeOG: D_ATEX
+				pix = ((byte *)acolormap)[D_ATEX (pix) + (fv->v[4] & 0xFF00) ];	// QuakeOG, D_ATEX
 				d_viewbuffer[D_SCANTABLE(fv->v[1]) + fv->v[0]] = pix;
 			}
 		}
@@ -217,7 +218,7 @@ void D_DrawSubdiv (void)
 		index1 = pfv + ptri[i].vertindex[1];
 		index2 = pfv + ptri[i].vertindex[2];
 
-		QOG_AST(QAS_TRIS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+		QOG_AST(QAS_TRIS, 1);	// QuakeOG, QOG_ALIAS_STATS
 		if (((index0->v[1]-index1->v[1]) *
 			 (index0->v[0]-index2->v[0]) -
 			 (index0->v[0]-index1->v[0]) * 
@@ -264,13 +265,13 @@ void D_DrawSubdiv (void)
 ================
 D_QogTinyTriangle
 
-QuakeOG (Agent AR): Turbo only (r_qog_turboview). A front-facing triangle
-whose corners lie within 3 x 3 pixels (a distant model: 51 of the 85
+QuakeOG, Turbo only (r_qog_turboview). A front-facing triangle
+whose corners lie within 3 x 3 pixels (a distant model, 51 of the 85
 triangles a Turbo view of timedemo demo3 rasterises with gradients cover 4
 pixels or fewer, and 16 more cover none) is drawn without gradients, edge
 tables or span packages, which cost about 2,000 cycles a triangle on the
 board even when nothing is drawn. Each of the at most 9 pixels is tested
-against the three edges (on an edge: drawn for top and left edges), and a
+against the three edges (on an edge, drawn for top and left edges), and a
 covered pixel takes the first corner's texel, light and depth with id's
 depth test, as D_PolysetDrawFinalVerts draws a corner. Returns 0 when the
 triangle is not that small.
@@ -296,7 +297,7 @@ static QOG_TINY_NOINLINE int D_QogTinyTriangle (finalvert_t *a, finalvert_t *b, 
 		return 0;
 
 	// edges in the triangle's winding (d_xdenom < 0 makes the third corner
-	// positive for each edge): a pixel is inside when every edge function is
+	// positive for each edge), a pixel is inside when every edge function is
 	// positive, or zero on a top or left edge
 	e0x = x1 - x0; e0y = y1 - y0;
 	e1x = x2 - x1; e1y = y2 - y1;
@@ -365,7 +366,7 @@ void D_DrawNonSubdiv (void)
 				(index0->v[0]-index2->v[0]) -
 				(index0->v[0]-index1->v[0])*(index0->v[1]-index2->v[1]);
 
-		QOG_AST(QAS_TRIS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+		QOG_AST(QAS_TRIS, 1);	// QuakeOG, QOG_ALIAS_STATS
 		if (d_xdenom >= 0)
 		{
 			QOG_AST(QAS_BACK, 1);
@@ -374,7 +375,7 @@ void D_DrawNonSubdiv (void)
 #if defined(QOG_ALIAS_TURBOTINY) && defined(QOG_RTURBO)
 		if (r_qog_turboview && D_QogTinyTriangle (index0, index1, index2, ptri->facesfront))
 		{
-			QOG_AST(QAS_TINYTRI, 1);	// QuakeOG (Agent AR): Turbo, no gradients
+			QOG_AST(QAS_TINYTRI, 1);	// QuakeOG, Turbo, no gradients
 			continue;
 		}
 #endif
@@ -418,10 +419,10 @@ void D_DrawNonSubdiv (void)
 
 #ifdef QOG_SUBDIV_LEAF
 /*
-QuakeOG (Agent AQ): a call of D_PolysetRecursiveTriangle whose three edges
+QuakeOG, a call of D_PolysetRecursiveTriangle whose three edges
 are each at most one pixel long in u and in v returns at once without
 drawing (id's first six tests). In demo3 about half of the calls are such
-leaves, so the caller makes the same test inline and leaves the call out:
+leaves, so the caller makes the same test inline and leaves the call out.
 the same points are drawn in the same order. A leaf costs a few compares
 instead of a call with its frame and saved registers.
 */
@@ -442,7 +443,7 @@ void D_PolysetRecursiveTriangle (int *lp1, int *lp2, int *lp3)
 	int		z;
 	d_zval_t	*zbuf;
 
-	QOG_AST(QAS_SUBCALL, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+	QOG_AST(QAS_SUBCALL, 1);	// QuakeOG, QOG_ALIAS_STATS
 	d = lp2[0] - lp1[0];
 	if (d < -1 || d > 1)
 		goto split;
@@ -496,15 +497,15 @@ split:
 
 
 	z = new[5]>>16;
-	z = D_ZQ(z);	// QuakeOG: QOG_ZBUFFER8
-	zbuf = D_ZSPANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
+	z = D_ZQ(z);	// QuakeOG, QOG_ZBUFFER8
+	zbuf = D_ZSPANTABLE(new[1]) + new[0];	// QuakeOG, QOG_NO_ROWTABLES
 	if (z >= *zbuf)
 	{
 		int		pix;
 		
 		*zbuf = z;
-		QOG_AST(QAS_SUBPIX, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
-		pix = d_pcolormap[D_ATEX (D_SKINROW(new[3]>>16)[new[2]>>16])];	// QuakeOG: D_ATEX
+		QOG_AST(QAS_SUBPIX, 1);	// QuakeOG, QOG_ALIAS_STATS
+		pix = d_pcolormap[D_ATEX (D_SKINROW(new[3]>>16)[new[2]>>16])];	// QuakeOG, D_ATEX
 		d_viewbuffer[D_SCANTABLE(new[1]) + new[0]] = pix;
 	}
 
@@ -561,7 +562,7 @@ D_PolysetScanLeftEdge
 */
 #ifdef QOG_LEFTEDGE_LOCALS
 /*
-QuakeOG (Agent AQ): id's left edge scan with the edge's state in locals for
+QuakeOG, id's left edge scan with the edge's state in locals for
 the loop and written back at the end. The engine is built with
 -fno-strict-aliasing, so each store into a span package made GCC read and
 write every d_ global again on every row. The same statements, so the same
@@ -740,7 +741,7 @@ void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 	else
 	{
 #ifdef QOG_FLOAT_EXACT
-	// QuakeOG (Agent AA): FloorDivMod's floor quotient and remainder on the
+	// QuakeOG, FloorDivMod's floor quotient and remainder on the
 	// ints themselves, the same values without double arithmetic (tm and tn
 	// are screen distances, so id's double quotient is exact)
 		(void)dm;
@@ -774,12 +775,12 @@ void D_PolysetSetUpForLineScan(fixed8_t startvertu, fixed8_t startvertv,
 ================
 D_QogGradStep, D_QogCeilDiv, D_QogCalcGradients
 
-QuakeOG (Agent AI): the triangle gradients of Fast mode (r_fast 1,
+QuakeOG, the triangle gradients of Fast mode (r_fast 1,
 QOG_ALIAS_FAST) in integers. Each step is the quotient of id's numerator by
 the same denominator d_xdenom, with no float. The values are shifted right
 by sh before the products so that they fit 32 bits (screen coordinates are
 below 2^9, s and t below 2^25, 1/z below 2^31, light below 2^15), and
-D_QogGradStep puts the shift back exactly: n * 2^sh / d truncated, from the
+D_QogGradStep puts the shift back exactly, n * 2^sh / d truncated, from the
 quotient and the remainder of n / d. Light keeps id's ceil. Unclipped
 vertices have whole texels, so s and t lose nothing, 1/z keeps 21 bits.
 ================
@@ -854,7 +855,7 @@ void D_PolysetCalcGradients (int skinwidth)
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
 	{
-		D_QogCalcGradients (skinwidth);	// QuakeOG (Agent AI): Fast mode
+		D_QogCalcGradients (skinwidth);	// QuakeOG, Fast mode
 		return;
 	}
 #endif
@@ -863,7 +864,7 @@ void D_PolysetCalcGradients (int skinwidth)
 	p10_minus_p20 = r_p1[0] - r_p2[0];
 	p11_minus_p21 = r_p1[1] - r_p2[1];
 
-	xstepdenominv = QOG_FRECIP ((float)d_xdenom);	// QuakeOG: QOG_FLOAT_EXACT
+	xstepdenominv = QOG_FRECIP ((float)d_xdenom);	// QuakeOG, QOG_FLOAT_EXACT
 
 	ystepdenominv = -xstepdenominv;
 
@@ -873,9 +874,9 @@ void D_PolysetCalcGradients (int skinwidth)
 	t0 = r_p0[4] - r_p2[4];
 	t1 = r_p1[4] - r_p2[4];
 	r_lstepx = (int)
-			QOG_CEILF((t1 * p01_minus_p21 - t0 * p11_minus_p21) * xstepdenominv);	// QuakeOG: QOG_FLOAT_EXACT
+			QOG_CEILF((t1 * p01_minus_p21 - t0 * p11_minus_p21) * xstepdenominv);	// QuakeOG, QOG_FLOAT_EXACT
 	r_lstepy = (int)
-			QOG_CEILF((t1 * p00_minus_p20 - t0 * p10_minus_p20) * ystepdenominv);	// QuakeOG: QOG_FLOAT_EXACT
+			QOG_CEILF((t1 * p00_minus_p20 - t0 * p10_minus_p20) * ystepdenominv);	// QuakeOG, QOG_FLOAT_EXACT
 
 	t0 = r_p0[2] - r_p2[2];
 	t1 = r_p1[2] - r_p2[2];
@@ -936,16 +937,16 @@ void InitGel (byte *palette)
 ================
 D_PolysetDrawSpans8
 
-QuakeOG (Agent AI): id's alias span drawer with the same pixels
+QuakeOG, id's alias span drawer with the same pixels
 (QOG_ALIASSPAN_FAST, exact). Its steps, the colour map and the skin width
-are read once into locals: id's loop read every one of them from memory at
+are read once into locals, id's loop read every one of them from memory at
 every pixel, because a byte store may alias any global. The texel is
 skin[(T >> 16) * skinwidth + (S >> 16)] with S and T the span's 16.16
 texture position, which is id's pointer and two fraction carries added up
 (a_ststepxwhole and the fractions are r_sstepx and r_tstepx split at bit
 16), one multiply on the RP2040. With the one-byte z-buffer and its near
 steps (QOG_ZBUFFER8_NEAR) a span whose first and last depth lie in the same
-linear piece of D_ZQ takes that piece's shift for every pixel: 1/z is
+linear piece of D_ZQ takes that piece's shift for every pixel, 1/z is
 linear along the span, so every pixel between lies in the piece too.
 Player colours (QOG_TRANSLATE_INLINE) go through d_atranslate as before.
 ================
@@ -959,7 +960,7 @@ Player colours (QOG_TRANSLATE_INLINE) go through d_atranslate as before.
 
 #ifdef QOG_ASPAN_ON
 /*
-QuakeOG (Agent AR): D_PolysetDrawSpans8 in hand-written Thumb (QOG_ASPAN_ASM,
+QuakeOG, D_PolysetDrawSpans8 in hand-written Thumb (QOG_ASPAN_ASM,
 port/rp2040/d_aspan_rp2040.S), the same pixels and depths as the loop below.
 The C loop keeps about 14 values live a pixel and GCC spills them, the
 assembly holds the light and the depth on the interpolators. The board
@@ -1035,7 +1036,7 @@ static __attribute__((noinline)) void D_PolysetDrawSpans8C (spanpackage_t *pspan
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 {
 	if (d_aspan_asm_ok && !d_atranslate)
-		D_AspanRunAsm (pspanpackage);	// QuakeOG (Agent AR): the same, in Thumb
+		D_AspanRunAsm (pspanpackage);	// QuakeOG, the same, in Thumb
 	else
 		D_PolysetDrawSpans8C (pspanpackage);
 }
@@ -1089,7 +1090,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 			d_zval_t	*lpz;
 			int			ls, lt, llight, lzi;
 
-			QOG_AST(QAS_SPANS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_SPANS, 1);	// QuakeOG, QOG_ALIAS_STATS
 			QOG_AST(QAS_PIX, lcount);
 			lpdest = pspanpackage->pdest;
 			lptex = pspanpackage->ptex;
@@ -1133,8 +1134,8 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 ================
 D_QogAspanCheck
 
-QuakeOG (Agent AR): once at start-up (D_Init), the alias span assembly
-draws made-up span lists next to the C loop: spans of 0 to 40 pixels, depths
+QuakeOG, once at start-up (D_Init), the alias span assembly
+draws made-up span lists next to the C loop, spans of 0 to 40 pixels, depths
 in each of the one-byte z-buffer's pieces and across them, skin texels and
 colour map rows read from flash, a z-buffer of pseudo-random bytes.
 d_aspan_asm_ok only when every pixel, depth, span count and error term is
@@ -1257,7 +1258,7 @@ D_PolysetDrawSpans8
 ================
 D_PolysetDrawSpans8Translated
 
-QuakeOG (Agent S): D_PolysetDrawSpans8 with each texel through
+QuakeOG, D_PolysetDrawSpans8 with each texel through
 d_atranslate, a copy so id's loop stays as it is
 ================
 */
@@ -1289,7 +1290,7 @@ static void D_PolysetDrawSpans8Translated (spanpackage_t *pspanpackage)
 
 		if (lcount)
 		{
-			QOG_AST(QAS_SPANS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_SPANS, 1);	// QuakeOG, QOG_ALIAS_STATS
 			QOG_AST(QAS_PIX, lcount);
 			lpdest = pspanpackage->pdest;
 			lptex = pspanpackage->ptex;
@@ -1375,7 +1376,7 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 
 		if (lcount)
 		{
-			QOG_AST(QAS_SPANS, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_SPANS, 1);	// QuakeOG, QOG_ALIAS_STATS
 			QOG_AST(QAS_PIX, lcount);
 			lpdest = pspanpackage->pdest;
 			lptex = pspanpackage->ptex;
@@ -1469,25 +1470,25 @@ void D_PolysetFillSpans8 (spanpackage_t *pspanpackage)
 
 #ifdef QOG_ALIAS_SMALLTRI
 /*
-QuakeOG (Agent AQ): triangles of at most two scan lines that cover no
+QuakeOG, triangles of at most two scan lines that cover no
 pixel, or only the first pixel of their first line, without gradients.
 
 Which pixels id's rasterizer covers depends only on the integer screen
-corners: the left edge's span counts (D_PolysetScanLeftEdge) and the right
+corners, the left edge's span counts (D_PolysetScanLeftEdge) and the right
 edge's (D_PolysetDrawSpans8) step with D_PolysetSetUpForLineScan's integer
 quotients, and a line has aspancount - count pixels. D_QogSmallTri runs
 those integer steps alone. With no pixel, id's code only sets globals the
 next triangle sets again, so nothing is drawn. With one pixel at the start
 of the first line, that pixel takes the top left corner's own s, t, light
 and 1/z (the steps are added only after it), so its texel, colour and depth
-need no gradient: the texel is the skin at the corner's whole s and t, the
+need no gradient, the texel is the skin at the corner's whole s and t, the
 depth D_ZQ (zi >> 16) (D_PolysetDrawSpans8's linear pieces give the same
 for one pixel), the colour the colour map row of the corner's light.
 Anything else, or a shape id's loops do not expect (a height below 1),
 takes id's path. Returns 1 when the triangle is done.
 */
 #ifdef QOG_ALIAS_SMALLTRI_CHECK
-// PC check build: what D_QogSmallTri would do, compared after id's path drew
+// PC check build, what D_QogSmallTri would do, compared after id's path drew
 static struct
 {
 	int			on, px, wrote;
@@ -1638,7 +1639,7 @@ void D_RasterizeAliasPolySmooth (void)
 	int				*plefttop, *prighttop, *pleftbottom, *prightbottom;
 	int				working_lstepx, originalcount;
 #ifdef QOG_ALIAS_STATS
-	unsigned		pix0 = qog_astats[qog_astat_vm][QAS_PIX];	// QuakeOG (Agent AI)
+	unsigned		pix0 = qog_astats[qog_astat_vm][QAS_PIX];	// QuakeOG
 
 	QOG_AST(QAS_SMOOTH, 1);
 #endif
@@ -1899,7 +1900,7 @@ void D_RasterizeAliasPolySmooth (void)
 		D_PolysetDrawSpans8 (pstart);
 	}
 #ifdef QOG_ALIAS_STATS
-	pix0 = qog_astats[qog_astat_vm][QAS_PIX] - pix0;	// QuakeOG (Agent AI)
+	pix0 = qog_astats[qog_astat_vm][QAS_PIX] - pix0;	// QuakeOG
 	QOG_AST(QAS_ZERO, pix0 == 0);
 	QOG_AST(QAS_TINY, pix0 >= 1 && pix0 <= 4);
 #endif
@@ -2015,7 +2016,7 @@ split:
 	new[4] = (lp1[4] + lp2[4]) >> 1;
 
 // draw the point
-	ofs = D_SCANTABLE(new[1]) + new[0];	// QuakeOG: QOG_NO_ROWTABLES
+	ofs = D_SCANTABLE(new[1]) + new[0];	// QuakeOG, QOG_NO_ROWTABLES
 	if (new[5] > d_pzbuffer[ofs])
 	{
 		int		pix;

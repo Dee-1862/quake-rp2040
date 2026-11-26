@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -122,7 +123,7 @@ typedef enum {key_game, key_console, key_message, key_menu} keydest_t;
 extern keydest_t	key_dest;
 extern char *keybindings[256];
 #ifdef QOG_STATIC_TRIM
-extern	byte	key_repeats[256];	// QuakeOG: see keys.c
+extern	byte	key_repeats[256];	// QuakeOG, see keys.c
 #else
 extern	int		key_repeats[256];
 #endif

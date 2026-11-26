@@ -1,4 +1,4 @@
-/* QuakeOG: the split game's PC client half (pc/CMakeLists.txt, quakeog_cl).
+/* QuakeOG, the split game's PC client half (pc/CMakeLists.txt, quakeog_cl).
  * qog_manifest and qog_tour read the server's state directly, which the
  * client half does not have, so they are single-process tools only. */
 void qog_manifest_register(void) {}
@@ -10,7 +10,7 @@ void qog_fly_register(void) {}
 void qog_fly_frame(void) {}
 void qog_fly_pc_main(quakeparms_t *parms) { (void)parms; }
 /* the demo playback host and its console commands (port/pc/demo_pc.c) are
-   single-process test tools as well (merge of Agent O with Agent R) */
+   single-process test tools as well (merge of earlier work with earlier work) */
 void qog_demo_register(void) {}
 void qog_demo_frame_pc(void) {}
 void qog_demo_pc_main(quakeparms_t *parms) { (void)parms; }

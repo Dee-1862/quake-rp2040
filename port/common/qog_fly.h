@@ -1,21 +1,21 @@
 /* Renderer-only fly-through of a map (shared by the PC build and the board).
  *
- * No server, no client, no QuakeC and no sound: the world model is loaded
+ * No server, no client, no QuakeC and no sound, the world model is loaded
  * with id's Mod_ForName (so a baked map is read in place from the image),
  * every light style is 'm', and a camera moves along a closed spline
  * through spots taken from the map's entity lump (info_player_start, then
  * items, weapons and monsters, spots whose eye is in solid skipped, as
  * port/pc/tour_pc.c does). Each frame is drawn by id's R_RenderView.
  *
- * Standalone use (the board app apps/qogfly and the PC's -qogfly):
+ * Standalone use (the board app apps/qogfly and the PC's -qogfly).
  *
- *   qog_fly_init_host (&parms);     memory, packs, palette, video, R_Init
- *   qog_fly_load ("e1m1");          world model, R_NewMap, light styles, path
+ *   qog_fly_init_host (&parms). memory, packs, palette, video, R_Init
+ *   qog_fly_load ("e1m1"). World model, R_NewMap, light styles, path
  *   for (;;) {
- *       qog_fly_camera (t, feet, angles);
- *       qog_fly_render (feet, angles, t);
- *       qog_fly_overlay (...);      text in the status bar rows
- *       VID_Update (NULL);
+ *       qog_fly_camera (t, feet, angles).
+ *       qog_fly_render (feet, angles, t).
+ *       qog_fly_overlay (...). Text in the status bar rows
+ *       VID_Update (NULL).
  *   }
  *
  * Inside the full PC game (port/pc/fly_pc.c) only qog_fly_use_world,
@@ -29,14 +29,14 @@
 #define QOG_FLY_MAX_POINTS	128
 #define QOG_FLY_EYE			22		/* player view height (view_ofs, cl.viewheight) */
 
-/* Renderer-only engine start: what Host_Init does for the renderer and no
+/* Renderer-only engine start, what Host_Init does for the renderer and no
    more. Never returns on failure (Sys_Error). */
 void qog_fly_init_host (quakeparms_t *parms);
 
-/* Standalone: load maps/<name>.bsp as cl.worldmodel and get it ready to draw. */
+/* Standalone, load maps/<name>.bsp as cl.worldmodel and get it ready to draw. */
 void qog_fly_load (const char *name);
 
-/* Use cl.worldmodel as it is (already loaded by the game or qog_fly_load):
+/* Use cl.worldmodel as it is (already loaded by the game or qog_fly_load).
    light styles to 'm', path from its entity lump. Returns the point count. */
 int qog_fly_use_world (void);
 
@@ -47,21 +47,21 @@ void qog_fly_setup_view (void);
 /* Every light style 'm' (normal light). */
 void qog_fly_lightstyles_normal (void);
 
-/* Path: number of points, the feet origin of point i, the time the camera
+/* Path, number of points, the feet origin of point i, the time the camera
    passes point i, the whole loop's length in seconds. */
 int qog_fly_numpoints (void);
 void qog_fly_point (int i, vec3_t feet);
 float qog_fly_point_time (int i);
 float qog_fly_loop_time (void);
 
-/* Camera at time t (seconds, wraps around the loop): feet origin, view
+/* Camera at time t (seconds, wraps around the loop), feet origin, view
    angles, and the index of the point it last passed. */
 int qog_fly_camera (double t, vec3_t feet, vec3_t angles);
 
 /* View angles at point i (the spline's direction there). */
 void qog_fly_point_angles (int i, vec3_t angles);
 
-/* Draw the world: the eye is feet + 22 + 1/32 on each axis, exactly as
+/* Draw the world, the eye is feet + 22 + 1/32 on each axis, exactly as
    V_CalcRefdef places a standing, still player. cl.time = time. */
 void qog_fly_render (const vec3_t feet, const vec3_t angles, double time);
 

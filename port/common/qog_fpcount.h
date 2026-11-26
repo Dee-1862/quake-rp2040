@@ -1,4 +1,4 @@
-/* QuakeOG (Agent Z): float and double helper call counts, measurement
+/* QuakeOG, float and double helper call counts, measurement
  * builds of the board client only (QOG_PHASE_FPCOUNT, apps/quake option
  * QOG_BOARD_FPCOUNT).
  *

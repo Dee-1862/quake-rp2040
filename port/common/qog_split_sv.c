@@ -13,7 +13,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-/* QuakeOG: what the split game's server half (QOG_SPLIT_SERVER) keeps of the
+/* QuakeOG, what the split game's server half (QOG_SPLIT_SERVER) keeps of the
  * client side of id's engine.
  *
  *  - The console is the client's. Con_Printf here prints to the port's log
@@ -21,7 +21,7 @@ See the GNU General Public License for more details.
  *    id's single-process game would have printed it.
  *  - V_CalcRoll is view.c's, used by SV_ClientThink, with the two client
  *    cvars it reads (set on the client, copied here like every cvar).
- *  - The server builds no renderer: the stubs below stand for calls the
+ *  - The server builds no renderer, the stubs below stand for calls the
  *    shared code (model.c, zone.c) makes into it, which never happen on a
  *    server or do nothing there.
  */
@@ -56,7 +56,7 @@ void Con_DPrintf (char *fmt, ...)
 	va_start (argptr, fmt);
 	vsnprintf (msg, sizeof(msg), fmt, argptr);
 	va_end (argptr);
-	Sys_Printf ("%s", msg);		// not through Con_Printf: one 4 KB buffer on the stack, not two
+	Sys_Printf ("%s", msg);		// not through Con_Printf, one 4 KB buffer on the stack, not two
 	Link_ServerPrint (msg, false);
 }
 
@@ -104,7 +104,7 @@ void Sys_QogRegister (void)
 	Cvar_RegisterVariable (&cl_name);
 	qog_mem_register ();
 #ifdef QOG_SPLIT_TOUR
-	{	// QuakeOG (Agent S): the PC level tour runs on the server half (port/pc/tour_pc.c)
+	{	// QuakeOG, the PC level tour runs on the server half (port/pc/tour_pc.c)
 		extern void qog_tour_register (void);
 		qog_tour_register ();
 	}

@@ -38,13 +38,13 @@ address in the full pak the bake reads and in the board's pak with stubs,
 and the image goes right after the smaller pak. The full pak is kept as
 <out>/src.pak, which qog_bake check needs (-bakesrc <out>/src.pak).
 
---main (Agent T) also writes the main chip's server data image for the
+--main also writes the main chip's server data image for the
 split game from the same pak, in the same run, so the two copies cannot
 drift. The main chip's region (platform/qog_flashmap.h) is 0x10200000 to
 0x107FFFFF, between its app and its FAT volume:
 
     offset 0          the server's pak: progs.dat, every sound of the
-                      display's pak for the mixer on main (Agent W, left out
+                      display's pak for the mixer on main (left out
                       with --main-no-sounds), then every map, alias model and
                       sprite of the display's pak as a stub (132 bytes for a
                       map, 16 for a model, engine/model.h)
@@ -59,14 +59,14 @@ display's full pak for the address -bakebase gives, then writes
 with -basedir <out>_main -flashbase 0x10200000), <out>_main.bin and
 <out>_main.uf2, a UF2 of that region only.
 
---display-no-sounds (Agent Y) leaves every sound out of the display's image:
+--display-no-sounds leaves every sound out of the display's image:
 the split game's client never opens one, the mixer on main plays them from
 main's image, which keeps them all. --display-no-progs leaves progs.dat out
 the same way (QuakeC runs on main). Both need --stub-maps. The files left
 out go after every kept file and before the maps in the pak the bake reads,
 so the kept files have the same address in it and in the display's pak.
 
---boot-map NAME (Agent AG) names the level the board starts in: mkboard
+--boot-map NAME names the level the board starts in: mkboard
 writes it as qogboot.txt into the display's pak and main's (the board
 client runs qog_boot, the server half goes there when a level exit names
 a level the image does not hold, engine/host_cmd.c). The default is start
@@ -94,14 +94,14 @@ QOGB_ENTRY = "<40s6I"     # name, model, size, fileaddr, filelen, filehash (+ pa
 QOGB_STUB_IDENT = 0x53474F51   # "QOGS", engine/model.h qogbake_stub_t
 BSPVERSION = 29
 LUMP_PLANES = 1
-# the main chip's server data region, platform/qog_flashmap.h (Agent T),
-# read from the header by mkdata (Agent AC)
+# the main chip's server data region, platform/qog_flashmap.h,
+# read from the header by mkdata
 MAIN_DATA_ADDR = mkdata.XIP_BASE + mkdata.MAIN_DATA_OFFSET   # QOG_MAIN_DATA_OFFSET
 MAIN_DATA_MAX = mkdata.MAIN_DATA_MAX                          # up to QOG_MAIN_FAT_OFFSET
-# what the server opens besides its models: QuakeC, and gfx/pop.lmp, by
+# what the server opens besides its models, QuakeC, and gfx/pop.lmp, by
 # which COM_CheckRegistered sets the "registered" cvar that QuakeC reads
 SERVER_FILES = ["progs.dat", "gfx/pop.lmp"]
-# the level the data image starts in (Agent AG, engine/common.c COM_BootMap)
+# the level the data image starts in (engine/common.c COM_BootMap)
 BOOT_FILE = "qogboot.txt"
 QOGB_SERVER_LAYOUT = 0x53525652                  # engine/model.h
 
@@ -190,7 +190,7 @@ def pak_entries(pak):
 
 def stub_pak(pak, drop=()):
     """The board's pak: every map replaced by its stub, the files in drop
-    left out (Agent Y). Checks that no other file moves, so the image's
+    left out. Checks that no other file moves, so the image's
     pointers into the pak stay right."""
     ents = [e for e in pak_entries(pak) if e[0] not in drop]
     new = mkpak.build_pak([(n, make_stub(d) if mkpak.is_map(n) else d) for n, _, d in ents])
@@ -201,7 +201,7 @@ def stub_pak(pak, drop=()):
 
 
 def display_drop(names, sounds, progs):
-    """The files the display's image leaves out (Agent Y): the sounds, which
+    """The files the display's image leaves out: the sounds, which
     the mixer on main plays, and progs.dat, which QuakeC on main runs."""
     return {n for n in names if (sounds and is_sound(n)) or (progs and n == "progs.dat")}
 
@@ -233,8 +233,8 @@ def bake_header(img):
 
 def run_bake(exe, basedir, base, timeout, stubs=False, extra="", flashbase=DATA_ADDR):
     """qog_bake on the PC: hidden, silent, through tools/pctest.ps1. The PC
-    maps the packs at flashbase, the region's address on the board (Agent
-    AC: given every time, so a PC build with another default still bakes
+    maps the packs at flashbase, the region's address on the board earlier work
+    : given every time, so a PC build with another default still bakes
     for the board's flash map)."""
     args = "-nosound -nobake -flashbase 0x%08X -basedir %s" % (flashbase, basedir.replace("\\", "/"))
     if stubs:
@@ -259,7 +259,7 @@ def is_sound(name):
 def build_main(full, out, exe, timeout, no_bake, layout, sounds=True):
     """The main chip's server data image (--main) from the display's full
     pak (every file before stubs): returns 0 when it fits, 2 when not.
-    With sounds (Agent W), every sound of the display's pak too, for the
+    With sounds, every sound of the display's pak too, for the
     mixer that runs on main (QOG_SND_HOST): the same files, already in the
     11025 Hz 8-bit mono form mkpak converts to, so they play in place."""
     mout = out + "_main"
@@ -272,7 +272,7 @@ def build_main(full, out, exe, timeout, no_bake, layout, sounds=True):
     missing = [n for n in SERVER_FILES[:1] if n not in names]   # pop.lmp: registered data only
     if missing:
         sys.exit("mkboard: the pak has no %s for the server" % " ".join(missing))
-    # the server's files, the sounds (Agent W), then a stub for each model
+    # the server's files, the sounds, then a stub for each model
     keep = [(n, d) for n, _, d in ents if n in SERVER_FILES or n == BOOT_FILE]
     snd = [(n, d) for n, _, d in ents if sounds and is_sound(n)]
     for n, d in snd:
@@ -388,14 +388,14 @@ def main(argv=None):
     mkpak.main(mk)
     pak = open(pakpath + ".pak", "rb").read()
     boot = boot_map_name(a.maps, a.boot_map)
-    pak = with_boot_file(pak, boot)    # Agent AG: the level the board starts in
+    pak = with_boot_file(pak, boot)    # earlier work: the level the board starts in
     with open(pakpath + ".pak", "wb") as f:
         f.write(pak)
     if pc_layout(pak) != len(pak):
         sys.exit("mkboard: the pak is not laid out the way the PC maps it")
     drop = display_drop([n for n, _, _ in pak_entries(pak)], a.display_no_sounds, a.display_no_progs)
     if drop:
-        # Agent Y: the files the display leaves out go before the maps
+        # Earlier work, the files the display leaves out go before the maps
         pak = drop_last(pak, drop)
         with open(pakpath + ".pak", "wb") as f:
             f.write(pak)
@@ -472,7 +472,7 @@ def main(argv=None):
     else:
         print("wrote %s.bin and %s.uf2 (run on the PC with -basedir %s)" % (out, out, out))
 
-    # 4. the main chip's server image from the same files (Agent T)
+    # 4. the main chip's server image from the same files
     if a.main:
         if not a.exe and not a.no_bake:
             sys.exit("mkboard: --exe is needed to bake (or --no-bake)")

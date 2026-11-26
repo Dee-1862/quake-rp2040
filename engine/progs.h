@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -33,8 +34,8 @@ typedef union eval_s
 
 #ifdef QOG_EDICT_SPARSE
 /*
-QuakeOG: sparse edict fields. Each edict keeps only the "core" fields below
-in place: the ones the engine's physics, world links and entity messages
+QuakeOG, sparse edict fields. Each edict keeps only the "core" fields below
+in place, the ones the engine's physics, world links and entity messages
 touch for every kind of entity. Every other QuakeC field lives in a small
 per-edict list of (field number, value) pairs in a shared arena, and a field
 that was never written reads as zero, exactly as with id's zeroed array.
@@ -75,8 +76,8 @@ typedef struct edict_s
 	link_t		area;				// linked to a division node or leaf
 	
 #ifdef QOG_BASELINE_POOL
-	short		num_leafs;			// QuakeOG: was int, at most MAX_ENT_LEAFS
-	unsigned short	baseidx;		// QuakeOG: entry in sv.baselines, 0 is the empty baseline
+	short		num_leafs;			// QuakeOG, was int, at most MAX_ENT_LEAFS
+	unsigned short	baseidx;		// QuakeOG, entry in sv.baselines, 0 is the empty baseline
 #else
 	int			num_leafs;
 #endif
@@ -88,9 +89,9 @@ typedef struct edict_s
 
 	float		freetime;			// sv.time when the object was freed
 #ifdef QOG_EDICT_SPARSE
-	unsigned short	coldofs;		// QuakeOG: word offset of the field list in ed_cold, 0 for none
-	unsigned char	coldn, coldcap;	// QuakeOG: pairs used and room in the list
-	entcore_t	v;					// QuakeOG: core fields only, the rest are in the list
+	unsigned short	coldofs;		// QuakeOG, word offset of the field list in ed_cold, 0 for none
+	unsigned char	coldn, coldcap;	// QuakeOG, pairs used and room in the list
+	entcore_t	v;					// QuakeOG, core fields only, the rest are in the list
 #else
 	entvars_t	v;					// C exported fields from progs
 // other fields from progs come immediately after
@@ -98,9 +99,9 @@ typedef struct edict_s
 } edict_t;
 #define	EDICT_FROM_AREA(l) STRUCT_FROM_LINK(l,edict_t,area)
 
-// QuakeOG: the QuakeC field number of an entvars_t field (id's layout)
+// QuakeOG, the QuakeC field number of an entvars_t field (id's layout)
 #define	EV_OFS(f)	((int)((size_t)&((entvars_t *)0)->f / 4))
-// QuakeOG: bytes before the fields in id's edict_t, whatever the layout here
+// QuakeOG, bytes before the fields in id's edict_t, whatever the layout here
 #define	ED_ID_HEADERSIZE	((int)(sizeof(qboolean) + sizeof(link_t) + sizeof(int) \
 	+ MAX_ENT_LEAFS * sizeof(short) + sizeof(entity_state_t) + sizeof(float)))
 
@@ -153,16 +154,16 @@ void PR_Init (void);
 
 void PR_ExecuteProgram (func_t fnum);
 
-// QuakeOG: QuakeC compiled ahead of time by tools/qc2c.py from the player's
+// QuakeOG, QuakeC compiled ahead of time by tools/qc2c.py from the player's
 // own progs.dat (a generated file, never committed). Used only when its
-// fingerprint matches the loaded progs; otherwise the interpreter runs.
+// fingerprint matches the loaded progs. Otherwise the interpreter runs.
 extern void (*const pr_aot_functions[]) (void);
 extern const int		pr_aot_numfunctions;
 extern const int		pr_aot_numstatements;
 extern const unsigned	pr_aot_fingerprint;
-extern const int		pr_aot_numfields;	// QuakeOG: QOG_EDICT_SPARSE layout the code assumes
+extern const int		pr_aot_numfields;	// QuakeOG, QOG_EDICT_SPARSE layout the code assumes
 extern const signed char	pr_aot_coremap[];
-extern const int		pr_aot_numram;		// QuakeOG: QOG_AOT_GLOBALS, globals the code keeps in RAM
+extern const int		pr_aot_numram;		// QuakeOG, QOG_AOT_GLOBALS, globals the code keeps in RAM
 extern const short		pr_aot_globalmap[];	// each global's word in pr_globals, -1 if it stays in progs.dat
 extern const short		pr_aot_parmstart[];	// each function's first local in pr_globals
 extern qboolean			pr_aot_globals;		// pr_globals holds only those words
@@ -175,7 +176,7 @@ int *PR_GlobalPtr (int ofs);				// a global by its number in progs.dat, wherever
 extern qboolean			pr_aot_active;
 void PR_AOT_Call (func_t fnum);
 void PR_AOT_Check (void);
-void PR_SizeLocalStack (void);	// QuakeOG: pr_exec.c
+void PR_SizeLocalStack (void);	// QuakeOG, pr_exec.c
 qboolean PR_AOT_Matches (dprograms_t *p);
 extern qboolean			pr_inflash;	// progs.dat used in place from flash
 void PR_LoadProgs (void);
@@ -218,7 +219,7 @@ int NUM_FOR_EDICT(edict_t *e);
 #define	G_STRING(o) (pr_strings + *(string_t *)&pr_globals[o])
 #define	G_FUNCTION(o) (*(func_t *)&pr_globals[o])
 
-#ifdef QOG_EDICT_SPARSE	// QuakeOG: read only, by QuakeC field number
+#ifdef QOG_EDICT_SPARSE	// QuakeOG, read only, by QuakeC field number
 #define	E_INT(e,o) ED_FieldGet (e, o)
 #define	E_STRING(e,o) (pr_strings + ED_FieldGet (e, o))
 #else

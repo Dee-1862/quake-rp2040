@@ -1,18 +1,18 @@
 /*
- * d_litq_rp2040.S -- QuakeOG (Agent AR): one lit span of the Fast and Turbo
+ * d_litq_rp2040.S -- QuakeOG, one lit span of the Fast and Turbo
  * drawer, litq_span_c of engine/d_lit_q.h in hand-scheduled Thumb for the
  * M0+, in RAM (.time_critical) so the XIP cache's misses on texels and
  * colour map rows never refetch it.
  *
- *   void litq_span_asm (litq_span_t *c);
+ *   void litq_span_asm (litq_span_t *c).
  *
- * Per sub-span (Agent AH's): the length from how fast 1/z changes, the end
+ * Per sub-span, the length from how fast 1/z changes, the end
  * point by one divide on the SIO divider (whose 8 cycles the shifts of Ns
  * and Nt fill), the steps by a shift or two signed divides. Then the runs
  * in two passes. Pass 1 blends the light at each run's ends with every
  * coordinate shifted by the mip level (so one blend serves every level)
  * and writes each run's light start and step. Pass 2 sets interpolator 1
- * from them and draws the run: interpolator 0 gives the texel addresses
+ * from them and draws the run, interpolator 0 gives the texel addresses
  * and carries S and T from run to run, interpolator 1 the colour map
  * rows. A pixel is two single-cycle SIO reads, two byte loads and a store
  * (8 cycles), and its z a shift, a store and an add (4 more). A run's
@@ -87,7 +87,7 @@
 	.equ	I1_FULL, 0x5C
 
 	/*
-	 * BLEND: id's four-sample light at X (r0), Y (r3), both shifted by the
+	 * BLEND, id's four-sample light at X (r0), Y (r3), both shifted by the
 	 * mip level, into r0. r12 = the grid's row bytes, lr = its base.
 	 * Uses r3 to r6, keeps r1, r2, r7 to r11.
 	 */
@@ -154,7 +154,7 @@
 	.align	2
 
 /*
- * endpt: the divisor's shift kept from the last point (r7 = the span), the
+ * endpt, the divisor's shift kept from the last point (r7 = the span), the
  * reciprocal of D's top 17 bits, then s and t into r0 and r1, clamped to
  * [lo (r6), the extent] as id clamps them (LITQ_NORM, LITQ_COORD).
  * Uses r2 to r5.
@@ -596,7 +596,7 @@ litq_zruns_done:
 	.size	litq_span_asm, . - litq_span_asm
 
 /*
- * litq_zruns: pass 2 for spans whose z the pixel loop writes, the hottest
+ * litq_zruns, pass 2 for spans whose z the pixel loop writes, the hottest
  * loop, in RAM (.time_critical), so the XIP cache's texel and colour map
  * misses never refetch it. Entered from litq_span_asm with r0 =
  * SIO_INTERP, r1 = pd, r2 = pz, r3 = izi, r12 = izistep, r6 = the runs'
@@ -643,10 +643,10 @@ litq_zruns:
 	.size	litq_zruns, . - litq_zruns
 
 /*
- * litq_wrap_asm: litq_wrap_c of engine/d_lit_q.h, the loop over a
- * surface's spans: each one's 32-bit start, its z, then the span.
+ * litq_wrap_asm, litq_wrap_c of engine/d_lit_q.h, the loop over a
+ * surface's spans, each one's 32-bit start, its z, then the span.
  *
- *   void litq_wrap_asm (const litq_wrap_t *w, litq_span_t *c, espan_t *pspan);
+ *   void litq_wrap_asm (const litq_wrap_t *w, litq_span_t *c, espan_t *pspan).
  *
  * It names no globals (both cores run it), everything comes in through w,
  * and it is in flash. D_QogLitWrapCheck checks it at start-up.

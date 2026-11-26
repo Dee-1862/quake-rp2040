@@ -6,7 +6,7 @@ modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2
 of the License, or (at your option) any later version.
 */
-// net_link.h -- QuakeOG: the split game's net driver (QOG_NET_LINK), see net_link.c
+// net_link.h -- QuakeOG, the split game's net driver (QOG_NET_LINK), see net_link.c
 
 int			Link_Init (void);
 void		Link_Listen (qboolean state);
@@ -22,11 +22,11 @@ void		Link_Close (qsocket_t *sock);
 void		Link_Shutdown (void);
 
 // both halves
-void		Link_CvarChanged (cvar_t *var);	// a cvar was set here: the other half sets it too
+void		Link_CvarChanged (cvar_t *var);	// a cvar was set here, the other half sets it too
 extern qboolean	link_applying;				// true while a cvar from the other half is set
 
 #ifdef QOG_SPLIT_CLIENT
-void		Link_ClientFrame (void);		// where the server frame ran: hand the frame to the server and wait
+void		Link_ClientFrame (void);		// where the server frame ran, hand the frame to the server and wait
 void		Link_ForwardCommand (char *text);	// run a console line on the server, now
 void		Link_SaveInfo (qboolean intermission, char *comment);	// what save needs from the client
 void		Link_Quit (void);
@@ -35,7 +35,7 @@ void		Link_Quit (void);
 #ifdef QOG_SPLIT_SERVER
 void		Link_ServerWaitTick (void);		// the client's part of the frame, its console lines run here
 void		Link_ServerFrameDone (void);
-void		Link_ServerAbort (void);		// after host_abortserver: finish the exchange
+void		Link_ServerAbort (void);		// after host_abortserver, finish the exchange
 void		Link_ServerPrint (char *text, qboolean safe);
 void		Link_ServerCbuf (char *text, qboolean insert);
 void		Link_ServerClientExec (char *text);	// a console line the client runs now
@@ -50,14 +50,14 @@ extern char		link_save_comment[];		// Host_SavegameComment, sent with save
 void		Sys_QogRegister (void);		// the port's console commands (port)
 #endif
 
-// QuakeOG (Agent W): the split game's sound. The client half's S_ calls
+// QuakeOG, the split game's sound. The client half's S_ calls
 // (snd_link.c, QOG_SND_REMOTE) run as these operations on the server half,
 // which mixes with id's code (QOG_SND_HOST) and sends the 8-bit samples back.
 enum {
-	LKS_PRECACHE = 1,	// name: S_PrecacheSound, answers the sound's number or -1
-	LKS_TOUCH,			// name: S_TouchSound
+	LKS_PRECACHE = 1,	// name, S_PrecacheSound, answers the sound's number or -1
+	LKS_TOUCH,			// name, S_TouchSound
 	LKS_START,			// S_StartSound (its random number is drawn on the server half)
-	LKS_LOCAL,			// name: S_LocalSound
+	LKS_LOCAL,			// name, S_LocalSound
 	LKS_STOP,			// S_StopSound
 	LKS_STOPALL,		// S_StopAllSounds
 	LKS_CLEAR,			// S_ClearBuffer
@@ -67,7 +67,7 @@ enum {
 	LKS_AMBOFF,			// S_AmbientOff
 	LKS_AMBON			// S_AmbientOn
 };
-#define LKS_REPLY	0x80	// with the operation: the client waits for the answer
+#define LKS_REPLY	0x80	// with the operation, the client waits for the answer
 
 #ifdef QOG_SND_REMOTE
 int			Link_Sound (const byte *op, int len);	// returns the answer, -1 when none came

@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AI): id's 162 vertex normals (anorms.h) in 2.14 fixed
+/* QuakeOG, id's 162 vertex normals (anorms.h) in 2.14 fixed
  * point, rounded, for the Fast mode alias lighting (r_alias.c,
  * QOG_ALIAS_FAST). Generated from anorms.h. */
 {-8614, 0, 13937},

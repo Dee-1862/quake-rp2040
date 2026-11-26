@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -76,7 +77,7 @@ extern	PROC glVertexPointerEXT;
 
 // r_local.h -- private refresh defs
 
-#define MAXALIASVERTS		2000	// TODO: tune this
+#define MAXALIASVERTS		2000	// TODO, tune this
 
 #define ALIAS_BASE_SIZE_RATIO		(1.0 / 11.0)
 					// normalizing factor so player model works out to about

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -26,7 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 void (*vid_menudrawfn)(void);
 void (*vid_menukeyfn)(int key);
 
-// QuakeOG: QOG_BOARD_MENU is the menus of a board with five buttons and no
+// QuakeOG, QOG_BOARD_MENU is the menus of a board with five buttons and no
 // keyboard or network (the FREE-WILi OG display). No Multiplayer and no
 // console entry, a Controls page that shows the buttons in place of key
 // binding, a Levels page that lists the maps the packs hold, a Benchmark
@@ -99,7 +100,7 @@ qboolean	m_entersound;		// play after drawing a frame, so caching
 								// won't disrupt the sound
 qboolean	m_recursiveDraw;
 
-#ifndef QOG_BOARD_MENU	// QuakeOG: the board has no network menus
+#ifndef QOG_BOARD_MENU	// QuakeOG, the board has no network menus
 int			m_return_state;
 qboolean	m_return_onerror;
 char		m_return_reason [32];
@@ -161,7 +162,7 @@ void M_DrawPic (int x, int y, qpic_t *pic)
 ================
 M_DrawTransPicRows
 
-QuakeOG: rows row to row+rows-1 of a menu picture, so the board's main menu
+QuakeOG, rows row to row+rows-1 of a menu picture, so the board's main menu
 can leave out the Multiplayer line of gfx/mainmenu.lmp
 ================
 */
@@ -170,7 +171,7 @@ static void M_DrawTransPicRows (int x, int y, qpic_t *pic, int row, int rows)
 	byte	*source, *dest, tbyte;
 	int		u, v;
 
-	QOG_TURBO_2D (y);	// QuakeOG (Agent AO): a Turbo view is spread to full width first
+	QOG_TURBO_2D (y);	// QuakeOG, a Turbo view is spread to full width first
 	source = pic->data + row * pic->width;
 	dest = vid.buffer + y * vid.rowbytes + x + ((vid.width - 320)>>1);
 	for (v=0 ; v<rows ; v++)
@@ -187,7 +188,7 @@ static void M_DrawTransPicRows (int x, int y, qpic_t *pic, int row, int rows)
 ================
 M_PrintBig
 
-QuakeOG: M_Print's font at twice its size, for the board's Levels line of
+QuakeOG, M_Print's font at twice its size, for the board's Levels line of
 the Single Player menu, which has no picture of its own
 ================
 */
@@ -197,7 +198,7 @@ static void M_PrintBig (int cx, int cy, char *str)
 	byte	*source, *dest, tbyte;
 	int		num, u, v;
 
-	QOG_TURBO_2D (cy);	// QuakeOG (Agent AO): a Turbo view is spread to full width first
+	QOG_TURBO_2D (cy);	// QuakeOG, a Turbo view is spread to full width first
 	for ( ; *str ; str++, cx += 16)
 	{
 		num = (*str + 128) & 255;
@@ -209,7 +210,7 @@ static void M_PrintBig (int cx, int cy, char *str)
 					dest[u] = tbyte;
 	}
 }
-#else	// QuakeOG: the player colour preview is in the network setup menu only
+#else	// QuakeOG, the player colour preview is in the network setup menu only
 byte identityTable[256];
 byte translationTable[256];
 
@@ -340,7 +341,7 @@ void M_ToggleMenu_f (void)
 
 int	m_main_cursor;
 #ifdef QOG_BOARD_MENU
-// QuakeOG: one board and no network, so no Multiplayer (id's item 1).
+// QuakeOG, one board and no network, so no Multiplayer (id's item 1).
 // No Quit either (item 4), the board has nothing to quit to.
 // m_main_cursor counts the board's lines, this gives id's item for each.
 static const byte m_main_board[] = {0, 2, 3};
@@ -372,7 +373,7 @@ void M_Main_Draw (void)
 	p = Draw_CachePic ("gfx/ttl_main.lmp");
 	M_DrawPic ( (320-p->width)/2, 4, p);
 #ifdef QOG_BOARD_MENU
-	// QuakeOG: the picture's lines are 20 rows each, skip the second and last
+	// QuakeOG, the picture's lines are 20 rows each, skip the second and last
 	p = Draw_CachePic ("gfx/mainmenu.lmp");
 	M_DrawTransPicRows (72, 32, p, 0, 20);
 	M_DrawTransPicRows (72, 52, p, 40, 40);
@@ -449,7 +450,7 @@ void M_Main_Key (int key)
 
 int	m_singleplayer_cursor;
 #ifdef QOG_BOARD_MENU
-#define	SINGLEPLAYER_ITEMS	5	// QuakeOG: and Levels, Benchmark
+#define	SINGLEPLAYER_ITEMS	5	// QuakeOG, and Levels, Benchmark
 #define	SP_BENCH			4	// the Benchmark line
 #define	BENCH_DEMO			"demo3"	// id's timedemo MG24Quake published (e1m6)
 void M_Menu_Levels_f (void);
@@ -479,7 +480,7 @@ void M_SinglePlayer_Draw (void)
 	M_DrawPic ( (320-p->width)/2, 4, p);
 	M_DrawTransPic (72, 32, Draw_CachePic ("gfx/sp_menu.lmp") );
 #ifdef QOG_BOARD_MENU
-	// QuakeOG: id has no picture for it, so the menu font at twice its size
+	// QuakeOG, id has no picture for it, so the menu font at twice its size
 	M_PrintBig (74, 32 + 3*20 + 2, "LEVELS");
 	M_PrintBig (74, 32 + SP_BENCH*20 + 2, "BENCHMARK");
 #endif
@@ -517,7 +518,7 @@ void M_SinglePlayer_Key (int key)
 		{
 		case 0:
 #ifdef QOG_BOARD_MENU
-			// QuakeOG: SCR_ModalMessage waits for a Y or N key in a loop of
+			// QuakeOG, SCR_ModalMessage waits for a Y or N key in a loop of
 			// its own, which the board's buttons never give. Ask in the menu.
 			if (sv.active)
 				M_Confirm (m_singleplayer);
@@ -571,7 +572,7 @@ char	m_filenames[MAX_SAVEGAMES][SAVEGAME_COMMENT_LENGTH+1];
 int		loadable[MAX_SAVEGAMES];
 
 #ifdef QOG_SPLIT_CLIENT
-// QuakeOG (Agent T): in the split game the save files are on the server's
+// QuakeOG, in the split game the save files are on the server's
 // side (main's FAT volume on the board). The server reads each slot's
 // comment as below and sends the list over the link (engine/net_link.c).
 void Link_ScanSaves (char names[][SAVEGAME_COMMENT_LENGTH+1], int *found, int count);
@@ -750,7 +751,7 @@ void M_Save_Key (int k)
 	}
 }
 
-#ifndef QOG_BOARD_MENU	// QuakeOG: no network menus on the board (one board, no keyboard)
+#ifndef QOG_BOARD_MENU	// QuakeOG, no network menus on the board (one board, no keyboard)
 //=============================================================================
 /* MULTIPLAYER MENU */
 
@@ -1213,10 +1214,10 @@ void M_Menu_Options_f (void)
 
 
 #if defined(QOG_BOARD_MENU) && defined(QOG_RFAST)
-extern cvar_t	r_fast;	// QuakeOG (Agent AA): render mode (r_main.c)
+extern cvar_t	r_fast;	// QuakeOG, render mode (r_main.c)
 #endif
 #if defined(QOG_BOARD_MENU) && defined(QOG_SND_REMOTE)
-extern cvar_t	ambient_level;	// QuakeOG: background sound level (snd_link.c)
+extern cvar_t	ambient_level;	// QuakeOG, background sound level (snd_link.c)
 #endif
 
 void M_AdjustSliders (int dir)
@@ -1301,9 +1302,9 @@ void M_AdjustSliders (int dir)
 		break;
 #endif
 #if defined(QOG_BOARD_MENU) && defined(QOG_RFAST)
-	case 20:	// QuakeOG (Agent AA): render mode, Exact or Fast
+	case 20:	// QuakeOG, render mode, Exact or Fast
 #ifdef QOG_RTURBO
-		// QuakeOG (Agent AO): Exact, Fast and Turbo (r_fast 0, 1, 2) in turn
+		// QuakeOG, Exact, Fast and Turbo (r_fast 0, 1, 2) in turn
 		Cvar_SetValue ("r_fast", ((int)r_fast.value + (dir < 0 ? 2 : 1)) % 3);
 #else
 		Cvar_SetValue ("r_fast", !r_fast.value);
@@ -1311,7 +1312,7 @@ void M_AdjustSliders (int dir)
 		break;
 #endif
 #if defined(QOG_BOARD_MENU) && defined(QOG_SND_REMOTE)
-	case 21:	// QuakeOG: background sounds only (ambient_level, snd_link.c)
+	case 21:	// QuakeOG, background sounds only (ambient_level, snd_link.c)
 		{
 			float	a = ambient_level.value + dir * 0.05f;
 			if (a < 0) a = 0;
@@ -1354,10 +1355,10 @@ void M_DrawCheckbox (int x, int y, int on)
 }
 
 #ifdef QOG_BOARD_MENU
-// QuakeOG: the board's options. options_cursor keeps id's numbers, so
-// M_AdjustSliders is id's, but only these lines show: no console (no
+// QuakeOG, the board's options. options_cursor keeps id's numbers, so
+// M_AdjustSliders is id's, but only these lines show, no console (no
 // keyboard), and no mouse, CD music or video modes on the board.
-// Render (Agent AA) is number 20, not one of id's: the r_fast cvar.
+// Render is number 20, not one of id's, the r_fast cvar.
 static const struct
 {
 	byte	item;		// id's options_cursor
@@ -1419,9 +1420,9 @@ void M_Options_Draw (void)
 			M_DrawCheckbox (220, y, cl_forwardspeed.value > 200);
 			break;
 #ifdef QOG_RFAST
-		case 20:	// QuakeOG (Agent AA)
+		case 20:	// QuakeOG
 #ifdef QOG_RTURBO
-			M_Print (220, y, r_fast.value >= 2 ? "Turbo" : r_fast.value ? "Fast" : "Exact");	// Agent AO
+			M_Print (220, y, r_fast.value >= 2 ? "Turbo" : r_fast.value ? "Fast" : "Exact");	// Earlier work
 #else
 			M_Print (220, y, r_fast.value ? "Fast" : "Exact");
 #endif
@@ -1631,7 +1632,7 @@ void M_Options_Key (int k)
 //=============================================================================
 /* KEYS MENU */
 
-#ifndef QOG_BOARD_MENU	// QuakeOG: no key binding on the board
+#ifndef QOG_BOARD_MENU	// QuakeOG, no key binding on the board
 char *bindnames[][2] =
 {
 {"+attack", 		"attack"},
@@ -1670,8 +1671,8 @@ void M_Menu_Keys_f (void)
 
 
 #ifdef QOG_BOARD_MENU
-// QuakeOG: the board has no keys to bind, so Customize controls shows what
-// its five buttons do: in the game platform/qog_input.c, in menus
+// QuakeOG, the board has no keys to bind, so Customize controls shows what
+// its five buttons do, in the game platform/qog_input.c, in menus
 // port/rp2040/vid_rp2040.c. Escape (green + blue) leaves it.
 static const struct
 {
@@ -1965,7 +1966,7 @@ int		msgNumber;
 int		m_quit_prevstate;
 qboolean	wasInMenus;
 
-#if !defined(ID_WIN32) && !defined(QOG_BOARD_MENU)	// QuakeOG: the board has its own prompt
+#if !defined(ID_WIN32) && !defined(QOG_BOARD_MENU)	// QuakeOG, the board has its own prompt
 char *quitMessage [] =
 {
 /* .........1.........2.... */
@@ -2044,7 +2045,7 @@ void M_Quit_Key (int key)
 		break;
 
 #ifdef QOG_BOARD_MENU
-	case K_ENTER:	// QuakeOG: gray is yes on the board, green + blue (escape) no
+	case K_ENTER:	// QuakeOG, gray is yes on the board, green + blue (escape) no
 #endif
 	case 'Y':
 	case 'y':
@@ -2093,7 +2094,7 @@ void M_Quit_Draw (void)
 	M_PrintWhite (16, 172, "Nothing Interactive, Inc. All rights\n");
 	M_PrintWhite (16, 180, "reserved. Press y to exit\n");
 #elif defined(QOG_BOARD_MENU)
-	// QuakeOG: id's lines ask for Y or N. Quitting stops the board's game
+	// QuakeOG, id's lines ask for Y or N. Quitting stops the board's game
 	// (Sys_Quit), and the board switches off with red held alone.
 	M_DrawTextBox (56, 76, 24, 4);
 	M_Print (64, 84,  "Quit and stop the game?");
@@ -2109,7 +2110,7 @@ void M_Quit_Draw (void)
 #endif
 }
 
-#ifndef QOG_BOARD_MENU	// QuakeOG: no network menus on the board
+#ifndef QOG_BOARD_MENU	// QuakeOG, no network menus on the board
 //=============================================================================
 
 /* SERIAL CONFIG MENU */
@@ -2784,7 +2785,7 @@ typedef struct
 } level_t;
 
 #ifdef QOG_BOARD_MENU
-const	// QuakeOG: the board's Levels page reads the titles, in flash
+const	// QuakeOG, the board's Levels page reads the titles, in flash
 #endif
 level_t		levels[] =
 {
@@ -2838,9 +2839,9 @@ level_t		levels[] =
 //=============================================================================
 /* LEVELS MENU */
 
-// QuakeOG: the maps the packs hold (COM_ForEachMap, common.c), so the list
+// QuakeOG, the maps the packs hold (COM_ForEachMap, common.c), so the list
 // follows the board's data image. A page of LEVELS_ROWS lines, with id's
-// title when the map is one of id's. Nothing is kept but the cursor: each
+// title when the map is one of id's. Nothing is kept but the cursor, each
 // frame and each key walks the pack directories again.
 
 int		m_levels_cursor;
@@ -2973,9 +2974,9 @@ void M_Levels_Key (int key)
 //=============================================================================
 /* CONFIRM MENU */
 
-// QuakeOG: id asks "start a new game?" with SCR_ModalMessage, which waits in
+// QuakeOG, id asks "start a new game?" with SCR_ModalMessage, which waits in
 // a loop of its own for a Y or N key. The board has neither key and its
-// buttons are read outside that loop, so the board asks in the menu: enter
+// buttons are read outside that loop, so the board asks in the menu, enter
 // (gray) is yes, escape (green + blue) is no.
 
 int		m_confirm_from;		// the menu that asked, m_singleplayer or m_levels
@@ -3034,7 +3035,7 @@ void M_Confirm_Key (int key)
 
 static void M_BoardStartMap (const char *map, int len)
 {
-	// id's New Game, for any level: one player, no deathmatch or coop
+	// id's New Game, for any level, one player, no deathmatch or coop
 	key_dest = key_game;
 	m_state = m_none;
 	if (sv.active)
@@ -3046,13 +3047,13 @@ static void M_BoardStartMap (const char *map, int len)
 //=============================================================================
 /* BENCHMARK */
 
-// QuakeOG: the Benchmark line of the Single Player menu runs id's
+// QuakeOG, the Benchmark line of the Single Player menu runs id's
 // "timedemo demo3" through the command buffer, as id's console would, the
 // test MG24Quake published its speed with (e1m6). id prints the result on
 // the console, which the board cannot show, so when the demo ends the
 // result page shows it, with the render mode and the clocks, until gray or
 // green + blue, and one "[bench]" line goes to the console, which the board
-// echoes over USB. No new RAM: once a timedemo is over nothing reads its
+// echoes over USB. No new RAM, once a timedemo is over nothing reads its
 // cls.td_ fields, so they hold the result for the page (frames, seconds and
 // how it ended), and the demo's name is in cls.mapstring, which id's map
 // command writes and nothing reads.
@@ -3062,7 +3063,7 @@ enum {bench_missing = -1, bench_stopped, bench_done};	// in cls.td_lastframe
 static void M_BoardBench (void)
 {
 	if (!COM_HasFile (BENCH_DEMO ".dem"))
-	{	// a data image without the demos (mkboard.py --demos): say so and keep the game
+	{	// a data image without the demos (mkboard.py --demos), say so and keep the game
 		cls.td_lastframe = bench_missing;
 		m_state = m_bench;
 		m_entersound = true;
@@ -3085,7 +3086,7 @@ static char *M_BenchSetup (void)
 #endif
 #ifdef QOG_RTURBO
 	if (r_fast.value >= 2)
-		mode = "Turbo";	// QuakeOG (Agent AO): the 3D view drawn at half width
+		mode = "Turbo";	// QuakeOG, the 3D view drawn at half width
 #endif
 	if (!sys)	// the PC
 		return va ("render %s, PC, view %i, %ix%i", mode, (int)scr_viewsize.value, (int)vid.width, (int)vid.height);
@@ -3819,7 +3820,7 @@ void M_Draw (void)
 		M_Save_Draw ();
 		break;
 
-#ifndef QOG_BOARD_MENU	// QuakeOG: no network menus on the board
+#ifndef QOG_BOARD_MENU	// QuakeOG, no network menus on the board
 	case m_multiplayer:
 		M_MultiPlayer_Draw ();
 		break;

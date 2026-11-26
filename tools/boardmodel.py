@@ -1,4 +1,4 @@
-"""Board cost model for timedemo demo3 (Agent AS).
+"""Board cost model for timedemo demo3.
 
 Turns the per-frame work counts of a QOG_BOARDMODEL PC run (quakeog_pc
 -bmlog, port/pc/boardmodel_pc.c) into board milliseconds per render phase
@@ -6,7 +6,7 @@ and a predicted board fps, for any clock and LCD SPI rate.
 
 How it works
 - Each count says which code path did the work. Each path has a priori
-  costs (WEIGHTS below, from the agents' Thumb code reads in
+  costs (WEIGHTS below, from earlier Thumb code reads in
   docs/changes.md): float helper calls and integer cycles per unit. A
   branch that swaps a float path for an integer one changes the counts.
 - calibrate: two global factors, one for float calls (kf) and one for
@@ -39,7 +39,7 @@ BOARD_REF = {
     "view_total": 72.2,
 }
 # E1M1 play, standing at the start, same build and session (frame, view,
-# race from the [time cl] line, lmap from Agent AL's note). Its light grids
+# race from the [time cl] line, lmap from the earlier note). Its light grids
 # have no dynamic lights, which splits demo3's lmap into the base grids and
 # the dynamic light work, and its frame checks the race model.
 BOARD_E1M1 = {"lmap": 2.0, "frame": 55.2, "view": 53.2, "race": 6.0}
@@ -47,7 +47,7 @@ LMAP_BASE = ("lms_builds", "lms_lux", "lms_stylelux", "lms_dlbuilds")
 # main f7d9450 on the board (300 MHz, flash 150, LCD by PIO at 60 MHz), the
 # frame weighted means of the [time cl] lines during timedemo demo3 (the
 # window with the demo's load left out), docs/fps-board.md. The phases are
-# core 0's: lmap, grad and spans are core 0's share of the surfaces, core 1's
+# core 0's, lmap, grad and spans are core 0's share of the surfaces, core 1's
 # drawing is "pipe" of the core1 line.
 BOARD_F7 = {
     "commit": "f7d9450", "mhz": 300.0, "spi": 60.0, "lcd": "pio",
@@ -64,7 +64,7 @@ PHASES = ["world", "bmodels", "edgescan", "lmap", "grad", "spans", "models", "vm
 OTHER = "other"             # setup, zspans, sky, turb: in the view total, not in the board's list
 FCALL = 65.0                # a priori cycles of one float helper call through the ROM (55 to 75)
 
-# ---- a priori cost per unit of work: (float helper calls, integer cycles) ---
+# ---- a priori cost per unit of work, (float helper calls, integer cycles) ---
 WEIGHTS = {
     "world": {
         "wc_nodes": (0.3, 140),     # integer frustum test first (QOG_WORLDNODE_INT), float near a plane
@@ -75,14 +75,14 @@ WEIGHTS = {
         "wc_cached": (0, 40),       # edge cache hit
         "wc_project": (0.2, 260),   # fixed point projection, float fallback
         "wc_clipdot": (0, 80),      # integer view plane distance
-        "wc_clipfill": (0, 50),     # Agent AQ: the other three distances of a vertex filled at once (QOG_CLIPDIST_FILL4)
+        "wc_clipfill": (0, 50),     # earlier work: the other three distances of a vertex filled at once (QOG_CLIPDIST_FILL4)
     },
     "bmodels": {
         "bm_bmcheck": (30, 300),    # R_BmodelCheckBBox (doubles: float compares with QOG_BMODEL_BBOXF)
         "bm_rotent": (200, 500),    # R_RotateBmodel with two R_TransformFrustum (80 float calls each) and R_QogFxSetup (about 7,500 cycles)
         "aq_bsurfs": (4, 30),       # brush surface facing test (a float dot product, f2d, dcmp)
         "bm_bmsplit": (6, 60),      # R_SplitEntityOnNode2 box against a world plane
-        "bm_bmsplitint": (0, 40),   #   the same on an axial plane by integer compares (Agent AQ, QOG_BMSPLIT_INT)
+        "bm_bmsplitint": (0, 40),   #   the same on an axial plane by integer compares (QOG_BMSPLIT_INT)
         "bm_bpoly": (20, 150),      # R_RecursiveClipBPoly: the world plane into model space
         "bm_bpolyedge": (8, 80),    #   an edge against it (more when split)
         "bm_bmfaces": (20, 400),    # brush faces not clipped to the world
@@ -95,13 +95,13 @@ WEIGHTS = {
         "bm_scanedges": (0.2, 55),  # each active edge each line: spans, u step, a float 1/z on some overlaps
         "pc_litspans": (0, 40),     # span emission
         "bm_surfdrawn": (8, 200),   # D_DrawSurfaces per surface: mip level, state
-        "bm_bmsurf": (150, 300),    # brush surface: two R_TransformFrustum and a TransformVector (Agent AQ: about 9,000 cycles)
+        "bm_bmsurf": (150, 300),    # brush surface: two R_TransformFrustum and a TransformVector (about 9,000 cycles)
         "aq_leadz": (20, 50),       # 1/z order of two brush surfaces in R_LeadingEdge (doubles, about 1,350 cycles)
     },
     "lmap": {
         "lms_builds": (2, 800),     # D_SetupLitSurface and the light grid setup
         "lms_lux": (0, 10),         # grid clear and conversion
-        "lms_stylelux": (0, 30),    # base grid, about 30 cycles a cell style (Agent AL)
+        "lms_stylelux": (0, 30),    # base grid, about 30 cycles a cell style
         "lms_dlbuilds": (0, 400),   # R_AddDynamicLights entry, R_DlightBits hash
         "lms_pairs": (6, 60),       # light plane distance and fabs
         "lms_pairsin": (14, 50),    # impact point and local coordinates
@@ -130,9 +130,9 @@ WEIGHTS = {
         "am_check": (2, 2400), "am_drawn": (60, 2000), "am_verts": (0, 130), "am_tris": (0, 60),
         "am_smooth": (0, 450), "am_spans": (0, 80), "am_pix": (0, 35), "am_subcall": (0, 120),
         "am_subpix": (0, 30), "am_cliptri": (0, 1200),
-        "am_subleaf": (0, 25),      # Agent AQ: a subdivision leaf tested inline (QOG_SUBDIV_LEAF), six compares
-        "am_smalltri": (0, 150),    # Agent AQ: a triangle of two lines or less with no pixel or one, integer edge steps only (QOG_ALIAS_SMALLTRI)
-        "am_tinytri": (0, 150),     # Agent AR: Turbo triangles within 3 x 3 pixels, about a third of a smooth one
+        "am_subleaf": (0, 25),      # earlier work: a subdivision leaf tested inline (QOG_SUBDIV_LEAF), six compares
+        "am_smalltri": (0, 150),    # earlier work: a triangle of two lines or less with no pixel or one, integer edge steps only (QOG_ALIAS_SMALLTRI)
+        "am_tinytri": (0, 150),     # earlier work: Turbo triangles within 3 x 3 pixels, about a third of a smooth one
     },
     "vmodel": {
         "vm_drawn": (60, 2000), "vm_smalltri": (0, 150), "vm_verts": (0, 130), "vm_tris": (0, 60), "vm_smooth": (0, 450),
@@ -155,7 +155,7 @@ CORE_SHARE = 0.55           # the busier core's share of it
 FEATURE_SCALE = {
     "QOG_DLIGHT_AXIAL": {"lmap_marknodes": (5.0 / 8, 1.0), "lms_treenodes": (5.0 / 8, 1.0),
                          "bm_bmmark": (5.0 / 8, 1.0)},
-    # Agent AQ's exact float cuts: the same counts, cheaper (docs/changes.md)
+    # The earlier exact float cuts, the same counts, cheaper (docs/changes.md)
     "QOG_LEADZ_FLOAT": {"aq_leadz": (0.5, 1.0)},            # about 1,350 to 700 cycles
     "QOG_BPOLY_AXIAL": {"bm_bpoly": (0.05, 1.0), "bm_bpolyedge": (0.05, 1.0)},  # tplane 21 calls to 1, an edge 730 to 90 cycles
     "QOG_BMODEL_FACING": {"aq_bsurfs": (0.1, 1.0)},
@@ -164,19 +164,19 @@ FEATURE_SCALE = {
     "QOG_FX_REUSE": {"bm_rotent": (0.45, 1.0)},             # the Fast setup only for the origin, about 7,500 cycles less
     "QOG_DSURF_NOFRUSTUM": {"bm_bmsurf": (0.1, 1.0)},       # no view planes turned per brush surface
     "QOG_FGRAD_AXIAL": {"wc_faces": (0.77, 1.0)},           # about 300 cycles a face gradient less
-    # Agent AM: core 1 moves three of every five particles while core 0 draws
+    # Earlier work, core 1 moves three of every five particles while core 0 draws
     # them and moves the other two, so the phase is core 1's 0.6 of the moving
     # (core 0's drawing and 0.4 of it are shorter, about 90k against 108k cycles)
     "QOG_PARTS_CORE1": {"am_parts": (0.5, 0.5)},
-    # Agent AR: the Q span drawer, the same spans, sub-spans and pixels for
+    # Earlier work, the Q span drawer, the same spans, sub-spans and pixels for
     # fewer cycles. Its replay of demo3 surfaces through the board's own code
     # (docs/changes.md) gives 2.39 M against 3.69 M cycles a Fast view and
     # 1.47 M against 2.41 M a Turbo view, about 0.64 of every span count
     "QOG_LITSPAN_Q": {"pc_litpx": (1.0, 0.64), "pc_runs": (1.0, 0.64), "pc_litspans": (1.0, 0.64)},
-    # the particle kill checks as integer compares: 4 of about 16 float helper
+    # the particle kill checks as integer compares, 4 of about 16 float helper
     # calls a particle gone (two float to double conversions, two double compares)
     "QOG_PART_DIEBITS": {"am_parts": (0.75, 1.0)},
-    # Agent AQ's second round, the same counts with less integer work (Thumb
+    # The earlier second round, the same counts with less integer work (Thumb
     # instruction counts of the hot paths before and after, docs/changes.md)
     "QOG_SCAN_FAST": {"bm_scanedges": (1.0, 0.7),           # one loop, no calls or global reloads per edge
                       "aq_leadz": (0.93, 1.0)},             #   16% of the 1/z compares reuse surf's half (5 of 11 float calls)
@@ -184,32 +184,32 @@ FEATURE_SCALE = {
     "QOG_LMAP_FUSE": {"lms_lux": (1.0, 0.65), "lms_stylelux": (1.0, 0.65)},  # the grid's passes fused
     "QOG_BMODEL_BBOXINT": {"bm_bmcheck": (0.2, 1.0)},       # integer plane tests, floats only within 0.3 units of a plane
     "QOG_NODESIDE_BITS": {"wc_nodes": (0.25, 1.0)},         # the node's three float compares by its bits
-    "QOG_LEFTEDGE_LOCALS": {"am_spans": (1.0, 0.85), "vm_spans": (1.0, 0.85)},  # Agent AQ round 3: the left edge's rows without global stores
-    # Agent AR: the alias span drawer in Thumb (port/rp2040/d_aspan_rp2040.S),
-    # the board's own code in the emulator: 0.65 of the C's cycles on random
+    "QOG_LEFTEDGE_LOCALS": {"am_spans": (1.0, 0.85), "vm_spans": (1.0, 0.85)},  # earlier work round 3: the left edge's rows without global stores
+    # Earlier work, the alias span drawer in Thumb (port/rp2040/d_aspan_rp2040.S),
+    # the board's own code in the emulator, 0.65 of the C's cycles on random
     # span lists, 0.73 to 0.82 on model meshes. A span's count also pays its
     # left edge row (AQ's line above), so its weight drops less than a pixel's
     "QOG_ASPAN_ASM": {"am_pix": (1.0, 0.7), "vm_pix": (1.0, 0.7), "am_spans": (1.0, 0.8), "vm_spans": (1.0, 0.8)},
 }
-# Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either
+# The earlier pipeline (QOG_DRAW_CORE1), lit world surfaces drawn whole by either
 # core, core 1 during the edge scan, both at each flush
 CORE1_SPEED = 0.9           # core 1's speed against core 0's while both draw from the shared XIP cache (AM: up to 20% slower)
-# Agent AP's PIO scanout: 5,120 bits a row plus about 0.4 us a line
+# The earlier PIO scanout, 5,120 bits a row plus about 0.4 us a line
 LCD_LINE_US = 0.4
 
 # ---- the LCD scanout ----------------------------------------------------------
-# Agent V: 200 rows in 18.3 ms at 62.5 MHz SPI (91.5 us a row, 81.9 of them
-# the bits), Agent AN: 22.4 ms at 50 MHz (112 us a row)
+# Earlier work, 200 rows in 18.3 ms at 62.5 MHz SPI (91.5 us a row, 81.9 of them
+# the bits), earlier work, 22.4 ms at 50 MHz (112 us a row)
 def row_ms(spi_mhz, mhz, lcd="pl022"):
-    if lcd == "pio":    # Agent AP: no gaps between words, about 0.4 us a line
+    if lcd == "pio":    # earlier work: no gaps between words, about 0.4 us a line
         return (320 * 16 / spi_mhz + LCD_LINE_US) / 1000.0
     return (320 * 16 / spi_mhz + 9.6 * 250.0 / mhz) / 1000.0
 
 
 def pipeline(fr, m, s1, delay=0.0):
-    """core 0's time for the edge scan and the surfaces with Agent AM's
+    """core 0's time for the edge scan and the surfaces with the earlier
     pipeline, and core 0's wait for core 1's last surface. delay: the last
-    scanout still has this long to run when the edge scan starts (Agent AP's
+    scanout still has this long to run when the edge scan starts (the earlier
     row race), core 1 draws nothing before it ends and core 0 joins its job
     after that"""
     e = m["edgescan"]
@@ -232,7 +232,7 @@ def pipeline(fr, m, s1, delay=0.0):
 
 NOTIFY_S = 3.0              # con_notifytime
 CENTER_S = 2.0              # scr_centertime
-UNPACK_MS_250 = 0.3         # Agent AO: spreading a Turbo view for 2D over it
+UNPACK_MS_250 = 0.3         # earlier work: spreading a Turbo view for 2D over it
 VIEW_ROWS = 152
 W = 320
 SETUP_SHARE = 0.3           # of "other", the part before the world (R_SetupFrame, R_MarkLeaves)
@@ -325,7 +325,7 @@ def to_ms(parts, cal, mhz):
 
 def scan_need(lo, hi, rows, packed, first=0):
     """how far into its order the scanout in flight must be before no row it
-    still sends reads a byte of [lo, hi) (VID_QogScanNeed). Agent AP: with
+    still sends reads a byte of [lo, hi) (VID_QogScanNeed). Earlier work: with
     first, rows [first, rows) go out first (QOG_VID_HUDFIRST)"""
     def pos(r):
         if not first:
@@ -353,12 +353,12 @@ def scan_need(lo, hi, rows, packed, first=0):
 def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=(), opts=None):
     """board time of each frame (ms) and the mean waits. wscale scales every
     wait (the "wait" reconciliation, see calibrate). opts: lcd ("pl022" or
-    "pio"), pipe (Agent AM's pipeline), text (Agent AP's Turbo text list),
+    "pio"), pipe (the earlier pipeline), text (the earlier Turbo text list),
     s1 (core 1's speed)"""
     opts = opts or {}
     rms = row_ms(spi, mhz, opts.get("lcd", "pl022"))
     pipe, text, s1 = opts.get("pipe", False), opts.get("text", False), opts.get("s1", CORE1_SPEED)
-    # Agent AP's race package: notify clears the view draws over are skipped
+    # The earlier race package, notify clears the view draws over are skipped
     # (a centre print erase still waits in Turbo, its rows lie below the
     # packed pixels), the brush entities run before the wait for the end
     # with a row wait for their clip buffers, and the status bar rows go
@@ -428,9 +428,9 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             if early_b and "bmodels" not in early:
                 early.append("bmodels")
             t += sum(m[p] for p in early)      # work moved before the wait for the scanout's end
-            # Agent AP's row race: R_ScanEdges waits row by row, so the edge
+            # The earlier row race, R_ScanEdges waits row by row, so the edge
             # scan runs beside the scanout and the last row binds at its end.
-            # Its z writes must be free first: a Turbo view's z-buffer only
+            # Its z writes must be free first, a Turbo view's z-buffer only
             # after a packed scan, the z-buffer region after the status bar
             # rows (first in the scan with QOG_VID_HUDFIRST)
             beside, c1delay = 0.0, 0.0
@@ -463,13 +463,13 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
         if turbo:
             if notify:
                 t += UNPACK_MS_250 * 250.0 / mhz   # the notify clear spreads the last packed view
-                if text:    # Agent AP: the notify characters go to the scanout's list, the view stays packed
+                if text:    # earlier work: the notify characters go to the scanout's list, the view stays packed
                     packed = VIEW_ROWS
             else:
                 packed = VIEW_ROWS
         prev_packed = packed
         rows = int(fr.get("rows", VIEW_ROWS))
-        if hudcap:      # Agent AP's Turbo cap: a change waits until 1 / hudcap s after the last full scan
+        if hudcap:      # the earlier Turbo cap: a change waits until 1 / hudcap s after the last full scan
             want = rows > VIEW_ROWS or hud_pending
             if want and (last_hud < 0 or t_now - last_hud >= 1.0 / hudcap):
                 rows, hud_pending, last_hud = 200, False, t_now
@@ -558,7 +558,7 @@ def calibrate(frames, feats, scale=None, pre=None, e1m1=None):
     excess = statistics.mean(tot) + POST_MS - target
     # The board's view total (72.2) and timedemo frame (73.3) leave about 1 ms
     # outside the view, while the scanout waits the code implies outside the
-    # view (notify text) come to more. Three ways to reconcile, all kept:
+    # view (notify text) come to more. Three ways to reconcile, all kept.
     # wait (every wait scaled down), compute (every phase scaled down, the
     # waits as the code implies), offset (a constant taken off each frame).
     recon = {"offset": {"post": target - statistics.mean(tot), "wscale": 1.0, "cscale": 1.0}}
@@ -621,7 +621,7 @@ def calibrate_board(cal, frames, feats, board=None):
         for ph in ("lmap", "grad", "spans"):
             cal["r"][ph] *= ks
         ms = to_ms(parts, cal, mhz)
-        # core 1's speed: core 0's share of the surfaces as the board's
+        # core 1's speed, core 0's share of the surfaces as the board's
         lo, hi = 0.3, 1.5
         for _ in range(20):
             s1 = (lo + hi) / 2
@@ -852,7 +852,7 @@ def main():
     p.add_argument("--names")
     p.add_argument("--mhz", type=float, default=300.0)
     p.add_argument("--spi", type=float, default=50.0, help="LCD bit rate in MHz")
-    p.add_argument("--lcd", choices=("pl022", "pio"), default="pl022", help="LCD scanout by the SPI peripheral or PIO (Agent AP)")
+    p.add_argument("--lcd", choices=("pl022", "pio"), default="pl022", help="LCD scanout by the SPI peripheral or PIO")
     p.add_argument("--samples", type=int, default=30)
     p.add_argument("--json")
     p.add_argument("--skip", type=int, default=0, help="frames to leave out at the start of each log")

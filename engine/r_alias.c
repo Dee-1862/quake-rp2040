@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,12 +22,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
-#include "d_local.h"	// FIXME: shouldn't be needed (is needed for patch
+#include "d_local.h"	// FIXME, shouldn't be needed (is needed for patch
 						// right now, but that should move)
-#include "r_qogalias.h"	// QuakeOG (Agent AI)
+#include "r_qogalias.h"	// QuakeOG
 
 #ifdef QOG_ALIAS_STATS
-// QuakeOG (Agent AI): PC measurement of the alias and particle drawers' work
+// QuakeOG, PC measurement of the alias and particle drawers' work
 unsigned	qog_astats[2][QAS_N];
 int			qog_astat_vm;
 
@@ -45,7 +46,7 @@ void R_QogAliasStatsView (void)
 	if ((r_framecount - frame0) % 100 || r_framecount == frame0)
 		return;
 #ifdef QOG_BOARDMODEL
-	return;	// QuakeOG (Agent AS): the cost model reads the counts, and a console line would be notify text
+	return;	// QuakeOG, the cost model reads the counts, and a console line would be notify text
 #endif
 	for (s=0 ; s<2 ; s++)
 	{
@@ -68,7 +69,7 @@ void R_QogAliasStatsView (void)
 mtriangle_t		*ptriangles;
 affinetridesc_t	r_affinetridesc;
 
-void *			acolormap;	// FIXME: should go away
+void *			acolormap;	// FIXME, should go away
 
 trivertx_t		*r_apverts;
 
@@ -98,7 +99,7 @@ typedef struct {
 	int	index1;
 } aedge_t;
 
-static QOG_RTABLE_CONST aedge_t	aedges[12] = {	// QuakeOG: const with QOG_CONST_RTABLES
+static QOG_RTABLE_CONST aedge_t	aedges[12] = {	// QuakeOG, const with QOG_CONST_RTABLES
 {0, 1}, {1, 2}, {2, 3}, {3, 0},
 {4, 5}, {5, 6}, {6, 7}, {7, 4},
 {0, 5}, {1, 4}, {2, 7}, {3, 6}
@@ -106,7 +107,7 @@ static QOG_RTABLE_CONST aedge_t	aedges[12] = {	// QuakeOG: const with QOG_CONST_
 
 #define NUMVERTEXNORMALS	162
 
-// QuakeOG: QOG_CONST_RTABLES keeps the normal table in flash (it is only read)
+// QuakeOG, QOG_CONST_RTABLES keeps the normal table in flash (it is only read)
 QOG_RTABLE_CONST float	r_avertexnormals[NUMVERTEXNORMALS][3] = {
 #include "anorms.h"
 };
@@ -119,7 +120,7 @@ void R_AliasTransformFinalVert (finalvert_t *fv, auxvert_t *av,
 	trivertx_t *pverts, stvert_t *pstverts);
 void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av);
 #ifdef QOG_ALIAS_FAST
-// QuakeOG (Agent AI): kept out of R_AliasCheckBBox, whose frame stays id's
+// QuakeOG, kept out of R_AliasCheckBBox, whose frame stays id's
 #if defined(__GNUC__)
 #define QOG_ANOINLINE	__attribute__((noinline))
 #elif defined(_MSC_VER)
@@ -153,7 +154,7 @@ qboolean R_AliasCheckBBox (void)
 
 	currententity->trivial_accept = 0;
 #ifdef QOG_ALIAS_STATS
-	qog_astat_vm = 0;	// QuakeOG (Agent AI)
+	qog_astat_vm = 0;	// QuakeOG
 	QOG_AST(QAS_CHECK, 1);
 #endif
 	pmodel = currententity->model;
@@ -163,7 +164,7 @@ qboolean R_AliasCheckBBox (void)
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
 	{
-		// QuakeOG (Agent AI): Fast mode, the integer transform below
+		// QuakeOG, Fast mode, the integer transform below
 		if (R_QogAliasSphereOut ())
 			return false;	// wholly outside the view
 	}
@@ -185,7 +186,7 @@ qboolean R_AliasCheckBBox (void)
 
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
-		return R_QogAliasCheckBBoxFast (pframedesc);	// QuakeOG (Agent AI)
+		return R_QogAliasCheckBBoxFast (pframedesc);	// QuakeOG
 #endif
 
 // x worldspace coordinates
@@ -276,7 +277,7 @@ qboolean R_AliasCheckBBox (void)
 		if (viewpts[i].flags & ALIAS_Z_CLIP)
 			continue;
 
-		zi = QOG_FRECIP (viewaux[i].fv[2]);	// QuakeOG: QOG_FLOAT_EXACT
+		zi = QOG_FRECIP (viewaux[i].fv[2]);	// QuakeOG, QOG_FLOAT_EXACT
 
 	// FIXME: do with chop mode in ASM, or convert to float
 		v0 = (viewaux[i].fv[0] * xscale * zi) + xcenter;
@@ -336,7 +337,7 @@ General clipped case
 */
 #ifdef QOG_ALIAS_CORE1
 /*
-QuakeOG (Agent Z): the two cores share an alias model's vertices, core 0
+QuakeOG, the two cores share an alias model's vertices, core 0
 the even ones and core 1 the odd ones (QOG_ALIAS_CORE1, with
 QOG_SPANS_CORE1). Each vertex is computed by id's statements from the
 model's data and the model's transform and lighting, which nothing changes
@@ -404,7 +405,7 @@ static void R_QogAliasPrepareCore1 (void *job)
 ================
 Fast mode alias vertices
 
-QuakeOG (Agent AI): with r_fast 1 (QOG_ALIAS_FAST) the vertices of an alias
+QuakeOG, with r_fast 1 (QOG_ALIAS_FAST) the vertices of an alias
 model are made in integers. The model's transform (R_QogAliasXform, the
 model to view space without the screen scaling of the unclipped case) in
 16.16 fixed point makes a vertex nine integer multiplies, 1/z is one unsigned divide (the RP2040's
@@ -460,12 +461,12 @@ static void R_QogSinCos (float deg, int *s, int *c)
 ================
 R_QogAliasXform
 
-QuakeOG (Agent AI): R_AliasSetUpTransform (0) of Fast mode in integers.
+QuakeOG, R_AliasSetUpTransform (0) of Fast mode in integers.
 id's AngleVectors takes three double sines and cosines and the transform
 two float 3x4 products. Here the entity's three vectors come from a sine
 table in 2.14, the view vectors and the model's scale, origin and offset
 are read in fixed point by their bits (R_QogFix), and the products are
-integer: the model to view rotation in 2.14 times the scale in 16.16 (in
+integer, the model to view rotation in 2.14 times the scale in 16.16 (in
 two parts, so nothing passes 32 bits), the translation in 16.16.
 ================
 */
@@ -542,7 +543,7 @@ static void R_QogAliasFloatXform (const r_qogxf_t *xf)
 }
 
 // x in 24.8 view space and z8 the depth in 24.8 (at least
-// ALIAS_Z_CLIP_PLANE): the screen column as id's
+// ALIAS_Z_CLIP_PLANE), the screen column as id's
 // (int)(x * aliasxscale / z + aliasxcenter), s and c in 28.4
 #define R_QOGPROJECT(x, z8, s, c, lim, fs, fc)	\
 	((x) > -(lim) && (x) < (lim) ? ((x) * (s) / (z8) + (c)) >> 4 \
@@ -632,7 +633,7 @@ static void R_QogAliasFastCore1 (void *job)
 }
 #endif
 
-// all r_anumverts vertices of r_apverts, shared by both cores as Agent Z's
+// all r_anumverts vertices of r_apverts, shared by both cores as earlier work's
 // exact vertices are (QOG_ALIAS_CORE1)
 static void R_QogAliasFastVerts (finalvert_t *fv, stvert_t *pstverts, int clip)
 {
@@ -667,7 +668,7 @@ static void R_QogAliasFastVerts (finalvert_t *fv, stvert_t *pstverts, int clip)
 ================
 R_QogAliasSphereOut
 
-QuakeOG (Agent AI): Fast mode. True when the model's bounding sphere
+QuakeOG, Fast mode. True when the model's bounding sphere
 (boundingradius about the entity's origin, which holds every frame, with a
 quarter more and 8 units of margin) is wholly behind the eye or wholly
 outside a side of the view, so its transform is never built. The side
@@ -698,7 +699,7 @@ static QOG_ANOINLINE qboolean R_QogAliasSphereOut (void)
 ================
 R_QogAliasCheckBBoxFast
 
-QuakeOG (Agent AI): R_AliasCheckBBox in Fast mode. The frame's box corners
+QuakeOG, R_AliasCheckBBox in Fast mode. The frame's box corners
 go through the same integer transform as the vertices, and as in id's an
 edge across the near plane adds its point on the plane. The box is rejected only when every corner is more than a pixel off one side,
 and accepted unclipped only when every corner is a pixel inside, which
@@ -808,17 +809,17 @@ void R_AliasPreparePoints (void)
 	mtriangle_t	*ptri;
 	finalvert_t	*pfv[3];
 #ifdef QOG_ALIAS_NO_AUXVERTS
-	auxvert_t	avone;	// QuakeOG: one vertex at a time, see r_local.h
+	auxvert_t	avone;	// QuakeOG, one vertex at a time, see r_local.h
 #endif
 
 	pstverts = (stvert_t *)((byte *)paliashdr + paliashdr->stverts);
 	r_anumverts = pmdl->numverts;
  	fv = pfinalverts;
-	QOG_AST(QAS_VERTS, r_anumverts);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+	QOG_AST(QAS_VERTS, r_anumverts);	// QuakeOG, QOG_ALIAS_STATS
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
 	{
-		// QuakeOG (Agent AI): Fast mode vertices, then id's triangles
+		// QuakeOG, Fast mode vertices, then id's triangles
 #ifdef QOG_ALIAS_NO_AUXVERTS
 		r_qog_apverts = r_apverts;
 #endif
@@ -833,7 +834,7 @@ void R_AliasPreparePoints (void)
 #endif
 	if (r_anumverts >= QOG_ALIAS_CORE1_MIN)
 	{
-		// QuakeOG (Agent Z): odd vertices on core 1, even ones here
+		// QuakeOG, odd vertices on core 1, even ones here
 		r_qogaliasjob_t	job0, job1;
 
 		job0.fv = job1.fv = pfinalverts;
@@ -911,7 +912,7 @@ qog_drawtris:
 		}
 		else		
 		{	// partially clipped
-			QOG_AST(QAS_CLIPTRI, 1);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+			QOG_AST(QAS_CLIPTRI, 1);	// QuakeOG, QOG_ALIAS_STATS
 			R_AliasClipTriangle (ptri);
 		}
 	}
@@ -927,7 +928,7 @@ void R_AliasSetUpTransform (int trivial_accept)
 {
 	int				i;
 	float			rotationmatrix[3][4], t2matrix[3][4];
-	// QuakeOG (Agent AI): id's tmatrix and viewmatrix were static only for
+	// QuakeOG, id's tmatrix and viewmatrix were static only for
 	// their zeros, locals with the same zeros take no static RAM
 	float			tmatrix[3][4] = {{0}};
 	float			viewmatrix[3][4] = {{0}};
@@ -1006,7 +1007,7 @@ R_AliasTransformFinalVert
 #ifdef QOG_ALIAS_NO_AUXVERTS
 trivertx_t	*r_qog_apverts;
 
-// QuakeOG: id's view-space transform from R_AliasTransformFinalVert, shared
+// QuakeOG, id's view-space transform from R_AliasTransformFinalVert, shared
 // with the triangle clipper (r_local.h)
 void R_AliasTransformAuxVert (auxvert_t *av, trivertx_t *pverts)
 {
@@ -1069,7 +1070,7 @@ R_AliasTransformAndProjectFinalVerts
 ================
 */
 #ifdef QOG_ALIAS_CORE1
-// QuakeOG (Agent Z): id's loop below for every second vertex (see
+// QuakeOG, id's loop below for every second vertex (see
 // R_QogAliasPrepareRange), the same statements
 static void R_QogAliasProjectRange (r_qogaliasjob_t *job)
 {
@@ -1140,14 +1141,14 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
 	{
-		R_QogAliasFastVerts (fv, pstverts, 0);	// QuakeOG (Agent AI): Fast mode
+		R_QogAliasFastVerts (fv, pstverts, 0);	// QuakeOG, Fast mode
 		return;
 	}
 #endif
 #ifdef QOG_ALIAS_CORE1
 	if (r_anumverts >= QOG_ALIAS_CORE1_MIN)
 	{
-		// QuakeOG (Agent Z): odd vertices on core 1, even ones here
+		// QuakeOG, odd vertices on core 1, even ones here
 		r_qogaliasjob_t	job0, job1;
 
 		job0.fv = job1.fv = fv;
@@ -1169,7 +1170,7 @@ void R_AliasTransformAndProjectFinalVerts (finalvert_t *fv, stvert_t *pstverts)
 	{
 	// transform and project
 		zi = QOG_FRECIP (DotProduct(pverts->v, aliastransform[2]) +
-				aliastransform[2][3]);	// QuakeOG: QOG_FLOAT_EXACT
+				aliastransform[2][3]);	// QuakeOG, QOG_FLOAT_EXACT
 
 	// x, y, and z are scaled down by 1/2**31 in the transform, so 1/z is
 	// scaled up by 1/2**31, and the scaling cancels out for x and y in the
@@ -1217,7 +1218,7 @@ void R_AliasProjectFinalVert (finalvert_t *fv, auxvert_t *av)
 	float	zi;
 
 // project points
-	zi = QOG_FRECIP (av->fv[2]);	// QuakeOG: QOG_FLOAT_EXACT
+	zi = QOG_FRECIP (av->fv[2]);	// QuakeOG, QOG_FLOAT_EXACT
 
 	fv->v[5] = zi * ziscale;
 
@@ -1240,7 +1241,7 @@ void R_AliasPrepareUnclippedPoints (void)
 	r_anumverts = pmdl->numverts;
 // FIXME: just use pfinalverts directly?
 	fv = pfinalverts;
-	QOG_AST(QAS_VERTS, r_anumverts);	// QuakeOG (Agent AI): QOG_ALIAS_STATS
+	QOG_AST(QAS_VERTS, r_anumverts);	// QuakeOG, QOG_ALIAS_STATS
 
 	R_AliasTransformAndProjectFinalVerts (fv, pstverts);
 
@@ -1288,7 +1289,7 @@ void R_AliasSetupSkin (void)
 		numskins = paliasskingroup->numskins;
 		fullskininterval = pskinintervals[numskins-1];
 	
-		skintime = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG: render.h
+		skintime = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG, render.h
 	
 	// when loading in Mod_LoadAliasSkinGroup, we guaranteed all interval
 	// values are positive, so we don't have to worry about division by 0
@@ -1341,7 +1342,7 @@ void R_AliasSetupLighting (alight_t *plighting)
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
 	{
-		// QuakeOG (Agent AI): Fast mode, the same rotation in 2.14
+		// QuakeOG, Fast mode, the same rotation in 2.14
 		r_qogxf_t	*xf = r_qogxfp;
 		int			l0, l1, l2;
 
@@ -1395,7 +1396,7 @@ void R_AliasSetupFrame (void)
 	numframes = paliasgroup->numframes;
 	fullinterval = pintervals[numframes-1];
 
-	time = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG: render.h
+	time = cl.time + ENT_SYNCBASE (currententity);	// QuakeOG, render.h
 
 //
 // when loading in Mod_LoadAliasGroup, we guaranteed all interval values
@@ -1426,19 +1427,19 @@ void R_AliasSetupFrame (void)
 ================
 R_AliasDrawTranslated
 
-QuakeOG: an entity in player colours (client.h). The colour table id kept
+QuakeOG, an entity in player colours (client.h). The colour table id kept
 per player is built here for this draw, in a stack frame of its own that
 sits beside R_EdgeDrawing's larger one, not under it.
 ================
 */
 #ifdef QOG_TRANSLATE_INLINE
 /*
-QuakeOG (Agent S): id's translated colour map is the colour map with the
+QuakeOG, id's translated colour map is the colour map with the
 two player colour ranges of each row taken from other columns
 (CL_BuildTranslation), so table[row*256 + texel] is
 colormap[row*256 + map[texel]] for a 256-byte map, which the polyset
 drawers apply to each texel (d_atranslate, d_polyse.c). Before the first
-colour update the table was all zeros: every texel then maps to a column
+colour update the table was all zeros, every texel then maps to a column
 that is 0 in every row (colour 0, checked).
 */
 extern byte	*d_atranslate;
@@ -1503,7 +1504,7 @@ void R_AliasDrawModel (alight_t *plighting)
 	auxvert_t		auxverts[MAXALIASVERTS];
 #endif
 #ifdef QOG_ALIAS_FAST
-	r_qogxf_t		qogxf;	// QuakeOG (Agent AI): Fast mode transform
+	r_qogxf_t		qogxf;	// QuakeOG, Fast mode transform
 #endif
 
 	r_amodels_drawn++;
@@ -1518,7 +1519,7 @@ void R_AliasDrawModel (alight_t *plighting)
 	pfinalverts = (finalvert_t *)
 			(((long)&finalverts[0] + CACHE_SIZE - 1) & ~(CACHE_SIZE - 1));
 #ifdef QOG_ALIAS_NO_AUXVERTS
-	pauxverts = NULL;	// QuakeOG: recomputed when clipping, see r_local.h
+	pauxverts = NULL;	// QuakeOG, recomputed when clipping, see r_local.h
 #else
 	pauxverts = &auxverts[0];
 #endif
@@ -1530,7 +1531,7 @@ void R_AliasDrawModel (alight_t *plighting)
 #ifdef QOG_ALIAS_FAST
 	if (r_qogfast)
 	{
-		// QuakeOG (Agent AI): Fast mode, the integer transform
+		// QuakeOG, Fast mode, the integer transform
 		R_QogAliasXform (&qogxf);
 		r_qogxfp = &qogxf;
 		if (!currententity->trivial_accept)
@@ -1550,7 +1551,7 @@ void R_AliasDrawModel (alight_t *plighting)
 
 	if (r_affinetridesc.drawtype)
 	{
-		D_PolysetUpdateTables ();		// FIXME: precalc...
+		D_PolysetUpdateTables ();		// FIXME, precalc...
 	}
 	else
 	{

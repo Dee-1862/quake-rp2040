@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -56,7 +57,7 @@ void	VID_UnlockBuffer (void);
 
 #elif defined(QOG_VID_LOCKWAIT)
 
-// QuakeOG (Agent V): VID_Update hands the frame to the LCD and returns at
+// QuakeOG, VID_Update hands the frame to the LCD and returns at
 // once, and the port's VID_LockBuffer, which id's code calls before it
 // draws into the frame (D_EnableBackBufferAccess and the others), waits
 // for that scanout to end. The next frame's input, link exchange and
@@ -108,7 +109,7 @@ void	VID_LockBuffer (void);
 
 #define	ON_EPSILON		0.1			// point on plane side epsilon
 
-#ifdef QOG_MAX_MSGLEN	// QuakeOG: client_t.message, net_message and demo messages
+#ifdef QOG_MAX_MSGLEN	// QuakeOG, client_t.message, net_message and demo messages
 #define	MAX_MSGLEN		QOG_MAX_MSGLEN
 #else
 #define	MAX_MSGLEN		8000		// max length of a reliable message
@@ -118,7 +119,7 @@ void	VID_LockBuffer (void);
 //
 // per-level limits
 //
-#define	MAX_EDICTS		600			// FIXME: ouch! ouch! ouch!
+#define	MAX_EDICTS		600			// FIXME, ouch! ouch! ouch!
 #define	MAX_LIGHTSTYLES	64
 #define	MAX_MODELS		256			// these are sent over the net as bytes
 #define	MAX_SOUNDS		256			// so they cannot be blindly increased

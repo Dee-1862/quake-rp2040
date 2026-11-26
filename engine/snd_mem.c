@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -21,7 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
-#ifndef QOG_SND_REMOTE	// QuakeOG (Agent W): a split client's sound runs on the server half (snd_link.c)
+#ifndef QOG_SND_REMOTE	// QuakeOG, a split client's sound runs on the server half (snd_link.c)
 
 int			cache_full_cycle;
 
@@ -118,7 +119,7 @@ sfxcache_t *S_LoadSound (sfx_t *s)
 
 //	Con_Printf ("loading %s\n",namebuffer);
 
-	// QuakeOG: a sound that is already 8-bit mono at the mixing rate needs
+	// QuakeOG, a sound that is already 8-bit mono at the mixing rate needs
 	// no conversion beyond the sign, which the mixer applies as it reads, so
 	// it is played in place from flash and only the header is cached.
 	{

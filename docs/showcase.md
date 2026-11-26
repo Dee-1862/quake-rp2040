@@ -1,6 +1,6 @@
-# QuakeOG: Quake on two RP2040s
+# QuakeOG, Quake on two RP2040s
 
-QuakeOG runs id Software's WinQuake on the FREE-WILi OG, a handheld multitool built around two Raspberry Pi RP2040 microcontrollers. Neither chip has a floating point unit or external RAM. The game is split the way id split it for networked play: the main chip runs the server, the display chip runs the client and the renderer, and the board's inter-chip UART stands in for the network.
+QuakeOG runs id Software's WinQuake on the FREE-WILi OG, a handheld multitool built around two Raspberry Pi RP2040 microcontrollers. Neither chip has a floating point unit or external RAM. The game is split the way id split it for networked play, the main chip runs the server, the display chip runs the client and the renderer, and the board's inter-chip UART stands in for the network.
 
 This page is the story for people who know microcontrollers but not this repo. Every number comes from the project's own measurements in [changes.md](changes.md), [lessons.md](lessons.md) and [handoff.md](handoff.md), or from the project lead's board runs. Where a number is an estimate or was measured only on the PC, it says so.
 
@@ -25,13 +25,13 @@ Quake was written in 1996 for a Pentium with 8 MB of RAM and a fast FPU. The RP2
 | --- | --- | --- |
 | CPU | Pentium, hardware floating point | Cortex-M0+, no FPU, no DSP instructions, no 64-bit multiply result |
 | A float divide | a few cycles | 870 ns at 200 MHz (measured, software divide) |
-| RAM for E1M1 | about 5.9 MB in the unmodified engine (measured on the PC build: map 1.77 MB, cache 1.42 MB, surface cache 600 KB, edicts 513 KB, progs 404 KB, static 435 KB) | 264 KB |
+| RAM for E1M1 | about 5.9 MB in the unmodified engine (measured on the PC build, map 1.77 MB, cache 1.42 MB, surface cache 600 KB, edicts 513 KB, progs 404 KB, static 435 KB) | 264 KB |
 | Static RAM alone | 435 KB in the unmodified engine (ARM compiler, measured) | 264 KB |
 | Game data | the shareware `pak0.pak` is 18.7 MB, the whole registered game's display data about 38 MB | 16 MB of flash per chip, part of it taken by the apps and the bootloader |
-| Reading data | RAM | QSPI flash through a 16 KB XIP cache: 538 ns per random byte, 8.5 MB/s in sequence at the stock 50 MHz (measured) |
+| Reading data | RAM | QSPI flash through a 16 KB XIP cache, 538 ns per random byte, 8.5 MB/s in sequence at the stock 50 MHz (measured) |
 | Display | a frame buffer in video memory | an SPI LCD. One 320x200 scanout takes 22.4 ms at 200 MHz (measured) |
 
-The first plan was to run the whole game on the display chip alone. An honest build of that, with every buffer the game needs counted, overflowed RAM by 223,504 bytes after all the exact cuts available at the time ([changes.md](changes.md), Agent Q). Shipping finished frames from the other chip is no way out either: one 320x240 8-bit frame is 76.8 KB, about 61 ms on the link. What does fit on the link is id's own network traffic, which is why the game is split along id's client and server line.
+The first plan was to run the whole game on the display chip alone. An honest build of that, with every buffer the game needs counted, overflowed RAM by 223,504 bytes after all the exact cuts available at the time ([changes.md](changes.md), earlier work). Shipping finished frames from the other chip is no way out either, one 320x240 8-bit frame is 76.8 KB, about 61 ms on the link. What does fit on the link is id's own network traffic, which is why the game is split along id's client and server line.
 
 ## The two-chip architecture
 
@@ -57,7 +57,7 @@ flowchart LR
   MIX -- "mixed samples" --> I2S
 ```
 
-The link is the board's UART0 at 12.5 Mbaud with RTS/CTS hardware flow control. On top of the BSP's framed link (CRC checked) the port adds a reliable byte stream: one frame in flight, resend after a timeout, duplicates acknowledged again. On the PC a test with injected corruption and drops (39 resends, 20 CRC drops) still gave identical state hashes.
+The link is the board's UART0 at 12.5 Mbaud with RTS/CTS hardware flow control. On top of the BSP's framed link (CRC checked) the port adds a reliable byte stream, one frame in flight, resend after a timeout, duplicates acknowledged again. On the PC a test with injected corruption and drops (39 resends, 20 CRC drops) still gave identical state hashes.
 
 | What crosses the link | Direction | Size (PC measurement over a test run) |
 | --- | --- | --- |
@@ -78,21 +78,21 @@ Some clock and timing figures below were measured during earlier stages at 200 o
 
 **Baked flash images, read in place.** id's loader builds every map's planes, nodes, leafs, surfaces and texture headers in RAM at each level load, and then only reads them. `tools/mkboard.py` runs id's own loader on the PC (the `qog_bake` command) and writes what it builds into a flash image, with every pointer already resolved for the flash address the image will sit at. On the board a map load copies one `model_t` and allocates only the arrays that play writes. This cut E1M1's map hunk from 473.6 KB to 90.0 KB. Light, visibility, texture pixels and geometry are read in place from the pak through XIP, and textures shared between maps are stored once. A layout hash in the image's header makes a build refuse an image written by a build with other structure layouts (this caught real bugs, see lessons L46 on enum sizes). The server gets its own smaller image with only what physics needs.
 
-**Lit spans without a surface cache.** id's renderer builds a lit copy of every visible surface in a surface cache of about 600 KB, then draws from it. There is no room for that. `engine/d_scanlit.c` lights each pixel from the texture and the 18x18 light grid as it draws the span. A board benchmark measured the cost: 52.5 ms for a full 320x152 view at first, against 24.0 ms for id's cached drawer, which needs the RAM we do not have. Exact rewrites of the inner loop (masks instead of modulo, constant shifts per mip level, two unrolled passes that fit the M0+'s low registers) took it from about 150 to about 65 cycles a pixel (estimate from the generated code), with the same pixels.
+**Lit spans without a surface cache.** id's renderer builds a lit copy of every visible surface in a surface cache of about 600 KB, then draws from it. There is no room for that. `engine/d_scanlit.c` lights each pixel from the texture and the 18x18 light grid as it draws the span. A board benchmark measured the cost, 52.5 ms for a full 320x152 view at first, against 24.0 ms for id's cached drawer, which needs the RAM we do not have. Exact rewrites of the inner loop (masks instead of modulo, constant shifts per mip level, two unrolled passes that fit the M0+'s low registers) took it from about 150 to about 65 cycles a pixel (estimate from the generated code), with the same pixels.
 
 **Edges in the z-buffer.** id's edge sorting renderer keeps its edge table on the stack, 84,768 bytes on the ARM build. Spans are made top to bottom and each one writes z only in its own row, so the rows of the z-buffer below the current scan line are free. The edge table lives at the end of the z-buffer during edge drawing and is moved down as edges die, and the world's edge cache lives at its start. The stack frame fell to 36,184 bytes and the hunk lost 27,312 bytes on E1M1, with byte-identical pictures. Between views the same buffer holds the status bar rows, the link's receive buffer and other short-lived data, each with a stated owner and a run-time check (lessons L65).
 
-**A one-byte depth buffer.** A 16-bit z-buffer for the 320x152 view is 97,280 bytes. Storing depth in one byte, with finer steps close to the viewer, saves 48,640 bytes. The user approved this for the board client only, because it is the one change that is not exact by construction: in rare views the edge table cannot fit beside the waiting spans and needs a fallback table on the stack that the board cannot afford. That case stops the game with an error. It happened 4 times in a PC fight tour of episode 1 and is still open.
+**A one-byte depth buffer.** A 16-bit z-buffer for the 320x152 view is 97,280 bytes. Storing depth in one byte, with finer steps close to the viewer, saves 48,640 bytes. The user approved this for the board client only, because it is the one change that is not exact by construction, in rare views the edge table cannot fit beside the waiting spans and needs a fallback table on the stack that the board cannot afford. That case stops the game with an error. It happened 4 times in a PC fight tour of episode 1 and is still open.
 
-**Sound mixed on the other chip.** id's mixer wants about 45 KB of tables and buffers (channels, a paint buffer, 34,816 bytes of sound names). The display chip had a few hundred bytes free. The speaker is on the display chip, but the mixer runs on main: the client's sound calls cross the link as small items, main mixes with id's own code, and the 8-bit samples come back at 11 KB/s on a 1.25 MB/s link. On the display a PIO program drives the I2S amplifier, one DMA channel feeds it from a 2 KB ring, and a second DMA channel chained to the first rewinds the ring, so playback needs no interrupt and no CPU time. On the PC the split pair mixes exactly the samples the one-process game mixes.
+**Sound mixed on the other chip.** id's mixer wants about 45 KB of tables and buffers (channels, a paint buffer, 34,816 bytes of sound names). The display chip had a few hundred bytes free. The speaker is on the display chip, but the mixer runs on main, the client's sound calls cross the link as small items, main mixes with id's own code, and the 8-bit samples come back at 11 KB/s on a 1.25 MB/s link. On the display a PIO program drives the I2S amplifier, one DMA channel feeds it from a 2 KB ring, and a second DMA channel chained to the first rewinds the ring, so playback needs no interrupt and no CPU time. On the PC the split pair mixes exactly the samples the one-process game mixes.
 
 **Pipelining the two chips.** In plain lockstep the client sends its frame's input, waits while the server runs its frame, then draws. With pipelining the client draws frame k while the server runs frame k+1, so the server's frame and the link round trip hide behind the render. Everything that feeds the next input (view drift, key state) keeps id's order, and the PC tests give the same state hashes and frames with it on. On the PC the client's link wait fell from 8.52 s to 3.02 s over a test run.
 
 **Core 1 and DMA.** The display chip's second core draws every second span of each lit surface while core 0 draws the others. A span writes only its own pixels and depth, so the result is the same picture. The LCD scanout runs by DMA in 16-bit SPI frames, and the next frame's input, link exchange and parsing run while it is in flight. Only drawing has to wait for the scanout to finish. Cores hand work to each other through shared memory and `__sev`/`__wfe`, not the SIO FIFO (lessons L14, a bug found on the board).
 
-**Run-time clock and flash switch with a self-check.** The BSP runs both chips at 200 MHz and 1.15 V with flash at 50 MHz, and the display chip's bootloader must keep working at those settings because the display chip has no BOOTSEL button. So the Quake apps change the clock only at run time, after the BSP has started: 1.20 V, then 250 MHz, then every clock-derived divider re-derived (LCD SPI, link UART, I2S, I2C, backlight, the FPGA clock on main). The flash divider goes from 4 to 2 (125 MHz, within the W25Q128JV's 133 MHz rating) from code in RAM with interrupts off. Before keeping it, the routine hashes the first 128 KB of the app's image through the uncached flash alias at the old and the new divider and writes the old settings back if they differ. The bootloader is untouched. Main puts the checked divider back after every save, because the SDK's flash writes restore the boot default (lessons L56, L57).
+**Run-time clock and flash switch with a self-check.** The BSP runs both chips at 200 MHz and 1.15 V with flash at 50 MHz, and the display chip's bootloader must keep working at those settings because the display chip has no BOOTSEL button. So the Quake apps change the clock only at run time, after the BSP has started, 1.20 V, then 250 MHz, then every clock-derived divider re-derived (LCD SPI, link UART, I2S, I2C, backlight, the FPGA clock on main). The flash divider goes from 4 to 2 (125 MHz, within the W25Q128JV's 133 MHz rating) from code in RAM with interrupts off. Before keeping it, the routine hashes the first 128 KB of the app's image through the uncached flash alias at the old and the new divider and writes the old settings back if they differ. The bootloader is untouched. Main puts the checked divider back after every save, because the SDK's flash writes restore the boot default (lessons L56, L57).
 
-**Exactness testing by state hashes.** Every change is checked on the PC against an untouched build. `qog_statehash` hashes the whole game state by meaning: QuakeC fields by type and strings by their text, so a change in memory layout does not change the hash but a change in behaviour does. Shared random numbers (`qog_rand`), fixed frame times and scripted runs make each run repeatable. The split pair on the PC (two processes over TCP at the UART's rate) gives the same state hashes as one-process WinQuake, and screenshots are compared byte for byte. Speed changes that are not exact, like the Fast render mode, are measured as a share of changed pixels over the same shots.
+**Exactness testing by state hashes.** Every change is checked on the PC against an untouched build. `qog_statehash` hashes the whole game state by meaning, QuakeC fields by type and strings by their text, so a change in memory layout does not change the hash but a change in behaviour does. Shared random numbers (`qog_rand`), fixed frame times and scripted runs make each run repeatable. The split pair on the PC (two processes over TCP at the UART's rate) gives the same state hashes as one-process WinQuake, and screenshots are compared byte for byte. Speed changes that are not exact, like the Fast render mode, are measured as a share of changed pixels over the same shots.
 
 ### Fast render mode
 
@@ -104,7 +104,7 @@ The board's default render mode trades a small picture difference for speed, in 
 | Linear light | light blended exactly at the ends of each 8-pixel run and stepped between | 1.28% |
 | Integer reciprocal | 1/z from the integer divider, about 16 good bits | 0.06% |
 | All three (shipped) | | about 2.8% average, about 9% in the worst frame |
-| For comparison: fixed 32-pixel steps, as MG24Quake | | 14.3% average, 38% worst frame |
+| For comparison, fixed 32-pixel steps, as MG24Quake | | 14.3% average, 38% worst frame |
 
 On the board Fast mode took E1M1 from 10.4 to 10.9 fps.
 
@@ -138,7 +138,7 @@ The goal was 35 fps and it was not reached. A cache measurement showed that wait
 | USB CDC consoles | both | timing lines every 2 s, diagnostics |
 | Accelerometer | display | used only by the platform test app, not by the game |
 
-Not used by the game: the radios, the FPGA (its bitstream still loads at boot) and the breakout I/O.
+Not used by the game, the radios, the FPGA (its bitstream still loads at boot) and the breakout I/O.
 
 ## Other ports
 

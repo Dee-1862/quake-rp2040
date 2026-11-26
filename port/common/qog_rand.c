@@ -4,7 +4,7 @@
  * random()) and for effects. Each C library has its own rand(), so the PC
  * (MSVC) and the board (newlib) would make different choices. The builds map
  * rand to qog_rand with a compiler define (-Drand=qog_rand), so the engine
- * source is unchanged and every port gets the same sequence: MSVC's own
+ * source is unchanged and every port gets the same sequence, MSVC's own
  * linear congruential generator, which is what the PC used before.
  *
  * qog_rand_calls counts calls, which qog_statehash prints so a run that

@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -32,5 +33,5 @@ qboolean	Loop_CanSendUnreliableMessage (qsocket_t *sock);
 void		Loop_Close (qsocket_t *sock);
 void		Loop_Shutdown (void);
 #ifdef QOG_LOOP_INPLACE
-byte		*Loop_DemoBuffer (void);	// QuakeOG: where a demo message is read
+byte		*Loop_DemoBuffer (void);	// QuakeOG, where a demo message is read
 #endif

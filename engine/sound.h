@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -35,7 +36,7 @@ typedef struct
 typedef struct sfx_s
 {
 #ifdef QOG_SFX_NAMEPTR
-	char	*name;			// QuakeOG: the name in the mapped pack's directory, or a small pool (snd_dma.c)
+	char	*name;			// QuakeOG, the name in the mapped pack's directory, or a small pool (snd_dma.c)
 #else
 	char 	name[MAX_QPATH];
 #endif
@@ -50,7 +51,7 @@ typedef struct
 	int 	speed;
 	int 	width;
 	int 	stereo;
-	byte	*flash;			// QuakeOG: unsigned 8-bit samples read in place from flash, or NULL
+	byte	*flash;			// QuakeOG, unsigned 8-bit samples read in place from flash, or NULL
 	byte	data[1];		// variable sized
 } sfxcache_t;
 
@@ -126,13 +127,13 @@ qboolean SNDDMA_Init(void);
 int SNDDMA_GetDMAPos(void);
 
 #ifdef QOG_SND_GETSAMPLES
-// QuakeOG: the samples played so far, never wrapping (id's __sun__ path in
+// QuakeOG, the samples played so far, never wrapping (id's __sun__ path in
 // GetSoundtime), for an output that counts them itself
 int SNDDMA_GetSamples(void);
 #endif
 
 #ifdef QOG_SND_HOST
-// QuakeOG (Agent W): the split game mixes on the server half for the client
+// QuakeOG, the split game mixes on the server half for the client
 // half (engine/net_link.c). What id's mixer read from the client's state
 // comes with the client's sound calls instead.
 extern int		snd_viewentity;			// cl.viewentity
@@ -148,14 +149,14 @@ void SNDDMA_Shutdown(void);
 // ====================================================================
 
 #ifdef QOG_MAX_CHANNELS
-#define	MAX_CHANNELS			QOG_MAX_CHANNELS	// QuakeOG: 12 plus the static sounds a map may have
+#define	MAX_CHANNELS			QOG_MAX_CHANNELS	// QuakeOG, 12 plus the static sounds a map may have
 #else
 #define	MAX_CHANNELS			128
 #endif
 #define	MAX_DYNAMIC_CHANNELS	8
 
 #ifdef QOG_SND_HOSTMEM
-// QuakeOG (Agent W): the paint buffer (512 pairs, only used while
+// QuakeOG, the paint buffer (512 pairs, only used while
 // S_PaintChannels runs) and known_sfx (QOG_MAX_SFX entries) come from the
 // port's memory, not the hunk (port/common/qog_snd_host.c)
 void	*qog_snd_host_paintbuffer (void);
@@ -163,14 +164,14 @@ sfx_t	*qog_snd_host_sfxtable (void);
 #endif
 
 #ifdef QOG_SND_HASH
-// QuakeOG (Agent W): a hash of every painted sample pair and every byte or
+// QuakeOG, a hash of every painted sample pair and every byte or
 // word written to the DMA buffer, in time order (qog_sndhash), to compare mixers
 extern unsigned	qog_snd_painthash, qog_snd_paintcount, qog_snd_outhash, qog_snd_outcount;
 #endif
 
 
 #ifdef QOG_SND_ONINIT
-// QuakeOG: allocated by S_Init, so a host that never starts sound pays nothing
+// QuakeOG, allocated by S_Init, so a host that never starts sound pays nothing
 extern	channel_t   *channels;
 #else
 extern	channel_t   channels[MAX_CHANNELS];

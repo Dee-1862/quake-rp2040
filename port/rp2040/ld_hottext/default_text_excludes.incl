@@ -1,8 +1,8 @@
-/* QuakeOG (Agent AQ): QOG_BOARD_HOTTEXT, code placement for the XIP cache.
+/* QuakeOG, QOG_BOARD_HOTTEXT, code placement for the XIP cache.
    This file replaces the SDK's default_text_excludes.incl (pico_standard_link)
    for quake_display only, through pico_add_linker_script_override_path. The
    SDK's own line stays last and unchanged, so every other function lands
-   where it did. Layout only: the same code at other addresses.
+   where it did. Layout only, the same code at other addresses.
 
    The RP2040's XIP cache is 16 KB, two ways of 8-byte lines, so flash
    addresses 8 KB apart share a set and a set holds two lines. The hot render
@@ -15,7 +15,7 @@
    their sizes allow. tools/xip_sets.py counts the overlaps from a link map.
 
    Groups, in order (a "group" comment line opens each and names the groups
-   that run at the same time on the other core, tools/xip_sets.py reads them):
+   that run at the same time on the other core, tools/xip_sets.py reads them).
      helpers  float and divide wrappers both cores call (they jump to ROM)
      c1loop   core 1's scanout and job loop, always running
      world    core 0, R_RenderWorld (BSP walk, faces, clip, emit, project)

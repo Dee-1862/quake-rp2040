@@ -1,23 +1,23 @@
-/* Demo playback host: id's client and renderer play a recorded demo with no
+/* Demo playback host, id's client and renderer play a recorded demo with no
  * server, no QuakeC, no console and no sound (shared by the PC build and the
  * board).
  *
  * The engine starts the parts Host_Init starts for a client (command buffer
  * and commands, cvars, packs, wad, models, palette and colormap, video,
  * 2D drawing, screen, renderer, status bar, client), and each frame runs the
- * client half of id's _Host_Frame: rand, the frame time, the command buffer,
+ * client half of id's _Host_Frame, rand, the frame time, the command buffer,
  * CL_ReadFromServer (which reads the demo through CL_GetMessage), the screen
  * and CL_DecayLights. The screen is id's SCR_UpdateScreen for a client in
- * the game view: V_RenderView, the centre print and the status bar, then
+ * the game view, V_RenderView, the centre print and the status bar, then
  * V_UpdatePalette and VID_Update. While id's screen would show the console
  * (before the signon ends) or the loading plaque, nothing is drawn.
  *
- *   qog_demo_init_host (&parms);
- *   qog_demo_start (demos, n, seed);   the loop of demos, as startdemos
+ *   qog_demo_init_host (&parms).
+ *   qog_demo_start (demos, n, seed). The loop of demos, as startdemos
  *   for (;;)
- *       qog_demo_frame (frametime);     1 when a frame was presented
+ *       qog_demo_frame (frametime). 1 when a frame was presented
  *
- * Standalone on the PC: -qogdemo (port/pc/demo_pc.c). On the board: the
+ * Standalone on the PC, -qogdemo (port/pc/demo_pc.c). On the board, the
  * app pair apps/qogdemo. */
 #ifndef QOG_DEMO_H
 #define QOG_DEMO_H
@@ -39,7 +39,7 @@ void qog_demo_start (const char **names, int count, unsigned seed);
 /* Skips to the next demo of the loop at the start of the next frame. */
 void qog_demo_next (void);
 
-/* One host frame. frametime is what Host_FilterTime would give: a fixed
+/* One host frame. frametime is what Host_FilterTime would give, a fixed
    step (host_framerate) or the real time since the last frame, which is
    clamped to 0.001 .. 0.1 s as id does. Returns 1 if a frame was drawn and
    presented with VID_Update, 0 if not, -1 if a demo ended in this frame
@@ -52,7 +52,7 @@ int qog_demo_starts (void);
 /* The demo playing now (its name), or "" between demos. */
 const char *qog_demo_name (void);
 
-/* Peaks since the start: client entities in use, visible entities in one
+/* Peaks since the start, client entities in use, visible entities in one
    frame, active particles in one frame, static entities, models known,
    temp entities and beams active in one frame, low hunk used. */
 typedef struct

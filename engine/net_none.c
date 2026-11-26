@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -24,10 +25,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "net_link.h"
 #endif
 
-net_driver_t net_drivers[NET_DRIVER_SLOTS] =	// QuakeOG: was MAX_NET_DRIVERS
+net_driver_t net_drivers[NET_DRIVER_SLOTS] =	// QuakeOG, was MAX_NET_DRIVERS
 {
 #ifdef QOG_NET_LINK
-	{	// QuakeOG: the split game's link between the halves (net_link.c)
+	{	// QuakeOG, the split game's link between the halves (net_link.c)
 	"Link",
 	false,
 	Link_Init,
@@ -64,5 +65,5 @@ net_driver_t net_drivers[NET_DRIVER_SLOTS] =	// QuakeOG: was MAX_NET_DRIVERS
 };
 int net_numdrivers = 1;
 
-net_landriver_t	net_landrivers[NET_LANDRIVER_SLOTS];	// QuakeOG: was MAX_NET_DRIVERS
+net_landriver_t	net_landrivers[NET_LANDRIVER_SLOTS];	// QuakeOG, was MAX_NET_DRIVERS
 int net_numlandrivers = 0;

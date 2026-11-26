@@ -4,14 +4,14 @@
  * Never call fwog_buttons_poll() yourself: the BSP's 6 s red-hold power-off
  * depends on that single poll seeing every edge.
  *
- * Mapping (v4, fire and the combo button split, the user's layout):
- *   alone:          gray=fire yellow=forward green=turn L blue=turn R
+ * Mapping (v4, fire and the combo button split, the user's layout).
+ *   alone,          gray=fire yellow=forward green=turn L blue=turn R
  *                   red tapped=next weapon
  *   red held +:     gray=prev weapon yellow=back green=jump blue=crouch/swim down
- *   green + blue:   menu
- *   red held ALONE for the BSP's 6 s: power off (port/rp2040/power_qog.c only
+ *   green + blue,   menu
+ *   red held ALONE for the BSP's 6 s, power off (port/rp2040/power_qog.c only
  *   counts red while no other button is down, so combos never power off)
- * Gray is fire only: down = attack held, and a tap shorter than one game frame
+ * Gray is fire only, down = attack held, and a tap shorter than one game frame
  * (pressed and released between two steps, the usual case at the board's
  * ~140 ms frames) gives one press and release of FIRE in the same step, which
  * Quake turns into one shot. Red is next weapon on release when no combo
@@ -44,7 +44,7 @@ typedef struct {
     uint32_t down;       /* action bits held this frame */
     uint32_t pressed;    /* action bits that started this frame */
     uint32_t released;   /* action bits that ended this frame */
-    int16_t  tilt_x_mg;  /* calibrated, dead-zoned; 0 when tilt is off */
+    int16_t  tilt_x_mg;  /* calibrated, dead-zoned. 0 when tilt is off */
     int16_t  tilt_y_mg;
 } qog_input_t;
 
@@ -52,13 +52,13 @@ typedef struct {
     uint32_t prev_actions;
     uint32_t green_since_ms;  /* when the fire button went down (it was green in v2) */
     bool     green_combo;     /* another button joined the fire button this hold */
-    bool     menu_latched;    /* turn L + turn R seen; suppress turns until both up */
+    bool     menu_latched;    /* turn L + turn R seen. Suppress turns until both up */
     bool     fire_prev;       /* the fire button was down at the last step */
     bool     fire_emitted;    /* FIRE was reported held during this press */
     bool     red_prev;        /* red was down at the last step */
     bool     red_combo;       /* another button joined red this hold */
     uint32_t red_since_ms;    /* when red went down */
-    uint8_t  seen;            /* buttons that went down since the last step; the
+    uint8_t  seen;            /* buttons that went down since the last step. The
                                  caller ORs in every poll between steps */
 } qog_input_state_t;
 

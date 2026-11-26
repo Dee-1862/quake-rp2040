@@ -13,7 +13,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 See the GNU General Public License for more details.
 */
-// d_scanlit.c -- QuakeOG: world surfaces drawn straight from texture and
+// d_scanlit.c -- QuakeOG, world surfaces drawn straight from texture and
 // lightmap, with no surface cache.
 //
 // id's renderer first builds a lit copy of every visible surface into the
@@ -29,15 +29,15 @@ See the GNU General Public License for more details.
 #include "quakedef.h"
 #include "d_local.h"
 #include "r_local.h"
-#include "qog_phase.h"	// QuakeOG: render phase counts (QOG_PHASE_TIME)
+#include "qog_phase.h"	// QuakeOG, render phase counts (QOG_PHASE_TIME)
 
 #ifndef QOG_SURFCACHE
 
 #ifdef QOG_C1_COPY
-#undef QOG_AR_STATS		// QuakeOG (Agent AR): PC measurement, core 0's copy only
+#undef QOG_AR_STATS		// QuakeOG, PC measurement, core 0's copy only
 #undef QOG_AR_DUMP
 #endif
-// QuakeOG (Agent AR): the Q drawer (d_lit_q.h) is the Fast drawer's, and
+// QuakeOG, the Q drawer (d_lit_q.h) is the Fast drawer's, and
 // its runs use the interpolators
 #if defined(QOG_LITSPAN_Q) && !(defined(QOG_LITSPAN_INTERP) && defined(QOG_RFAST) && \
 	defined(QOG_LITSPAN_FAST) && !defined(QOG_RFAST_FLOATSETUP))
@@ -54,16 +54,16 @@ static int		lit_smax;			// lightmap row length
 static int		lit_lshift;			// surface pixels at this mip -> lightmap cells
 static byte		*lit_colormap;
 #ifdef QOG_LITSPAN_FAST
-// QuakeOG: state of the restructured span drawer (d_litspan.h)
+// QuakeOG, state of the restructured span drawer (d_litspan.h)
 static int		lit_kind;			// 0 to 3 power-of-two texture at that mip, 4 any size
 static int		lit_soff16, lit_toff16;	// texture origin in 16.16
-static int		lit_smask, lit_tshift;	// power of two: s mask, log2 of the width
-static unsigned	lit_tmask2;			// power of two: t mask shifted up by lit_tshift
-static int		lit_tw16, lit_th16;	// any size: texture size in 16.16
+static int		lit_smask, lit_tshift;	// power of two, s mask, log2 of the width
+static unsigned	lit_tmask2;			// power of two, t mask shifted up by lit_tshift
+static int		lit_tw16, lit_th16;	// any size, texture size in 16.16
 static const unsigned	*lit_lgrid;		// blocklights
 static const unsigned	*lit_lbase;		// blocklights moved back by the origin's light cells
 #ifdef QOG_LITSPAN_INTERP
-// QuakeOG (Agent AH): interpolator 0's lane controls for this surface's
+// QuakeOG, interpolator 0's lane controls for this surface's
 // texture (d_litspan.h), set by D_SetupLitSurface, written by each core
 static unsigned	lit_ictrl0, lit_ictrl1;
 #if defined(_WIN32)
@@ -75,20 +75,20 @@ __declspec(thread) unsigned	liti_regs[2][16];	// the PC's stand-in for each core
 #endif
 #define LITSPAN_NEXT(p)	((p)->pnext != SPAN_NONE && ((p) = SPAN_PTR ((p)->pnext)))
 #ifdef QOG_LITSPAN_ZFUSE
-// QuakeOG: each span's z is written here from the 1/z the drawer computes
+// QuakeOG, each span's z is written here from the 1/z the drawer computes
 // at its start (D_QogZSpan, d_scan.c), and D_DrawSurfaces skips D_DrawZSpans
 void D_QogZSpan (espan_t *pspan, float zi, int izistep);
 #define LITSPAN_ZDECL			int izistep_ = (int)(d_zistepu * 0x8000 * 0x10000);
 #define LITSPAN_ZSPAN(p, zi)	D_QogZSpan (p, zi, izistep_);
 #if defined(QOG_RFAST) && !defined(QOG_RFAST_FLOATSETUP)
-// QuakeOG (Agent AH): the fixed point Fast drawer's z, from its 1/z * 2^k
+// QuakeOG, the fixed point Fast drawer's z, from its 1/z * 2^k
 void D_QogZSpanI (espan_t *pspan, int izi, int izistep);
 #define LITFIX_ZSPAN(p, D64)	D_QogZSpanI (p, ((D64) >> litfix_zsh) > 0x7FFFFFFF ? 0x7FFFFFFF \
 									: (int)((D64) >> litfix_zsh), izistep_);
 #endif
 #endif
 #if defined(QOG_RFAST) && !defined(QOG_RFAST_FLOATSETUP)
-// QuakeOG (Agent AH): one surface's values for the fixed point Fast drawer
+// QuakeOG, one surface's values for the fixed point Fast drawer
 // (QOG_RFAST_FIX, d_litspan.h), set on core 0 by D_LitFixSetup and read by
 // both cores
 static int			litfix_ok;				// the surface can be drawn by D_DrawSpans8LitFix
@@ -98,7 +98,7 @@ static long long	litfix_s0, litfix_su, litfix_sv;	// (s / 65536) * (1/z) * 2^(k 
 static long long	litfix_t0, litfix_tu, litfix_tv;	// (t / 65536) * (1/z) * 2^(k - wt)
 static int			litfix_sw, litfix_tw;	// 16 - ws and 16 - wt
 static int			litfix_stepbits;		// bits of the largest u step, less 25
-static int			litfix_zsh;				// k - 31: 1/z * 2^31 is D >> litfix_zsh
+static int			litfix_zsh;				// k - 31, 1/z * 2^31 is D >> litfix_zsh
 float				d_qognearzi;			// the surface's nearest 1/z (d_edge.c)
 #endif
 #include "d_litspan.h"
@@ -109,7 +109,7 @@ float				d_qognearzi;			// the surface's nearest 1/z (d_edge.c)
 ================
 D_LitInterpCheck
 
-QuakeOG (Agent AH): the board checks once that its interpolators give what
+QuakeOG, the board checks once that its interpolators give what
 the pixel loop's C expressions give (d_litspan.h, QOG_LITSPAN_INTERP), for
 a 64x64 texture and a light run, at start-up from D_Init, where printing
 is safe (inside the edge drawing a Con_Printf frame of 4 KB would not be).
@@ -158,7 +158,7 @@ void D_QogLitInterpCheck (void)
 	if (!bad)
 	{
 		void D_QogLitQCheck (void);
-		D_QogLitQCheck ();	// QuakeOG (Agent AR): the span runs' assembly (d_lit_q.h)
+		D_QogLitQCheck ();	// QuakeOG, the span runs' assembly (d_lit_q.h)
 		void D_QogLitWrapCheck (void);
 		D_QogLitWrapCheck ();	// the span loop's
 	}
@@ -170,7 +170,7 @@ void D_QogLitInterpCheck (void)
 #endif
 
 #ifdef QOG_DRAW_CORE1
-// QuakeOG (Agent AM): the check above, on core 0 before core 1 draws with
+// QuakeOG, the check above, on core 0 before core 1 draws with
 // its own copy of this file (d_core1.c), which never checks
 void D_QogLitCheck (void)
 {
@@ -179,7 +179,7 @@ void D_QogLitCheck (void)
 #endif
 
 #ifdef QOG_RFAST_STATS
-// QuakeOG (Agent AA): PC measurement of the Fast drawer's work (d_litspan.h).
+// QuakeOG, PC measurement of the Fast drawer's work (d_litspan.h).
 // qog_rfaststats prints the sums since the last call and clears them.
 unsigned	litfast_stats[6];
 static int	litfast_frame0;
@@ -201,7 +201,7 @@ void D_QogRfastStats_f (void)
 ================
 D_QogArStats
 
-QuakeOG (Agent AR): PC measurement only. The lit spans of each surface by
+QuakeOG, PC measurement only. The lit spans of each surface by
 length, and how much farther than the surface's nearest point each span
 reaches (the nearest 1/z over the span's smaller end), summed since the
 level started and printed every 100 views as "qog_arstat spans".
@@ -267,7 +267,7 @@ static void D_QogArStats (espan_t *pspan)
 #endif
 
 #if defined(QOG_RFAST) && defined(QOG_LITSPAN_FAST)
-// QuakeOG (Agent AA): the Fast mode drawer (r_fast 1) is a function of its
+// QuakeOG, the Fast mode drawer (r_fast 1) is a function of its
 // own, so the exact drawer's code and stack stay as they were
 #if defined(_MSC_VER)
 #define QOG_NOINLINE	__declspec(noinline)
@@ -286,9 +286,9 @@ static QOG_NOINLINE void D_DrawSpans8LitFast (espan_t *pspan, int step)	\
 }
 #define D_LITFAST(p, step)	D_DrawSpans8LitFast (p, step)
 #else
-// QuakeOG (Agent AH): QOG_RFAST_FIX, the Fast drawer with integer spans
+// QuakeOG, QOG_RFAST_FIX, the Fast drawer with integer spans
 // (d_litspan.h). A surface whose values do not fit (D_LitFixSetup) keeps
-// Agent AA's float drawer.
+// The earlier float drawer.
 #define QOG_LITFAST_FN													\
 static QOG_NOINLINE void D_DrawSpans8LitFast (espan_t *pspan, int step)	\
 {																		\
@@ -307,7 +307,7 @@ static QOG_NOINLINE void D_DrawSpans8LitFix (espan_t *pspan, int step)	\
 	}																	\
 }
 #ifdef QOG_LITSPAN_Q
-// QuakeOG (Agent AR): the Fast drawer with 32-bit span starts, the light
+// QuakeOG, the Fast drawer with 32-bit span starts, the light
 // runs and pixels in one loop and the z written by it (d_lit_q.h)
 static void D_DrawSpans8LitQ (espan_t *pspan, int step);
 #define D_LITFAST(p, step)	(litfix_ok ? (lit_kind <= 3 ? D_DrawSpans8LitQ (p, step) : D_DrawSpans8LitFix (p, step)) \
@@ -317,20 +317,20 @@ static void D_DrawSpans8LitQ (espan_t *pspan, int step);
 #endif
 
 #ifdef QOG_LITSPAN_Q
-#include "d_lit_q.h"	// QuakeOG (Agent AR)
+#include "d_lit_q.h"	// QuakeOG
 #endif
 
 /*
 ================
 D_LitFixSetup
 
-QuakeOG (Agent AH): the surface's fixed point values for D_DrawSpans8LitFix,
+QuakeOG, the surface's fixed point values for D_DrawSpans8LitFix,
 on core 0 before the spans are shared with core 1, from id's float
 gradients (D_CalcGradients) at the first span's start. litfix_ok is 0 when
 they do not fit, and the float drawer draws the surface.
 ================
 */
-// QuakeOG (Agent AH): x * 2^k truncated to a 64-bit integer, as
+// QuakeOG, x * 2^k truncated to a 64-bit integer, as
 // (long long)(x * 2^k) gives it (the product is exact), from the float's
 // bits, so no float multiply or conversion routine runs. 0 when |x * 2^k|
 // may reach 2^62, a NaN or an infinity.
@@ -396,7 +396,7 @@ static QOG_NOINLINE void D_LitFixSetup (espan_t *pspan)	// its frame never under
 		!litfix_scale (d_zistepv, kexp, &litfix_dv))
 		return;
 
-	// s and t with sadjust and tadjust folded in: Ns / D is s / 65536 in
+	// s and t with sadjust and tadjust folded in, Ns / D is s / 65536 in
 	// [0, 2^ws) over the surface
 	a = (float)sadjust * (1.0f / 65536.0f);
 	sr = (d_sdivzorigin + dv*d_sdivzstepv + du*d_sdivzstepu) + a * zr;
@@ -428,7 +428,7 @@ static QOG_NOINLINE void D_LitFixSetup (espan_t *pspan)	// its frame never under
 	litfix_zsh = kexp - 31;
 	litfix_ok = 1;
 #ifdef QOG_LITSPAN_Q
-	// QuakeOG (Agent AR): the rest of the surface's values for litq_span (d_lit_q.h)
+	// QuakeOG, the rest of the surface's values for litq_span (d_lit_q.h)
 	litq_surf.ssw = litfix_sw;
 	litq_surf.tsw = litfix_tw;
 	litq_surf.exts = bbextents;
@@ -443,7 +443,7 @@ static QOG_NOINLINE void D_LitFixSetup (espan_t *pspan)	// its frame never under
 ================
 D_QogArDump
 
-QuakeOG (Agent AR): PC measurement only. `qog_ardump <file> <first view>
+QuakeOG, PC measurement only. `qog_ardump <file> <first view>
 <views>` writes every Fast lit surface of those views with what the span
 drawers read (gradients, the lit_ and litfix_ values, the light grid, the
 mip level's texels, the spans), so build-ar's emulator can replay them
@@ -536,7 +536,7 @@ static void D_QogArDump (espan_t *pspan)
 ================
 D_SetupLitSurface
 
-Per surface, per frame: the light grid and the texture to sample.
+Per surface, per frame, the light grid and the texture to sample.
 ================
 */
 void D_SetupLitSurface (msurface_t *pface, int mip)
@@ -566,9 +566,9 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 	lit_lshift = 4 - mip;	// a lightmap cell is 16 texels at mip 0
 	lit_colormap = (byte *)vid.colormap;
 #if !defined(_WIN32) && (defined(QOG_LIT_TEX_NOALLOC) || defined(QOG_LIT_CMAP_NOALLOC))
-	// QuakeOG (Agent Z): measurement options for the board (exact, the same
+	// QuakeOG, measurement options for the board (exact, the same
 	// bytes). Texels, or the colour map, read from flash through the
-	// RP2040's XIP no-allocate alias (0x11000000): a read the XIP cache
+	// RP2040's XIP no-allocate alias (0x11000000), a read the XIP cache
 	// holds is served from it, a miss is read from flash without evicting
 	// anything, so streaming texels leave the span code, the colour map and
 	// the light grid code in the 16 KB cache.
@@ -584,10 +584,10 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 	QOG_PH_COUNT (QOG_PC_LITSURFS, 1);
 	QOG_PH_COUNT (QOG_PC_LMCELLS, lit_smax * ((pface->extents[1] >> 4) + 1));
 #ifdef QOG_LITSPAN_FAST
-	// QuakeOG: the restructured drawer's per-surface values (d_litspan.h)
+	// QuakeOG, the restructured drawer's per-surface values (d_litspan.h)
 	LITSPAN_SETUP (blocklights)
 #ifdef QOG_LITSPAN_INTERP
-	// QuakeOG (Agent AH): (S >> 16) & smask and (T2 >> 16) & tmask2 as lanes
+	// QuakeOG, (S >> 16) & smask and (T2 >> 16) & tmask2 as lanes
 	if (lit_kind <= 3)
 	{
 		int		hbits = 0;
@@ -599,7 +599,7 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 	}
 #endif
 #if defined(QOG_LITSPAN_Q) && defined(QOG_RFAST_FIX)
-	// QuakeOG (Agent AR): the surface's values for litq_runs (d_lit_q.h)
+	// QuakeOG, the surface's values for litq_runs (d_lit_q.h)
 	litq_surf.lbase = lit_lbase;
 	litq_surf.lrowbytes = lit_smax * 4;
 	litq_surf.mip = mip;
@@ -616,12 +616,12 @@ void D_SetupLitSurface (msurface_t *pface, int mip)
 =============
 D_DrawSpans8Lit
 
-QuakeOG: the same pixels as id's D_DrawSpans8 with LitPixel below, with
+QuakeOG, the same pixels as id's D_DrawSpans8 with LitPixel below, with
 no modulo and fewer instructions per pixel (d_litspan.h).
 =============
 */
 
-#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG, core 1 counts too in the cost model's builds
 static void D_QogCountLit (espan_t *pspan, int any)
 {
 	do
@@ -641,7 +641,7 @@ static void D_QogCountLit (espan_t *pspan, int any)
 #ifdef QOG_SPANS_CORE1
 /*
 =============
-QuakeOG (Agent V): the display chip's second core draws half of each lit
+QuakeOG, the display chip's second core draws half of each lit
 surface's spans (QOG_SPANS_CORE1, board client only, exact). Core 0 sets
 the surface up (D_SetupLitSurface, D_CalcGradients) as before, then core 1
 draws the 2nd, 4th, 6th ... span of the list while core 0 draws the 1st,
@@ -649,7 +649,7 @@ draws the 2nd, 4th, 6th ... span of the list while core 0 draws the 1st,
 writes only its own pixels and z, and the drawer only reads the surface's
 state (the lit_* values, the gradients, the light grid), which nothing
 changes until both cores are done, so the picture is the same in any
-order. The port runs the other half: core 1 on the board (vid_rp2040.c),
+order. The port runs the other half, core 1 on the board (vid_rp2040.c),
 a second thread or the same thread before or after on the PC (vid_pc.c).
 =============
 */
@@ -671,7 +671,7 @@ static int D_QogSpanStep (espan_t **pp, int step)
 #define LITSPAN_NEXT(p)	D_QogSpanStep (&(p), step)
 
 #ifdef QOG_RFAST
-// QuakeOG (Agent AA): Fast mode, every step-th span from pspan. Both cores
+// QuakeOG, Fast mode, every step-th span from pspan. Both cores
 // pick the drawer before they call it, so the two frames never stack.
 QOG_LITFAST_FN
 #define D_LITSTEP(p, step)												\
@@ -696,57 +696,57 @@ static void D_DrawSpans8LitStep (espan_t *pspan, int step)
 
 static void D_QogSpansCore1 (void *pspan)
 {
-	D_LITSTEP ((espan_t *)pspan, 2);	// QuakeOG (Agent AA): or the Fast drawer
+	D_LITSTEP ((espan_t *)pspan, 2);	// QuakeOG, or the Fast drawer
 }
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG, core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
-	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
-	QOG_ARSTATS (pspan);	// QuakeOG (Agent AR): PC measurement
+	LITI_CHECK	// QuakeOG, the interpolators once, else Exact
+	QOG_ARSTATS (pspan);	// QuakeOG, PC measurement
 #if defined(QOG_RFAST) && defined(QOG_RFAST_FIX)
 	if (r_qogfast)
 	{
-		D_LitFixSetup (pspan);	// QuakeOG (Agent AH): before core 1 reads it
-		QOG_ARDUMP (pspan);		// QuakeOG (Agent AR): PC measurement
+		D_LitFixSetup (pspan);	// QuakeOG, before core 1 reads it
+		QOG_ARDUMP (pspan);		// QuakeOG, PC measurement
 	}
 #endif
 	if (pspan->pnext == SPAN_NONE
 #ifdef QOG_DRAW_CORE1
-		|| d_qogpipe_on		// QuakeOG (Agent AM): core 1 draws surfaces of its own
+		|| d_qogpipe_on		// QuakeOG, core 1 draws surfaces of its own
 #endif
 		)
 	{
-		D_LITSTEP (pspan, 1);	// QuakeOG (Agent AA): or the Fast drawer
+		D_LITSTEP (pspan, 1);	// QuakeOG, or the Fast drawer
 		return;
 	}
 	Sys_QogCore1Start (D_QogSpansCore1, SPAN_PTR (pspan->pnext));
-	D_LITSTEP (pspan, 2);	// QuakeOG (Agent AA): or the Fast drawer
+	D_LITSTEP (pspan, 2);	// QuakeOG, or the Fast drawer
 	Sys_QogCore1Join ();
 }
 
 #else	// !QOG_SPANS_CORE1
 
 #ifdef QOG_RFAST
-// QuakeOG (Agent AA): Fast mode, a drawer of its own, and the exact drawer
+// QuakeOG, Fast mode, a drawer of its own, and the exact drawer
 // below in a function of its own, so the two frames never stack
 QOG_LITFAST_FN
 static QOG_NOINLINE void D_DrawSpans8LitExact (espan_t *pspan);
 
 void D_DrawSpans8Lit (espan_t *pspan)
 {
-#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG (Agent AS): core 1 counts too in the cost model's builds
+#if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG, core 1 counts too in the cost model's builds
 	D_QogCountLit (pspan, lit_kind == 4);
 #endif
-	LITI_CHECK	// QuakeOG (Agent AH): the interpolators once, else Exact
-	QOG_ARSTATS (pspan);	// QuakeOG (Agent AR): PC measurement
+	LITI_CHECK	// QuakeOG, the interpolators once, else Exact
+	QOG_ARSTATS (pspan);	// QuakeOG, PC measurement
 	if (r_qogfast)
 	{
 #ifdef QOG_RFAST_FIX
-		D_LitFixSetup (pspan);	// QuakeOG (Agent AH)
-		QOG_ARDUMP (pspan);		// QuakeOG (Agent AR): PC measurement
+		D_LitFixSetup (pspan);	// QuakeOG
+		QOG_ARDUMP (pspan);		// QuakeOG, PC measurement
 #endif
 		D_LITFAST (pspan, 1);
 	}
@@ -764,13 +764,13 @@ void D_DrawSpans8Lit (espan_t *pspan)
 #endif
 	{
 #if defined(QOG_LITSPAN16) && defined(QOG_LITSPAN_LINLIGHT)
-	D_LITSPANS16LIN_BODY	// QuakeOG: approximate, both below
+	D_LITSPANS16LIN_BODY	// QuakeOG, approximate, both below
 #elif defined(QOG_LITSPAN16)
-	D_LITSPANS16_BODY		// QuakeOG: approximate, one float divide per 16 pixels
+	D_LITSPANS16_BODY		// QuakeOG, approximate, one float divide per 16 pixels
 #elif defined(QOG_LITSPAN_LINLIGHT)
-	D_LITSPANS8LIN_BODY		// QuakeOG: approximate, light linear along each run
+	D_LITSPANS8LIN_BODY		// QuakeOG, approximate, light linear along each run
 #else
-	D_LITSPANS8_BODY		// QuakeOG: exact
+	D_LITSPANS8_BODY		// QuakeOG, exact
 #endif
 	}
 }

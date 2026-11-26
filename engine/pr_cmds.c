@@ -1,3 +1,4 @@
+/* Changed by the QuakeOG project, 2026 (last change November 2026). The git history has the details. */
 /*
 Copyright (C) 1996-1997 Id Software, Inc.
 
@@ -143,7 +144,7 @@ void SetMinMaxSize (edict_t *e, float *min, float *max, qboolean rotate)
 		if (min[i] > max[i])
 			PR_RunError ("backwards mins/maxs");
 
-	rotate = false;		// FIXME: implement rotation properly again
+	rotate = false;		// FIXME, implement rotation properly again
 
 	if (!rotate)
 	{
@@ -251,9 +252,9 @@ void PF_setmodel (void)
 		
 
 	e->v.model = m - pr_strings;
-	e->v.modelindex = i; //SV_ModelIndex (m);
+	e->v.modelindex = i; //SV_ModelIndex (m).
 
-	mod = sv.models[ (int)e->v.modelindex];  // Mod_ForName (m, true);
+	mod = sv.models[ (int)e->v.modelindex];  // Mod_ForName (m, true).
 	
 	if (mod)
 		SetMinMaxSize (e, mod->mins, mod->maxs, true);
@@ -682,7 +683,7 @@ void PF_checkpos (void)
 //============================================================================
 
 #ifdef QOG_PVS_LEAFS
-byte	checkpvs[QOG_PVS_LEAFS/8];	// QuakeOG: maps are checked against it at load (model.c)
+byte	checkpvs[QOG_PVS_LEAFS/8];	// QuakeOG, maps are checked against it at load (model.c)
 #else
 byte	checkpvs[MAX_MAP_LEAFS/8];
 #endif
@@ -1080,7 +1081,7 @@ void PF_precache_sound (void)
 	G_INT(OFS_RETURN) = G_INT(OFS_PARM0);
 	PR_CheckEmptyString (s);
 	
-	for (i=0 ; i<SV_PRECACHE_SOUNDS ; i++)	// QuakeOG: SV_PRECACHE_SOUNDS, see server.h
+	for (i=0 ; i<SV_PRECACHE_SOUNDS ; i++)	// QuakeOG, SV_PRECACHE_SOUNDS, see server.h
 	{
 		if (!sv.sound_precache[i])
 		{
@@ -1105,7 +1106,7 @@ void PF_precache_model (void)
 	G_INT(OFS_RETURN) = G_INT(OFS_PARM0);
 	PR_CheckEmptyString (s);
 
-	for (i=0 ; i<SV_PRECACHE_MODELS ; i++)	// QuakeOG: SV_PRECACHE_MODELS, see server.h
+	for (i=0 ; i<SV_PRECACHE_MODELS ; i++)	// QuakeOG, SV_PRECACHE_MODELS, see server.h
 	{
 		if (!sv.model_precache[i])
 		{
@@ -1835,33 +1836,33 @@ void PF_Fixme (void)
 builtin_t pr_builtin[] =
 {
 PF_Fixme,
-PF_makevectors,	// void(entity e)	makevectors 		= #1;
-PF_setorigin,	// void(entity e, vector o) setorigin	= #2;
-PF_setmodel,	// void(entity e, string m) setmodel	= #3;
-PF_setsize,	// void(entity e, vector min, vector max) setsize = #4;
-PF_Fixme,	// void(entity e, vector min, vector max) setabssize = #5;
-PF_break,	// void() break						= #6;
-PF_random,	// float() random						= #7;
-PF_sound,	// void(entity e, float chan, string samp) sound = #8;
-PF_normalize,	// vector(vector v) normalize			= #9;
-PF_error,	// void(string e) error				= #10;
-PF_objerror,	// void(string e) objerror				= #11;
-PF_vlen,	// float(vector v) vlen				= #12;
-PF_vectoyaw,	// float(vector v) vectoyaw		= #13;
-PF_Spawn,	// entity() spawn						= #14;
-PF_Remove,	// void(entity e) remove				= #15;
-PF_traceline,	// float(vector v1, vector v2, float tryents) traceline = #16;
-PF_checkclient,	// entity() clientlist					= #17;
-PF_Find,	// entity(entity start, .string fld, string match) find = #18;
-PF_precache_sound,	// void(string s) precache_sound		= #19;
-PF_precache_model,	// void(string s) precache_model		= #20;
-PF_stuffcmd,	// void(entity client, string s)stuffcmd = #21;
-PF_findradius,	// entity(vector org, float rad) findradius = #22;
-PF_bprint,	// void(string s) bprint				= #23;
-PF_sprint,	// void(entity client, string s) sprint = #24;
-PF_dprint,	// void(string s) dprint				= #25;
-PF_ftos,	// void(string s) ftos				= #26;
-PF_vtos,	// void(string s) vtos				= #27;
+PF_makevectors,	// void(entity e)	makevectors 		= #1.
+PF_setorigin,	// void(entity e, vector o) setorigin	= #2.
+PF_setmodel,	// void(entity e, string m) setmodel	= #3.
+PF_setsize,	// void(entity e, vector min, vector max) setsize = #4.
+PF_Fixme,	// void(entity e, vector min, vector max) setabssize = #5.
+PF_break,	// void() break						= #6.
+PF_random,	// float() random						= #7.
+PF_sound,	// void(entity e, float chan, string samp) sound = #8.
+PF_normalize,	// vector(vector v) normalize			= #9.
+PF_error,	// void(string e) error				= #10.
+PF_objerror,	// void(string e) objerror				= #11.
+PF_vlen,	// float(vector v) vlen				= #12.
+PF_vectoyaw,	// float(vector v) vectoyaw		= #13.
+PF_Spawn,	// entity() spawn						= #14.
+PF_Remove,	// void(entity e) remove				= #15.
+PF_traceline,	// float(vector v1, vector v2, float tryents) traceline = #16.
+PF_checkclient,	// entity() clientlist					= #17.
+PF_Find,	// entity(entity start, .string fld, string match) find = #18.
+PF_precache_sound,	// void(string s) precache_sound		= #19.
+PF_precache_model,	// void(string s) precache_model		= #20.
+PF_stuffcmd,	// void(entity client, string s)stuffcmd = #21.
+PF_findradius,	// entity(vector org, float rad) findradius = #22.
+PF_bprint,	// void(string s) bprint				= #23.
+PF_sprint,	// void(entity client, string s) sprint = #24.
+PF_dprint,	// void(string s) dprint				= #25.
+PF_ftos,	// void(string s) ftos				= #26.
+PF_vtos,	// void(string s) vtos				= #27.
 PF_coredump,
 PF_traceon,
 PF_traceoff,

@@ -19,7 +19,7 @@ See the GNU General Public License for more details.
  *
  *   quakeog_pc.exe [-basedir DIR] [-heapsize KB] [+map e1m1] ...
  *
- * -heapsize is the knob the RAM work turns: find the smallest hunk a map
+ * -heapsize is the knob the RAM work turns, find the smallest hunk a map
  * runs in, then make it smaller. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -35,7 +35,7 @@ See the GNU General Public License for more details.
 #define QOG_DEFAULT_BASEDIR "."
 #endif
 #define DEFAULT_HEAP_KB (8 * 1024)
-#define QOG_PC_FLASH_ADDR QOG_DATA_XIP_ADDR   /* same address as the board's game data region (0x10100000, Agent AC) */
+#define QOG_PC_FLASH_ADDR QOG_DATA_XIP_ADDR   /* same address as the board's game data region (0x10100000, earlier work) */
 #define QOG_PC_HUNK_ADDR  0x30000000u
 
 qboolean isDedicated = false;
@@ -92,7 +92,7 @@ void Sys_mkdir(char *path) { _mkdir(path); }
 
 /* Pack files place lumps at any byte offset (id's pak0 has maps and progs at
    odd addresses), and the RP2040 cannot read unaligned words. The board's
-   converter will realign; this does the same for the PC image: every file
+   converter will realign. This does the same for the PC image, every file
    starts on a 16-byte boundary and the directory is rewritten to match.
    Returns the new image size, or 0 if `src` is not a pack. */
 static int realign_pack(const byte *src, int len, byte *dst) {
@@ -128,7 +128,7 @@ static int realign_pack(const byte *src, int len, byte *dst) {
     return pos + dirlen;
 }
 
-/* Flash emulation: the pack, realigned like the board's converter will lay
+/* Flash emulation, the pack, realigned like the board's converter will lay
    it out, in its own pages at the board's data-region address, then marked
    read only so any write into "flash" faults on the PC instead of
    corrupting the board. Not counted as RAM. -noflash turns it off.
@@ -153,8 +153,8 @@ void *Sys_FlashMap(char *path, int length) {
     int size = realign_pack(raw, length, NULL);
     const int image = !size && length >= 4 && !memcmp(raw, "QOGB", 4);
     if (image) size = length;
-    if (!size) { free(raw); return NULL; }   /* not a pack or an image: load it the normal way */
-    /* QuakeOG: an image built for a later address (qog_bake -bakebase, tools/mkboard.py
+    if (!size) { free(raw); return NULL; }   /* not a pack or an image, load it the normal way */
+    /* QuakeOG, an image built for a later address (qog_bake -bakebase, tools/mkboard.py
        --bake-base) goes there, so the PC can run the board's data layout */
     if (image && length >= 16) {
         unsigned base = *(unsigned *)(raw + 12);
@@ -181,7 +181,7 @@ void Sys_MakeCodeWriteable(unsigned long startaddr, unsigned long length) { (voi
 void Sys_LowFPPrecision(void) {}
 void Sys_HighFPPrecision(void) {}
 void Sys_SetFPCW(void) {}
-/* QuakeOG: the board's benchmark result names the clocks (engine/menu.c),
+/* QuakeOG, the board's benchmark result names the clocks (engine/menu.c),
    which the PC does not know */
 unsigned Sys_QogClockKHz(void) { return 0; }
 unsigned Sys_QogFlashKHz(void) { return 0; }
@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
     parms.argc = com_argc;
     parms.argv = com_argv;
 
-    /* QuakeOG (Agent T): -flashbase <address> maps the packs from another
+    /* QuakeOG, -flashbase <address> maps the packs from another
        address, 0x10200000 (QOG_MAIN_DATA_XIP_ADDR) for the main chip's
        server data region (platform/qog_flashmap.h, tools/mkboard.py --main) */
     int i = COM_CheckParm("-flashbase");
@@ -256,7 +256,7 @@ int main(int argc, char **argv) {
     if (i && i + 1 < com_argc) heap_kb = Q_atoi(com_argv[i + 1]);
     parms.memsize = heap_kb * 1024;
     /* Fixed address (and a fixed-base exe, see pc/CMakeLists.txt) so every
-       run lays memory out the same way: qog_statehash is then repeatable,
+       run lays memory out the same way, qog_statehash is then repeatable,
        and pointer bugs reproduce. Falls back to anywhere if it is taken. */
     parms.membase = VirtualAlloc((void *)QOG_PC_HUNK_ADDR, (SIZE_T)parms.memsize,
                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -272,10 +272,10 @@ int main(int argc, char **argv) {
 
     printf("QuakeOG PC: basedir %s, hunk %d KB\n", parms.basedir, heap_kb);
 #ifdef QOG_SPLIT_SERVER
-    /* The split game's server half (engine/net_link.c): each Host_Frame waits
+    /* The split game's server half (engine/net_link.c), each Host_Frame waits
        for the client half's frame, so it runs as fast as the client asks. */
 #ifdef QOG_SV_STACKPROBE
-    /* Agent AC: the deepest chain in the board's bytes (port/pc/stackprobe_pc.c) */
+    /* Earlier work, the deepest chain in the board's bytes (port/pc/stackprobe_pc.c) */
     extern void qog_stackprobe_init(int argc, char **argv), qog_stackprobe_frame(void);
     qog_stackprobe_init(argc, argv);
 #endif
@@ -287,7 +287,7 @@ int main(int argc, char **argv) {
 #endif
 #ifdef QOG_SPLIT_TOUR
         extern void qog_tour_frame(void);
-        qog_tour_frame();   /* PC test tool (Agent S), idle unless qog_tour runs */
+        qog_tour_frame();   /* PC test tool, idle unless qog_tour runs */
 #endif
     }
 #else
@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
         extern void qog_demo_pc_main(quakeparms_t *parms);
         qog_demo_pc_main(&parms);
     }
-    Host_Init(&parms);   /* qog_mem is registered from VID_Init: commands must exist before init ends */
+    Host_Init(&parms);   /* qog_mem is registered from VID_Init, commands must exist before init ends */
 
     int frame = 0;
     double oldtime = Sys_FloatTime();

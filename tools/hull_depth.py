@@ -1,5 +1,5 @@
 """Deepest node path of each hull of a map's world model, the recursion bound
-of SV_RecursiveHullCheck (Agent AC, docs/lessons.md L75). Standard library only.
+of SV_RecursiveHullCheck (docs/lessons.md L75). Standard library only.
 
     python tools/hull_depth.py data/id1/pak0.pak,data/id1/pak1.pak e1m3 e1m4
 

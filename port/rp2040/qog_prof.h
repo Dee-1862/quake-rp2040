@@ -1,4 +1,4 @@
-/* QuakeOG (Agent AN): a PC-sampling profiler for the board (port/rp2040/prof_rp2040.c).
+/* QuakeOG, a PC-sampling profiler for the board (port/rp2040/prof_rp2040.c).
  *
  * Build option QOG_PROF (off by default, apps/quake/CMakeLists.txt). A
  * hardware timer alarm interrupts core 0 QOG_PROF_HZ times a second (4,000)
@@ -17,7 +17,7 @@
 #ifndef QOG_PROF_H
 #define QOG_PROF_H
 
-/* once a frame from qog_clock_report_once: starts the profiler on its first
+/* once a frame from qog_clock_report_once, starts the profiler on its first
    call, then prints and clears the counts every QOG_PROF_REPORT_S seconds */
 void qog_prof_poll(void);
 
