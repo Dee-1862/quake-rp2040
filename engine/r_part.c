@@ -21,6 +21,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "r_local.h"
 #include "r_qogalias.h"	// QuakeOG (Agent AI)
+#ifdef QOG_PARTS_CORE1
+#include "d_local.h"	// QuakeOG (Agent AM): the core 1 job (Sys_QogCore1Start)
+#endif
 
 #ifdef QOG_MAX_PARTICLES	// QuakeOG: smaller default (MG24Quake and RP2350-Quake use 512, id's own floor)
 #define MAX_PARTICLES			QOG_MAX_PARTICLES
@@ -720,6 +723,118 @@ static __inline int R_QogDieInt (const particle_t *p)
 #define R_QOG_DEAD(p, bits)	((p)->die < cl.time)
 #endif
 
+#ifdef QOG_PARTS_CORE1
+/*
+==============
+QuakeOG (Agent AM): particle physics on both cores (QOG_PARTS_CORE1)
+
+id's R_DrawParticles draws a particle and then moves it. The drawing stays
+on core 0 in id's order (particles can cover each other's pixels), and the
+moving, which reads and writes only that particle, is shared: core 0 moves
+two particles of every five and core 1 the other three, each only once core
+0 has drawn it and unlinked its dead successors (r_qogp_passed). A moved
+particle is never read again in this frame (the kill test looks at
+particles not yet drawn), so the result is the same in any order.
+==============
+*/
+#ifndef QOG_DRAW_CORE1
+#error "QOG_PARTS_CORE1 needs the core 1 job and modes of QOG_DRAW_CORE1"
+#endif
+typedef struct
+{
+	float	frametime, time1, time2, time3, grav, dvel;
+} r_qogpk_t;
+
+static r_qogpk_t			r_qogp_k;
+static particle_t * volatile	r_qogp_first;
+static volatile int			r_qogp_passed;	// particles core 0 has drawn
+
+#define R_QOGP_CORE0(n)		((n) % 5 < 2)	// core 0's share of the moving
+
+// id's statements for one particle after it is drawn
+static void R_QogParticleMove (particle_t *p, const r_qogpk_t *k)
+{
+	int		i;
+
+	p->org[0] += p->vel[0]*k->frametime;
+	p->org[1] += p->vel[1]*k->frametime;
+	p->org[2] += p->vel[2]*k->frametime;
+
+	switch (p->type)
+	{
+	case pt_static:
+		break;
+	case pt_fire:
+		p->ramp += k->time1;
+		if (p->ramp >= 6)
+			p->die = -1;
+		else
+			p->color = ramp3[(int)p->ramp];
+		p->vel[2] += k->grav;
+		break;
+
+	case pt_explode:
+		p->ramp += k->time2;
+		if (p->ramp >=8)
+			p->die = -1;
+		else
+			p->color = ramp1[(int)p->ramp];
+		for (i=0 ; i<3 ; i++)
+			p->vel[i] += p->vel[i]*k->dvel;
+		p->vel[2] -= k->grav;
+		break;
+
+	case pt_explode2:
+		p->ramp += k->time3;
+		if (p->ramp >=8)
+			p->die = -1;
+		else
+			p->color = ramp2[(int)p->ramp];
+		for (i=0 ; i<3 ; i++)
+			p->vel[i] -= p->vel[i]*k->frametime;
+		p->vel[2] -= k->grav;
+		break;
+
+	case pt_blob:
+		for (i=0 ; i<3 ; i++)
+			p->vel[i] += p->vel[i]*k->dvel;
+		p->vel[2] -= k->grav;
+		break;
+
+	case pt_blob2:
+		for (i=0 ; i<2 ; i++)
+			p->vel[i] -= p->vel[i]*k->dvel;
+		p->vel[2] -= k->grav;
+		break;
+
+	case pt_grav:
+#ifdef QUAKE2
+		p->vel[2] -= k->grav * 20;
+		break;
+#endif
+	case pt_slowgrav:
+		p->vel[2] -= k->grav;
+		break;
+	}
+}
+
+// core 1's share, each particle once core 0 has drawn it
+static void R_QogParticlesCore1 (void *unused)
+{
+	particle_t	*q;
+	int			n;
+
+	(void)unused;
+	for (q = r_qogp_first, n = 0 ; q ; q = P_NEXT(q), n++)
+	{
+		while (r_qogp_passed <= n)
+			;
+		if (!R_QOGP_CORE0 (n))
+			R_QogParticleMove (q, &r_qogp_k);
+	}
+}
+#endif
+
 /*
 ===============
 R_DrawParticles
@@ -789,6 +904,21 @@ void R_DrawParticles (void)
 		break;
 	}
 
+#ifdef QOG_PARTS_CORE1
+	r_qogp_k.frametime = frametime;	// QuakeOG (Agent AM): the moving on both cores
+	r_qogp_k.time1 = time1;
+	r_qogp_k.time2 = time2;
+	r_qogp_k.time3 = time3;
+	r_qogp_k.grav = grav;
+	r_qogp_k.dvel = dvel;
+	r_qogp_first = active_particles;
+	r_qogp_passed = 0;
+	{
+	int		qogn = 0, qogmode = Sys_QogCore1Mode ();
+
+	if (qogmode == 0 && active_particles)
+		Sys_QogCore1Start (R_QogParticlesCore1, NULL);
+#endif
 	for (p=active_particles ; p ; p=P_NEXT(p))
 	{
 		for ( ;; )
@@ -826,6 +956,13 @@ void R_DrawParticles (void)
 		else
 #endif
 		D_DrawParticle (p);
+#endif
+#ifdef QOG_PARTS_CORE1
+		if (R_QOGP_CORE0 (qogn))
+			R_QogParticleMove (p, &r_qogp_k);
+		qogn++;
+		r_qogp_passed = qogn;	// after the drawing and the successor unlinks
+		continue;
 #endif
 		p->org[0] += p->vel[0]*frametime;
 		p->org[1] += p->vel[1]*frametime;
@@ -888,6 +1025,16 @@ void R_DrawParticles (void)
 			break;
 		}
 	}
+#ifdef QOG_PARTS_CORE1
+	if (qogmode == 0)
+	{
+		if (r_qogp_first)
+			Sys_QogCore1Join ();
+	}
+	else
+		R_QogParticlesCore1 (NULL);	// PC test: core 1's share after core 0's, on this thread
+	}
+#endif
 
 #ifdef GLQUAKE
 	glEnd ();

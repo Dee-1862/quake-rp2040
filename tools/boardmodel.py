@@ -163,6 +163,10 @@ FEATURE_SCALE = {
     "QOG_FX_REUSE": {"bm_rotent": (0.45, 1.0)},             # the Fast setup only for the origin, about 7,500 cycles less
     "QOG_DSURF_NOFRUSTUM": {"bm_bmsurf": (0.1, 1.0)},       # no view planes turned per brush surface
     "QOG_FGRAD_AXIAL": {"wc_faces": (0.77, 1.0)},           # about 300 cycles a face gradient less
+    # Agent AM: core 1 moves three of every five particles while core 0 draws
+    # them and moves the other two, so the phase is core 1's 0.6 of the moving
+    # (core 0's drawing and 0.4 of it are shorter, about 90k against 108k cycles)
+    "QOG_PARTS_CORE1": {"am_parts": (0.5, 0.5)},
     # Agent AR: the Q span drawer, the same spans, sub-spans and pixels for
     # fewer cycles. Its replay of demo3 surfaces through the board's own code
     # (docs/changes.md) gives 2.39 M against 3.69 M cycles a Fast view and

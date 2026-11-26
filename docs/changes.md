@@ -13,6 +13,46 @@ The board measured main f7d9450 at 20.0 fps in Fast and 22.3 in Turbo (300 MHz, 
 - New files: tools/boardmodel_f7d9450_fast.csv.gz and _turbo.csv.gz (the PC logs of f7d9450), tools/boardmodel_calib.json is now the board calibration, the de58316 one is tools/boardmodel_calib_de58316.json.
 - docs/fps-board.md: the board row, the phase comparison, the gap to 35 fps in Turbo (16.3 ms on the board, about 8.7 ms of compute after the scanwait fix) and the re-ranked attacks. Lessons L260 to L262.
 
+## 2026-11-25: The pipeline with Turbo checked, particle physics on both cores, and why the world front end does not split yet (Agent AM, PC and ARM build, registered data)
+
+Nothing ran on hardware.
+
+### The two-core pipeline together with Turbo, AP's PIO scanout and Turbo text, AQ's cuts (main dd273c4)
+
+Hidden, `-nosound`, own build folders and data folder, link port 27961. The references are builds of the same tree without `QOG_DRAW_CORE1`, so they are main.
+
+| Run | Result |
+| --- | --- |
+| quakeog_pc with and without the pipeline, r_fast 0, 1 and 2 (thread), r_fast 2 with `-core1first` and `-core1last`: the 121 frames (`qogtest_k_quiet` + `qogtest_d_shots`, which play demo1, demo2 and demo3, and the 8 fhash frames) | 121 of 121 identical in every run, `qogtest_f_hash` e92bc9e9650d in every run |
+| the board-flag pair (Agent AO's pcb flags: one-byte z, 32-byte surfaces, interpolators, scan race, status bar skip, vertex cache) with and without `QOG_DRAW_CORE1`, r_fast 0, 1 and 2, and r_fast 2 with `-core1last` | 121 of 121 identical, f_hash e92bc9e9650d, `qog_scanrace` 0 writes before the scanout passed (4,409 and 3,512 checks in Turbo), `qog_lockcheck` 0 changed of 3,550 and 3,512 |
+| `qogtest_ao_switch.cfg` (Exact, Turbo, Fast, Turbo with notify text, the menu, e1m3, e2m1, e1m6) on the pair and on quakeog_pc | no error, scan race 0 of 521, lock check 0 of 317. 15 of 16 frames identical. sw_notify differs, but two runs of the reference also differ from each other there (the notify text times out in real time) |
+
+Core 1's copies and Turbo: core 1 keeps no copy of the view's size. The 160-wide rows (screenwidth, d_viewbuffer), the z-buffer Turbo moves into the frame buffer (d_pzbuffer, d_zwidth) and the doubled aspect (xscale, xscaleinv, xcenter) are values both cores read and nothing writes during the scan (tools/core1_syms.py lists them as shared), and core 1's copies of the view vectors, modelorg and AL's Fast gradient rows are made from the Turbo view's own values every view. The edge table is in the z-buffer memory and the Turbo z-buffer in the frame buffer, so every surface may go to core 1 early. AQ's three statics in d_edge.c belong to the brush entity path and D_DrawSurfaces, which only core 0 runs, and the view planes are restored after the flush has waited for core 1. The board build with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON` links, display `end` 0x2003f588 on dd273c4.
+
+### Particle physics on both cores (`QOG_PARTS_CORE1`, board option `QOG_BOARD_PARTSCORE1`, on)
+
+id's R_DrawParticles draws a particle and then moves it. The drawing stays on core 0 in id's order, since particles can cover each other's pixels. The moving reads and writes only its own particle, so core 0 moves two of every five particles and core 1 the other three, each only after core 0 has drawn it and unlinked its dead successors (a shared count). A moved particle is not read again in the frame (the kill test only looks at particles not yet drawn), so the result is the same in any order. 32 B of display RAM.
+
+Exact: quakeog_pc with it against main, r_fast 0, 1 and 2 (thread), r_fast 1 and 0 with `-core1last`, r_fast 2 with `-core1first`: 121 of 121 frames identical each, `qogtest_hash` ce86f894f9de, `qogtest_f_hash` e92bc9e9650d. The board-flag pair with it, r_fast 1 and 2: 121 of 121 identical, scan race and lock check 0.
+
+boardbench (300 MHz, PIO 60 MHz): parts 0.8 to 0.5 ms, Fast 26.5 to 26.7 fps (37.7 to 37.4 ms), Turbo 30.4 to 30.7 fps (32.9 to 32.6 ms). The model counts the moving at half its old cost: core 1's three fifths of it (about 108,000 cycles) is longer than core 0's drawing and two fifths (about 90,000).
+
+Display `end` 0x2003f6ac on main f7d9450, 0x2003f6cc with this (308 B spare beside the 2 KB heap reserve). quake_main is unchanged.
+
+### Why the world front end does not split onto core 1 yet (attack #2)
+
+- The work: per demo3 view the world walks 265 nodes and 33 leafs and renders 193 faces (960 edge clips, 450 edges emitted, 487 points projected, 1,309 plane distances). With boardmodel's weights the walk (nodes and leafs) is about 7% of the world's cycles and R_RenderFace about 93%. A walk on core 1 saves at most 0.6 ms.
+- R_RenderFace's emission is sequential. Edges and surfaces are appended in walk order, the edge cache decides between reuse and emission from what was emitted before, and the scan sorts ties by that order, so two cores cannot emit at once without changing pixels. Moving all the emission to core 1 only helps if core 0 has other work meanwhile, and bmodels must follow the world's edges.
+- Core 1 is not free during the world: the next view starts while the last frame goes to the LCD, and the PIO scanout (152 rows of about 86 us, 13 ms) covers the whole world front end in Turbo and the part after the race wait in Fast. The scanout itself is mostly waiting (a row's conversion is about 3 us of its 86).
+- So the first step is an interrupt-driven scanout: the DMA's end-of-row interrupt on core 1 converts the next row and starts it, and core1_main runs jobs in between. With it, core 1 can fill the world's vertex cache ahead of core 0 (projection and plane distances, about 30% of the world's cycles, the same values whoever computes them, an entry written data first and tag last and read tag, data, tag), which is exact and gives about the model's world x 0.7 (2 ms Fast, 1.6 Turbo). Splitting the edge scan as frank-quake2 does would take core 1 from the surfaces it already draws during the scan.
+- Not done here: the interrupt scanout changes Agent AP's PIO code and can only be proven on the board.
+
+### The alias front end on core 1 (attack #5, the rest)
+
+Pipelining entity N+1's front end (bbox test, lighting, vertex transforms) on core 1 while core 0 draws entity N's triangles needs a second finalvert buffer (up to 328 vertices of 28 bytes, about 9 KB). The display has 308 B spare and core 1's stack is 2 KB, so it is not done. Splitting the triangle rows between the cores (exact, each pixel still gets its triangles in order) needs core 1's own span package array (about 6 KB in id's D_PolysetDraw). Agent Z's vertex halves stay as they are.
+
+Files: engine/r_part.c, apps/quake/CMakeLists.txt, pc/CMakeLists.txt and port/pc/boardmodel_pc.c (the boardbench build), tools/boardmodel.py (the particle weight).
+
 ## 2026-11-25: Alias triangles, third round, all exact (Agent AQ, PC and ARM build, registered data)
 
 Models (4.0 ms in Fast, 3.3 in Turbo by the model) and the view model (2.7 and 2.0). Three flags in d_polyse.c, on the rasterizer side only (r_alias.c and r_main.c, where Agent AM moves the front end to core 1, are not touched). All exact: r_fast 0, 1 and 2 draw the same bits as main 4b0c98b. Nothing ran on hardware.

@@ -345,3 +345,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L261. In demo3 notify text, not the status bar, makes the whole scanout waits.** Board windows with status bar frames and no pickup message show 0 to 1 ms of scanwait a frame, windows with a message on screen 9 to 13 ms. Pickups print and flash the status bar together, so a status bar cap alone saves about 0.9 ms in Turbo and about 4 ms only together with a notify clear that waits for its own rows.
 
 **L262. Compare waits by what the board's counters hold.** The board's scanwait counts every VID_LockBuffer wait (notify clears, the edge table's wait at the status bar rows, which goes through VID_QogScanDone, and the wait after R_RenderWorld), its race only partial row waits. Split the model's waits the same way before calling either one wrong.
+
+**L230. Weigh what a split moves before splitting it.** The world front end looked like the next thing for core 1, but its walk is about 7% of its cycles and the rest, R_RenderFace's emission, must stay in walk order. Multiply the cost model's weights by the work counts per path first: it shows which part can move and what it saves.
+
+**L231. A core that looks busy may only be waiting.** Core 1 spends about 13 ms of each frame in the LCD scanout, and almost all of it waits for the DMA (about 3 us of conversion per 86 us row). An end-of-row interrupt would give that time to jobs. Count the time a loop waits before calling the core full.
+
+**L232. A per-element update can trail a sequential pass on another core when nothing reads the element again.** id's particles are drawn in order on core 0 and moved after their drawing. Core 1 moves a particle only after core 0's count has passed it, and the kill test reads only particles not drawn yet, so the frames are the same in any interleaving. Give core 0 a share of the moving too, or it waits for core 1.
+
+**L233. A frame that depends on real time is not a reference.** The switch script's notify frame differed between two runs of the untouched build (con_notifytime counts real seconds), so it differed against the pipeline build too. Run the reference twice before blaming a change for one frame.
