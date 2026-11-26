@@ -434,6 +434,12 @@ void R_QogFxSetup (void);	// QuakeOG, r_draw.c, the Fast front end's constants
 const int *R_QogFxPlanes (void);	// QuakeOG, r_draw.c, the view planes for R_QogCullNode
 #endif
 #endif
+#if defined(QOG_BMODEL_VERTCACHE) && !(defined(QOG_VERTCACHE) && defined(QOG_VERTCACHE_CLIPDIST))
+#undef QOG_BMODEL_VERTCACHE	// QuakeOG, it needs the vertex cache with its distances
+#endif
+#ifdef QOG_BMODEL_VERTCACHE
+void R_QogVertCacheBrush (model_t *clmodel);	// QuakeOG, r_draw.c
+#endif
 void R_SplitEntityOnNode2 (mnode_t *node);
 void R_MarkLights (dlight_t *light, int bit, mnode_t *node);
 

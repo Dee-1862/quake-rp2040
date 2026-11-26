@@ -288,6 +288,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_FGRAD_AXIAL                 # with QOG_FRONT_FAST: face gradients with an exact axial dot product, the same values
     QOG_SCAN_FAST                   # span generation in one loop with its globals in locals, the same spans (r_edge.c)
     QOG_BPOLY_SIDES                 # brush clip sides inline, a point shared with the edge before keeps its side (r_bsp.c)
+    QOG_BPOLY_BOX                   # a node plane the entity's box does not meet takes no edge tests (r_bsp.c)
+    QOG_BMODEL_VERTCACHE            # with the vertex cache: a brush entity's vertices projected once (r_draw.c)
     QOG_BMSPLIT_INT                 # R_SplitEntityOnNode2: axial box tests by integer compares of the float bits (r_efrag.c)
     QOG_LMAP_FUSE                   # R_BuildLightMap: the grid's passes fused, the same cells (r_surf.c)
     QOG_BMODEL_BBOXINT              # R_BmodelCheckBBox: integer plane tests with a margin first, with QOG_WORLDNODE_INT (r_main.c)

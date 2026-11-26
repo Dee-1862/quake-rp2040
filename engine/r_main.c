@@ -1379,6 +1379,9 @@ void R_DrawBEntitiesOnList (void)
 #ifdef QOG_FRONT_FAST
 				R_QogFxSetup ();	// QuakeOG, Fast mode's integer front end
 #endif
+#ifdef QOG_BMODEL_VERTCACHE
+				R_QogVertCacheBrush (clmodel);	// QuakeOG, its vertices projected once
+#endif
 
 			// calculate dynamic lighting for bmodel if it's not an
 			// instanced model
@@ -1427,6 +1430,15 @@ void R_DrawBEntitiesOnList (void)
 						// not a leaf; has to be clipped to the world BSP
 							r_clipflags = clipflags;
 							QOG_AQ (AQ_BCLIPPED, 1);
+#ifdef QOG_BPOLY_BOX
+							// QuakeOG, the box a unit wider than the
+							// bounds for R_QogBpolyBoxSide (r_bsp.c)
+							for (j=0 ; j<3 ; j++)
+							{
+								r_emins[j] -= 1;
+								r_emaxs[j] += 1;
+							}
+#endif
 							R_DrawSolidClippedSubmodelPolygons (clmodel);
 						}
 						else

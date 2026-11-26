@@ -170,6 +170,8 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_DSURF_NOFRUSTUM             # d_edge.c D_DrawSurfaces: brush surfaces turn no view planes, set back once at the end
     QOG_SCAN_FAST                   # r_edge.c: span generation in one loop with its globals in locals (round 2)
     QOG_BPOLY_SIDES                 # r_bsp.c: brush clip sides inline, a point shared with the edge before keeps its side
+    QOG_BPOLY_BOX                   # r_bsp.c: a node plane the entity's box does not meet takes no edge tests
+    QOG_BMODEL_VERTCACHE            # r_draw.c: a brush entity's vertices projected once, in the world's vertex cache
     QOG_BMSPLIT_INT                 # r_efrag.c R_SplitEntityOnNode2: axial box tests by integer compares of the float bits
     QOG_LMAP_FUSE                   # r_surf.c R_BuildLightMap: the grid's passes fused, the same cells
     QOG_BMODEL_BBOXINT              # r_main.c R_BmodelCheckBBox: integer plane tests with a margin first (with QOG_WORLDNODE_INT)
