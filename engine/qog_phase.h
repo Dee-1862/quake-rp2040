@@ -131,7 +131,9 @@ typedef struct
 	unsigned	t, acc, hit, fcalls, dcalls;
 } qog_phmark_t;
 extern unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];
+#ifdef QOG_PHASE_FPCOUNT
 extern unsigned	qog_ph_fcalls[QOG_PH_N], qog_ph_dcalls[QOG_PH_N];
+#endif
 extern unsigned	qog_wc_count[QOG_WC_N];
 void qog_phase_mark (qog_phmark_t *m);
 void qog_phase_add (int ph, const qog_phmark_t *m);
