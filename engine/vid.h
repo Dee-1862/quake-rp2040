@@ -109,6 +109,10 @@ int VID_QogScanNeed (const void *lo, const void *hi);
 // wait model (vid_pc.c -scanmodel): 1 the world's front end, 2 after
 // R_RenderWorld, 3 after the brush entities, 0 from VID_Update on
 void VID_QogRaceMark (int phase);
+#ifdef QOG_VID_ROWRACE
+// QuakeOG (Agent AP): R_ScanEdges waits row by row (r_edge.c R_QogRowFree)
+extern int	r_qog_rowrace;
+#endif
 #endif
 
 #ifdef QOG_RTURBO

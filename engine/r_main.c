@@ -1674,10 +1674,16 @@ void R_EdgeDrawing (void)
 	}
 #ifdef QOG_VID_SCANRACE
 	VID_QogRaceMark (3);	// QuakeOG (Agent AP): after the brush entities
+#ifdef QOG_VID_ROWRACE
+	// QuakeOG (Agent AP): R_ScanEdges waits for the rows it writes, row by
+	// row (r_edge.c R_QogRowFree), so the scanout runs beside the edge scan
+	r_qog_rowrace = 1;
+#else
 	// QuakeOG (Agent AK): from here on the view draws anywhere in the frame
 	// and the z-buffer (spans): the last frame's scanout has to be over. The
 	// front end above (world and, Agent AP, brush entities) overlapped it.
 	VID_QogScanDone ();
+#endif
 #endif
 
 	if (r_dspeeds.value)
@@ -1708,6 +1714,12 @@ void R_EdgeDrawing (void)
 		R_ScanEdges ();
 		QOG_PH_ADD (QOG_PH_SCAN, ph);
 	}
+#ifdef QOG_VID_ROWRACE
+	// QuakeOG (Agent AP): models, particles and the warp draw anywhere
+	r_qog_rowrace = 0;
+	VID_QogRaceMark (4);
+	VID_QogScanDone ();
+#endif
 }
 
 

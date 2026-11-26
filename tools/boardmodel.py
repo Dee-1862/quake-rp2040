@@ -354,6 +354,7 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
     # with a row wait for their clip buffers, and the status bar rows go
     # out first
     covered, early_b, hudfirst = opts.get("covered", False), opts.get("early_b", False), opts.get("hudfirst", False)
+    rowrace = opts.get("rowrace", False)
     hudcap = opts.get("hudcap", 0.0) if turbo else 0.0
     last_hud, hud_pending, sent_prev = -1.0, False, None
     t_now = 0.0
@@ -416,9 +417,25 @@ def simulate(frames, ms, turbo, mhz, spi, pre_ms, post_ms, wscale=1.0, whatif=()
             if early_b and "bmodels" not in early:
                 early.append("bmodels")
             t += sum(m[p] for p in early)      # work moved before the wait for the scanout's end
-            if t_scan > t:                   # VID_QogScanDone after R_RenderWorld
-                waits["race_done"] += (t_scan - t) * wscale
-                t += (t_scan - t) * wscale
+            # Agent AP's row race: R_ScanEdges waits row by row, so the edge
+            # scan runs beside the scanout and the last row binds at its end.
+            # Its z writes must be free first: a Turbo view's z-buffer only
+            # after a packed scan, the z-buffer region after the status bar
+            # rows (first in the scan with QOG_VID_HUDFIRST)
+            beside = 0.0
+            if rowrace:
+                zfree = (prev_packed > 0) if turbo else True
+                if zfree:
+                    zready = 0.0
+                    if not turbo and rows_prev > VIEW_ROWS:
+                        zready = (rows_prev - VIEW_ROWS) * rms if first else t_scan
+                    if zready > t:
+                        waits["race_done"] += (zready - t) * wscale
+                        t += (zready - t) * wscale
+                    beside = m["edgescan"]
+            if t_scan > t + beside:          # VID_QogScanDone after R_RenderWorld (or the edge scan's last row)
+                waits["race_done"] += (t_scan - t - beside) * wscale
+                t += (t_scan - t - beside) * wscale
         done = ["world"] + ([] if notify else [x.split(":")[1] for x in whatif if x.startswith("early:")])
         if early_b and not notify and "bmodels" not in done:
             done.append("bmodels")
@@ -623,7 +640,7 @@ def predict(frames, feats, cal, mhz, spi, modes=None, whatif=(), lcd="pl022"):
     opts = {"lcd": lcd, "pipe": pipe, "text": "QOG_TURBO_TEXT" in feats,
             "s1": cal.get("_s1", cal.get("s1", CORE1_SPEED)),
             "covered": "QOG_NOTIFY_COVERED" in feats, "early_b": "QOG_BMODELS_EARLY" in feats,
-            "hudfirst": "QOG_VID_HUDFIRST" in feats}
+            "hudfirst": "QOG_VID_HUDFIRST" in feats, "rowrace": "QOG_VID_ROWRACE" in feats}
     for wi in whatif:
         if wi.startswith("hudcap:"):    # status bar rows sent at most this many times a second (Turbo)
             opts["hudcap"] = float(wi.split(":")[1])
