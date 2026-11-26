@@ -525,6 +525,12 @@ if(QOG_SPLIT)
             list(APPEND _cl_defs QOG_ALIAS_TURBOTINY)   # d_polyse.c D_QogTinyTriangle
         endif()
     endif()
+    # QuakeOG, the view weapon in Turbo from images pre-rendered into the data
+    # image (tools/mkboard.py --gun-images, engine/r_qoggun.c)
+    option(QOG_BOARD_GUNIMAGES "with TURBO, the view weapon from pre-rendered images in Turbo" OFF)
+    if(QOG_BOARD_FAST AND QOG_BOARD_TURBO AND QOG_BOARD_GUNIMAGES)
+        list(APPEND _cl_defs QOG_GUN_IMAGES)
+    endif()
     # QuakeOG, the LCD's pixel stream from a PIO state machine at
     # clk_sys over a whole number of clocks a bit, at most QOG_LCD_PIO_KHZ
     # (300 MHz gives 60 MHz, 300 / 5, where the PL022 gives 50, 300 / 6, and

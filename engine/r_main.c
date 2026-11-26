@@ -419,6 +419,9 @@ void R_Init (void)
 	Cvar_RegisterVariable (&r_fullbright);
 	Cvar_RegisterVariable (&r_drawentities);
 	Cvar_RegisterVariable (&r_drawviewmodel);
+#ifdef QOG_GUN_BAKE
+	R_QogGunInit ();
+#endif
 	Cvar_RegisterVariable (&r_aliasstats);
 	Cvar_RegisterVariable (&r_dspeeds);
 	Cvar_RegisterVariable (&r_reportsurfout);
@@ -968,6 +971,14 @@ void R_DrawViewModel (void)
 	float		add;
 	dlight_t	*dl;
 	
+#ifdef QOG_GUN_BAKE
+	if (r_qog_gunbake)
+	{	// QuakeOG, the weapon image writer (r_qoggun.c)
+		R_QogGunBakeView ();
+		return;
+	}
+#endif
+
 	if (!r_drawviewmodel.value || r_fov_greater_than_90)
 		return;
 
@@ -1023,6 +1034,11 @@ void R_DrawViewModel (void)
 	cl.light_level = r_viewlighting.ambientlight;
 #endif
 
+#ifdef QOG_GUN_IMAGES
+	// QuakeOG, in Turbo the weapon's pre-rendered image (r_qoggun.c)
+	if (R_QogGunImage (r_viewlighting.ambientlight, r_viewlighting.shadelight))
+		return;
+#endif
 	R_AliasDrawModel (&r_viewlighting);
 }
 

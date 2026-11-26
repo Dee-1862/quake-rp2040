@@ -33,6 +33,20 @@ The other settings tried, by xip_sets.py excess lines in the world, bmodels, mod
 
 -O2 is what the build already uses (RelWithDebInfo).
 
+## 2026-11-26, the view weapon from pre-rendered images in Turbo, off by default (PC and ARM build, registered data, not run on hardware)
+
+The view weapon costs 2.4 ms of a Turbo frame on the board (docs/fps-board.md), most of it vertex, triangle and clipping work that gives the same shape every time.
+
+- `QOG_BOARD_GUNIMAGES` (off, define `QOG_GUN_IMAGES`, engine/r_qoggun.c). In Turbo the weapon is a flat image copied from flash, transparent where the model drew nothing, through one colour map row for the current light. It moves by whole pixels for bobbing, view pitch and view kicks, and takes the nearest z so particles stay behind it. r_fast 0 and 1 draw the model as before.
+- The images are drawn by id's renderer on the PC (`-DQOG_PC_GUNIMAGES=ON`, `mkboard.py --gun-images`), every frame of every weapon, muzzle flash frames included, and go into the display's pak as `gfx/qoggun.dat`, 60 images, 80,716 bytes. A missing file, weapon or frame, or another view size or field of view, draws the model.
+- What changes in the picture. The shading comes from one fixed light direction, the weapon no longer grows or shrinks as it bobs, and it does not roll with strafing or damage. On the PC the side by side pictures of all 8 weapons, idle and firing, walking and looking up and down differ in 250 to 6,200 of 48,640 view pixels (the most with the axe's arm).
+- ARM build (README build line with `QOG_BOARD_HOTTEXT`), quake_display `end` 0x2003f77c to 0x2003f780 (4 B, 128 B spare beside the 2 KB heap reserve), app 1,272 B larger. With the option OFF `end` is main's.
+- Work counted on the PC for timedemo demo3 in Turbo, the model draws 71 vertices, 38 whole triangles, 26 clipped ones and 1,390 pixels a view, the image 883 pixels in 41 runs. The copy is 14 cycles a pixel from the ARM disassembly, about 0.1 ms a view with the flash misses. Estimate for the board, the weapon then costs 0.2 to 0.4 ms with its light sample, so about 2 ms a Turbo frame saved. It is not measured, and tools/boardmodel.py does not count the copy.
+- A board running such an app needs a display data image made with `--gun-images` to gain anything. With the old image it draws the models. Main's data image is not changed by it.
+- Checks, against a build of main (hidden, `-nosound`), with the images installed, r_fast 0 and 1 give identical pixels on the 113 shots and the 8 fhash shots, and `qogtest_hash` gives `ce86f894f9de`. Underwater views and the split pair were not run.
+
+Files, engine/r_qoggun.c (new), r_main.c, r_local.h, apps/quake/CMakeLists.txt, pc/CMakeLists.txt, tools/mkboard.py, docs/game-data.md.
+
 ## 2026-11-26, one copy of the lit surface drawing for both cores, exact (PC and ARM build, registered data)
 
 Run on the board later (docs/fps-board.md, log `run15_8.txt`). The text below was written before that run.
