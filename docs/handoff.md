@@ -56,3 +56,13 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 - Next steps, from the measurements: build a base, a depth and a split pair build, measure `qog_mem hunk` per map on the split client, then cut the biggest blocks exactly. Candidates are the 7.5 KB net_message in the z-buffer temp region during signon, the per-level map arrays (about 35 KB on E1M1) and the model_t RAM table. The 4 KB console and command buffer cuts change behaviour, so they need the user's decision.
 - The 1-byte depth buffer reaches the edge fallback in a few views per episode (4 in the episode 1 fight tour). On the board those now draw without z when the stack is short (a few models or particles show through the world in some rows for one frame). Why the edges and spans meet there is still not looked at.
 - Sound: listen on the board, and raise `_snd_mixahead` (0.1, at most 0.18) if it breaks up. The display's flash image still holds sounds the client no longer opens (about 1.6 MB to win for maps).
+
+## Where the speed work stopped (25 Nov 2026)
+
+- Board runs 5bb769e. timedemo demo3 measured 22.0 fps Fast and 26.0 fps Turbo. The target is 35 fps
+- Main also has agent-aq4 and agent-aq5, not flashed. Main was not rebuilt or rechecked after the agent-aq5 merge
+- Next test, flash with -DQOG_BOARD_HOTTEXT=ON and compare the Turbo result. The XIP counter build is in the top changes.md entries
+- Unfinished and unverified, kept in sibling worktrees with uncommitted edits too
+  - qog-wt-ap, remaining scanout waits in R_ScanEdges, commit 48a49c5 Let the edge scan wait for the scanout row by row
+  - qog-wt-am, interrupt driven scanout so core 1 is free between rows, commit f501ee1 Drive the LCD scanout from the end of line DMA interrupt on core 1
+  - qog-wt-ar, assembly for alias span drawing, no commit yet
