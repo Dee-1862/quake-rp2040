@@ -329,3 +329,11 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L252. Fewer stores do not shrink a stack frame on the M0+.** Moving D_PolysetScanLeftEdge's state into locals grew its frame from 120 to 144 B, because GCC spills the extra live values. Read the `.su` line of every changed function on the deepest chain (here under R_AliasDrawModel) before calling a locals rewrite free.
 
 **L253. A slow shared machine stretches every test run.** With other agents' games running, one 113-shot run took 25 minutes against 7 before, close to pctest's 900 s timeout. Check the log for `TIMEOUT` and the shot count of every run before comparing folders, and do not start a second game while a verification runs.
+
+**L230. Weigh what a split moves before splitting it.** The world front end looked like the next thing for core 1, but its walk is about 7% of its cycles and the rest, R_RenderFace's emission, must stay in walk order. Multiply the cost model's weights by the work counts per path first: it shows which part can move and what it saves.
+
+**L231. A core that looks busy may only be waiting.** Core 1 spends about 13 ms of each frame in the LCD scanout, and almost all of it waits for the DMA (about 3 us of conversion per 86 us row). An end-of-row interrupt would give that time to jobs. Count the time a loop waits before calling the core full.
+
+**L232. A per-element update can trail a sequential pass on another core when nothing reads the element again.** id's particles are drawn in order on core 0 and moved after their drawing. Core 1 moves a particle only after core 0's count has passed it, and the kill test reads only particles not drawn yet, so the frames are the same in any interleaving. Give core 0 a share of the moving too, or it waits for core 1.
+
+**L233. A frame that depends on real time is not a reference.** The switch script's notify frame differed between two runs of the untouched build (con_notifytime counts real seconds), so it differed against the pipeline build too. Run the reference twice before blaming a change for one frame.
