@@ -341,9 +341,10 @@ void M_ToggleMenu_f (void)
 int	m_main_cursor;
 #ifdef QOG_BOARD_MENU
 // QuakeOG: one board and no network, so no Multiplayer (id's item 1).
+// No Quit either (item 4), the board has nothing to quit to.
 // m_main_cursor counts the board's lines, this gives id's item for each.
-static const byte m_main_board[] = {0, 2, 3, 4};
-#define	MAIN_ITEMS	4
+static const byte m_main_board[] = {0, 2, 3};
+#define	MAIN_ITEMS	3
 #else
 #define	MAIN_ITEMS	5
 #endif
@@ -371,10 +372,10 @@ void M_Main_Draw (void)
 	p = Draw_CachePic ("gfx/ttl_main.lmp");
 	M_DrawPic ( (320-p->width)/2, 4, p);
 #ifdef QOG_BOARD_MENU
-	// QuakeOG: the picture's lines are 20 rows each, skip the second
+	// QuakeOG: the picture's lines are 20 rows each, skip the second and last
 	p = Draw_CachePic ("gfx/mainmenu.lmp");
 	M_DrawTransPicRows (72, 32, p, 0, 20);
-	M_DrawTransPicRows (72, 52, p, 40, p->height - 40);
+	M_DrawTransPicRows (72, 52, p, 40, 40);
 #else
 	M_DrawTransPic (72, 32, Draw_CachePic ("gfx/mainmenu.lmp") );
 #endif
