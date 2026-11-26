@@ -20,11 +20,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // d_edge.c
 
+#ifndef QOG_DC_NAMES	// QuakeOG, d_core1.h includes them before its names
 #include "quakedef.h"
 #include "d_local.h"
 #include "qog_phase.h"	// QuakeOG, render phase times (QOG_PHASE_TIME)
 #include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
 #include "qog_aqstats.h"	// QuakeOG, front end work counts (QOG_AQ_STATS)
+#endif
+#include "d_drawctx.h"
 
 #if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG, core 1 counts too in the cost model's builds
 // QuakeOG, pixels in a span list, for the phase counts
@@ -42,7 +45,9 @@ static int D_QogSpanPixels (espan_t *pspan)
 #define QOG_ZSPANS(sp)	D_DrawZSpans (sp)
 #endif
 
+#ifndef QOG_DC_NAMES
 static int	miplevel;
+#endif
 
 float		scale_for_mip;
 int			screenwidth;
@@ -66,7 +71,9 @@ drawn last, from the same inputs (the vectors are the world's whenever it is
 made).
 */
 extern void			R_QogRotateBmodelVecs (void);
+#ifndef QOG_DC_NAMES
 extern vec3_t		transformed_modelorg;
+#endif
 static byte			d_qog_frustumdirty;
 static entity_t		*d_qog_xfent;
 static vec3_t		d_qog_xfmodelorg;
@@ -88,7 +95,9 @@ static void D_QogSubmodelBegin (surf_t *s)
 }
 #endif
 
+#ifndef QOG_DC_NAMES
 vec3_t		transformed_modelorg;
+#endif
 
 /*
 ==============
@@ -238,14 +247,9 @@ texture scaled below one half) and brush entities keep id's float code.
 The rows use 76 B of static RAM.
 ==============
 */
-static struct
-{
-	int		frame;			// r_framecount the rows are for, 0 none
-	int		ok;				// the values fit
-	int		row[3][3];		// the rows in 1/sc
-	float	rk[3];			// 1 / (sc * 16384)
-	int		org[3];			// modelorg in 1/1024 units
-} d_qoggr;
+#ifndef QOG_DC_NAMES
+static d_qoggr_t	d_qoggr;	// d_drawctx.h
+#endif
 
 // (int)(f * 2^frac), truncated, from the float's bits, |result| below 2^30
 static int D_QogGrFix (float f, int frac)
@@ -448,6 +452,7 @@ compiles this file a second time with core 1's own copies of every value
 written here (d_core1.h).
 ==============
 */
+#if !defined(QOG_DRAW_SHARED) || defined(QOG_DC_NAMES)	// QuakeOG, one copy
 static void D_QogDrawLitBody (surf_t *s, espan_t *spans)
 {
 	msurface_t		*pface;
@@ -474,7 +479,9 @@ static void D_QogDrawLitBody (surf_t *s, espan_t *spans)
 	// QuakeOG, no surface cache, light each pixel as it is drawn (d_scanlit.c)
 #if defined(QOG_RFAST) && defined(QOG_LITSPAN_FAST) && !defined(QOG_RFAST_FLOATSETUP)
 		{
+#ifndef QOG_DC_NAMES
 			extern float	d_qognearzi;	// QuakeOG, for the fixed point Fast drawer (d_scanlit.c)
+#endif
 			d_qognearzi = s->nearzi;
 		}
 #endif
@@ -512,10 +519,53 @@ the two-core pipeline. r_drawnpolycount is counted by the pipeline.
 */
 void D_QogDrawLit (surf_t *s, espan_t *spans)
 {
+#ifdef QOG_DC_NAMES
+	qog_drawctx_surfzi (QOG_DC, s);
+#else
 	d_zistepu = s->d_zistepu;
 	d_zistepv = s->d_zistepv;
 	d_ziorigin = s->d_ziorigin;
+#endif
 	D_QogDrawLitBody (s, spans);
+}
+#endif
+#endif	// !QOG_DRAW_SHARED || QOG_DC_NAMES
+
+#if defined(QOG_DRAW_SHARED) && defined(QOG_DC_NAMES)
+/*
+==============
+c1_D_QogTurbGradients
+
+QuakeOG, D_CalcGradients at mip 0 for core 0's turbulent surfaces, left in
+core 0's context
+==============
+*/
+void c1_D_QogTurbGradients (msurface_t *pface)
+{
+	miplevel = 0;
+	D_CalcGradients (pface);
+}
+#endif
+
+#ifndef QOG_DC_NAMES	// QuakeOG, the shared copy draws one lit surface at a time
+
+#if defined(QOG_DRAW_SHARED)
+// QuakeOG, the turbulent drawer (d_scan.c) reads core 0's globals
+static void D_QogSharedTurbGradients (msurface_t *pface)
+{
+	const qog_drawctx_t	*dc = &qog_drawctx[0];
+
+	c1_D_QogTurbGradients (pface);
+	d_sdivzstepu = dc->qsdivzstepu;
+	d_tdivzstepu = dc->qtdivzstepu;
+	d_sdivzstepv = dc->qsdivzstepv;
+	d_tdivzstepv = dc->qtdivzstepv;
+	d_sdivzorigin = dc->qsdivzorigin;
+	d_tdivzorigin = dc->qtdivzorigin;
+	sadjust = dc->qsadjust;
+	tadjust = dc->qtadjust;
+	bbextents = dc->qbbextents;
+	bbextentt = dc->qbbextentt;
 }
 #endif
 
@@ -608,7 +658,11 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 
 		{
 		QOG_PH_T (ph);	// QuakeOG
+#if defined(QOG_DRAW_SHARED) && !defined(QOG_DC_NAMES)
+		D_QogSharedTurbGradients (pface);	// QuakeOG
+#else
 		D_CalcGradients (pface);
+#endif
 		Turbulent8 (SPAN_PTR (s->spans));	// QuakeOG
 		QOG_PH_ADD (QOG_PH_TURB, ph);
 		QOG_PH_COUNT (QOG_PC_TURBPX, D_QogSpanPixels (SPAN_PTR (s->spans)));
@@ -653,7 +707,11 @@ static void D_DrawOneSurface (surf_t *s, vec3_t world_transformed_modelorg)
 #endif
 		}
 
+#if defined(QOG_DRAW_SHARED) && !defined(QOG_DC_NAMES)
+		c1_D_QogDrawLit (s, SPAN_PTR (s->spans));	// QuakeOG, the one copy
+#else
 		D_QogDrawLitBody (s, SPAN_PTR (s->spans));	// QuakeOG, id's statements, below
+#endif
 
 		if (s->insubmodel)
 		{
@@ -822,9 +880,14 @@ void D_QogPipeBegin (int on)
 	extern entity_t		*c1_currententity;
 
 	d_qogpipe_on = 0;
+#ifdef QOG_DRAW_SHARED
+	D_QogLitCheck ();	// core 0 draws with the one copy too, pipeline or not
+#endif
 	if (!on || r_drawflat.value)
 		return;
+#ifndef QOG_DRAW_SHARED
 	D_QogLitCheck ();	// The earlier interpolator check, before core 1 reads r_qogfast
+#endif
 #ifdef QOG_DLIGHT_SPARSE
 	// the world's dynamic light pass waits for the first question about a
 	// lit surface (r_light.c R_DlightLit), the earlier R_QogDlightSettle runs
@@ -966,7 +1029,11 @@ void D_QogPipeSync (void)
 	if (pipe_mode == 0)
 	{
 		while (D_QogPipePop (0, &s, &sp))
+#ifdef QOG_DRAW_SHARED
+			c1_D_QogDrawLit (s, sp);
+#else
 			D_QogDrawLit (s, sp);
+#endif
 		if (d_qogc1_drawing)
 		{
 #ifdef QOG_PHASE_TIME
@@ -1114,3 +1181,4 @@ void D_DrawSurfaces (void)
 #endif
 }
 
+#endif	// !QOG_DC_NAMES

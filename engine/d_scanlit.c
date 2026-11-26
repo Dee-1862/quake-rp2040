@@ -26,10 +26,16 @@ See the GNU General Public License for more details.
 // D_DrawSpans8Lit is id's D_DrawSpans8 with only the inner pixel fetch
 // changed, so perspective correction and clamping behave exactly as before.
 
+#ifndef QOG_DC_NAMES	// QuakeOG, d_core1.h includes them before its names
 #include "quakedef.h"
 #include "d_local.h"
 #include "r_local.h"
 #include "qog_phase.h"	// QuakeOG, render phase counts (QOG_PHASE_TIME)
+#endif
+#include "d_drawctx.h"
+#ifndef QOG_PH_ON
+#define QOG_PH_ON	1	// QuakeOG, d_core1.h gives the shared copy its own
+#endif
 
 #ifndef QOG_SURFCACHE
 
@@ -44,17 +50,22 @@ See the GNU General Public License for more details.
 #undef QOG_LITSPAN_Q
 #endif
 
+#ifndef QOG_DC_NAMES
 extern unsigned	blocklights[18*18];
+#endif
 void R_BuildLightMap (void);
 
+#ifndef QOG_DC_NAMES	// QuakeOG, else in the core's context (d_drawctx.h)
 static byte		*lit_tex;			// mip level pixels
 static int		lit_tw, lit_th;		// mip level size
 static int		lit_soff, lit_toff;	// texture origin of the surface, wrapped into the texture
 static int		lit_smax;			// lightmap row length
 static int		lit_lshift;			// surface pixels at this mip -> lightmap cells
 static byte		*lit_colormap;
+#endif
 #ifdef QOG_LITSPAN_FAST
 // QuakeOG, state of the restructured span drawer (d_litspan.h)
+#ifndef QOG_DC_NAMES
 static int		lit_kind;			// 0 to 3 power-of-two texture at that mip, 4 any size
 static int		lit_soff16, lit_toff16;	// texture origin in 16.16
 static int		lit_smask, lit_tshift;	// power of two, s mask, log2 of the width
@@ -62,11 +73,14 @@ static unsigned	lit_tmask2;			// power of two, t mask shifted up by lit_tshift
 static int		lit_tw16, lit_th16;	// any size, texture size in 16.16
 static const unsigned	*lit_lgrid;		// blocklights
 static const unsigned	*lit_lbase;		// blocklights moved back by the origin's light cells
+#endif
 #ifdef QOG_LITSPAN_INTERP
 // QuakeOG, interpolator 0's lane controls for this surface's
 // texture (d_litspan.h), set by D_SetupLitSurface, written by each core
+#ifndef QOG_DC_NAMES
 static unsigned	lit_ictrl0, lit_ictrl1;
-#if defined(_WIN32)
+#endif
+#if defined(_WIN32) && !defined(QOG_DC_NAMES)
 __declspec(thread) unsigned	liti_regs[2][16];	// the PC's stand-in for each core's SIO interpolators
 #endif
 #define LITI_PROLOGUE	if (lit_kind <= 3) LITI_SURFACE (lit_ictrl0, lit_ictrl1)
@@ -91,6 +105,7 @@ void D_QogZSpanI (espan_t *pspan, int izi, int izistep);
 // QuakeOG, one surface's values for the fixed point Fast drawer
 // (QOG_RFAST_FIX, d_litspan.h), set on core 0 by D_LitFixSetup and read by
 // both cores
+#ifndef QOG_DC_NAMES
 static int			litfix_ok;				// the surface can be drawn by D_DrawSpans8LitFix
 static int			litfix_uref, litfix_vref;	// the reference point, the first span's start
 static long long	litfix_d0, litfix_du, litfix_dv;	// 1/z * 2^k at it and its steps
@@ -100,6 +115,7 @@ static int			litfix_sw, litfix_tw;	// 16 - ws and 16 - wt
 static int			litfix_stepbits;		// bits of the largest u step, less 25
 static int			litfix_zsh;				// k - 31, 1/z * 2^31 is D >> litfix_zsh
 float				d_qognearzi;			// the surface's nearest 1/z (d_edge.c)
+#endif
 #endif
 #include "d_litspan.h"
 #endif
@@ -624,6 +640,8 @@ no modulo and fewer instructions per pixel (d_litspan.h).
 #if defined(QOG_PHASE_TIME) || defined(QOG_C1_PHCOUNT)	// QuakeOG, core 1 counts too in the cost model's builds
 static void D_QogCountLit (espan_t *pspan, int any)
 {
+	if (!QOG_PH_ON)
+		return;		// the phase sums are core 0's
 	do
 	{
 		QOG_PH_COUNT (QOG_PC_LITSPANS, 1);

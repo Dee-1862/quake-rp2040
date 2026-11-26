@@ -25,7 +25,9 @@
      scan     core 0, R_ScanEdges and the surfaces it hands out
      spans0   core 0's copy of the lit surface drawing (QOG_DRAW_CORE1 has
               both cores draw surfaces during the scan)
-     c1spans  core 1's copy of the same drawing (d_core1.c), its lightmaps
+     c1spans  core 1's copy of the same drawing (d_core1.c), its lightmaps.
+              With QOG_DRAW_SHARED both cores run this one and spans0 is
+              empty (a listed section a build lacks is skipped)
      core1x   core 1, less often (dynamic lights, the other span drawers)
    world and bmodels come to about 16 KB, so c1alias and models start in
    the sets just after c1loop, as world does, and both phases fit beside
@@ -195,6 +197,7 @@
 *libqog_engine_cl.a:d_core1.c.obj(.text.litq_start64)
 *(.text.D_DrawSpans8LitQ.constprop.0)
 *(.text.litq_span_asm)
+*(.text.litq_wrap_asm)
 *(.text.c1_R_BuildLightMap)
 
 /* group core1x core 1, less often */

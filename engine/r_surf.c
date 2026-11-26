@@ -20,11 +20,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 // r_surf.c: surface-related refresh code
 
+#ifndef QOG_DC_NAMES	// QuakeOG, d_core1.h includes them before its names
 #include "quakedef.h"
 #include "r_local.h"
 #include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
+#endif
 
+#ifndef QOG_DC_NAMES
 drawsurf_t	r_drawsurf;
+#endif
 
 int				lightleft, sourcesstep, blocksize, sourcetstep;
 int				lightdelta, lightdeltastep;
@@ -53,7 +57,9 @@ static void	(*surfmiptable[4])(void) = {
 
 
 
+#ifndef QOG_DC_NAMES	// QuakeOG, the shared copy takes the context's grid
 unsigned		blocklights[18*18];
+#endif
 
 #ifdef QOG_LMAP_STATS
 /*

@@ -448,6 +448,13 @@ if(QOG_SPLIT)
     if(QOG_BOARD_CORE1 AND QOG_BOARD_DRAWCORE1)
         list(APPEND _cl_defs QOG_DRAW_CORE1)       # d_edge.c, d_core1.c, r_edge.c
     endif()
+    # QuakeOG, one copy of that drawing code for both cores, which reaches
+    # each core's values through the core number (exact). OFF compiles it a
+    # second time for core 1, with variables of its own
+    option(QOG_BOARD_SHAREDDRAW "with DRAWCORE1, one copy of the lit surface drawing for both cores (exact)" ON)
+    if(QOG_BOARD_CORE1 AND QOG_BOARD_DRAWCORE1 AND QOG_BOARD_SHAREDDRAW)
+        list(APPEND _cl_defs QOG_DRAW_SHARED)      # d_drawctx.h
+    endif()
     # QuakeOG, core 1 moves three of every five particles once
     # core 0 has drawn them (exact)
     option(QOG_BOARD_PARTSCORE1 "with DRAWCORE1, particle physics shared by both cores (exact)" ON)

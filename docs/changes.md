@@ -2,6 +2,24 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-26, one copy of the lit surface drawing for both cores, exact (PC and ARM build, registered data, not run on hardware)
+
+Both cores draw lit surfaces during the edge scan, and each ran its own copy of the code, so the same hot functions sat at two flash addresses and competed for the 16 KB XIP cache.
+
+- `QOG_BOARD_SHAREDDRAW` (on, define `QOG_DRAW_SHARED`), the compilation in d_core1.c, d_core1s.c and d_core1e.c is the one both cores run. What the drawing writes is in a context per core (engine/d_drawctx.h), picked by SIO CPUID. The values core 0's brush entity surfaces change (the entity and the view vectors) and the light grids are core 0's own or core 1's copies, picked the same way. OFF builds the two copies as before.
+- Core 0's turbulent surfaces take their gradients from the same code and copy them to the globals `Turbulent8` reads.
+- The span loop and the pixel loops (`litq_wrap_asm`, `litq_span_asm`, `litq_zruns`) already took their values through pointers and are unchanged.
+- port/rp2040/ld_hottext now also lists `litq_wrap_asm`, which it had missed.
+- tools/xip_sets.py, scan phase with the code beside it (the new list in both builds), 3,108 lines and 1,060 excess with two copies, 2,481 lines and 433 excess with one. 433 is the least any layout gives.
+- The shared functions are bigger, since they find their context first. The drawing group is 9.0 KB against 7.6 KB for one of the two old copies. This costs an estimated 0.1 ms a view.
+- Estimate of the gain, 0.5 to 2 ms a frame in demo3 Fast. It is not measured. boardbench does not see the cache, and a `QOG_BOARD_XIPSTATS` build on the board with the option on and off would measure it.
+- RAM (README build line), quake_display `end` 0x2003f710 to 0x2003f77c (108 B more, 132 B spare beside the 2 KB heap reserve), quake_main unchanged at 0x2003f5b4.
+- tools/core1_syms.py knows the shared build and passes, also on the XIPSTATS and FPCOUNT builds.
+- The PC's measurement sums are not in the shared build, so `QOG_PC_BOARDMODEL` keeps two copies.
+- Checks, qogtest_hash `ce86f894f9de` (hidden, `-nosound`). 113 shots (`con_notifytime -1`, then `qogtest_d_shots`) in r_fast 0, 1 and 2 are identical to main on the default PC build, and on a build with the board's render flags that draws on core 1 (`QOG_PC_EXTRA_DEFS` with `QOG_DRAW_CORE1`, `QOG_DRAW_SHARED` and the flags beside them in pc/CMakeLists.txt), on its second thread and with `-core1first` and `-core1last`. The split pair was not run. With the option OFF the board build has main's function sizes and `end`.
+
+Files, engine/d_drawctx.h (new), d_core1.h, d_core1.c, d_edge.c, d_scanlit.c, d_lit_q.h, r_surf.c, apps/quake/CMakeLists.txt, port/rp2040/ld_hottext/default_text_excludes.incl, tools/core1_syms.py.
+
 ## 2026-11-25, The last two scanout waits, the row race and the edge cache tail, exact (PC and ARM build, registered data, not run on hardware)
 
 In run10_8 (f4dfb75) timedemo demo3 still waits for the LCD. Turbo windows show up to 4.5 ms of `scanwait` a frame, mostly 0 to 3 (the wait for the end of the scan before R_ScanEdges). Fast windows show 3 to 6 ms of `race` (row waits for the edge cache in the first rows of the frame).
