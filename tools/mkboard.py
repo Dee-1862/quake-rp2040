@@ -66,6 +66,11 @@ the same way (QuakeC runs on main). Both need --stub-maps. The files left
 out go after every kept file and before the maps in the pak the bake reads,
 so the kept files have the same address in it and in the display's pak.
 
+--gun-images adds gfx/qoggun.dat to the display's pak, every view weapon
+frame drawn once by the PC build (--exe, configured with
+-DQOG_PC_GUNIMAGES=ON), which an app built with QOG_BOARD_GUNIMAGES shows
+in Turbo (r_fast 2) in place of the model.
+
 --boot-map NAME names the level the board starts in: mkboard
 writes it as qogboot.txt into the display's pak and main's (the board
 client runs qog_boot, the server half goes there when a level exit names
@@ -103,6 +108,7 @@ MAIN_DATA_MAX = mkdata.MAIN_DATA_MAX                          # up to QOG_MAIN_F
 SERVER_FILES = ["progs.dat", "gfx/pop.lmp"]
 # the level the data image starts in (engine/common.c COM_BootMap)
 BOOT_FILE = "qogboot.txt"
+GUN_FILE = "gfx/qoggun.dat"                      # engine/r_qoggun.c
 QOGB_SERVER_LAYOUT = 0x53525652                  # engine/model.h
 
 
@@ -114,6 +120,13 @@ def boot_map_name(maps, boot):
     if not maps:
         return "start"
     return "start" if "start" in maps else maps[0]
+
+
+def with_file(pak, name, data):
+    """The same pak with one more file before the first map."""
+    ents = [(n, d) for n, _, d in pak_entries(pak) if n != name]
+    at = next((i for i, (n, _) in enumerate(ents) if mkpak.is_map(n)), len(ents))
+    return mkpak.build_pak(ents[:at] + [(name, data)] + ents[at:])
 
 
 def with_boot_file(pak, name):
@@ -229,6 +242,30 @@ def bake_header(img):
         return None
     h = struct.unpack_from(QOGB_HEADER, img, 0)
     return h if h[0] == QOGB_MAGIC else None
+
+
+def run_gunbake(exe, basedir, timeout):
+    """The view weapon images (engine/r_qoggun.c), id's renderer on the PC
+    draws every frame of every weapon in the pak: <out>/id1/qoggun.out."""
+    log = os.path.join(basedir, "gunbake.txt")
+    out = os.path.join(basedir, "id1", "qoggun.out")
+    if os.path.exists(out):
+        os.remove(out)
+    boot = "start"
+    for n, _, d in pak_entries(open(os.path.join(basedir, "id1", "pak0.pak"), "rb").read()):
+        if n == BOOT_FILE:
+            boot = d.decode("ascii").strip()
+    args = ("-nosound -nobake -flashbase 0x%08X -basedir %s +viewsize 100 +fov 90 +map %s +qog_gunbake"
+            % (DATA_ADDR, basedir.replace("\\", "/"), boot))
+    cmd = ["powershell", "-NoProfile", "-File", os.path.join(ROOT, "tools", "pctest.ps1"),
+           "-Exe", exe, "-GameArgs", args, "-Out", log, "-TimeoutSec", str(timeout)]
+    subprocess.run(cmd, check=True, cwd=ROOT)
+    if not os.path.exists(out):
+        sys.exit("mkboard: no weapon images, --exe needs a build with -DQOG_PC_GUNIMAGES=ON (see %s)" % log)
+    with open(out, "rb") as f:
+        data = f.read()
+    os.remove(out)
+    return data
 
 
 def run_bake(exe, basedir, base, timeout, stubs=False, extra="", flashbase=DATA_ADDR):
@@ -363,6 +400,8 @@ def main(argv=None):
                     help="leave the sounds out of the display's image (the split game, main keeps them)")
     ap.add_argument("--display-no-progs", action="store_true",
                     help="leave progs.dat out of the display's image (the split game, main keeps it)")
+    ap.add_argument("--gun-images", action="store_true",
+                    help="draw the view weapons once into the display's pak (--exe built with QOG_PC_GUNIMAGES)")
     ap.add_argument("--boot-map", help="level the board starts in, written as qogboot.txt "
                     "(default: start when --maps has it, else the first of --maps)")
     ap.add_argument("-o", "--out", required=True, help="output path without extension, also the PC basedir")
@@ -393,6 +432,17 @@ def main(argv=None):
         f.write(pak)
     if pc_layout(pak) != len(pak):
         sys.exit("mkboard: the pak is not laid out the way the PC maps it")
+    gun_bytes = 0
+    if a.gun_images:
+        if not a.exe:
+            sys.exit("mkboard: --exe is needed for --gun-images")
+        gun = run_gunbake(os.path.abspath(a.exe), out, a.timeout)
+        gun_bytes = len(gun)
+        pak = with_file(pak, GUN_FILE, gun)
+        with open(pakpath + ".pak", "wb") as f:
+            f.write(pak)
+        if pc_layout(pak) != len(pak):
+            sys.exit("mkboard: the pak is not laid out the way the PC maps it")
     drop = display_drop([n for n, _, _ in pak_entries(pak)], a.display_no_sounds, a.display_no_progs)
     if drop:
         # Earlier work, the files the display leaves out go before the maps
@@ -454,6 +504,8 @@ def main(argv=None):
 
     print("data region at 0x%08X, %.2f MB:" % (DATA_ADDR, room / 2**20))
     print("  0x%08X  pak        %9d bytes  %6.2f MB, starts in %s (%s)" % (DATA_ADDR, len(pak), len(pak) / 2**20, boot, BOOT_FILE))
+    if gun_bytes:
+        print("            %s: %d bytes of view weapon images" % (GUN_FILE, gun_bytes))
     if a.stub_maps:
         print("            maps are stubs (the full pak's maps took %d bytes, %.2f MB, kept in %s)"
               % (maps_bytes, maps_bytes / 2**20, srcpath))

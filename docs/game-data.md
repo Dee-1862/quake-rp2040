@@ -126,6 +126,10 @@ Measured without stubs (registered data, manifests from `qogtest_manifest.cfg`, 
 | `start e1m1 e1m2 e1m3` | 10.59 MB | about 1.75 MB | about 12.4 MB, does not fit |
 | `start` and all of episode 1 | 16.51 MB | 3.31 MB (81 models) | 19.87 MB, does not fit |
 
+### View weapon images (`--gun-images`)
+
+For an app built with `QOG_BOARD_GUNIMAGES` (off by default). Configure the PC build that `--exe` names with `-DQOG_PC_GUNIMAGES=ON` and add `--gun-images` to the mkboard command. The PC build then draws every frame of every view weapon in the pak in a Turbo view, and mkboard adds the result to the display's pak as `gfx/qoggun.dat` before it bakes. The file is made from id's models, so it is never committed or shared, like the rest of the image. Without the file the app draws the models. Main's image holds no part of it.
+
 ### Maps in the image, stubs in the pak (`--stub-maps`, earlier work)
 
 Once a map is baked, the engine reads only some of its file through the image's pointers (light, visibility, entities, vertexes, edges, surface edges, clip nodes, mark surfaces, texture pixels) and none of the rest (faces, nodes, leafs, planes, texinfo, models). And each map carries its own copy of textures that other maps share. With `QOG_BAKE_STUBS` (both builds) and `--stub-maps`.

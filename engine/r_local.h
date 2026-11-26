@@ -109,6 +109,14 @@ extern cvar_t	r_waterwarp;
 extern cvar_t	r_fullbright;
 extern cvar_t	r_drawentities;
 extern cvar_t	r_aliasstats;
+#ifdef QOG_GUN_IMAGES
+int R_QogGunImage (int ambient, int shade);	// r_qoggun.c
+#endif
+#ifdef QOG_GUN_BAKE
+extern int	r_qog_gunbake;
+void R_QogGunBakeView (void);
+void R_QogGunInit (void);
+#endif
 extern cvar_t	r_dspeeds;
 #ifdef QOG_RFAST
 extern cvar_t	r_fast;		// QuakeOG, Fast render mode (r_main.c)

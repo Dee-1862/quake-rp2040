@@ -412,6 +412,13 @@ foreach(_t quakeog_sv quakeog_cl)
     set_target_properties(${_t} PROPERTIES WIN32_EXECUTABLE OFF)
 endforeach()
 
+# The view weapon from pre-rendered images in Turbo, and the
+# qog_gunbake command that writes them (engine/r_qoggun.c, mkboard.py)
+option(QOG_PC_GUNIMAGES "quakeog_pc draws the view weapon from images and can write them" OFF)
+if(QOG_PC_GUNIMAGES)
+    target_compile_definitions(quakeog_pc PRIVATE QOG_GUN_IMAGES QOG_GUN_BAKE)
+endif()
+
 # Board cost model, a measurement build only, tools/boardbench.ps1
 # makes it in its own folder. quakeog_pc gets the board client's render
 # flags (apps/quake/CMakeLists.txt, keep the two lists in step), the phase
