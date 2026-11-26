@@ -396,6 +396,7 @@ if(QOG_SPLIT)
     endif()
     if(QOG_BOARD_WORLDNODE)
         list(APPEND _cl_defs QOG_WORLDNODE_FAST)   # r_bsp.c R_RecursiveWorldNode
+        list(APPEND _cl_defs QOG_NODESIDE_BITS)    # Agent AQ: its side and facing tests by the float's bits, no float compares
     endif()
     option(QOG_BOARD_CLIPDIST "with VERTCACHE, each world vertex's distance to the view planes measured once a frame (exact)" ON)
     if(QOG_BOARD_VERTCACHE AND QOG_BOARD_CLIPDIST)
@@ -498,6 +499,9 @@ if(QOG_SPLIT)
         # its vectors are those of the setup before, and face gradients with
         # an exact axial dot product and one multiply less per gradient
         list(APPEND _cl_defs QOG_FX_REUSE QOG_FGRAD_AXIAL)
+        # Agent AQ round 4: a world vertex's four view plane distances at its
+        # first need (r_draw.c)
+        list(APPEND _cl_defs QOG_CLIPDIST_FILL4)
     endif()
     # Agent AH: the console's text 4 KB to 1 KB (26 lines of scrollback, the
     # 4 notify lines, MG24Quake keeps 913 B). It is taken from the client's
