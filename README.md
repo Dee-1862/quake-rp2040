@@ -20,12 +20,12 @@ If you want the long story, read [docs/showcase.md](docs/showcase.md).
 
 ## The numbers
 
-All of these are from the actual board running `timedemo demo3`. The runs are listed in [docs/fps-board.md](docs/fps-board.md).
+All of these are from the actual board running `timedemo demo3`. Turbo was last measured before the newest change. The runs are listed in [docs/fps-board.md](docs/fps-board.md).
 
 | Mode | What it looks like | fps |
 | --- | --- | --- |
 | Exact | Same pixels as the original renderer | 12.8 |
-| Fast (default) | Full detail, small shortcuts you barely notice | **25.5** |
+| Fast (default) | Full detail, small shortcuts you barely notice | **25.8** |
 | Turbo | 3D view at half width, blockier | **28.5** |
 
 You switch between them in **Options, Render**.
@@ -35,7 +35,7 @@ xychart-beta
   title "Fast mode, how it went"
   x-axis ["250 MHz start", "300 MHz and 2 cores", "Less screen waiting", "More tuning", "Now"]
   y-axis "fps" 0 --> 35
-  bar [13.6, 20.0, 22.0, 24.8, 25.5]
+  bar [13.6, 20.0, 22.0, 24.8, 25.8]
 ```
 
 ```mermaid
@@ -52,7 +52,7 @@ I wanted 35 fps. I did not get there.
 
 | Port | Chip | Has an FPU | Speed they report |
 | --- | --- | --- | --- |
-| **QuakeOG** | 2x RP2040 | no | 25.5 fps, or 28.5 in Turbo |
+| **QuakeOG** | 2x RP2040 | no | 25.8 fps, or 28.5 in Turbo |
 | [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | about 29 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
 
@@ -171,7 +171,7 @@ Run these from the repo root and put only one chip in BOOTSEL at a time. **Pleas
 2. Build the game. Pass every option each time because the build folder remembers old ones. On macOS or Linux use `--preset target-posix`.
 
    ```bash
-   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON
+   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON -DQOG_BOARD_SCANSIZE=ON
    cmake --build build --target quake_main
    ```
 

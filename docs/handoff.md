@@ -59,8 +59,8 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 
 ## Where the speed work stands (26 Nov 2026)
 
-- The board runs main. `timedemo demo3` measured 25.5 fps Fast and 28.5 fps Turbo (docs/fps-board.md section 1)
-- The goal is MG24Quake's 29.2 fps in Fast, about 5 ms a frame away. The earlier goal of 35 fps was not reached
+- The board runs main. `timedemo demo3` measured 25.8 fps Fast and 28.5 fps Turbo (docs/fps-board.md section 1)
+- The goal is MG24Quake's 29.2 fps in Fast, about 4.5 ms a frame away. The earlier goal of 35 fps was not reached
 - The display chip has 132 bytes of RAM spare, so anything that needs RAM has to free some first
 - Ideas not built yet are the edge scan split over both cores, cheaper brush models, and hot per node and per edge code in RAM
 - Running the world pass on the main chip was studied and not built, the data would reach the display too late
