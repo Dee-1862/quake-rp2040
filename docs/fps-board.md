@@ -22,6 +22,8 @@ Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchma
 | **ebc51eb + HOTTEXT** | **Turbo** | 300, 150, PIO 60 | **28.5** | **35.1** | same build, 38.3 s, log `run15_8.txt` |
 | **c2b913a + HOTTEXT + SCANSIZE** | **Fast** | 300, 150, PIO 60 | **25.8** | **38.7** | cheaper brush models (3.4 to 2.9 ms), edge scan for size made no difference (6.9 and 7.0 ms), 42.2 s, log `run16_8.txt` |
 | **c2b913a + HOTTEXT + SCANSIZE** | **Turbo** | 300, 150, PIO 60 | **28.8** | **34.8** | same build, 37.9 s, log `run16_8.txt` |
+| **1765d6b + HOTTEXT + SCANSIZE + GUNIMAGES** | **Fast** | 300, 150, PIO 60 | **25.8** | **38.8** | data images built with `--gun-images`, Fast does not use them, 42.3 s, log `run17_8.txt` |
+| **1765d6b + HOTTEXT + SCANSIZE + GUNIMAGES** | **Turbo** | 300, 150, PIO 60 | **30.6** | **32.7** | flat view weapon (vmodel 2.3 to 0.3 ms), 35.6 s, log `run17_8.txt` |
 
 Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. Commit IDs are those of this repository.
 

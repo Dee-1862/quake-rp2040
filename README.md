@@ -26,7 +26,7 @@ All of these are from the actual board running `timedemo demo3`. The runs are li
 | --- | --- | --- |
 | Exact | Same pixels as the original renderer | 12.8 |
 | Fast (default) | Full detail, small shortcuts you barely notice | **25.8** |
-| Turbo | 3D view at half width, blockier | **28.8** |
+| Turbo | 3D view at half width and a flat gun picture, blockier | **30.6** |
 
 You switch between them in **Options, Render**.
 
@@ -43,7 +43,7 @@ xychart-beta
   title "Turbo mode, how it went"
   x-axis ["Turbo added", "Less screen waiting", "Better flash layout", "More tuning", "Now"]
   y-axis "fps" 0 --> 35
-  bar [22.3, 26.0, 27.1, 27.8, 28.8]
+  bar [22.3, 26.0, 27.1, 27.8, 30.6]
 ```
 
 I wanted 35 fps. I did not get there.
@@ -52,11 +52,11 @@ I wanted 35 fps. I did not get there.
 
 | Port | Chip | Has an FPU | Speed they report |
 | --- | --- | --- | --- |
-| **QuakeOG** | 2x RP2040 | no | 25.8 fps, or 28.8 in Turbo |
+| **QuakeOG** | 2x RP2040 | no | 25.8 fps, or 30.6 in Turbo at half width |
 | [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | about 29 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
 
-So no, it is not the fastest. What I like about it is the hardware it runs on. When I searched in November 2026 I did not find another Quake port on the RP2040, but that does not mean there is none.
+Turbo goes past MG24Quake's number, but it draws half the width and a flat picture of the gun, so I do not count that as beating them. Fast is the fair comparison and it is still behind. So no, it is not the fastest. What I like about it is the hardware it runs on. When I searched in November 2026 I did not find another Quake port on the RP2040, but that does not mean there is none.
 
 It is also not a perfect comparison since everyone picks their own picture shortcuts. On my test frames my Fast mode stays closer to the original than MG24Quake's method does.
 
@@ -174,6 +174,8 @@ Run these from the repo root and put only one chip in BOOTSEL at a time. **Pleas
    cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON -DQOG_BOARD_SCANSIZE=ON
    cmake --build build --target quake_main
    ```
+
+   For the 30.6 fps Turbo number the gun is drawn from pictures. Build the PC version with `-DQOG_PC_GUNIMAGES=ON`, add `--gun-images` to the mkboard command in step 1, and add `-DQOG_BOARD_GUNIMAGES=ON` to the command above ([docs/game-data.md](docs/game-data.md)).
 
    `QOG_FAT_FORMAT_IF_MISSING` formats the save area on the main chip if there is none.
 
