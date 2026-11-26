@@ -46,6 +46,26 @@ d31520e, frame weighted means of the `[time cl]` lines during the demo (the wind
 
 What drives scanwait, windows with notify text (a pickup message in the last 3 s) show 9 to 13 ms of scanwait a frame, windows with status bar frames and no notify text 0 to 1 ms. The late windows with every frame's status bar resent also had "You got the silver runekey" on screen.
 
+### Phases of the shared drawing build and cache misses
+
+Frame weighted means over the benchmark, ms per frame, from the `[time cl]` lines of log `run15_8.txt`.
+
+| Mode | frame | view | link | scanwait | race |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Fast | 38.8 | 36.1 | 0.6 | 0.0 | 1.1 |
+| Turbo | 34.6 | 31.9 | 0.5 | 0.7 | 0.4 |
+
+| Mode | world | bmodels | edgescan | lmap | grad | spans | models | vmodel | parts |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Fast | 7.7 | 3.4 | 6.9 | 1.2 | 0.8 | 6.8 | 3.9 | 2.6 | 0.6 |
+| Turbo | 7.5 | 3.5 | 6.7 | 0.9 | 0.6 | 4.3 | 3.5 | 2.4 | 0.7 |
+
+XIP cache misses per view in Fast, from the counting build made before the shared drawing code (log `run14_8.txt`). Both cores are counted together.
+
+| world | bmodels | edgescan | lmap | grad | spans | models | vmodel | parts | total |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 11172 | 8260 | 12363 | 5146 | 3444 | 17806 | 10160 | 6408 | 501 | 78795 |
+
 ## 2. Model predictions per commit (demo3, board fps at 300 MHz)
 
 | Commit | Calibration | Fast | Turbo | Board |
