@@ -2,6 +2,19 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: The last two scanout waits, the row race and the edge cache tail, exact (Agent AP, PC and ARM build, registered data, not run on hardware)
+
+In run10_8 (5bb769e) timedemo demo3 still waits for the LCD. Turbo windows show up to 4.5 ms of `scanwait` a frame, mostly 0 to 3 (the wait for the end of the scan before R_ScanEdges). Fast windows show 3 to 6 ms of `race` (row waits for the edge cache in the first rows of the frame).
+
+- `QOG_BOARD_ROWRACE` (on): R_ScanEdges runs beside the last scanout. It first waits for the z-buffer region and the view's z-buffer, then each span flush and each surface sent to core 1 waits only for the rows down to the scan line reached (r_edge.c R_QogRowFree). The wait for the end of the scan moves after R_ScanEdges, before the models, particles and warp. Core 1 draws nothing until its scanout ends, so core 0 draws more surfaces itself at the start of the edge scan, and the gain is smaller than the wait it removes.
+- `QOG_BOARD_ECTAIL` (on, not in Turbo views): the world's edge cache goes to the end of the z-buffer region, which no scanout reads, while R_RenderWorld runs, and edge_max stops the edge table below it. A view whose world edges reach it moves the cache to the frame rows after the vertex cache (R_QogEdgeCacheOut), and the table gets its whole room back, so no view gets fewer edges. demo3 never moves it. `QOG_ECTAIL_TEST=300` forces the move for tests.
+- boardbench (300 MHz, PIO 60 MHz), main dd4bc39 to this: Fast 21.9 fps (21.6 to 21.8) to 24.0 (23.7 to 24.0), Turbo 26.6 (25.9 to 27.0) to 27.5 (26.7 to 27.9). The board measured 22.0 and 26.0 on 5bb769e. tools/boardmodel.py now keeps core 1 busy with the rest of the scanout in its pipeline (without that it overstates the row race).
+- Checks: qogtest_hash `ce86f894f9de`. Against builds of main dd4bc39, 121 shots each in Exact, Fast and Turbo are identical in the single process build, and in the split pair with the board flags in Exact and Fast, also with `QOG_ECTAIL_TEST=300` (the cache moved in more than 1,200 views a run). The Turbo split pair differs in 2 shots in status bar rows only (y 154 and below), which the 100 ms status bar cap sends by wall clock time. scanrace 0 writes before the scanout passed, lockcheck 0 changed while scanned. tools/core1_syms.py passes.
+- RAM (board build with Turbo at 300 MHz): quake_display `end` 0x2003f704 (252 B spare beside the 2 KB heap reserve), quake_main 0x2003f5b4.
+- What the board log should show in the demo3 windows: Fast `race` from 3 to 6 ms down to about 1 or less, Turbo `scanwait` near 0. Part of the wait moves into core 0's time in the edge scan (more `pipe` work on core 0, fewer `c1` surfaces), so judge by the Benchmark line.
+
+Files: engine/r_edge.c, r_main.c, r_draw.c, r_local.h, vid.h, apps/quake/CMakeLists.txt, pc/CMakeLists.txt, port/pc/vid_pc.c, boardmodel_pc.c, tools/boardmodel.py.
+
 ## 2026-11-25: XIP measurement build and the code placement cure, fifth round, exact (Agent AQ, ARM build, registered data)
 
 The board's Turbo run (26.0 fps, run10_8) shows world 4.4 to 7.5 ms, bmodels 2.2 to 5.6 and edgescan 5.0 to 8.1 per view between windows, more than their work counts move, and the world front end's compute is about 1 M cycles against about 3.3 M measured. This round makes the build that measures the XIP cache per phase and prepares the cures that need no RAM. Nothing ran on hardware.

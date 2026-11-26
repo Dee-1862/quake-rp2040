@@ -112,3 +112,4 @@ Rule for every claim: run `tools\boardbench.ps1` on the branch before and after,
 | 2026-11-25 | Agent AS | First version: model calibrated on de58316, main cd1e749 predicted |
 | 2026-11-25 | Agent AS | main 768c8a6 merged: Agent AM's pipeline, Agent AP's PIO scanout and Turbo text, Agent AQ's paths in the model, attacks re-ranked |
 | 2026-11-25 | Agent AS | Board run of f7d9450 (20.0 and 22.3 fps against the model's 26.5 and 30.4): model recalibrated on it, status bar cap what-if, attacks re-ranked for Turbo |
+| 2026-11-25 | Agent AP | agent-ap3 row race and edge cache tail: Fast 21.9 to 24.0, Turbo 26.6 to 27.5 predicted (board 22.0 and 26.0 on 5bb769e), the model keeps core 1 busy with the rest of the scanout |

@@ -390,6 +390,18 @@ if(QOG_SPLIT)
         if(QOG_BOARD_HUDFIRST)
             list(APPEND _cl_defs QOG_VID_HUDFIRST)  # vid_rp2040.c, platform/qog_video.c
         endif()
+        # QuakeOG (Agent AP): the edge scan's spans wait row by row for the
+        # last scanout instead of for its end
+        option(QOG_BOARD_ROWRACE "R_ScanEdges waits for the scanout row by row (exact)" ON)
+        if(QOG_BOARD_ROWRACE)
+            list(APPEND _cl_defs QOG_VID_ROWRACE)   # r_main.c, r_edge.c
+        endif()
+        # QuakeOG (Agent AP): outside Turbo the world's edge cache goes to the end
+        # of the z-buffer region, which no scanout reads, while the world is drawn
+        option(QOG_BOARD_ECTAIL "the edge cache past the rows a scanout sends (exact)" ON)
+        if(QOG_BOARD_ECTAIL)
+            list(APPEND _cl_defs QOG_EDGECACHE_TAIL)   # r_main.c, r_draw.c
+        endif()
     endif()
     if(QOG_BOARD_HUDSKIP)
         list(APPEND _cl_defs QOG_HUD_SKIP)         # r_main.c, screen.c, vid_rp2040.c

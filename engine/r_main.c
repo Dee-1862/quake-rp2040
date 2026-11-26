@@ -1471,6 +1471,88 @@ void R_DrawBEntitiesOnList (void)
 }
 
 
+#ifdef QOG_EDGECACHE_TAIL
+/*
+================
+R_QogEdgeCacheTail
+
+QuakeOG (Agent AP): a view that is not a Turbo one kept the world's edge
+cache in the first rows of the frame buffer, which the last frame's
+scanout sends first, so R_RenderWorld waited for about 65 rows (e1m6, 85
+on e1m1) before it could start. The end of the z-buffer region lies past
+every row a scanout sends (the status bar rows are its first 48 rows of
+320 bytes), and during the world's front end only the edge table, which
+fills from its start, uses it. So the cache goes there, and edge_max
+stops the table below it while the world is drawn (R_RenderFace's own
+check). If a view needs more world edges than that leaves, the cache moves
+to the frame buffer rows as before (R_QogEdgeCacheOut) and the table gets
+its whole room back, so every view still gets every edge it needs.
+================
+*/
+int		r_qog_ectail;	// the cache is at the end of the z-buffer region now
+static int	r_qog_ecplaced;	// this view moved the cache from the frame buffer's start
+#ifdef _WIN32
+int		r_qog_ecmoves;	// PC measurement: views whose world edges reached the cache
+#endif
+
+static void R_QogEdgeCacheTail (void)
+{
+	extern pixel_t	*d_viewbuffer;	// d_local.h
+	byte	*tail;
+	int		room;
+
+	r_qog_ectail = 0;
+	if ((byte *)r_qog_edgecache != vid.buffer || r_refdef.vrect.y || r_refdef.vrect.x
+		|| r_refdef.vrect.width != vid.width || d_viewbuffer != vid.buffer
+		|| r_refdef.vrect.height * (int)vid.rowbytes < r_qog_edgecachebytes + 8192)
+		return;		// the view's rows hold the cache when it has to move (R_QogVertCacheBegin leaves room)
+	tail = (byte *)(((size_t)(r_ztemp_base + r_ztemp_bytes - r_qog_edgecachebytes)) & ~(size_t)3);
+	room = (tail - (byte *)r_edges) / (int)sizeof(edge_t);
+#ifdef QOG_ECTAIL_TEST
+	if (room > QOG_ECTAIL_TEST)
+		room = QOG_ECTAIL_TEST;	// less room, only to test the move
+#endif
+	if (room < 256 || room > r_numallocatededges)
+		return;		// keep the frame buffer rows
+	r_qog_edgecache = (unsigned short *)tail;
+	edge_max = &r_edges[room];
+	r_qog_ectail = r_qog_ecplaced = 1;
+}
+
+/*
+================
+R_QogEdgeCacheOut
+
+R_RenderFace when the world's edges reach the cache at the end of the
+z-buffer region: the cache moves to the frame buffer rows after the vertex
+cache (R_QogVertCacheBegin put it at the frame's start), once the last
+scanout has sent them, and the table gets its whole room back. Returns
+false when nothing was moved.
+================
+*/
+qboolean R_QogEdgeCacheOut (void)
+{
+	extern byte	*R_QogVertCacheTop (void);	// r_draw.c
+	byte		*dst;
+
+	if (!r_qog_ectail)
+		return false;
+	r_qog_ectail = 0;
+	dst = R_QogVertCacheTop ();
+	dst = (byte *)(((size_t)dst + 3) & ~(size_t)3);
+#ifdef QOG_VID_SCANRACE
+	VID_QogScanFree (dst, dst + r_qog_edgecachebytes);
+#endif
+	memcpy (dst, r_qog_edgecache, r_qog_edgecachebytes);
+	r_qog_edgecache = (unsigned short *)dst;
+	edge_max = &r_edges[r_numallocatededges];
+#ifdef _WIN32
+	r_qog_ecmoves++;
+#endif
+	return true;
+}
+#endif
+
 /*
 ================
 R_EdgeDrawing
@@ -1588,7 +1670,13 @@ void R_EdgeDrawing (void)
 	void	R_QogTurboCaches (void);
 
 	R_QogTurboCaches ();
+#ifdef QOG_EDGECACHE_TAIL
 	if (!r_qog_turboview)
+		R_QogEdgeCacheTail ();
+#endif
+	if (!r_qog_turboview)
+#elif defined(QOG_EDGECACHE_TAIL)
+	R_QogEdgeCacheTail ();
 #endif
 	if ((byte *)r_qog_edgecache == vid.buffer
 		&& (r_refdef.vrect.x || r_refdef.vrect.y || r_refdef.vrect.width != vid.width
@@ -1619,6 +1707,15 @@ void R_EdgeDrawing (void)
 	R_RenderWorld ();
 #if defined(QOG_VERTCACHE) && !defined(QOG_FRONT_FAST)
 	R_QogVertCacheEnd ();
+#endif
+#ifdef QOG_EDGECACHE_TAIL
+	if (r_qog_ecplaced)
+	{	// QuakeOG (Agent AP): only world faces use the cache, the brush
+		// entities' edges may grow over it (also after R_QogEdgeCacheOut)
+		r_qog_ecplaced = r_qog_ectail = 0;
+		edge_max = &r_edges[r_numallocatededges];
+		r_qog_edgecache = (unsigned short *)vid.buffer;
+	}
 #endif
 	QOG_PH_ADD (QOG_PH_WORLD, ph);
 	}
@@ -1674,10 +1771,16 @@ void R_EdgeDrawing (void)
 	}
 #ifdef QOG_VID_SCANRACE
 	VID_QogRaceMark (3);	// QuakeOG (Agent AP): after the brush entities
+#ifdef QOG_VID_ROWRACE
+	// QuakeOG (Agent AP): R_ScanEdges waits for the rows it writes, row by
+	// row (r_edge.c R_QogRowFree), so the scanout runs beside the edge scan
+	r_qog_rowrace = 1;
+#else
 	// QuakeOG (Agent AK): from here on the view draws anywhere in the frame
 	// and the z-buffer (spans): the last frame's scanout has to be over. The
 	// front end above (world and, Agent AP, brush entities) overlapped it.
 	VID_QogScanDone ();
+#endif
 #endif
 
 	if (r_dspeeds.value)
@@ -1708,6 +1811,12 @@ void R_EdgeDrawing (void)
 		R_ScanEdges ();
 		QOG_PH_ADD (QOG_PH_SCAN, ph);
 	}
+#ifdef QOG_VID_ROWRACE
+	// QuakeOG (Agent AP): models, particles and the warp draw anywhere
+	r_qog_rowrace = 0;
+	VID_QogRaceMark (4);
+	VID_QogScanDone ();
+#endif
 }
 
 

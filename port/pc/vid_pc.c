@@ -309,11 +309,11 @@ int VID_QogScanNeed(const void *lo, const void *hi) {
    brush entities), so `-scanmodel` can work out the board's race wait at
    each LCD rate. */
 #define SM_MAX 8192
-static unsigned char s_sm_need[SM_MAX][4], s_sm_rows[SM_MAX], s_sm_turbo[SM_MAX];
-static int s_sm_n, s_sm_ph, s_sm_cur[4];
+static unsigned char s_sm_need[SM_MAX][5], s_sm_rows[SM_MAX], s_sm_turbo[SM_MAX];
+static int s_sm_n, s_sm_ph, s_sm_cur[5];
 
 void VID_QogRaceMark(int phase) {
-    s_sm_ph = phase < 0 ? 0 : phase > 3 ? 3 : phase;
+    s_sm_ph = phase < 0 ? 0 : phase > 4 ? 4 : phase;
 }
 
 static void scanmodel_need(int need) {
@@ -324,7 +324,7 @@ static void scanmodel_record(void) {
     int k;
     scanmodel_need(s_sr_rows);   /* the wait for the end */
     if (s_sm_n >= SM_MAX || !cls.timedemo) return;   /* timedemo frames only (the Benchmark) */
-    for (k = 0; k < 4; k++) s_sm_need[s_sm_n][k] = (unsigned char)s_sm_cur[k];
+    for (k = 0; k < 5; k++) s_sm_need[s_sm_n][k] = (unsigned char)s_sm_cur[k];
     s_sm_rows[s_sm_n] = (unsigned char)s_sr_rows;
     s_sm_turbo[s_sm_n] = (unsigned char)(s_sr_packed > 0);
     s_sm_n++;
@@ -356,27 +356,33 @@ void VID_QogScanDone(void) {
 }
 
 static void scanmodel_print(void (*pr)(char *fmt, ...), double pre, double world, double bmodels) {
+#ifdef QOG_VID_ROWRACE
+    const double edgescan = 3.8;   /* Agent AP: the edge scan's own time (boardbench), row waits during it bind at its end */
+#endif
     /* us per row: the PL022 at 50 MHz (Agent V's 22.4 ms for 200 rows on
        the board) and PIO at 60 MHz (5,120 bits a row, about 0.4 us a line) */
     static const struct { const char *name; double us; } rate[] = { { "pio 60 MHz", 85.7 }, { "spi 50 MHz", 112.0 } };
     for (int t = 0; t < 2; t++) {
         int n = 0, i, k, ph;
-        double rows = 0, need[4] = { 0 };
+        double rows = 0, need[5] = { 0 };
         for (i = 0; i < s_sm_n; i++) {
             if (s_sm_turbo[i] != t) continue;
             n++;
             rows += s_sm_rows[i];
-            for (ph = 0; ph < 4; ph++) need[ph] += s_sm_need[i][ph];
+            for (ph = 0; ph < 5; ph++) need[ph] += s_sm_need[i][ph];
         }
         if (!n) continue;
-        pr("qog_scanmodel: %s, %d frames, rows sent avg %.1f, scan places waited for avg %.1f before the view, %.1f front end, %.1f after the world, %.1f after the brush entities\n",
-           t ? "Turbo" : "Exact and Fast", n, rows / n, need[0] / n, need[1] / n, need[2] / n, need[3] / n);
+        pr("qog_scanmodel: %s, %d frames, rows sent avg %.1f, scan places waited for avg %.1f before the view, %.1f front end, %.1f after the world, %.1f after the brush entities, %.1f after the edge scan\n",
+           t ? "Turbo" : "Exact and Fast", n, rows / n, need[0] / n, need[1] / n, need[2] / n, need[3] / n, need[4] / n);
         for (k = 0; k < (int)(sizeof rate / sizeof rate[0]); k++) {
-            double w[4] = { 0 }, scan = 0;
+            double w[5] = { 0 }, scan = 0;
             for (i = 0; i < s_sm_n; i++) {
                 double tt = pre, d;
                 if (s_sm_turbo[i] != t) continue;
-                for (ph = 0; ph < 4; ph++) {
+                for (ph = 0; ph < 5; ph++) {
+#ifdef QOG_VID_ROWRACE
+                    if (ph == 3) tt += edgescan;   /* the edge scan's row waits bind at its last row */
+#endif
                     d = s_sm_need[i][ph] * rate[k].us / 1000.0 - tt;
                     if (d > 0) { w[ph] += d; tt += d; }
                     if (ph == 1) tt += world;
@@ -384,8 +390,8 @@ static void scanmodel_print(void (*pr)(char *fmt, ...), double pre, double world
                 }
                 scan += s_sm_rows[i] * rate[k].us / 1000.0;
             }
-            pr("qog_scanmodel:   %s pre %.0f ms: scan %.2f ms, race wait %.2f ms (before the view %.2f, front end %.2f, after the world %.2f, after the brush entities %.2f)\n",
-               rate[k].name, pre, scan / n, (w[0] + w[1] + w[2] + w[3]) / n, w[0] / n, w[1] / n, w[2] / n, w[3] / n);
+            pr("qog_scanmodel:   %s pre %.0f ms: scan %.2f ms, race wait %.2f ms (before the view %.2f, front end %.2f, after the world %.2f, after the brush entities %.2f, after the edge scan %.2f)\n",
+               rate[k].name, pre, scan / n, (w[0] + w[1] + w[2] + w[3] + w[4]) / n, w[0] / n, w[1] / n, w[2] / n, w[3] / n, w[4] / n);
         }
     }
 }
@@ -867,6 +873,12 @@ void VID_Shutdown(void) {
         extern int r_qog_turbotextmax, r_qog_turbotextover, r_qog_turbotextframes;
         Sys_Printf("qog_turbotext: %d frames with characters over a packed view, most in a frame %d of %d, %d did not fit\n",
                    r_qog_turbotextframes, r_qog_turbotextmax, QOG_TURBO_CHARS, r_qog_turbotextover);
+    }
+#endif
+#ifdef QOG_EDGECACHE_TAIL
+    {   /* Agent AP: views whose world edges reached the edge cache at the end of the z-buffer region */
+        extern int r_qog_ecmoves;
+        Sys_Printf("qog_ectail: the edge cache moved to the frame rows in %d views\n", r_qog_ecmoves);
     }
 #endif
     if (COM_CheckParm("-scanmodel")) {   /* Agent AP: the board's race wait, a few guesses of pre */

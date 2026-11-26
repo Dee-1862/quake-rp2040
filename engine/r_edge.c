@@ -1303,6 +1303,32 @@ static void R_QogMoveEdges (int iv, int bottom, byte *dstend, byte *newbase)
 	r_qog_edgeend = dstend;
 }
 
+#ifdef QOG_VID_ROWRACE
+/*
+==============
+R_QogRowFree
+
+QuakeOG (Agent AP): while r_qog_rowrace (r_main.c R_EdgeDrawing), the last
+frame's scanout may still be sending the view's rows. Spans drawn now lie
+on scan lines down to iv, so they wait until the scanout has read the
+frame's rows down to iv (in a Turbo view its packed rows, screenwidth bytes
+each). Called before each flush and before surfaces go to core 1.
+==============
+*/
+int			r_qog_rowrace;
+static int	r_qog_rowfreed;		// rows the scanout has released so far
+
+static void R_QogRowFree (int iv)
+{
+	if (!r_qog_rowrace || iv < r_qog_rowfreed)
+		return;
+	VID_QogScanFree (d_viewbuffer, d_viewbuffer + (iv + 1) * screenwidth);
+	r_qog_rowfreed = iv + 1;
+}
+#else
+#define R_QogRowFree(iv)	((void)0)
+#endif
+
 /*
 ==============
 R_QogFlushSpans
@@ -1313,6 +1339,8 @@ QuakeOG: id's mid-scan flush
 static void R_QogFlushSpans (void)
 {
 	surf_t	*s;
+
+	R_QogRowFree (current_iv);	// QuakeOG (Agent AP): the spans lie on lines down to this one
 
 	VID_UnlockBuffer ();
 	S_ExtraUpdate ();	// don't let sound get messed up if going slow
@@ -1375,6 +1403,7 @@ static void R_QogFlushNoZ (int iv, int bottom)
 
 	zbuffer = d_pzbuffer;
 	zwidth = d_zwidth;
+	R_QogRowFree (bottom);	// QuakeOG (Agent AP): the z goes to the view's last row
 	// every span's z lands in one row: d_pzbuffer + 0 * v + u, u < screenwidth
 	d_pzbuffer = (d_zval_t *)(d_viewbuffer + bottom * screenwidth);
 	d_zwidth = 0;
@@ -1472,7 +1501,10 @@ static void R_QogPipeRow (int iv)
 				continue;
 			s = &surfaces[si];
 			if (s->spans != SPAN_NONE && D_QOG_C1OK (s) && SURF_LASTROW (s) == iv)
+			{
+				R_QogRowFree (iv);	// QuakeOG (Agent AP): core 1 draws its lines down to iv
 				D_QogPipePush (s);
+			}
 		}
 	}
 }
@@ -1581,6 +1613,7 @@ static void R_QogScanRows (int iv, int bottom, qboolean edgesinz)
 		r_qog_peakframespans = r_qog_framespans;
 
 // draw whatever's left in the span list, no edge is needed any more
+	R_QogRowFree (iv);	// QuakeOG (Agent AP)
 	if (r_drawculledpolys)
 		R_DrawCulledPolys ();
 	else
@@ -1670,6 +1703,18 @@ void R_ScanEdges (void)
 	int		numspans, bytes;
 	byte	*dst;
 
+#ifdef QOG_VID_ROWRACE
+	// QuakeOG (Agent AP): the z-buffer region (z, the edge table moved
+	// below, scratch) and the view's z-buffer (in a Turbo view the second
+	// half of its rows, which a packed scanout never reads) wait here. The
+	// spans write only rows down to the scan line reached (R_QogRowFree).
+	if (r_qog_rowrace)
+	{
+		VID_QogScanFree (r_ztemp_base, r_ztemp_base + r_ztemp_bytes);
+		VID_QogScanFree (d_pzbuffer, d_pzbuffer + (int)d_zwidth * r_refdef.vrectbottom);
+	}
+#endif
+
 // move the used part of the edge table (the sentinels and the frame's
 // edges, linked by offsets from r_edgebase) to the end of the z-buffer.
 // The edge cache only looked at it while the edges were made.
@@ -1710,6 +1755,9 @@ void R_ScanEdges (void)
 	max_span_p = &r_qog_basespan[numspans - r_refdef.vrect.width];
 	span_p = r_qog_basespan;
 	r_qog_framespans = 0;
+#ifdef QOG_VID_ROWRACE
+	r_qog_rowfreed = 0;		// QuakeOG (Agent AP)
+#endif
 
 // clear active edges to just the background edges around the whole screen
 	edge_head.u = r_refdef.vrect.x << 20;
