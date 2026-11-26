@@ -145,6 +145,8 @@
 *(.text.R_LeadingEdgeBackwards)
 *(.text.R_TrailingEdge)
 *(.text.R_CleanupSpan)
+*(.text.R_RemoveEdges)
+*(.text.R_QogRowFree)
 *(.text.R_QogScanRows)
 *(.text.R_QogEdgesToStack)
 *(.text.R_QogZFrontC)

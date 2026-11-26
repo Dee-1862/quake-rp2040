@@ -495,6 +495,14 @@ if(QOG_SPLIT)
         pico_add_linker_script_override_path(quake_display ${QOG_ROOT}/port/rp2040/ld_hottext
             FILES default_text_excludes.incl)
     endif()
+    # QuakeOG, the edge scan (r_edge.c) built with -Os, exact. With the two
+    # drawing cores its code is more than the XIP cache holds, and the smaller
+    # code leaves fewer lines in conflict (tools/xip_sets.py). Off until a
+    # board run shows what it saves
+    option(QOG_BOARD_SCANSIZE "r_edge.c built for size, fewer XIP cache conflicts in the edge scan (exact)" OFF)
+    if(QOG_BOARD_SCANSIZE)
+        set_property(SOURCE ${QOG_ROOT}/engine/r_edge.c APPEND PROPERTY COMPILE_OPTIONS -Os)
+    endif()
     # QuakeOG, the Fast render mode, approximate and hard to see,
     # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
     # On by default on the board. r_fast 0 draws exactly as before.
