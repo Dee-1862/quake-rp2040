@@ -59,6 +59,12 @@ void D_Init (void)
 		D_QogLitInterpCheck ();	// QuakeOG (Agent AH): the board's interpolators, once (d_scanlit.c)
 	}
 #endif
+#if defined(QOG_ASPAN_ASM) && !defined(_WIN32)
+	{
+		void D_QogAspanCheck (void);
+		D_QogAspanCheck ();	// QuakeOG (Agent AR): the alias span assembly against the C, once (d_polyse.c)
+	}
+#endif
 #ifdef QOG_XIPSIM
 	{
 		void XipSim_f (void);

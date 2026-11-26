@@ -207,6 +207,9 @@ static void bm_open (void)
 #ifdef QOG_PART_DIEBITS
 		" QOG_PART_DIEBITS"
 #endif
+#ifdef QOG_ASPAN_ASM
+		" QOG_ASPAN_ASM"		// Agent AR: the board's alias spans in Thumb (the PC runs the C)
+#endif
 #ifdef QOG_SCAN_FAST
 		" QOG_SCAN_FAST"
 #endif

@@ -432,6 +432,7 @@ if(QOG_PC_BOARDMODEL)
         QOG_VERTCACHE QOG_WORLDNODE_FAST QOG_VERTCACHE_CLIPDIST QOG_ALIAS_CORE1
         QOG_FRONT_FAST QOG_WORLDNODE_INT QOG_LITSPAN_INTERP
         QOG_LITSPAN_Q QOG_LITQ_SHARELIGHT    # Agent AR: the board's span drawer (its C version)
+        QOG_ASPAN_ASM                         # Agent AR: names the board's alias span assembly for the model (no PC code)
         QOG_DRAW_CORE1 QOG_PARTS_CORE1 QOG_AQ_STATS
         QOG_PHASE_TIME QOG_PHASE_XIP QOG_LMAP_STATS QOG_ALIAS_STATS QOG_BOARDMODEL)
     set_target_properties(quakeog_pc PROPERTIES COMPILE_DEFINITIONS "${_bm_defs}")
