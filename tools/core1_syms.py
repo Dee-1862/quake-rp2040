@@ -52,6 +52,7 @@ SHARED = {
     # Agent AR: the span assembly's start-up check result (d_lit_q.h), written
     # once by D_QogLitQCheck on core 0 at D_Init, before core 1 ever draws
     "litq_asm_ok",
+    "litq_wrap_ok",  # the same for the span loop (D_QogLitWrapCheck)
 }
 
 

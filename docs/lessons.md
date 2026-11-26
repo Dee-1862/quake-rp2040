@@ -369,3 +369,7 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L313. A prefetch needs a free path to memory.** A DMA read of the next BSP node would fill its XIP line in the background on a bigger chip, but the RP2040's XIP has one bus port. The fill would block core 0's own instruction fetches, which also come from flash. Check what else waits on the same port before adding a prefetch.
 
 **L330. A wait removed on one core can move to the other.** The edge scan no longer waits for the end of the scanout, but core 1 sends that scanout and draws nothing until it ends, so core 0 draws those surfaces itself. A model that takes core 1 as free counts the whole wait as saved.
+
+**L314. Hand assembly gains little where GCC has no spilling problem.** The alias pixel loop keeps about 14 values live and the assembly runs it at 0.65 to 0.8 of the C's cycles. The lit span loop around litq_span is a few loads and multiplies a span, and the assembly saved only about 20 of its 170 cycles against the same C written over a struct (35 to 45 against the earlier form, about 1% of the lit spans). Measure the C per span before hand writing it.
+
+**L315. Check a loop that only calls things with stand-ins for the calls.** The span loop's assembly takes its three calls as pointers, so the start-up check passes it stand-ins that sum what they are given and spoil the values the loop must write again. No pixel is drawn and no global is set up, and both the far start and the z walk are reached.

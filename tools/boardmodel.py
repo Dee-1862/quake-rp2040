@@ -185,6 +185,11 @@ FEATURE_SCALE = {
     "QOG_BMODEL_BBOXINT": {"bm_bmcheck": (0.2, 1.0)},       # integer plane tests, floats only within 0.3 units of a plane
     "QOG_NODESIDE_BITS": {"wc_nodes": (0.25, 1.0)},         # the node's three float compares by its bits
     "QOG_LEFTEDGE_LOCALS": {"am_spans": (1.0, 0.85), "vm_spans": (1.0, 0.85)},  # Agent AQ round 3: the left edge's rows without global stores
+    # Agent AR: the alias span drawer in Thumb (port/rp2040/d_aspan_rp2040.S),
+    # the board's own code in the emulator: 0.65 of the C's cycles on random
+    # span lists, 0.73 to 0.82 on model meshes. A span's count also pays its
+    # left edge row (AQ's line above), so its weight drops less than a pixel's
+    "QOG_ASPAN_ASM": {"am_pix": (1.0, 0.7), "vm_pix": (1.0, 0.7), "am_spans": (1.0, 0.8), "vm_spans": (1.0, 0.8)},
 }
 # Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either
 # core, core 1 during the edge scan, both at each flush

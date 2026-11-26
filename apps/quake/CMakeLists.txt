@@ -568,6 +568,14 @@ if(QOG_SPLIT)
             list(APPEND _cl_defs QOG_LITQ_SHARELIGHT)
         endif()
     endif()
+    # Agent AR: the alias span drawer (models, the view weapon) in
+    # hand-written Thumb, checked against the C at start-up (d_polyse.c,
+    # port/rp2040/d_aspan_rp2040.S), exact
+    option(QOG_BOARD_ASPANASM "alias span pixels in hand-written Thumb (exact)" ON)
+    if(QOG_BOARD_ASPANASM)
+        list(APPEND _cl_defs QOG_ASPAN_ASM)
+        target_sources(qog_engine_cl PRIVATE ${QOG_ROOT}/port/rp2040/d_aspan_rp2040.S)
+    endif()
     option(QOG_BOARD_CONSMALL "client console text 1 KB, its hunk 3 KB smaller" ON)
     if(QOG_BOARD_CONSMALL)
         list(TRANSFORM _cl_defs REPLACE "^QOG_CON_TEXTSIZE=[0-9]+$" "QOG_CON_TEXTSIZE=1024")

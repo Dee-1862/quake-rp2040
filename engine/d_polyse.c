@@ -950,6 +950,34 @@ linear along the span, so every pixel between lies in the piece too.
 Player colours (QOG_TRANSLATE_INLINE) go through d_atranslate as before.
 ================
 */
+#if defined(QOG_ASPAN_ASM) && defined(QOG_ALIASSPAN_FAST) && defined(QOG_ZBUFFER8) && \
+	defined(QOG_ZBUFFER8_NEAR) && defined(QOG_TRANSLATE_INLINE) && !defined(_WIN32)
+#if QOG_ZBUFFER8_NEAR == 7
+#define QOG_ASPAN_ON
+#endif
+#endif
+
+#ifdef QOG_ASPAN_ON
+/*
+QuakeOG (Agent AR): D_PolysetDrawSpans8 in hand-written Thumb (QOG_ASPAN_ASM,
+port/rp2040/d_aspan_rp2040.S), the same pixels and depths as the loop below.
+The C loop keeps about 14 values live a pixel and GCC spills them, the
+assembly holds the light and the depth on the interpolators. The board
+checks it against the C at start-up (D_QogAspanCheck) and keeps the C if
+they differ. Player colours (d_atranslate) take the C.
+*/
+// what it reads of id's globals, in its order. It names none of them
+// itself, and leaves acount and err for the caller.
+typedef struct
+{
+	int			acount, err, adjup, adjdown, cextra, ubase;
+	int			zstep, lstep, sstep, tstep, skinw;
+	const byte	*cmap;
+} aspan_asm_t;
+void d_aspans_asm (spanpackage_t *p, aspan_asm_t *k);
+int		d_aspan_asm_ok;	// D_QogAspanCheck found the assembly equal to the C
+#endif
+
 #define D_QOGTEX(t)		(t)
 #define D_QOGTEXTR(t)	(tr[t])
 #define D_QOGSPANLOOP(ZQ, TEX)										\
@@ -979,7 +1007,43 @@ Player colours (QOG_TRANSLATE_INLINE) go through d_atranslate as before.
 			D_QOGSPANLOOP (ZQ, D_QOGTEX);							\
 	}
 
+#ifdef QOG_ASPAN_ON
+static void D_AspanRunAsm (spanpackage_t *pspanpackage)
+{
+	aspan_asm_t	k;
+
+	k.acount = d_aspancount;
+	k.err = errorterm;
+	k.adjup = erroradjustup;
+	k.adjdown = erroradjustdown;
+	k.cextra = d_countextrastep;
+	k.ubase = ubasestep;
+	k.zstep = r_zistepx;
+	k.lstep = r_lstepx;
+	k.sstep = r_sstepx;
+	k.tstep = r_tstepx;
+	k.skinw = r_affinetridesc.skinwidth;
+	k.cmap = (const byte *)acolormap;
+	d_aspans_asm (pspanpackage, &k);
+	d_aspancount = k.acount;
+	errorterm = k.err;
+}
+
+// the C loop a function of its own, so the usual call does not pay its frame
+static __attribute__((noinline)) void D_PolysetDrawSpans8C (spanpackage_t *pspanpackage);
+
 void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
+{
+	if (d_aspan_asm_ok && !d_atranslate)
+		D_AspanRunAsm (pspanpackage);	// QuakeOG (Agent AR): the same, in Thumb
+	else
+		D_PolysetDrawSpans8C (pspanpackage);
+}
+
+static void D_PolysetDrawSpans8C (spanpackage_t *pspanpackage)
+#else
+void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
+#endif
 {
 	int			lcount, aspancount, err;
 	int			adjup, adjdown, cextra, ubase;
@@ -1063,6 +1127,125 @@ void D_PolysetDrawSpans8 (spanpackage_t *pspanpackage)
 	d_aspancount = aspancount;
 	errorterm = err;
 }
+
+#ifdef QOG_ASPAN_ON
+/*
+================
+D_QogAspanCheck
+
+QuakeOG (Agent AR): once at start-up (D_Init), the alias span assembly
+draws made-up span lists next to the C loop: spans of 0 to 40 pixels, depths
+in each of the one-byte z-buffer's pieces and across them, skin texels and
+colour map rows read from flash, a z-buffer of pseudo-random bytes.
+d_aspan_asm_ok only when every pixel, depth, span count and error term is
+the same.
+================
+*/
+void D_QogAspanCheck (void)
+{
+	spanpackage_t	sp[17];
+	byte			pa[16 * 48], pb[16 * 48], za[16 * 48], zb[16 * 48], z0[16 * 48];
+	unsigned		seed = 0x9E3779B9u;
+	int				i, trial, bad = 0, ca, ea, cb, eb, ac, et;
+	int				save[12];
+	void			*savecmap = acolormap;
+	int				saveskinw = r_affinetridesc.skinwidth;
+#ifdef QOG_TRANSLATE_INLINE
+	byte			*savetr = d_atranslate;
+	d_atranslate = NULL;
+#endif
+
+	save[0] = d_aspancount; save[1] = errorterm; save[2] = erroradjustup; save[3] = erroradjustdown;
+	save[4] = d_countextrastep; save[5] = ubasestep; save[6] = r_zistepx; save[7] = r_lstepx;
+	save[8] = r_sstepx; save[9] = r_tstepx;
+	acolormap = (void *)0x10008000u;
+	r_affinetridesc.skinwidth = 296;
+	for (trial = 0 ; trial < 24 ; trial++)
+	{
+		int		zmode = trial % 4;
+
+		seed = seed * 1664525u + 1013904223u;
+		erroradjustup = (int)(seed >> 28) + 1;
+		erroradjustdown = (int)((seed >> 24) & 15) + 16;
+		errorterm = -(int)((seed >> 20) & 15);
+		d_countextrastep = 3 + (int)((seed >> 16) & 7);
+		ubasestep = 2 + (int)((seed >> 12) & 3);
+		r_lstepx = (int)((seed >> 3) & 0x3FF) - 0x200;
+		r_sstepx = (int)((seed >> 5) & 0x3FFFF) - 0x20000;
+		r_tstepx = (int)((seed >> 7) & 0x1FFFF) - 0x10000;
+		r_zistepx = zmode == 3 ? (int)((seed >> 4) & 0x3FFFFF) - 0x200000 : (int)((seed >> 9) & 0x7FFF) - 0x4000;
+		d_aspancount = 8;
+		ac = d_aspancount;
+		et = errorterm;
+		for (i = 0 ; i < 16 ; i++)
+		{
+			int		zi;
+
+			seed = seed * 1664525u + 1013904223u;
+			sp[i].pdest = pa + 48 * i;
+			sp[i].pz = (d_zval_t *)(za + 48 * i);
+			sp[i].count = ac - (int)(seed % 41);	// lcount 0 to 40, as the drawer steps its count
+			et += erroradjustup;
+			if (et >= 0)
+			{
+				ac += d_countextrastep;
+				et -= erroradjustdown;
+			}
+			else
+				ac += ubasestep;
+			sp[i].ptex = (byte *)0x10004000u + ((seed >> 8) & 0x3FFF);
+			sp[i].sfrac = (int)((seed >> 3) & 0xFFFF) + (96 << 16);	// 0 or more after 40 steps
+			sp[i].tfrac = (int)((seed >> 11) & 0xFFFF) + (48 << 16);
+			sp[i].light = (int)((seed >> 13) & 0x3FFF);
+			zi = zmode == 0 ? (int)((seed >> 6) & 0x01FFFFFF) + 0x00800000		// below 1024
+				: zmode == 1 ? (1024 << 16) + (int)((seed >> 2) & 0x1FFFFFFF)	// the near piece
+				: zmode == 2 ? (int)(seed & 0x7FFFFFFF) - 0x00200000				// anywhere
+				: (int)((seed >> 4) & 0x07FFFFFF);
+			sp[i].zi = zi;
+		}
+		sp[16].count = -999999;
+		for (i = 0 ; i < (int)sizeof(z0) ; i++)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			z0[i] = (byte)(seed >> 24);
+		}
+		// the C
+		memset (pa, 0, sizeof(pa));
+		memcpy (za, z0, sizeof(za));
+		ac = d_aspancount;
+		et = errorterm;
+		D_PolysetDrawSpans8C (sp);
+		ca = d_aspancount; ea = errorterm;
+		d_aspancount = ac; errorterm = et;
+		// the assembly, into the other buffers
+		for (i = 0 ; i < 16 ; i++)
+		{
+			sp[i].pdest = pb + 48 * i;
+			sp[i].pz = (d_zval_t *)(zb + 48 * i);
+		}
+		memset (pb, 0, sizeof(pb));
+		memcpy (zb, z0, sizeof(zb));
+		D_AspanRunAsm (sp);	// from the same d_aspancount and errorterm as the C
+		cb = d_aspancount;
+		eb = errorterm;
+		d_aspancount = ac;
+		errorterm = et;
+		if (memcmp (pa, pb, sizeof(pa)) || memcmp (za, zb, sizeof(za)) || ca != cb || ea != eb)
+			bad++;
+	}
+	d_aspancount = save[0]; errorterm = save[1]; erroradjustup = save[2]; erroradjustdown = save[3];
+	d_countextrastep = save[4]; ubasestep = save[5]; r_zistepx = save[6]; r_lstepx = save[7];
+	r_sstepx = save[8]; r_tstepx = save[9];
+	acolormap = savecmap;
+	r_affinetridesc.skinwidth = saveskinw;
+#ifdef QOG_TRANSLATE_INLINE
+	d_atranslate = savetr;
+#endif
+	d_aspan_asm_ok = !bad;
+	if (bad)
+		Con_Printf ("Alias spans in C: the assembly check failed %d of 24\n", bad);
+}
+#endif
 #else	// QOG_ALIASSPAN_FAST
 /*
 ================

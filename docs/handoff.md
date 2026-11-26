@@ -65,4 +65,4 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 - Other speed work, kept in sibling worktrees (the first bullet is finished, the rest unfinished and unverified)
   - agent-ap3 (worktree qog-wt-ap), the row race and the edge cache tail are finished and checked on the PC and in the ARM build, not merged or flashed (top of changes.md)
   - qog-wt-am, interrupt driven scanout so core 1 is free between rows, commit f501ee1 Drive the LCD scanout from the end of line DMA interrupt on core 1
-  - qog-wt-ar, assembly for alias span drawing, no commit yet
+  - qog-wt-ar (agent-ar2), alias spans and the lit span loop in Thumb, finished and checked on the PC and in the emulator, not merged or flashed

@@ -15,6 +15,16 @@ In run10_8 (5bb769e) timedemo demo3 still waits for the LCD. Turbo windows show 
 
 Files: engine/r_edge.c, r_main.c, r_draw.c, r_local.h, vid.h, apps/quake/CMakeLists.txt, pc/CMakeLists.txt, port/pc/vid_pc.c, boardmodel_pc.c, tools/boardmodel.py.
 
+## 2026-11-25: alias span pixels and the lit span loop in Thumb, exact (Agent AR, not run on hardware)
+
+- `QOG_BOARD_ASPANASM` (on) draws id's alias spans (models and the view weapon) with hand written Thumb from flash (port/rp2040/d_aspan_rp2040.S). The light and the depth step on the interpolators. In the emulator the span drawer takes 0.65 of the C's cycles on random span lists and 0.73 to 0.83 on model meshes (67.4 to 49.3 cycles a pixel on 100 pixel meshes, 110.7 to 91.9 on 24 pixel ones). Player colours still take the C.
+- The loop over a lit surface's spans in the Fast and Turbo drawer (the span start, the z choice, the calls) is also Thumb from flash (`litq_wrap_asm`, port/rp2040/d_litq_rp2040.S), on both cores. An emulator replay of demo3 surfaces puts the loop at about 150 cycles a span against about 185 before (about 1% of the lit spans). Output is byte identical.
+- Neither names a C global. Their values come through a pointer (lessons L245).
+- Each is checked once at start-up against its C (`D_QogAspanCheck`, `D_QogLitWrapCheck`) and the C is used if they differ, with a console line.
+- RAM on the display grows 12 B, 256 B stay spare beside the heap reserve. No code was added to RAM.
+- PC checks with r_fast 0, 1 and 2 against main give identical shots (121 frames), also with the board's render flags (one frame, d_demo1_12 in Fast, differs between two runs of main itself). qogtest_hash is ce86f894f9de. tools/core1_syms.py passes.
+- boardbench predicts demo3 Fast 22.2 fps (main 21.9) and Turbo 26.9 (main 26.6) at 300 MHz. The span loop is not in the model.
+
 ## 2026-11-25: XIP measurement build and the code placement cure, fifth round, exact (Agent AQ, ARM build, registered data)
 
 The board's Turbo run (26.0 fps, run10_8) shows world 4.4 to 7.5 ms, bmodels 2.2 to 5.6 and edgescan 5.0 to 8.1 per view between windows, more than their work counts move, and the world front end's compute is about 1 M cycles against about 3.3 M measured. This round makes the build that measures the XIP cache per phase and prepares the cures that need no RAM. Nothing ran on hardware.

@@ -642,3 +642,175 @@ litq_zruns:
 	.ltorg
 	.size	litq_zruns, . - litq_zruns
 
+/*
+ * litq_wrap_asm: litq_wrap_c of engine/d_lit_q.h, the loop over a
+ * surface's spans: each one's 32-bit start, its z, then the span.
+ *
+ *   void litq_wrap_asm (const litq_wrap_t *w, litq_span_t *c, espan_t *pspan);
+ *
+ * It names no globals (both cores run it), everything comes in through w,
+ * and it is in flash. D_QogLitWrapCheck checks it at start-up.
+ */
+	@ litq_wrap_t
+	.equ	W_D0, 0
+	.equ	W_DU, 4
+	.equ	W_DV, 8
+	.equ	W_S0, 12
+	.equ	W_SU, 16
+	.equ	W_SV, 20
+	.equ	W_T0, 24
+	.equ	W_TU, 28
+	.equ	W_TV, 32
+	.equ	W_UREF, 36
+	.equ	W_VREF, 40
+	.equ	W_ZMAX, 44
+	.equ	W_ZL, 48
+	.equ	W_ZR, 52
+	.equ	W_ZFAST, 56
+	.equ	W_ROWB, 60
+	.equ	W_VBUF, 64
+	.equ	W_ZBUF, 68
+	.equ	W_ZW, 72
+	.equ	W_SBASE, 76
+	.equ	W_STEP, 80
+	.equ	W_START64, 84
+	.equ	W_ZSPAN, 88
+	.equ	W_SPAN, 92
+
+	@ one of Ns, Nt: s0 + du_ (r0) * su + dv_ (r1) * sv, and its step
+	.macro	NUMER base, ustep, vstep, out, outstep
+	ldr	r2, [r7, #\ustep]
+	str	r2, [r6, #\outstep]
+	muls	r2, r0
+	ldr	r5, [r7, #\vstep]
+	muls	r5, r1
+	adds	r2, r5
+	ldr	r5, [r7, #\base]
+	adds	r2, r5
+	str	r2, [r6, #\out]
+	.endm
+
+	.section .text.litq_wrap_asm, "ax"
+	.align	2
+	.global	litq_wrap_asm
+	.thumb_func
+	.type	litq_wrap_asm, %function
+litq_wrap_asm:
+	push	{r3, r4, r5, r6, r7, lr}
+	movs	r7, r0			@ w
+	movs	r6, r1			@ c
+	movs	r4, r2			@ the span
+.Lwspan:
+	ldrh	r0, [r4, #0]		@ u
+	ldrh	r1, [r4, #2]		@ v
+	ldrh	r5, [r4, #4]		@ count
+	str	r5, [r6, #C_COUNT]
+	ldr	r2, [r7, #W_ROWB]
+	muls	r2, r1
+	adds	r2, r0
+	ldr	r3, [r7, #W_VBUF]
+	adds	r2, r3
+	str	r2, [r6, #C_PD]
+	ldr	r2, [r7, #W_UREF]
+	subs	r0, r2			@ du_
+	ldr	r2, [r7, #W_VREF]
+	subs	r1, r2			@ dv_
+	ldr	r2, [r7, #W_DU]
+	movs	r3, r2
+	muls	r3, r0
+	ldr	r5, [r7, #W_DV]
+	muls	r5, r1
+	adds	r3, r5
+	ldr	r5, [r7, #W_D0]
+	adds	r3, r5			@ D
+	movs	r5, #1
+	lsls	r5, #24			@ LITQ_DMIN
+	cmp	r3, r5
+	blt	.Lwfar
+	ldr	r5, [r6, #C_COUNT]
+	subs	r5, #1
+	muls	r5, r2
+	adds	r5, r3			@ D at the last pixel
+	str	r2, [r6, #C_DU]
+	movs	r2, #1
+	lsls	r2, #24
+	cmp	r5, r2
+	blt	.Lwfar
+	str	r3, [r6, #C_D]
+	NUMER	W_S0, W_SU, W_SV, C_NS, C_SU
+	NUMER	W_T0, W_TU, W_TV, C_NT, C_TU
+	ldr	r2, [r7, #W_ZMAX]
+	cmp	r3, r2
+	bhs	1f
+	ldr	r2, [r7, #W_ZL]
+	lsls	r3, r2
+	ldr	r2, [r7, #W_ZR]
+	lsrs	r3, r2
+	b	.Lwz
+1:	movs	r3, #0
+	mvns	r3, r3
+	lsrs	r3, r3, #1		@ 0x7FFFFFFF
+.Lwz:
+	@ r3 = izi
+	str	r3, [r6, #C_IZI]
+	ldr	r2, [r7, #W_ZFAST]
+	cmp	r2, #0
+	beq	.Lwzspan
+	movs	r2, #1
+	lsls	r2, #26			@ 1024 << 16
+	cmp	r3, r2
+	bhs	.Lwzspan
+	ldr	r5, [r6, #C_COUNT]
+	subs	r5, #1
+	ldr	r0, [r6, #C_IZS]
+	muls	r5, r0
+	adds	r5, r3
+	cmp	r5, r2
+	bhs	.Lwzspan
+	ldrh	r1, [r4, #2]
+	ldr	r0, [r7, #W_ZW]
+	muls	r0, r1
+	ldrh	r1, [r4, #0]
+	adds	r0, r1
+	ldr	r1, [r7, #W_ZBUF]
+	adds	r0, r1
+	str	r0, [r6, #C_PZ]
+.Lwdraw:
+	ldr	r3, [r7, #W_SPAN]
+	movs	r0, r6
+	blx	r3
+	@ the next span of this core
+	ldr	r5, [r7, #W_STEP]
+1:	ldrh	r0, [r4, #6]
+	cmp	r0, #0
+	beq	2f
+	ldr	r4, [r7, #W_SBASE]
+	adds	r4, r0
+	subs	r5, #1
+	bgt	1b
+	b	.Lwspan
+2:	pop	{r3, r4, r5, r6, r7, pc}
+
+.Lwzspan:
+	movs	r0, #0
+	str	r0, [r6, #C_PZ]
+	movs	r0, r4
+	movs	r1, r3
+	ldr	r2, [r6, #C_IZS]
+	ldr	r3, [r7, #W_ZSPAN]
+	blx	r3
+	b	.Lwdraw
+
+.Lwfar:
+	movs	r2, r6			@ r0 = du_, r1 = dv_ still
+	ldr	r3, [r7, #W_START64]
+	blx	r3
+	ldr	r3, [r6, #C_IZI]
+	ldr	r2, [r6, #C_D]
+	cmp	r2, #0
+	bgt	.Lwz
+	movs	r2, #1
+	str	r2, [r6, #C_D]
+	b	.Lwz
+
+	.size	litq_wrap_asm, . - litq_wrap_asm

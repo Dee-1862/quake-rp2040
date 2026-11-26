@@ -159,6 +159,8 @@ void D_QogLitInterpCheck (void)
 	{
 		void D_QogLitQCheck (void);
 		D_QogLitQCheck ();	// QuakeOG (Agent AR): the span runs' assembly (d_lit_q.h)
+		void D_QogLitWrapCheck (void);
+		D_QogLitWrapCheck ();	// the span loop's
 	}
 #endif
 }
