@@ -2,6 +2,123 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: The exact race package, demo3's scanout waits cut by 4 to 7 ms a frame (Agent AP, PC and ARM build, registered data)
+
+Agent AS's board model ranks the scanout waits first (docs/fps-board.md). This branch removes most of them exactly, so the panel shows the same pixels. The biggest wait was not where the ranking put it. Nothing ran on hardware. The board numbers below come from two PC models: AS's boardbench, and the pair's `-scanmodel`.
+
+### Where a demo3 frame waited (main 768c8a6, PC pair with the board client's flags)
+
+The pair now records, for every timedemo frame, how far into the scanout the next frame waited in each part of its work. `VID_QogRaceMark` marks the parts: before the view, the world's front end, after R_RenderWorld, after the brush entities. Each wait site was then tagged once by hand.
+
+| Wait | demo3 frames (of 1,094) | Why |
+| --- | ---: | --- |
+| SCR_SetUpToDrawConsole clearing the notify rows (`clearnotify`) | 898 | Every frame after one with notify text clears rows 0 to 31, and the clear waited for the end of the scanout. The 3D view then draws over those rows. In Turbo the clear also spread the packed view first (Draw_TileClear), and Agent AP's text list made that happen in more frames |
+| the edge table at the end of the z-buffer, in frames that send the status bar | about 40% | The table (1,800 edges of 24 B) starts 5,344 B into the z-buffer, inside the status bar rows the scanout sends last, so it waited for the whole scan |
+| after R_RenderWorld | the rest | R_DrawBEntitiesOnList waited for the end too |
+
+### The changes, all exact
+
+| Change | Where | Flag |
+| --- | --- | --- |
+| A notify clear or centre print erase is skipped when the coming 3D view covers its rows over the whole width. V_RenderView runs after SCR_SetUpToDrawConsole and returns early only with con_forcedup. In Turbo this applies only to rows the packed pixels cover, the first half of the view. Any other clear keeps its old wait | engine/screen.c SCR_QogViewCovers | QOG_VID_SCANRACE |
+| The brush entities' front end runs before the wait for the end of the scanout. It writes only the edge table (released before the world) and the brush clip buffers at the start of the z-buffer. The clip buffers get their own row wait (`VID_QogScanFree` of BMODEL_CLIP_BYTES). The wait for the end moves to just before R_ScanEdges | engine/r_main.c R_EdgeDrawing | QOG_VID_SCANRACE |
+| A scanout that sends the status bar rows sends them first: rows 152 to 199 in a window of their own, then rows 0 to 151. The scan position the game waits on counts rows in that order (`qog_video_set_first`, `VID_QogScanNeed` in send order). The edge table and clip buffers then wait for 48 rows (4.1 ms at 60 MHz) instead of 200 (17.1 ms) | platform/qog_video.c, port/rp2040/vid_rp2040.c, port/pc/vid_pc.c | `QOG_VID_HUDFIRST` (`QOG_BOARD_HUDFIRST`, on) |
+
+### boardbench (main 4b0c98b against this branch merged with it, 300 MHz, LCD by PIO at 60 MHz)
+
+The board model did not know these code paths, so it is taught them here:
+- The logger names `QOG_NOTIFY_COVERED`, `QOG_BMODELS_EARLY` and `QOG_VID_HUDFIRST` as features of the build.
+- boardmodel.py drops the whole-scan wait for notify frames the view covers, but keeps it for centre prints in Turbo.
+- The brush clip buffers wait after the world, and the brush entities run before the wait for the end.
+- Scan positions follow the send order.
+- boardbench builds with QOG_VID_HUDFIRST, as the board does.
+
+| | main Fast | branch Fast | main Turbo | branch Turbo |
+| --- | ---: | ---: | ---: | ---: |
+| race wait before the world | 2.8 | 5.9 | 0.8 | 1.0 |
+| race wait after the world | 0.3 | 0.6 | 1.3 | 3.3 |
+| whole scanout waits (notify text) | 7.7 | 0.0 | 8.5 | 0.5 |
+| frame ms | 38.3 (35.9 to 41.0) | 36.0 (34.2 to 37.7) | 33.4 (31.1 to 36.7) | 28.8 (26.5 to 31.2) |
+| **fps** | **26.1** (24.3 to 27.7) | **27.8** (26.4 to 28.9) | **30.0** (27.1 to 31.9) | **34.7** (32.0 to 36.3) |
+
+The notify waits go and part of them comes back as ordinary race waits: in Fast before the world (the edge cache rows at the top of the frame, 48 rows later when the status bar goes first), in Turbo after the brush entities (the wait for the end of a 13.4 ms packed scan).
+
+### The pair's own model (`-scanmodel`, demo3 frames, board ms at 60 MHz, world 8.6 and brush entities 5.7, pre 5 ms with 3 and 7 in brackets, main 768c8a6 against the branch before the merge)
+
+| Mode | main | branch |
+| --- | ---: | ---: |
+| Fast | 7.0 (5.1 to 9.0) | 2.9 (1.1 to 4.9) |
+| Turbo, packed frames (1,041 of 1,094) | 7.6 (5.9 to 9.5) | 0.3 (0.2 to 0.5) |
+
+This model has no calibration and a fixed world time, so where it disagrees with boardbench, boardbench is the number to use.
+
+### #3, two packed Turbo views: not done
+
+- What it would win now: boardbench puts Turbo's remaining race wait at 4.3 ms a frame, 3.3 of it the wait for the end of the scanout before R_ScanEdges.
+- The RAM:
+  - A packed 160x152 view is 24,320 B, and its one-byte z-buffer is another 24,320 B.
+  - In a Turbo frame, the view's 48,640 bytes of frame rows hold the packed view and its z-buffer.
+  - The 48,640-byte z-buffer region holds the status bar rows (15,360 B at its start, read by the scanout) and the edge table, sized for 1,800 edges (43,296 B from byte 5,344).
+  - A second view can take the first view's z-buffer half. Its own z-buffer then needs 24,320 B that the scanout in flight does not read. After R_ScanEdges moves the used edges to the end of the region, that room exists only when at most (48,640 - 15,360 - 24,320) / 24 - 4 = 369 edges are used.
+  - In demo3 the world emits a median of 425 edges a view (42% of views at 369 or fewer), before the brush entities add theirs.
+  - The display has 332 B of RAM spare (`end` 0x2003f6b4).
+- So it fits in under half the frames, as a second path through the z-buffer layout, the edge fallback and Agent AM's two-core pipeline, for about 1.4 ms on average. That is not worth its risk now.
+- A cheaper attack on the same 3.3 ms: in a frame whose last scanout was packed, R_ScanEdges could wait per row instead of for the end, at each span flush and pipeline push, for the scan line it has reached. The edge scan runs top to bottom like the scanout. That is the next step for this wait.
+
+### What the board's first demo3 runs of main f7d9450 say (scratchpad run9_8.txt, read from the saved log)
+
+- Fast: 20.0 fps. Turbo: 22.3 fps.
+- During the demo `scanwait` (the waits for a whole scanout, VID_LockBuffer and VID_QogScanDone) is 5 to 16 ms a frame and `race` (row waits) 0 to 4 ms.
+- In windows with `status bar rows sent in 17 of 17 frames, last scan 17145 us for 200 rows`, scanwait is about 15 ms. In windows with `0 of 25 frames` it is near 0.
+- The PIO rate is confirmed: 152 rows in 13.05 ms, 200 in 17.15 ms.
+- That is the three whole-scan waits this branch removes:
+  - the notify clear, in every frame after a pickup message;
+  - the edge table in frames that send the status bar;
+  - the wait after R_RenderWorld.
+- Why the status bar goes out so often (PC pair, demo3 frames, counted once by hand in R_RenderView's status bar block): of 1,091 views, 941 left the rows alone, 119 had a changed status bar (ammo when firing, health, armour, the face), 62 a palette change (the pickup and damage flashes fade over several frames, and each step changes the palette), and 31 something else over the rows (the console at the demo's start, a centre print).
+- On the board each demo frame takes 2 to 3 times longer, so a status bar or palette change touches more consecutive frames in real time, and combat windows send the rows in every frame.
+
+### The Turbo status bar cap (`QOG_HUD_CAP`, `QOG_BOARD_HUDCAP` on, cvar `r_hudcap` 100 ms, approved by the user)
+
+- In Turbo (r_fast 2 only), the status bar rows go to the panel at most once every `r_hudcap` ms. The gap counts in real time from the last frame that sent them.
+- A changed status bar in between still goes through Sbar_Draw, and R_HudFrameEnd keeps its state, but the rows are left out. The panel keeps showing the last status bar it got.
+- The first frame after the gap repaints the newest state and sends it, so the last change always shows: a change just before a pause shows on the next frame after the gap.
+- A palette change waits the same way.
+- A console, menu, centre print or intermission over the rows sends them as before (SCR_QogHudQuiet).
+- `r_hudcap 0` turns it off. Exact and Fast are untouched (R_QogHudCapHold checks r_fast 2).
+- At the board's 22 fps a 100 ms gap lets at most every third frame send the rows, so combat windows should drop from `19 of 19 frames` to about a third or less, and the rest go out with 152 rows (13.0 ms) instead of 200 (17.2 ms).
+- On the PC pair (real time, about 57 fps) the Turbo Benchmark sent the rows in 504 of 1,450 frames instead of 584.
+- RAM: the cvar and the time of the last send, 32 B. quake_display `end` 0x2003f6d4.
+- The board log should show, in Turbo during combat, `status bar rows sent in` about a third of the frames or fewer. In Fast it should be unchanged.
+
+### Checks (hidden, `-nosound`, own build folders, own git-ignored data folder)
+
+| Check | Result |
+| --- | --- |
+| `qogtest_hash`, quakeog_pc | ce86f894f9de |
+| the 121 shot frames (`qogtest_k_quiet` + `qogtest_d_shots` and the fhash frames), quakeog_pc r_fast 0, 1 and 2, against untouched builds of 768c8a6 (before the merge) and of 4b0c98b (after it) | 121 of 121 byte identical in each mode, `qogtest_f_hash` e92bc9e9650d. The race package is compiled only with QOG_VID_SCANRACE, which quakeog_pc does not have |
+| the same 121 frames on the split pair with the board client's flags plus `QOG_VID_HUDFIRST` (Agent AM's list), r_fast 0, 1 and 2, against the pair of the same untouched trees | Fast and Turbo 121 of 121 identical, before and after the merge. Exact had one frame different in one run each time: d_demo3_24 before the merge, d_demo2_11 after it. Both differ only in the bottom view rows, 117 to 151 and 142 to 151, where the z-buffer meets the edge table. Three more runs of the branch before the merge gave 121 of 121. On the PC none of this branch's code changes a pixel below row 31: the waits do nothing there, and the skipped clear covers rows 0 to 31 at most. So these are the pair's run-to-run differences (Agent AM's core 1 thread, demo pipelining), but they are worth watching |
+| `qog_scanrace` and `qog_lockcheck` in every pair run (shots, fhash, Fast and Turbo Benchmark) | 0 writes before the scanout passed, 0 scanouts changed |
+| `tools/core1_syms.py`, board build | passes |
+
+### RAM (board, the full configure line with 300 MHz, 1250 mV and Turbo)
+
+| | quake_display `end` | quake_main `end` |
+| --- | --- | --- |
+| main 4b0c98b | 0x2003f6ac | 0x2003f5b4 |
+| this branch, race package | 0x2003f6b4 (8 B for the scan order) | 0x2003f5b4 |
+| this branch, with the Turbo status bar cap | 0x2003f6d4 (300 B spare beside the 2 KB heap) | 0x2003f5b4 |
+
+`tools/core1_syms.py --build build-ap` passes. quake_display.bin is 437,744 B with the cap.
+
+### What the board should show
+
+- `[time cl]`: `race` and `scanwait` should drop. AS asks for both from the next demo3 log.
+- The status bar diag line's `last scan` should stay about the same: the same rows, plus one more window command.
+- A wrong status bar picture, or a split at row 152, would mean the panel does not take the second window. `-DQOG_BOARD_HUDFIRST=OFF` sends the rows top to bottom again.
+
+Files: engine/screen.c, engine/r_main.c, engine/vid.h, platform/qog_video.c and .h, port/rp2040/vid_rp2040.c, port/pc/vid_pc.c, apps/quake/CMakeLists.txt, port/pc/boardmodel_pc.c, tools/boardmodel.py, pc/CMakeLists.txt. The PC pair needs `QOG_VID_HUDFIRST` in `QOG_SPLIT_CL_EXTRA` to model the board's order.
+
 ## 2026-11-25: Fast and Turbo spans in hand-written Thumb in RAM, 32-bit span starts, tiny Turbo model triangles, particle kill checks in integers, and a board cost model (Agent AR, PC and ARM build, registered data)
 
 The board's spans phase was 16.9 ms of a demo3 view in Fast mode at 250 MHz, models 5.1, vmodel 3.4 and parts 1.2. Nothing ran on hardware. The savings below come from a cost model that runs the board's own compiled code (quake_display.elf) in an emulator on real surfaces from timedemo demo3, then a range up to the board's ratio to that model.
