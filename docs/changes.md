@@ -2,6 +2,54 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-25: XIP measurement build and the code placement cure, fifth round, exact (Agent AQ, ARM build, registered data)
+
+The board's Turbo run (26.0 fps, run10_8) shows world 4.4 to 7.5 ms, bmodels 2.2 to 5.6 and edgescan 5.0 to 8.1 per view between windows, more than their work counts move, and the world front end's compute is about 1 M cycles against about 3.3 M measured. This round makes the build that measures the XIP cache per phase and prepares the cures that need no RAM. Nothing ran on hardware.
+
+Measurement build (for one flash, with the user's approval):
+
+```
+cmake --preset target -B build-xip -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=31 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_XIPSTATS=ON
+cmake --build build-xip --target quake_main
+```
+
+- Beside each `[time cl] views` line it prints `[time cl] xip acc/miss` (XIP cache accesses and misses per view in each phase, both cores, edgescan as in the views line) and `[time cl] work per view` (nodes, leafs, faces, clipedge, emitedge, cached, project, clipdot, rotate, rottrig).
+- RAM: with the client stack at 32 KB the display did not link (144 B over the heap reserve). The float call arrays of the FPCOUNT build (112 B) are now kept only in that build (port/common/qog_phase.c, engine/qog_phase.h). That brought `end` to exactly 0x2003f800 with nothing spare, so the build takes 1 KB of the client stack, as the FPCOUNT build already does: quake_display `end` 0x2003f400 (1,024 B spare beside the 2 KB heap reserve). In run10_8 the least client stack free is 5,400 B of 32 KB, so 31 KB keeps about 4.4 KB in demo3. Watch the `stack free` value of the `link wait` lines.
+- The normal build is unchanged: quake_display `end` 0x2003f6f4, quake_main 0x2003f5b4.
+- How to read it: the world front end touches about 4,900 lines of BSP data per view (below). World misses far above that are code misses, which `QOG_BOARD_HOTTEXT` addresses. Misses near it are the data.
+
+`QOG_BOARD_HOTTEXT` (off, exact, no RAM): code placement.
+
+- The XIP cache has 1,024 sets of two 8-byte lines, so flash 8 KB apart shares a set. The hot render code was spread over about 180 KB of flash text (world over 15.8 KB, the edge scan over 107 KB, bmodels over 135 KB, core 1's surface code over 25 KB), so code that runs together put three or more lines in a set and evicted itself.
+- port/rp2040/ld_hottext/default_text_excludes.incl replaces the SDK's file of that name for quake_display only (`pico_add_linker_script_override_path`). It lists 150 functions by section in ten groups and keeps the SDK's catch-all line last, so everything else follows in the usual order. There are no source changes. The same code sits at other addresses: all 1,595 function sizes match the normal build, RAM `end` is the same, and text is 32 B smaller (padding).
+- Groups: helpers (float and divide wrappers, 616 B), c1loop (core 1's scanout and job loop, 1,752 B), world (9,376 B), bmodels (6,572 B), c1alias (1,288 B), models (12,368 B), scan (10,456 B), spans0 (core 0's lit surface drawing, 3,976 B), c1spans (core 1's copy, 7,596 B), core1x (8,772 B). Each group's comment names the groups that run beside it on the other core. world and bmodels together are about 16 KB, so c1alias and models start in the sets right after c1loop, as world does.
+- tools/xip_sets.py (new) reads the groups and a link map. For each group with the groups beside it, it counts the code lines beyond two in a set (lines that cannot stay cached together) and the least any layout can give:
+
+| Phase, with the code beside it | Lines | Excess today | Excess HOTTEXT | Least possible |
+|---|---|---|---|---|
+| world, helpers, c1loop | 1,472 | 277 | 0 | 0 |
+| bmodels, helpers, c1loop | 1,123 | 48 | 0 | 0 |
+| models, c1alias, helpers, c1loop | 2,007 | 391 | 55 | 0 |
+| scan, spans0, c1spans, helpers, c1loop | 3,060 | 1,179 | 1,003 | 1,003 |
+
+- Estimate: a miss costs about 0.2 us at flash 150 MHz (about 30 flash clocks a line). Suppose a fifth of the world's 277 excess lines are on the per-face path (197 faces a view). That is about 11,000 misses, or about 2 ms a view. Lines that run per node or per edge count for more and lines that run once per view for less, so the range is about 0.3 to 2 ms for the world, up to about 0.5 for bmodels and up to 1 for models. The scan phase keeps its excess in any layout, so its gain is small.
+- The XIPSTATS build can take it too: `-DQOG_BOARD_HOTTEXT=ON` beside `-DQOG_BOARD_XIPSTATS=ON` links with `end` 0x2003f400 and the same zero excess for world and bmodels (24 for models, 990 for the scan, its least). Two flashes, with and without, measure the cure directly. The group lists are a judgement from the call paths, not a profile. If the counts confirm the problem, a `QOG_PROF` run (the board PC-sampling profiler) gives the heat to trim each group to what really runs.
+
+A finding for the scan phase (not changed here, AM's area):
+
+- During the edge scan both cores draw lit surfaces (QOG_DRAW_CORE1) and each runs its own copy of the drawing code (d_core1.c compiles d_scanlit.c, r_surf.c and d_edge.c again under c1_ names). About 6.3 KB of identical functions are then hot twice: D_CalcGradients, D_QogGradFast, D_QogGradRows, D_QogDrawLitBody, D_SetupLitSurface, R_BuildLightMap, D_LitFixSetup, litq_start64, D_DrawSpans8LitQ and the rest. With the edge scan code, that is about 24 KB of code against a 16 KB cache in any layout. One copy that reads its state through a per-core pointer would take the excess from about 1,000 lines to about 200.
+
+BSP data, estimated from demo3's counts per view (nodes 271, faces 197, clipedge 982, about 480 unique vertices) and the board's structures (mnode_t 36 B, msurface_t about 32 B, medge_t 4 B, mvertex_t 12 B, surfedges 4 B, mplane_t 20 B), with nothing kept from the last view: about 1,220 lines of nodes, 790 of surfaces, 450 of surfedges, 900 of edges, 960 of vertices and 600 of planes. That is about 4,900 lines, or 1 ms a view. Ways to cut it without RAM (none built):
+
+- The baker (QOG_BAKE_WRITER) could renumber edges in surfedge order and vertices in first-use order, so a face's edges share lines and its surfedges read in order. That saves about 700 lines, or 0.14 ms a view, and it is exact (indices only), but it needs a new data image.
+- Not worth it: the XIP no-allocate alias for BSP data (each field read becomes its own flash read, 5 to 12 reads for a node against 5 line fills), a DMA read as a prefetch (XIP has one bus port, so the DMA's fill blocks core 0's own code fetches unless that code runs from RAM), and the XIP stream (it needs a RAM target, and only the lightmaps are sequential: 2,392 cells a view, about 300 lines, 0.06 ms).
+
+Moving hot code out of flash: RAM has 268 B spare, so only a stack trade could pay for it. A 1 KB cut of the client stack (demo3 leaves 5,400 B free) would hold about 860 B of the hottest per-node and per-row code (R_QogNodeSide, R_QogCullNodeInt, R_InsertNewEdges, R_StepActiveU). It is not prepared, because it needs RAM and the user's decision on the stack margin.
+
+Checks: qogtest_hash `ce86f894f9de` (PC build, hidden, `-nosound`). The PC engine code is unchanged (the only source change is the FPCOUNT guard), so the shots were not rerun. tools/core1_syms.py passes on the HOTTEXT and XIPSTATS builds. boardbench does not see code layout, so it has no before and after here.
+
+Files: port/rp2040/ld_hottext/default_text_excludes.incl and tools/xip_sets.py (new), apps/quake/CMakeLists.txt (`QOG_BOARD_HOTTEXT`), port/common/qog_phase.c and engine/qog_phase.h (the FPCOUNT arrays only in that build), docs/lessons.md (L310 to L313).
+
 ## 2026-11-25: The board cost model recalibrated on the board's run of f7d9450, the Turbo status bar cap what-if (Agent AS, PC only, registered data)
 
 The board measured main f7d9450 at 20.0 fps in Fast and 22.3 in Turbo (300 MHz, flash 150, LCD by PIO at 60 MHz), against boardbench's 26.5 and 30.4 from the de58316 calibration. Nothing ran on hardware here, the numbers come from the lead's log.

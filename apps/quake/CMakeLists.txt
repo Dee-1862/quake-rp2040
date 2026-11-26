@@ -466,6 +466,16 @@ if(QOG_SPLIT)
                 COMMENT "QOG_BOARD_FPCOUNT: engine helper calls go through the counting stubs")
         endif()
     endif()
+    # QuakeOG (Agent AQ): code placement for the shared 16 KB XIP cache, exact
+    # (the same code at other addresses, no RAM). The hot render functions go
+    # to the front of flash text, grouped by core and phase in
+    # port/rp2040/ld_hottext/default_text_excludes.incl, so the code that runs
+    # together is contiguous (tools/xip_sets.py counts the set overlaps)
+    option(QOG_BOARD_HOTTEXT "hot render code grouped at the front of flash by core and phase (exact, layout only)" OFF)
+    if(QOG_BOARD_HOTTEXT)
+        pico_add_linker_script_override_path(quake_display ${QOG_ROOT}/port/rp2040/ld_hottext
+            FILES default_text_excludes.incl)
+    endif()
     # QuakeOG (Agent AA): the Fast render mode, approximate and hard to see,
     # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
     # On by default on the board. r_fast 0 draws exactly as before.

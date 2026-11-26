@@ -1,0 +1,207 @@
+/* QuakeOG (Agent AQ): QOG_BOARD_HOTTEXT, code placement for the XIP cache.
+   This file replaces the SDK's default_text_excludes.incl (pico_standard_link)
+   for quake_display only, through pico_add_linker_script_override_path. The
+   SDK's own line stays last and unchanged, so every other function lands
+   where it did. Layout only: the same code at other addresses.
+
+   The RP2040's XIP cache is 16 KB, two ways of 8-byte lines, so flash
+   addresses 8 KB apart share a set and a set holds two lines. The hot render
+   code was spread over about 180 KB of flash text, so three or more hot lines
+   of code that runs at the same time can share a set and evict each other
+   even when the code that runs together is far below 16 KB. Here each group
+   of code that runs together is contiguous (a contiguous block of n KB puts at
+   most ceil(n / 8) lines in each set), and the groups follow each other, so
+   core 1's span code and core 0's front end overlap in as few sets as
+   their sizes allow. tools/xip_sets.py counts the overlaps from a link map.
+
+   Groups, in order (a "group" comment line opens each and names the groups
+   that run at the same time on the other core, tools/xip_sets.py reads them):
+     helpers  float and divide wrappers both cores call (they jump to ROM)
+     c1loop   core 1's scanout and job loop, always running
+     world    core 0, R_RenderWorld (BSP walk, faces, clip, emit, project)
+     bmodels  core 0, brush entities
+     c1alias  core 1's share of the alias model vertices
+     models   core 0, alias models and the view model
+     scan     core 0, R_ScanEdges and the surfaces it hands out
+     spans0   core 0's copy of the lit surface drawing (QOG_DRAW_CORE1 has
+              both cores draw surfaces during the scan)
+     c1spans  core 1's copy of the same drawing (d_core1.c), its lightmaps
+     core1x   core 1, less often (dynamic lights, the other span drawers)
+   world and bmodels come to about 16 KB, so c1alias and models start in
+   the sets just after c1loop, as world does, and both phases fit beside
+   helpers and c1loop. The scan phase's code (scan, spans0, c1spans with
+   helpers and c1loop, about 24 KB) is larger than the cache in any layout.
+   A static function that exists in two objects is named with its object. */
+
+/* group helpers core 01, always */
+*(.text.__wrap___aeabi_farithmetic)
+*(.text.__wrap___aeabi_cfcmple)
+*(.text.__wrap___aeabi_fcmpeq)
+*(.text.__wrap___aeabi_fcmplt)
+*(.text.__wrap___aeabi_fcmple)
+*(.text.__wrap___aeabi_fcmpge)
+*(.text.__wrap___aeabi_fcmpgt)
+*(.text.__wrap___aeabi_ui2f)
+*(.text.__wrap___aeabi_i2f)
+*(.text.__wrap___aeabi_f2iz)
+*(.text.float2int)
+*(.text.__wrap___aeabi_f2uiz)
+*(.text.__aeabi_lmul)
+*(.text.__wrap___aeabi_idiv)
+*(.text.__wrap___aeabi_uidiv)
+
+/* group c1loop core 1, always */
+*(.text.core1_main)
+*(.text.D_QogC1Worker)
+*(.text.D_QogC1Draw)
+
+/* group world core 0, with helpers c1loop */
+*(.text.R_RenderWorld)
+*(.text.R_RecursiveWorldNode)
+*(.text.R_QogCullNode)
+*(.text.R_QogCullNodeInt)
+*(.text.R_QogNodeSide)
+*(.text.R_RenderFace)
+*(.text.R_QogVertEntry)
+*(.text.R_QogClipDistFx)
+*(.text.R_QogClipEdgeFast)
+*(.text.R_QogEmitEdgeFast)
+*(.text.R_QogProjectFast)
+*(.text.R_QogFaceGradFast)
+*(.text.R_ClipEdge)
+*(.text.R_EmitEdge)
+*(.text.R_EmitCachedEdge)
+*(.text.R_QogClipDist)
+*(.text.R_QogProject)
+*(.text.R_QogProjectFloatFx)
+
+/* group bmodels core 0, with helpers c1loop */
+*(.text.R_DrawBEntitiesOnList)
+*(.text.R_BmodelCheckBBox)
+*(.text.R_QogBoxPlaneInt)
+*(.text.R_RotateBmodel)
+*(.text.R_QogRotateBmodelVecs)
+*(.text.R_EntityRotate)
+*(.text.R_QogIdentityRotate)
+*(.text.R_QogFxPlanes)
+*(.text.D_QogSubmodelBegin)
+*(.text.R_DrawSolidClippedSubmodelPolygons)
+*(.text.R_RecursiveClipBPoly)
+*(.text.R_DrawSubmodelPolygons)
+*(.text.R_RenderBmodelFace)
+*(.text.R_QogFacing)
+*(.text.R_QogAxis)
+*(.text.R_QogAxDot)
+*(.text.R_QogAxSide)
+*(.text.R_QogAxPointSide)
+*(.text.R_QogAxEdgeSides)
+*(.text.R_ZDrawSubmodelPolys)
+
+/* group c1alias core 1, with helpers c1loop models */
+*(.text.R_QogAliasFastCore1)
+*(.text.R_QogAliasFastVert)
+*(.text.R_QogAliasProjectCore1)
+*(.text.R_QogAliasProjectRange)
+*(.text.R_QogAliasPrepareCore1)
+*(.text.R_QogAliasPrepareRange)
+
+/* group models core 0, with helpers c1loop c1alias */
+*(.text.R_DrawEntitiesOnList)
+*(.text.R_DrawViewModel)
+*(.text.R_AliasDrawModel)
+*(.text.R_AliasSetupFrame)
+*(.text.R_AliasSetupSkin)
+*(.text.R_AliasSetupLighting)
+*(.text.R_QogAliasCheckBBoxFast)
+*(.text.R_QogAliasSphereOut)
+*(.text.R_QogAliasXform)
+*(.text.R_QogAliasFastVerts)
+*(.text.R_QogFix)
+*(.text.R_QogSinCos)
+*(.text.R_AliasPreparePoints)
+*(.text.D_PolysetDraw)
+*(.text.D_DrawNonSubdiv)
+*(.text.D_DrawSubdiv)
+*(.text.D_QogTinyTriangle.isra.0)
+*(.text.D_PolysetDrawFinalVerts)
+*(.text.D_PolysetSetEdgeTable)
+*(.text.D_RasterizeAliasPolySmooth)
+*(.text.D_PolysetCalcGradients)
+*(.text.D_PolysetDrawSpans8)
+*(.text.D_PolysetScanLeftEdge)
+*(.text.D_PolysetSetUpForLineScan)
+*(.text.D_PolysetUpdateTables)
+*(.text.D_PolysetRecursiveTriangle)
+
+/* group scan core 0, with helpers c1loop c1spans spans0 */
+*(.text.R_EdgeDrawing)
+*(.text.R_ScanEdges)
+*(.text.R_InsertNewEdges)
+*(.text.R_StepActiveU)
+*(.text.R_GenerateSpans)
+*(.text.R_GenerateSpansBackward)
+*(.text.R_LeadingEdgeBackwards)
+*(.text.R_TrailingEdge)
+*(.text.R_CleanupSpan)
+*(.text.R_QogScanRows)
+*(.text.R_QogEdgesToStack)
+*(.text.R_QogZFrontC)
+*(.text.R_QogMoveEdges)
+*(.text.R_QogMarkEdges)
+*(.text.R_QogFlushSpans)
+*(.text.D_DrawSurfaces)
+*(.text.D_DrawOneSurface)
+*(.text.D_QogPipeBegin)
+*(.text.D_QogPipePush)
+*(.text.D_QogPipePop)
+*(.text.D_QogPipeSync.part.0)
+*(.text.D_QogPipeSync)
+*(.text.D_QogPipeDone)
+*(.text.D_QogPipeEnded)
+*(.text.D_QogPipeEnd)
+*libqog_engine_cl.a:d_edge.c.obj(.text.D_QogDrawLitBody)
+*(.text.D_CalcGradients)
+*libqog_engine_cl.a:d_edge.c.obj(.text.D_QogGradFast)
+*libqog_engine_cl.a:d_edge.c.obj(.text.D_QogGradRows)
+*libqog_engine_cl.a:d_edge.c.obj(.text.D_QogGrFix)
+*(.text.D_QogSpansCore1)
+*(.text.D_DrawZSpans)
+*(.text.D_QogZSpan)
+*(.text.D_QogZSpanI)
+
+/* group spans0 core 0, with helpers c1loop c1spans scan */
+*(.text.D_SetupLitSurface)
+*(.text.D_DrawSpans8Lit)
+*(.text.R_BuildLightMap)
+*(.text.R_TextureAnimation)
+*libqog_engine_cl.a:d_scanlit.c.obj(.text.D_LitFixSetup)
+*libqog_engine_cl.a:d_scanlit.c.obj(.text.litq_start64)
+*(.text.D_DrawSpans8LitQ)
+
+/* group c1spans core 1, with helpers c1loop scan spans0 */
+*(.text.c1_D_QogDrawLit)
+*libqog_engine_cl.a:d_core1e.c.obj(.text.D_QogDrawLitBody)
+*(.text.c1_D_SetupLitSurface)
+*(.text.c1_R_TextureAnimation)
+*(.text.c1_D_CalcGradients)
+*libqog_engine_cl.a:d_core1e.c.obj(.text.D_QogGradFast)
+*libqog_engine_cl.a:d_core1e.c.obj(.text.D_QogGradRows)
+*libqog_engine_cl.a:d_core1e.c.obj(.text.D_QogGrFix)
+*(.text.c1_D_DrawSpans8Lit)
+*libqog_engine_cl.a:d_core1.c.obj(.text.D_LitFixSetup)
+*libqog_engine_cl.a:d_core1.c.obj(.text.litfix_bitlen)
+*libqog_engine_cl.a:d_core1.c.obj(.text.litfix_scale)
+*libqog_engine_cl.a:d_core1.c.obj(.text.litfix_bits64)
+*libqog_engine_cl.a:d_core1.c.obj(.text.litq_start64)
+*(.text.D_DrawSpans8LitQ.constprop.0)
+*(.text.litq_span_asm)
+*(.text.c1_R_BuildLightMap)
+
+/* group core1x core 1, less often */
+*(.text.c1_R_AddDynamicLights)
+*libqog_engine_cl.a:d_core1s.c.obj(.text.R_QogDlightInt)
+*(.text.D_DrawSpans8LitFix.constprop.0)
+*(.text.D_DrawSpans8LitFast.constprop.0)
+
+/* group end */
+*(EXCLUDE_FILE(*libgcc.a: *libc.a: *lib*_a-mem*.o *libm.a:) .text*)

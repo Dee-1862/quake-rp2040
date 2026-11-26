@@ -11,7 +11,9 @@ unsigned	qog_hp_frames;
 unsigned	qog_c1_stat[QOG_C1_N];	/* QuakeOG (Agent AM) */
 #ifdef QOG_PHASE_XIP
 unsigned	qog_ph_xacc[QOG_PH_N], qog_ph_xhit[QOG_PH_N];	/* QuakeOG (Agent Z) */
+#ifdef QOG_PHASE_FPCOUNT	/* Agent AQ: only the float count build keeps these 112 bytes */
 unsigned	qog_ph_fcalls[QOG_PH_N], qog_ph_dcalls[QOG_PH_N];
+#endif
 unsigned	qog_wc_count[QOG_WC_N];
 #endif
 
@@ -91,16 +93,20 @@ void QOG_PH_RAMFUNC (qog_phase_add) (int ph, const qog_phmark_t *m)
 	qog_ph_time[ph] += now.t - m->t;
 	qog_ph_xacc[ph] += now.acc - m->acc;
 	qog_ph_xhit[ph] += now.hit - m->hit;
+#ifdef QOG_PHASE_FPCOUNT
 	qog_ph_fcalls[ph] += now.fcalls - m->fcalls;
 	qog_ph_dcalls[ph] += now.dcalls - m->dcalls;
+#endif
 }
 
 static void qog_phase_clear_xip (void)
 {
 	memset (qog_ph_xacc, 0, sizeof qog_ph_xacc);
 	memset (qog_ph_xhit, 0, sizeof qog_ph_xhit);
+#ifdef QOG_PHASE_FPCOUNT
 	memset (qog_ph_fcalls, 0, sizeof qog_ph_fcalls);
 	memset (qog_ph_dcalls, 0, sizeof qog_ph_dcalls);
+#endif
 	memset (qog_wc_count, 0, sizeof qog_wc_count);
 #if !defined(_WIN32)
 	// the hardware counters saturate at 2^32, so they restart every report
