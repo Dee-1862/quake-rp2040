@@ -60,7 +60,7 @@ static const char	*const bm_phname[QOG_PH_N] = { "setup", "world", "bmodels", "s
 static const char	*const bm_pcname[QOG_PC_N] = { "frames", "litsurfs", "lmcells", "litspans", "litpx",
 	"anypx", "runs", "zpx", "skypx", "turbpx" };
 static const char	*const bm_wcname[QOG_WC_N] = { "nodes", "leafs", "faces", "clipedge", "emitedge",
-	"cached", "project", "clipdot", "rotate", "rottrig" };
+	"cached", "project", "clipdot", "rotate", "rottrig", "clipfill" };
 static const char	*const bm_lmsname[16] = { "lms_views", "lms_dlights", "lms_builds", "lms_distinct",
 	"lms_repeat", "lms_lux", "lms_stylelux", "lms_dlbuilds", "lms_pairs", "lms_pairsin", "lms_pairlux",
 	"lms_lit", "lms_rowslit", "lms_marknodes", "lms_marks", "lms_treenodes" };
@@ -224,6 +224,12 @@ static void bm_open (void)
 #endif
 #ifdef QOG_LEFTEDGE_LOCALS
 		" QOG_LEFTEDGE_LOCALS"
+#endif
+#if defined(QOG_CLIPDIST_FILL4) && defined(QOG_FRONT_FAST)
+		" QOG_CLIPDIST_FILL4"
+#endif
+#if defined(QOG_NODESIDE_BITS) && defined(QOG_WORLDNODE_FAST)
+		" QOG_NODESIDE_BITS"
 #endif
 		"\n");
 	fprintf (bm_log, "frame,racerows,racepacked,rows,packed,rfast,vwidth");

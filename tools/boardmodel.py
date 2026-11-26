@@ -75,6 +75,7 @@ WEIGHTS = {
         "wc_cached": (0, 40),       # edge cache hit
         "wc_project": (0.2, 260),   # fixed point projection, float fallback
         "wc_clipdot": (0, 80),      # integer view plane distance
+        "wc_clipfill": (0, 50),     # Agent AQ: the other three distances of a vertex filled at once (QOG_CLIPDIST_FILL4)
     },
     "bmodels": {
         "bm_bmcheck": (30, 300),    # R_BmodelCheckBBox (doubles: float compares with QOG_BMODEL_BBOXF)
@@ -182,6 +183,7 @@ FEATURE_SCALE = {
     "QOG_BPOLY_SIDES": {"bm_bpolyedge": (1.0, 0.5)},        # sides inline, a shared point's side kept
     "QOG_LMAP_FUSE": {"lms_lux": (1.0, 0.65), "lms_stylelux": (1.0, 0.65)},  # the grid's passes fused
     "QOG_BMODEL_BBOXINT": {"bm_bmcheck": (0.2, 1.0)},       # integer plane tests, floats only within 0.3 units of a plane
+    "QOG_NODESIDE_BITS": {"wc_nodes": (0.25, 1.0)},         # the node's three float compares by its bits
     "QOG_LEFTEDGE_LOCALS": {"am_spans": (1.0, 0.85), "vm_spans": (1.0, 0.85)},  # Agent AQ round 3: the left edge's rows without global stores
 }
 # Agent AM's pipeline (QOG_DRAW_CORE1): lit world surfaces drawn whole by either

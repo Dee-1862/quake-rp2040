@@ -53,6 +53,48 @@ Pipelining entity N+1's front end (bbox test, lighting, vertex transforms) on co
 
 Files: engine/r_part.c, apps/quake/CMakeLists.txt, pc/CMakeLists.txt and port/pc/boardmodel_pc.c (the boardbench build), tools/boardmodel.py (the particle weight).
 
+## 2026-11-25: World front end per call, fourth round, exact (Agent AQ, PC and ARM build, registered data)
+
+The board's run (scratchpad final/run9_8.txt) puts world at 9 to 11 ms a view while standing (8.8 to 14.8 in the demo), against about 1 M cycles of work the agents count, so much of it is likely flash reads of the BSP data and code, with core 1's span texels through the same 16 KB XIP cache. That cannot be measured on the PC, and no RAM is left for code or data copies (about 340 B), so this round cut the per call work that can be counted. Two flags, exact: r_fast 0, 1 and 2 draw the same bits as main f7d9450. Nothing ran on hardware.
+
+### Boardbench (300 MHz, LCD by PIO at 60 MHz)
+
+| | Fast fps | Turbo fps | world ms (Fast / Turbo) |
+| --- | ---: | ---: | ---: |
+| main f7d9450 | 26.5 (24.6 to 28.0) | 30.4 (27.7 to 31.9) | 8.2 / 7.9 |
+| this branch | 26.7 (24.8 to 28.1) | 30.6 (27.7 to 33.2) | 8.0 / 7.6 |
+
+### What the model priced (Turbo, main, world, ms per view)
+
+points projected 1.84 (506 a view), faces 1.78 (193), view plane distances 1.51 (1,373), clipped edges 1.19 (960), emitted edges 0.82 (450), nodes 0.54 (265). A vertex cache of 1,024 entries instead of 128 in Fast and Turbo only took the projections from 506 to 486 and the distances from 1,337 to 1,270 (PC, demo3, Turbo), so the misses are first uses and a bigger cache in the frame buffer is not worth its rows.
+
+### Changes
+
+| Change | Flag | What it does |
+| --- | --- | --- |
+| A vertex's four view plane distances at its first need | `QOG_CLIPDIST_FILL4` (r_draw.c R_QogClipDistFx) | Fast and Turbo: when R_ClipEdge first asks a world vertex for one plane's distance, its position is already in 1/32 units, so the other unknown slots of its cache entry are filled with the same statement (three multiplies each). A vertex was asked about 2.8 times a view, so the distances computed in a demo3 view went from 1,337 to 843 (the rest of the old count are brush entity vertices, which have no cache entry) plus 437 fills. The same values, so the same pictures. New count `wc_clipfill` (50 cycles) |
+| Node side and facing by the float's bits | `QOG_NODESIDE_BITS` (r_bsp.c R_QogNodeSide) | R_RecursiveWorldNode's fdot >= 0, fdot < -0.01f and fdot > 0.01f by the bits of the finite float difference (both zeros are >= 0, and the magnitude's bits order like the values), in a helper that is not inlined so the recursion's frame stays 48 B. One float subtraction a node, no compares. Priced at 0.25 of the node's float calls |
+
+### Exact proof (hidden, `-nosound`, main f7d9450, which has the same tree as the third round's tested branch, with the board's world flags)
+
+| Test | Result |
+| --- | --- |
+| `qogtest_hash`, default quakeog_pc and with the world flags | ce86f894f9de |
+| 121 shot frames, all 200 rows, r_fast 0, 1 and 2 | 121 of 121 byte identical in each |
+| check build (`QOG_NODESIDE_CHECK`), timedemo demo1 r_fast 0 and demo3 r_fast 1 and 2 | 131,072 node tests in each run counted to the last print, 0 differ |
+| tools/core1_syms.py | passes |
+
+### RAM (full configure line with `-DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_BOARD_TURBO=ON`)
+
+quake_display `end` 0x2003f6ac, the same as main, quake_main 0x2003f5b4. Stack: R_RecursiveWorldNode 48 B a level as before, R_QogClipEdgeFast 48 B as before, R_QogClipDistFx 32 B (40 before), R_QogNodeSide a 24 B leaf.
+
+### Not done
+
+- Flash: the world's hot code (R_RenderFace about 1.4 KB, the Fast projection 0.9 KB, the clip and emit paths) and the BSP data are read through the XIP cache that core 1's texels also use. A board run with `QOG_BOARD_XIPSTATS` (the `[time cl] xip` line) during demo3 would tell how much of world is misses. If it is most of it, the lever is code placement or RAM, not arithmetic.
+- Holding a world vertex's 1/1024 position in its cache entry would also let the projection skip its three conversions, but every entry grows by 12 bytes in the frame buffer rows the scanout race watches.
+
+Files: engine/r_draw.c, engine/r_bsp.c, engine/qog_phase.h (one count), port/pc/boardmodel_pc.c, tools/boardmodel.py, pc/CMakeLists.txt, apps/quake/CMakeLists.txt.
+
 ## 2026-11-25: Alias triangles, third round, all exact (Agent AQ, PC and ARM build, registered data)
 
 Models (4.0 ms in Fast, 3.3 in Turbo by the model) and the view model (2.7 and 2.0). Three flags in d_polyse.c, on the rasterizer side only (r_alias.c and r_main.c, where Agent AM moves the front end to core 1, are not touched). All exact: r_fast 0, 1 and 2 draw the same bits as main 4b0c98b. Nothing ran on hardware.

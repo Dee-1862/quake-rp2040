@@ -1233,7 +1233,27 @@ static int R_QogClipDistFx (mvertex_t *pv, int k)
 	if (l2 <= -QOG_FX_LMAX) l2 = 1 - QOG_FX_LMAX;
 	d = fx->cn[k][0] * l0 + fx->cn[k][1] * l1 + fx->cn[k][2] * l2 + fx->cn[k][3];
 	if (e)
+	{
 		e->d[k].bits = (unsigned)d;	// never QOG_VC_NODIST, |d| is below 2^30.8
+#ifdef QOG_CLIPDIST_FILL4
+		/*
+		QuakeOG (Agent AQ): the point's position is already in 1/32 units,
+		so its distances to the other view planes cost three multiplies
+		each. A world vertex is asked against about 3.4 planes a view on
+		average (several faces share it), so the other unknown slots are
+		filled now with the same statement: the same values, later asked
+		for, without three more conversions of its position.
+		*/
+		{
+			int		j;
+
+			QOG_WC (QOG_WC_CLIPFILL);
+			for (j=0 ; j<4 ; j++)
+				if (e->d[j].bits == QOG_VC_NODIST)
+					e->d[j].bits = (unsigned)(fx->cn[j][0] * l0 + fx->cn[j][1] * l1 + fx->cn[j][2] * l2 + fx->cn[j][3]);
+		}
+#endif
+	}
 	return d;
 }
 

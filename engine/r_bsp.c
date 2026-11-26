@@ -1068,6 +1068,59 @@ static QOG_NOINLINE int R_QogCullNode (mnode_t *node, int clipflags)
 }
 #endif
 
+#if defined(QOG_NODESIDE_BITS) && defined(QOG_WORLDNODE_FAST)
+/*
+QuakeOG (Agent AQ): R_RecursiveWorldNode's three float compares of fdot (a
+finite float difference, computed here as there) by its bits: fdot >= 0 for +-0 and every positive
+value, and |fdot| > 0.01f exactly when its magnitude's bits are above
+0.01f's. No float call. Not inlined, so the recursion's frame keeps its size.
+Returns side + 2 (facing + 1).
+*/
+static QOG_NOINLINE int R_QogNodeSide (mplane_t *plane)
+{
+	float		fdot;
+	unsigned	fb, mag;
+	float		eps = 0.01f;
+	unsigned	eb = *(unsigned *)&eps;
+	int			side, facing;
+
+	// id's fdot, as R_RecursiveWorldNode computes it
+	QOG_AQ (AQ_NODEAX, plane->type < 3);
+	QOG_AQ (AQ_NODEDOT, plane->type >= 3);
+	switch (plane->type)
+	{
+	case PLANE_X:
+		fdot = modelorg[0] - plane->dist;
+		break;
+	case PLANE_Y:
+		fdot = modelorg[1] - plane->dist;
+		break;
+	case PLANE_Z:
+		fdot = modelorg[2] - plane->dist;
+		break;
+	default:
+		fdot = DotProduct (modelorg, plane->normal) - plane->dist;
+		break;
+	}
+	fb = *(unsigned *)&fdot;
+	mag = fb & 0x7FFFFFFF;
+	side = (fb & 0x80000000) && mag ? 1 : 0;
+	facing = mag > eb ? ((fb & 0x80000000) ? -1 : 1) : 0;
+#ifdef QOG_NODESIDE_CHECK
+	{
+		static unsigned	n, bad;
+
+		n++;
+		if (side != (fdot >= 0 ? 0 : 1) || facing != (fdot < -0.01f ? -1 : (fdot > 0.01f ? 1 : 0)))
+			bad++;
+		if ((n & 0xFFFF) == 0)
+			Sys_Printf ("qog_nodesidecheck %u nodes, %u differ%c", n, bad, 10);
+	}
+#endif
+	return side + 2 * (facing + 1);
+}
+#endif
+
 /*
 ================
 R_RecursiveWorldNode
@@ -1194,6 +1247,11 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 	// x > 0.01 are x < -0.01f and x > 0.01f (0.01f is the float just below
 	// 0.01), so the side and the face tests need no double arithmetic.
 		{
+#ifdef QOG_NODESIDE_BITS
+		side = R_QogNodeSide (plane);	// QuakeOG (Agent AQ)
+		facing = (side >> 1) - 1;
+		side &= 1;
+#else
 		float	fdot;
 
 		QOG_AQ (AQ_NODEAX, plane->type < 3);
@@ -1216,6 +1274,7 @@ void R_RecursiveWorldNode (mnode_t *node, int clipflags)
 
 		side = fdot >= 0 ? 0 : 1;
 		facing = fdot < -0.01f ? -1 : (fdot > 0.01f ? 1 : 0);	// id's dot < -BACKFACE_EPSILON and dot > BACKFACE_EPSILON
+#endif
 		}
 #else
 		switch (plane->type)
