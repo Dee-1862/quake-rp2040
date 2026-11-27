@@ -2,6 +2,10 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-27, the benchmark prints its slowest and fastest frame (PC and ARM build)
+
+With `QOG_BOARD_MENU` a timedemo keeps the shortest and longest frame and a second `[bench]` line gives them as fps, so the range can be set beside the one MG24Quake publishes. A 32-bit PC build with the flag printed 37.7 to 68.8 fps for demo3 and `qogtest_hash` stayed `ce86f894f9de`. Not run on the board.
+
 ## 2026-11-26, fewer float calls in three paths, exact (PC and ARM build, registered data)
 
 Later run on the board together with the RAM change below, 26.4 fps Fast and 31.6 fps Turbo (docs/fps-board.md section 1).

@@ -3110,8 +3110,15 @@ void M_BenchDone (qboolean whole)
 
 	cls.td_lastframe = whole ? bench_done : bench_stopped;
 	if (whole)
+	{
+		extern float	cl_qog_tdshort, cl_qog_tdlong;	// cl_demo.c
+
 		Con_Printf ("[bench] timedemo %s %i frames %.1f seconds %.1f fps, %s\n",
 			cls.mapstring, frames, time, frames / time, M_BenchSetup ());
+		if (cl_qog_tdlong > 0 && cl_qog_tdshort > 0)
+			Con_Printf ("[bench] single frames from %.1f to %.1f fps\n",
+				1 / cl_qog_tdlong, 1 / cl_qog_tdshort);
+	}
 	else
 		Con_Printf ("[bench] timedemo %s stopped after %i frames %.1f seconds, no result\n",
 			cls.mapstring, frames, time);

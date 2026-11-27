@@ -26,6 +26,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 void CL_FinishTimeDemo (void);
 
+#ifdef QOG_BOARD_MENU
+// QuakeOG, the shortest and longest frame of a timedemo, for the range on the
+// board's [bench] line (M_BenchDone)
+float			cl_qog_tdshort, cl_qog_tdlong;
+static double	cl_qog_tdprev;
+#endif
+
 #ifdef QOG_DEMO_FLASH
 // QuakeOG, a demo in a mapped pack (COM_FlashFile) is read in place, and
 // each message is parsed where it lies, so playback needs no FILE and no
@@ -188,6 +195,23 @@ int CL_GetMessage (void)
 			// so the bogus time on the first frame doesn't count
 				if (host_framecount == cls.td_startframe + 1)
 					cls.td_starttime = realtime;
+#ifdef QOG_BOARD_MENU
+				if (host_framecount > cls.td_startframe + 1)
+				{
+					float	dt = realtime - cl_qog_tdprev;
+
+					if (dt < cl_qog_tdshort)
+						cl_qog_tdshort = dt;
+					if (dt > cl_qog_tdlong)
+						cl_qog_tdlong = dt;
+				}
+				else
+				{
+					cl_qog_tdshort = 1000;
+					cl_qog_tdlong = 0;
+				}
+				cl_qog_tdprev = realtime;
+#endif
 			}
 			else if ( /* cl.time > 0 && */ cl.time <= cl.mtime[0])
 			{
