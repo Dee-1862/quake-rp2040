@@ -15,7 +15,9 @@
  * The page index is copied to RAM, so a flash PC costs one or two table
  * reads (usually cached) and a RAM PC a binary search over the few RAM
  * functions. PCs in the boot ROM (0 to 0x3FFF, the float routines) count as
- * "[rom]" and once more against the function in the stacked LR.
+ * "[rom]" and once more against the function in the stacked LR, or, where
+ * that names none, the first return address found on the stack
+ * (QOG_PROF_ROMSCAN).
  *
  * Counts, per core an open addressed table of (function, count) pairs. The
  * report pauses the sampling, takes each core's top QOG_PROF_TOP, prints
@@ -132,6 +134,32 @@ static void __not_in_flash_func(prof_add)(prof_slot_t *t, uint32_t log2, uint32_
     s_lost[core]++;
 }
 
+#ifndef QOG_PROF_ROMSCAN
+#define QOG_PROF_ROMSCAN 1
+#endif
+#if QOG_PROF_ROMSCAN
+#define PROF_SCAN_WORDS 12
+#define PROF_RAM_END    0x20042000u
+
+/* The ROM routines call their own helpers, so LR in a ROM sample is often a
+   ROM address and says nothing about who called. Their return address is
+   then on the stack above the exception frame. This takes the first word
+   there that is a Thumb address just after a call in a known function. */
+static uint32_t __not_in_flash_func(prof_stack_caller)(const uint32_t *frame) {
+    const uint32_t *sp = frame + 8 + ((frame[7] >> 9) & 1u);   /* xPSR bit 9, the alignment word */
+    for (uint32_t i = 0; i < PROF_SCAN_WORDS && (uint32_t)(sp + i) < PROF_RAM_END; i++) {
+        const uint32_t v = sp[i];
+        if (!(v & 1u) || v < 0x4000u) continue;
+        const uint32_t id = prof_find(v - 1u);
+        if (id >= s_n) continue;
+        const uint16_t *p = (const uint16_t *)(v - 1u);
+        if (p[-1] >= 0x4780u && p[-1] < 0x4800u) return id;                        /* blx reg */
+        if ((p[-2] & 0xF800u) == 0xF000u && (p[-1] & 0xD000u) == 0xD000u) return id; /* bl */
+    }
+    return ID_UNKNOWN;
+}
+#endif
+
 /* called by qog_prof_irq with the interrupted context's exception frame */
 void __attribute__((used, noinline)) __not_in_flash_func(qog_prof_sample)(const uint32_t *frame) {
     const uint32_t core = sio_hw->cpuid;
@@ -155,6 +183,9 @@ void __attribute__((used, noinline)) __not_in_flash_func(qog_prof_sample)(const 
         if (id == ID_ROM) {
             uint32_t caller = prof_find(frame[5] & ~1u);
             if (caller == ID_ROM) caller = ID_UNKNOWN;   /* called from the ROM itself */
+#if QOG_PROF_ROMSCAN
+            if (caller == ID_UNKNOWN) caller = prof_stack_caller(frame);
+#endif
             prof_add(t, log2, ROM_CALLER | caller, core);
         }
         s_total[core]++;
