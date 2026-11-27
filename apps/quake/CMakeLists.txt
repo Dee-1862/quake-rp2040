@@ -505,6 +505,15 @@ if(QOG_SPLIT)
     if(QOG_BOARD_SCANSIZE)
         set_property(SOURCE ${QOG_ROOT}/engine/r_edge.c APPEND PROPERTY COMPILE_OPTIONS -Os)
     endif()
+    # QuakeOG, the small hottest functions of the edge scan and the vertex
+    # cache in RAM, exact. R_GenerateSpans, R_StepActiveU and R_QogVertEntry,
+    # about 650 bytes, so their instructions never miss the XIP cache. The
+    # client's stack is 1 KB smaller to hold them. Off until a board run shows
+    # what it saves
+    option(QOG_BOARD_RAMSCAN "hottest edge scan functions in RAM, client stack 1 KB smaller (exact)" OFF)
+    if(QOG_BOARD_RAMSCAN)
+        list(APPEND _cl_defs QOG_SCAN_RAM)          # r_local.h QOG_SCANRAM
+    endif()
     # QuakeOG, the Fast render mode, approximate and hard to see,
     # switched at run time by the r_fast cvar (Options, Render Exact / Fast).
     # On by default on the board. r_fast 0 draws exactly as before.
@@ -682,7 +691,11 @@ if(QOG_SPLIT)
         math(EXPR _cl_hunk_kb "${QOG_CL_HUNK_KB} - 3")   # earlier work: the console's 3 KB (above)
     endif()
     list(TRANSFORM _disp_defs REPLACE "^QOG_HUNK_KB=[0-9]+$" "QOG_HUNK_KB=${_cl_hunk_kb}")
-    list(TRANSFORM _disp_defs REPLACE "^QOG_STACK_KB=[0-9]+$" "QOG_STACK_KB=${QOG_CL_STACK_KB}")
+    set(_cl_stack_kb ${QOG_CL_STACK_KB})
+    if(QOG_BOARD_RAMSCAN)
+        math(EXPR _cl_stack_kb "${QOG_CL_STACK_KB} - 1")   # the RAM code's 1 KB (above)
+    endif()
+    list(TRANSFORM _disp_defs REPLACE "^QOG_STACK_KB=[0-9]+$" "QOG_STACK_KB=${_cl_stack_kb}")
     set_property(TARGET quake_display PROPERTY COMPILE_DEFINITIONS ${_disp_defs})
     # Earlier work, the BSP's frame sender without its 4 KB frame buffer (port/rp2040/link_rp2040.c)
     target_compile_definitions(quake_display PRIVATE QOG_LINK_STREAM_SEND QOG_VID_SURFCACHE_MIN)   # and a 64-byte surface cache header (vid_rp2040.c)

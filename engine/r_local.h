@@ -23,6 +23,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef GLQUAKE
 #include "r_shared.h"
 
+// QuakeOG, QOG_SCAN_RAM (QOG_BOARD_RAMSCAN) puts the functions marked with
+// QOG_SCANRAM in RAM, so their instructions never miss the XIP cache.
+// long_call, so callers in flash need no linker veneer
+#ifdef QOG_SCAN_RAM
+#define QOG_SCANRAM(name)	__attribute__((section (".time_critical." name), noinline, long_call))
+#else
+#define QOG_SCANRAM(name)
+#endif
+
 // QuakeOG, QOG_EDGES_IN_ZBUFFER moves the edge table into the z-buffer and
 // the spans into the surface table, which replaces QOG_SPANS_IN_EDGES
 #ifdef QOG_EDGES_IN_ZBUFFER

@@ -2,6 +2,16 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-26, hottest edge scan functions in RAM, QOG_BOARD_RAMSCAN (ARM build only, not run on hardware)
+
+`QOG_BOARD_RAMSCAN` (off, exact) puts R_GenerateSpans (432 B), R_StepActiveU (108 B) and R_QogVertEntry (112 B) in RAM (`QOG_SCANRAM` in engine/r_local.h). In the Turbo profile they hold 6.9, 1.1 and 2.1 per cent of core 0's samples. Their instructions are the same as without it, with `QOG_BOARD_SCANSIZE` too.
+
+- RAM, the client stack is 1 KB smaller (`QOG_CL_STACK_KB` less 1, so 31 KB with the usual 32). 704 B go to code and three veneers for its calls back into flash, quake_display `end` goes from 0x2003f780 to 0x2003f640, and 448 B stay spare beside the 2 KB heap reserve (128 B before). The demo3 runs left 5,368 B of stack free, so about 4,340 B should stay. Watch the `stack free` line on the board.
+- The functions are `long_call`, so their callers in flash load the address and need no veneer. Each caller grows by about 4 B.
+- tools/xip_sets.py, the scan phase goes from 2,383 lines and 335 excess to 2,317 and 297. World, bmodels and models are unchanged (0, 0, 8). A 96 B pad in the HOTTEXT world group stands where R_QogVertEntry was. Without it the models phase goes to 20 excess.
+- The estimate is 0 to 0.6 ms a frame in Turbo, about 0.3 expected. The three functions are about 3.3 ms of core 0's time, but only their instruction misses go away.
+- Checks, qogtest_hash `ce86f894f9de` (PC build, hidden, `-nosound`), where the new macro is empty. tools/core1_syms.py passes.
+
 ## 2026-11-26, brush models, box sides and one projection a vertex, exact (PC and ARM build, registered data)
 
 Nothing ran on hardware.

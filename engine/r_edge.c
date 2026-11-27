@@ -810,6 +810,7 @@ reads span_p. r_bmodelactive is only counted, never read, so its final
 value is id's.
 ==============
 */
+QOG_SCANRAM("R_GenerateSpans")
 void R_GenerateSpans (void)
 {
 	edge_t			*edge, *tail;
@@ -993,6 +994,7 @@ QuakeOG, id's loop with r_edgebase, the tail and the aftertail
 sentinel in locals, for the same reason as above.
 ==============
 */
+QOG_SCANRAM("R_StepActiveU")
 void R_StepActiveU (edge_t *pedge)
 {
 	edge_t		*pnext_edge, *pwedge, *tail, *aftertail;
