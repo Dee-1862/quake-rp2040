@@ -18,6 +18,20 @@ The idea was to have core 1 compute world vertex projections and view plane dist
 - `boardbench` stopped on this main with `boardmodel: too many columns`. The column limit in port/pc/boardmodel_pc.c is now 256.
 - What would reopen it, a board count of the cycles per computed point that is well above these, or work that gives core 1 a lead of more than one face.
 
+## 2026-11-27, BSP data layout in flash studied, nothing built (PC only, registered data)
+
+The question was whether a more compact or better ordered layout of the level data the renderer reads from flash would save XIP misses. It would not save 0.5 ms a frame without a larger change to the engine, so the code and the data images are unchanged. Nothing ran on hardware.
+
+- Method, every read of the mapped flash in 100 views of timedemo demo3 (every 11th frame) in Fast, taken on the PC build with the board client's render flags by page protection and single stepping, then replayed through a model of the cache (16 KB, 2 ways, 8-byte lines, LRU and random replacement), without code fetches and with the ARM code of the functions seen in the trace placed at the addresses of the board build. Addresses are those of the episode 1 image. The tracing code is not in the repository.
+- A view reads about 270 nodes, 60 leafs, 140 planes, 770 surfaces, 480 vertices, 720 edges, 1,070 surfedges and 290 mark surfaces, in 4,320 distinct lines (surfaces 1,090, nodes 920, vertexes 760, surfedges 560, edges 410, planes 310, leafs 130, mark surfaces 80, texinfo 70).
+- The lines are well filled. Of the 4-byte words in a line that was read, vertexes and surfedges use 96%, edges and planes 86%, nodes 83%, leafs and surfaces about 67%.
+- The model gives 5,200 to 6,400 BSP data misses a view over all phases, about 1.0 to 1.7 ms at 0.19 to 0.27 us a miss. That is what removing every one of them would be worth.
+- Order, nodes, surfaces, surfedges, edges, vertexes and planes of episode 1's maps are already in the order a front first walk of the tree meets them, as the map compiler wrote them. Renumbering them that way changes no address. The renumbering of edges and vertices suggested in the entry on the XIP measurement build below therefore saves nothing.
+- The order in which demo3 itself first touches each element, which no data build could know, gives 0.07 ms worse to 0.02 ms better. Even with every byte a view reads packed together afresh for each view, the lines would only fall from 4,320 to 3,590 (about 0.15 to 0.2 ms).
+- Padding nodes to 40 B, planes to 24 B or surfaces to 32 B costs 0.02 to 0.1 ms. Moving one array by 4 B changes nothing.
+- Smaller structures need engine changes. Nodes of 28 B with 16-bit links save 0.05 to 0.15 ms, with 16-bit surfedges as well 0.1 to 0.28, with surfaces of 24 B too 0.15 to 0.41, and with planes of 16 B too 0.18 to 0.49 ms. These are upper figures, since they take no account of the extra instructions that unpack an index or find a plane's type, and whether every field fits was not checked for all maps.
+- Not measured. Nothing on the board, so neither the miss counts nor the cost of a miss. The model's world phase has 6,000 to 8,300 misses where the board counted 11,200 (run before the shared drawing code), since code that reads no flash data and core 1's fetches are only partly in it. A sensitivity run with a cache of half the size put the largest packing at up to 0.7 ms, but its world misses were about four times the board's, so it was not taken. Only demo3 in Fast was traced.
+
 ## 2026-11-27, the benchmark prints its slowest and fastest frame (PC and ARM build)
 
 With `QOG_BOARD_MENU` a timedemo keeps the shortest and longest frame and a second `[bench]` line gives them as fps, so the range can be set beside the one MG24Quake publishes. A 32-bit PC build with the flag printed 37.7 to 68.8 fps for demo3 and `qogtest_hash` stayed `ce86f894f9de`. Not run on the board.
@@ -638,6 +652,7 @@ Per phase at 300 MHz, Fast, spans 14.1, world 8.9, edgescan 6.0, bmodels 5.7, mo
 The normal PC build (`build-pc`, QOG_AOT) gives `qogtest_hash` ce86f894f9de. Every engine hook is inside `QOG_BOARDMODEL`, which only the measurement build defines.
 
 Files, engine/qog_bmodel.h, port/pc/boardmodel_pc.c, tools/boardmodel.py, tools/boardbench.ps1, tools/boardbench_config.cfg, tools/boardmodel_calib.json, tools/boardmodel_ref.csv.gz, tools/boardmodel_ref_e1m1.csv.gz, docs/fps-board.md (new), engine/r_surf.c, engine/r_light.c, engine/d_edge.c, engine/r_edge.c, engine/r_main.c, engine/r_bsp.c, engine/r_efrag.c, engine/r_alias.c, port/pc/vid_pc.c, pc/CMakeLists.txt, docs/handoff.md, docs/lessons.md (L180 to L184, L198, L199).
+
 ## 2026-11-25, Both cores draw the world's surfaces during the edge scan (PC and ARM build, registered data)
 
 Until now the display's core 1 drew every second span of a lit surface and half of an alias model's vertices, and waited through everything else of the view, world, bmodels, edgescan, lmap and grad, about 40 ms of a demo3 view on core 0's clock. Now core 1 draws whole lit world surfaces (light grid, gradients, spans and z) while core 0 is still scanning edges, and at every flush both cores share the remaining surfaces. Exact in both render modes, the same pixels as main in Exact and in Fast. Nothing ran on hardware, every board number below is an estimate.
@@ -1226,6 +1241,7 @@ Not done, for later.
 - D_CalcGradients (grad 2.4 ms, shared with earlier work) can take the same three rows as the face gradients in Fast mode, about 26 float operations a surface instead of about 70. Its two `+ 0.5` in double can be made exact in float (below 2^23 the float add is exact, above it the value is an integer and only the sign decides).
 - D_DrawSurfaces rotates and restores a brush entity's frame for each of its surfaces, two R_TransformFrustum calls each, which consecutive surfaces of one entity could share (the earlier file).
 - The world's vertex positions converted once per frame into the cache entries would save the three conversions of each repeated distance.
+
 ## 2026-11-24, Episodes 2 and 3 on the board, the boot level from the data image, missing levels, the load buffer off the server hunk (PC and ARM build, registered data)
 
 One board app now runs any episode's data image, mkboard writes the level to start in into the image and the board client starts there. Episodes 2 and 3 with start fit both chips, a level exit or a save of a level the image does not hold no longer stops the game, and every level of episodes 1 to 3 runs in the server's 174 KB hunk with sound after one exact cut (the load's line buffer moved from the hunk to the stack). Nothing ran on hardware. Merged with main d8f2f9e before the last builds and hashes.
@@ -1633,6 +1649,7 @@ Read from the board's USB logs (display COM8, main COM7) with QOG_PHASE_TIME and
 - Fast mode cut the span arithmetic by about 2.9 M cycles a view (the earlier estimate) but spans fell only 0.9 ms, so the span time looks bound by XIP misses rather than compute. The earlier XIP counter build is meant to confirm it.
 - Stack free on the board with sound and the 73 KB client hunk (76d0172), display 4,192 B, main 19,204 B.
 - Sound through the speaker was heard by the user on e2854de. The game has run 15 minutes in E1M1 without a restart since the strict aliasing fix. Saving on the board has not been tried. Update, November 2026, saving and loading were later tried on the board and work.
+
 ## 2026-11-24, XIP and float counters, world front end and alias vertices faster, same pixels (PC and ARM build, registered data)
 
 A measurement build that tells whether a render phase waits on flash or on float helpers, and four exact speed-ups of the display chip's 3D view, all with the same pixels as main. Nothing ran on hardware. The savings are estimates from the PC's work counts and the Thumb code at 250 MHz, the lead measures them.
@@ -1690,6 +1707,7 @@ Fast mode cut 2.9 M cycles of arithmetic and the spans moved by 0.9 ms, which po
 
 - Edge u stepping in 16.16 fixed point instead of float in R_EmitEdge, edge positions move by a sub-pixel, maybe 1 to 2 ms of world.
 - Node culling with integer box tests against quantised planes, rare one-node differences, about 1 ms.
+
 ## 2026-11-24, Every episode in the split client's RAM, and level exits on the board client (PC and ARM build, registered data)
 
 The board client's hunk goes from 73 to 75 KB and now holds every level of the game with at least 3.8 KB to spare on a fight tour, seven exact cuts take 7.4 KB off the worst level (e2m6, 78.4 to 71.2 KB) and free 1,656 B of static RAM for the hunk. Before them, a bug of the z-buffer receive buffer stopped the board client at every level exit. Nothing ran on hardware.
@@ -1793,6 +1811,7 @@ Looked at and left, or for the user to decide (ideas to get nearer 27 fps, none 
 - The front end (world 26.3 ms) has no cheap approximation that stays hard to see, it is the BSP walk and edge setup, whose cost is mostly memory and exact float work. That is the earlier field.
 - The view model (4.9 ms), an affine alias drawer is already affine. Skipping its per-vertex light or drawing it in fewer rows would show.
 - 27 fps is a frame of 37 ms. The view alone is 75.7 ms today and Fast takes about 6 to 10 ms of it. Getting there needs the front end halved as well, or a smaller picture, which the user has not approved.
+
 ## 2026-11-24, Episode 1 in the split client's RAM, the display image without sounds, whole-game numbers (PC and ARM build, registered data)
 
 The split client now runs start and all of episode 1 in its hunk, QOG_CL_HUNK_KB goes from 68 to 73 KB, from four exact cuts that free 10.6 KB of static RAM and hunk. `tools/mkboard.py --display-no-sounds --display-no-progs` leaves 2.86 MB of files the client never opens out of the display image, but episode 1 still needs 13.19 MB of the 11.94 MB region, and main's image with episode 1's sounds needs 5.75 MB of its 5 MB. Both fit if the data offsets move (proposed below, not applied). Main frees 4 KB and its server hunk goes from 156 to 160 KB, still short of e1m3 (165 KB without sound). Nothing ran on hardware.
@@ -2104,6 +2123,7 @@ Clock options (report only, nothing enabled).
 | QSPI flash CLKDIV 4 to 2 (100 MHz at 200 MHz sys, `PICO_FLASH_SPI_CLKDIV` in bsp/boards/freewili_og.h, even values only) | XIP misses (538 ns per random byte today, 8.5 MB/s sequential) roughly halve. Textures, the colormap, the baked BSP and code are read through it. The W25Q128 is rated 133 MHz | likely 10 to 25%, the largest of the options for the renderer, also on main (traces through clip nodes in flash) | the bootloader's XIP setup stays in force for the app (the app's boot2 is skipped), so on the display chip the divider only changes with a rebuilt and reflashed display bootloader. A bootloader whose XIP fails at 100 MHz leaves the display CPU with no way back, since it has no BOOTSEL button. A safer route is for the app to switch the divider at run time from RAM code and check a known flash region, falling back to 4. The RX sample delay may need tuning at 100 MHz |
 
 ## 2026-11-23, The client half links on the display chip for E1M1 (PC and ARM build, registered data)
+
 ## 2026-11-23, The main chip's server data and saves for the split game (PC and ARM build, registered data)
 
 The main RP2040 now has its own data image, written by the same `tools/mkboard.py` run as the display's, and the split game saves and loads on main's FAT volume. On the PC the split pair runs from the two images (the server image for the server process, the display image for the client) with the same state hashes, frames and save files as the single-process game on the full paks. `quake_main` links with 1,796 bytes of RAM to spare. Nothing ran on hardware.
@@ -2408,6 +2428,7 @@ Input, the IN_ path is Sys_SendKeyEvents in `port/rp2040/vid_rp2040.c`, which tu
 - Verification, hidden and silent with `-nosound` and `+_cl_color 0`, against an untouched build of 4626b83 (`build-pc-base`). `qogtest_hash` state hashes identical on the interpreted build, the QOG_AOT build and a QOG_AOT build with the board-only flags. `qogtest_q_fhash.cfg` (a copy of `qogtest_f_hash` with its own save name, 8 maps, fight, save and load) 32 hashes and 8 end frames identical on the same three. `qogtest_d_shots` with `qogtest_k_quiet.cfg` 113 frames byte-identical on the interpreted and the board-flag builds (without it the notify line shows the shot path, which names the build folder). `qogtest_reg` ran its 32 maps with no errors on the interpreted and the board-flag builds. `qogfly_main` links with the values the board run used (`QOGFLY_HUNK_KB` 18, `QOGFLY_STACK_KB` 34).
 - What is left is not a matter of exact cuts. The whole engine outside the video needs about 340 KB on E1M1 with 116 KB of RAM left beside the video. The options with real size are per-class edicts with compiled QuakeC (edicts and edcold 64.8 KB now), a sparse client entity table (26 KB), message buffers in the z-buffer between frames (about 17 KB, needs proof they are empty at R_RenderView), the 18 KB particle block (changes the picture), or the two-chip split in docs/plans/fit-plan.md.
 - Edits outside the earlier files. `engine/host.c`, `engine/snd_dma.c`, `engine/host_cmd.c`, `engine/cl_parse.c`, `engine/sv_main.c`, `engine/keys.c` (each behind its flag), `port/pc/vid_pc.c` (board mode input), one new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`, and the hunk and stack sizes of `quake_display`.
+
 ## 2026-11-23, Demo playback on the board (PC and ARM build, registered data)
 
 A client-only host plays the recorded demos (demo1 on e1m3, demo2 on e1m4, demo3 on e1m6) with id's client, renderer and status bar, without server, QuakeC, console or sound, monsters, weapons, shooting, particles, explosions, the status bar and the bonus flashes. On the PC every host frame equals the normal game's playdemo frame. The board app pair `apps/qogdemo` links with 73,728 bytes of hunk, a 34,816-byte stack and 3,788 bytes free. It uses the one-byte z-buffer, which changes 0.073% of the view's pixels. Nothing ran on hardware.
@@ -2472,6 +2493,7 @@ The manifests. `start.txt` from the game (`+exec qogtest_o_manifest.cfg`), `demo
 
 - Engine files changed. `engine/cl_demo.c`, `engine/cl_main.c`, `engine/cl_parse.c`, `engine/cl_tent.c`, `engine/client.h`, `engine/d_local.h`, `engine/model.c`, `engine/r_main.c`, `engine/view.c`, all behind the flags above. One new block each in `pc/CMakeLists.txt`, `apps/quake/CMakeLists.txt` and `tools/ram_meter.py`, and the `QOG_PC_DEMO_BOARD` and `QOG_PC_DEMO_Z8` test options in `pc/CMakeLists.txt` (off by default).
 - The bake layout hash did not change, so the shared `data/id1/qogbake.bin` still loads.
+
 ## 2026-11-23, World renderer speed (PC and ARM build, registered data)
 
 Four exact speedups of the lit span and z span path (byte-identical pictures, on in all three flag lists), two approximate span drawers (off, in no list, for the user to judge), render phase timing for the board's fly-through, and benchmark lines that time and check the engine's own new span code on the board. Nothing ran on hardware. The board savings below are estimates from the generated Thumb code and the E1M1 fly-through's work counts until the benchmark and the fly-through are flashed.
