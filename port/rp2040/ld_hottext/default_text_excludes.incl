@@ -33,7 +33,10 @@
    the sets just after c1loop, as world does, and both phases fit beside
    helpers and c1loop. The scan phase's code (scan, spans0, c1spans with
    helpers and c1loop, about 24 KB) is larger than the cache in any layout.
-   A static function that exists in two objects is named with its object. */
+   A static function that exists in two objects is named with its object.
+   With QOG_BOARD_RAMSCAN a few of these functions are in RAM instead, their
+   lines here match nothing and tools/xip_sets.py does not count them. A pad
+   keeps the groups after world in their sets. */
 
 /* group helpers core 01, always */
 *(.text.__wrap___aeabi_farithmetic)
@@ -65,6 +68,7 @@
 *(.text.R_QogNodeSide)
 *(.text.R_RenderFace)
 *(.text.R_QogVertEntry)
+KEEP(*(.text.qog_scanram_pad))
 *(.text.R_QogClipDistFx)
 *(.text.R_QogClipEdgeFast)
 *(.text.R_QogEmitEdgeFast)

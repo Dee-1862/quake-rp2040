@@ -462,7 +462,14 @@ void R_QogVertCacheBrush (model_t *clmodel)
 }
 #endif
 
+#ifdef QOG_SCAN_RAM
+// 96 B of flash in the place of the function below, which is in RAM, so the
+// grouped code after it keeps its XIP cache sets (default_text_excludes.incl)
+__asm__ (".pushsection .text.qog_scanram_pad, \"ax\"\n .space 96\n .popsection");
+#endif
+
 /* the entry of a world vertex, emptied if it held another one, or NULL */
+QOG_SCANRAM("R_QogVertEntry")
 static r_qogvert_t *R_QogVertEntry (mvertex_t *pv)
 {
 	r_qogvert_t	*e;
