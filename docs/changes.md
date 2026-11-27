@@ -2,6 +2,22 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-27, core 1 filling the world's vertex cache, measured and not built (PC counts and saved board logs)
+
+The idea was to have core 1 compute world vertex projections and view plane distances while core 0 walks the world, to save part of the 7.6 ms world phase of demo3 in Fast (log `run19_8.txt`). The expected gain is about 0.3 to 0.4 ms a frame, under the 0.5 ms asked of it, so nothing was built. Nothing ran on hardware.
+
+- Core 1 during the world. The last frame's scanout runs about 13 ms from the present, and the world runs from about 2.4 to 10 ms after it, so core 1 is inside the scanout for all of it. The 10.8 ms of idle on the `[time cl] core1` line lies outside the world. Inside the scanout it mostly waits on the DMA, a row's conversion being 5 to 8 us of 86 us by the instruction count. That time is reachable only from the DMA wait hook, in pieces short enough not to delay the next row.
+- Work that could move, demo3 Fast, world faces only, per view (traced on the PC). 182 faces, 431 projection calls with 209 computed, 2,457 distance calls with 433 computed, each filling the other three planes.
+- What it costs. The board profile (log `run18_8.txt`, Turbo) puts `R_QogClipDistFx` and `R_QogProjectFast` at 7.4% of core 0, about 2.4 ms with hits and brush models. The world's computed points come to about 1.0 to 1.4 ms of that, the most a perfect prefill could save before its own overhead. The cost model prices the same work at 1.7 ms, which is more than the profile leaves room for.
+- Which vertices core 1 can know. It cannot walk the BSP ahead of core 0, since a surface is marked visible only as core 0 reaches its leaves, and 128 cache entries hold no long lead. What is left is the face core 0 has just started. A first use is on a face's first vertex for 86 of the computed distances, its second for 102 and a later one for 245, and core 0 asks for the first two before core 1 can have them.
+- A timing model of that scheme on the traced order, with the per point costs above, a second 32 or 64 entry cache that only core 1 writes, and core 1 losing a tenth of its time to the scanout, takes 33 to 80% of the computed distances and 46 to 73% of the projections from core 0, 0.4 to 0.9 ms of world compute (0.5 to 0.7 in the middle case). With instruction counts in place of the profile's costs it gives 0.3 to 0.4 ms. `boardbench` what-ifs turn 1 ms of world into about 0.8 to 0.9 ms of frame. Less about 0.05 ms of handover on core 0, the expected frame gain is about 0.3 to 0.4 ms, within a range of 0 to 0.8.
+- Not in those figures, all of which would lower the gain. Face vertices that core 0 never asks for, the XIP cache and SRAM shared with a busier core 1, a longer scanout if the hook overruns a row, and later race waits if the second cache (1 to 2 KB) takes frame buffer rows.
+- Writing the shared cache from both cores is not safe, core 0 empties an entry when another vertex takes its slot, so a late write from core 1 would leave wrong values in it. Hence the second cache.
+- RAM would not stop it, the second cache fits in view buffers and the handover needs about a dozen bytes. The display has 132 B spare beside the 2 KB heap reserve on the README build line, 432 B with `QOG_BOARD_RAMSCAN`.
+- How far to trust the cost model. It was 33 and 36% high on d31520e before it was calibrated on that run. On this main it gives 24.9 fps Fast and 28.5 Turbo against the board's 26.4 and 31.6, and world 8.2 ms against 7.6.
+- `boardbench` stopped on this main with `boardmodel: too many columns`. The column limit in port/pc/boardmodel_pc.c is now 256.
+- What would reopen it, a board count of the cycles per computed point that is well above these, or work that gives core 1 a lead of more than one face.
+
 ## 2026-11-27, the benchmark prints its slowest and fastest frame (PC and ARM build)
 
 With `QOG_BOARD_MENU` a timedemo keeps the shortest and longest frame and a second `[bench]` line gives them as fps, so the range can be set beside the one MG24Quake publishes. A 32-bit PC build with the flag printed 37.7 to 68.8 fps for demo3 and `qogtest_hash` stayed `ce86f894f9de`. Not run on the board.
