@@ -20,13 +20,21 @@ If you want the long story, read [docs/showcase.md](docs/showcase.md).
 
 ## The numbers
 
-All of these are from the actual board running `timedemo demo3`. The runs are listed in [docs/fps-board.md](docs/fps-board.md).
+The goal I measure myself against is [MG24Quake](https://github.com/next-hack/MG24Quake). My numbers are from the actual board running `timedemo demo3`, and the runs are listed in [docs/fps-board.md](docs/fps-board.md).
 
-| Mode | What it looks like | fps |
+| | fps | Time per frame |
 | --- | --- | --- |
-| Exact | Same pixels as the original renderer | 12.8 |
-| Fast (default) | Full detail, small shortcuts you barely notice | **26.4** |
-| Turbo | 3D view at half width and a flat gun picture, blockier | **31.6** |
+| MG24Quake, their number | 29.2 | 34.2 ms |
+| **QuakeOG Fast** (default) | **26.4** | 37.9 ms |
+| QuakeOG Exact, same pixels as the original renderer | 12.8 | 78.3 ms |
+
+**I am still behind, by about 3.7 ms a frame.**
+
+Both draw the full 320x200 screen with a 320x152 3D view and the status bar, with sound on, and count all frames over total time. The hardware is not equal. I use two chips overclocked to 300 MHz and they use one chip at a bit over 136 MHz.
+
+Fast takes small shortcuts. On my test frames it changes 3.4% of the pixels on average and 10.5% in the worst frame. MG24Quake is not identical to the original either, but I have not measured by how much. My Fast number is one run and the Exact number is from an older build.
+
+There is also a **Turbo** mode at 31.6 fps. It draws the 3D view at half width with a flat gun picture, so it is a lighter job and I do not compare it with anyone.
 
 You switch between them in **Options, Render**.
 
@@ -38,29 +46,19 @@ xychart-beta
   bar [13.6, 20.0, 22.0, 24.8, 26.4]
 ```
 
-```mermaid
-xychart-beta
-  title "Turbo mode, how it went"
-  x-axis ["Turbo added", "Less screen waiting", "Better flash layout", "More tuning", "Now"]
-  y-axis "fps" 0 --> 35
-  bar [22.3, 26.0, 27.1, 27.8, 31.6]
-```
-
 I wanted 35 fps. I did not get there.
 
 ### Next to other ports
 
 | Port | Chip | Has an FPU | Speed they report |
 | --- | --- | --- | --- |
-| **QuakeOG** | 2x RP2040 | no | 26.4 fps, or 31.6 in Turbo at half width |
-| [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | about 29 fps |
+| **QuakeOG** | 2x RP2040 | no | 26.4 fps |
+| [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | 29.2 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
 
-Turbo goes past MG24Quake's number, but it draws half the width and a flat picture of the gun, so I do not count that as beating them. Fast is the fair comparison and it is still behind. So no, it is not the fastest. What I like about it is the hardware it runs on. When I searched in November 2026 I did not find another Quake port on the RP2040, but that does not mean there is none.
+So no, it is not the fastest. What I like about it is the hardware it runs on. When I searched in November 2026 I did not find another Quake port on the RP2040, but that does not mean there is none.
 
-It is also not a perfect comparison since everyone picks their own picture shortcuts. On my test frames my Fast mode stays closer to the original than MG24Quake's method does.
-
-The missing FPU and the small 16 KB flash cache hurt a lot. I have not proven this is the most the RP2040 can do.
+Everyone picks their own picture shortcuts, so no two of these numbers are a perfect comparison. The missing FPU and the small 16 KB flash cache hurt a lot. I have not proven this is the most the RP2040 can do.
 
 ## How it works
 
@@ -175,7 +173,7 @@ Run these from the repo root and put only one chip in BOOTSEL at a time. **Pleas
    cmake --build build --target quake_main
    ```
 
-   For the 31.6 fps Turbo number the gun is drawn from pictures. Build the PC version with `-DQOG_PC_GUNIMAGES=ON`, add `--gun-images` to the mkboard command in step 1, and add `-DQOG_BOARD_GUNIMAGES=ON` to the command above ([docs/game-data.md](docs/game-data.md)).
+   For the Turbo number of 31.6 fps the gun is drawn from pictures. Build the PC version with `-DQOG_PC_GUNIMAGES=ON`, add `--gun-images` to the mkboard command in step 1, and add `-DQOG_BOARD_GUNIMAGES=ON` to the command above ([docs/game-data.md](docs/game-data.md)).
 
    `QOG_FAT_FORMAT_IF_MISSING` formats the save area on the main chip if there is none.
 

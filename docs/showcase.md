@@ -152,7 +152,7 @@ A web search in November 2026 found no other Quake port on the RP2040, and none 
 | Port | Chip | FPU | RAM | External memory | Reported speed | Content | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **QuakeOG** (this) | 2x RP2040, Cortex-M0+, 300 MHz | no | 264 KB per chip | none (16 MB flash per chip) | 26.4 fps Fast, 31.6 fps Turbo (half width, flat gun picture), demo3, measured on the board | episode 1 | this repo |
-| MG24Quake (Nicola Wrachien, next-hack) | EFR32MG24, Cortex-M33 overclocked to about 136 MHz | yes | 276 KB | two 32 MB SPI flash chips plus an SD card | about 27 to 29 fps | full retail game | [github.com/next-hack/MG24Quake](https://github.com/next-hack/MG24Quake), [Habr article](https://habr.com/en/articles/848396) |
+| MG24Quake (Nicola Wrachien, next-hack) | EFR32MG24, Cortex-M33 overclocked to about 136 MHz | yes | 276 KB | two 32 MB SPI flash chips plus an SD card | 29.2 fps on demo3 (their README, release 2.0) | full retail game | [github.com/next-hack/MG24Quake](https://github.com/next-hack/MG24Quake), [Habr article](https://habr.com/en/articles/848396) |
 | RP2350-Quake (zenodante) | RP2350, Cortex-M33 | yes | 520 KB | none | not published, full playthrough unverified | | [github.com/zenodante/RP2350-Quake](https://github.com/zenodante/RP2350-Quake) |
 | Quake-ESP32S3 (recrof) | ESP32-S3, 240 MHz | yes | | 8 MB PSRAM | 37 to 42 fps | | [github.com/recrof/Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) |
 | esp32-quake (Espressif) | ESP32-P4, dual RISC-V | yes | | 32 MB PSRAM | about 20 to 25 fps at 512x300 | | [github.com/espressif/esp32-quake](https://github.com/espressif/esp32-quake) |
@@ -162,7 +162,7 @@ Empty cells are figures we did not find. MG24Quake's speed comes partly from its
 
 ## Honest limits
 
-- **Speed.** About 26.4 fps at full detail. MG24Quake reports about 29 on a chip with an FPU.
+- **Speed.** About 26.4 fps at full detail. MG24Quake reports 29.2 on a chip with an FPU.
 - **Not the whole game.** The display data of the whole game is about 38 MB, and both chips together have 32 MB of flash. Only one episode can be on the board at a time.
 - **RAM is nearly all used.** The display chip has a few hundred bytes spare.
 - **The one-byte depth buffer's fallback** draws one view without z in rare views, a one frame glitch (see above).

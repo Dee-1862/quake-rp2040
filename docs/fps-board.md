@@ -29,6 +29,8 @@ Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchma
 
 Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. Commit IDs are those of this repository.
 
+The fps is id's own `CL_FinishTimeDemo`, all frames but the first over the total time, which MG24Quake's `cl_demo.c` does the same way. Compare Fast with their 29.2. Turbo draws half the width and is a different workload. Builds from now on also print the slowest and fastest single frame on a second `[bench]` line, to set beside their 18.2 to 47.8.
+
 9264faf against 1765d6b, frame weighted means of the `[time cl] views` lines in each run, ms per view. The two changes were measured together, so the split between them is inferred. Edge scan went from 6.8 to 6.0 in Turbo and 7.1 to 6.3 in Fast, models from 3.5 to 3.3 and 4.0 to 3.7. Spans rose by 0.3 in Turbo and 0.2 in Fast. The client stack had 4,324 B free at its lowest, 5,368 B before.
 
 b585365 phases, ms per view, spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total view 72.2.
