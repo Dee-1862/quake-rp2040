@@ -25,8 +25,8 @@ All of these are from the actual board running `timedemo demo3`. The runs are li
 | Mode | What it looks like | fps |
 | --- | --- | --- |
 | Exact | Same pixels as the original renderer | 12.8 |
-| Fast (default) | Full detail, small shortcuts you barely notice | **25.8** |
-| Turbo | 3D view at half width and a flat gun picture, blockier | **30.6** |
+| Fast (default) | Full detail, small shortcuts you barely notice | **26.4** |
+| Turbo | 3D view at half width and a flat gun picture, blockier | **31.6** |
 
 You switch between them in **Options, Render**.
 
@@ -35,7 +35,7 @@ xychart-beta
   title "Fast mode, how it went"
   x-axis ["250 MHz start", "300 MHz and 2 cores", "Less screen waiting", "More tuning", "Now"]
   y-axis "fps" 0 --> 35
-  bar [13.6, 20.0, 22.0, 24.8, 25.8]
+  bar [13.6, 20.0, 22.0, 24.8, 26.4]
 ```
 
 ```mermaid
@@ -43,7 +43,7 @@ xychart-beta
   title "Turbo mode, how it went"
   x-axis ["Turbo added", "Less screen waiting", "Better flash layout", "More tuning", "Now"]
   y-axis "fps" 0 --> 35
-  bar [22.3, 26.0, 27.1, 27.8, 30.6]
+  bar [22.3, 26.0, 27.1, 27.8, 31.6]
 ```
 
 I wanted 35 fps. I did not get there.
@@ -52,7 +52,7 @@ I wanted 35 fps. I did not get there.
 
 | Port | Chip | Has an FPU | Speed they report |
 | --- | --- | --- | --- |
-| **QuakeOG** | 2x RP2040 | no | 25.8 fps, or 30.6 in Turbo at half width |
+| **QuakeOG** | 2x RP2040 | no | 26.4 fps, or 31.6 in Turbo at half width |
 | [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | about 29 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
 
@@ -171,11 +171,11 @@ Run these from the repo root and put only one chip in BOOTSEL at a time. **Pleas
 2. Build the game. Pass every option each time because the build folder remembers old ones. On macOS or Linux use `--preset target-posix`.
 
    ```bash
-   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON -DQOG_BOARD_SCANSIZE=ON
+   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON -DQOG_BOARD_SCANSIZE=ON -DQOG_BOARD_RAMSCAN=ON
    cmake --build build --target quake_main
    ```
 
-   For the 30.6 fps Turbo number the gun is drawn from pictures. Build the PC version with `-DQOG_PC_GUNIMAGES=ON`, add `--gun-images` to the mkboard command in step 1, and add `-DQOG_BOARD_GUNIMAGES=ON` to the command above ([docs/game-data.md](docs/game-data.md)).
+   For the 31.6 fps Turbo number the gun is drawn from pictures. Build the PC version with `-DQOG_PC_GUNIMAGES=ON`, add `--gun-images` to the mkboard command in step 1, and add `-DQOG_BOARD_GUNIMAGES=ON` to the command above ([docs/game-data.md](docs/game-data.md)).
 
    `QOG_FAT_FORMAT_IF_MISSING` formats the save area on the main chip if there is none.
 

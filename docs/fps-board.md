@@ -24,8 +24,12 @@ Kept by earlier work, the benchmark referee. Goal, 35 fps in the board's Benchma
 | **c2b913a + HOTTEXT + SCANSIZE** | **Turbo** | 300, 150, PIO 60 | **28.8** | **34.8** | same build, 37.9 s, log `run16_8.txt` |
 | **1765d6b + HOTTEXT + SCANSIZE + GUNIMAGES** | **Fast** | 300, 150, PIO 60 | **25.8** | **38.8** | data images built with `--gun-images`, Fast does not use them, 42.3 s, log `run17_8.txt` |
 | **1765d6b + HOTTEXT + SCANSIZE + GUNIMAGES** | **Turbo** | 300, 150, PIO 60 | **30.6** | **32.7** | flat view weapon (vmodel 2.3 to 0.3 ms), 35.6 s, log `run17_8.txt` |
+| **9264faf + HOTTEXT + SCANSIZE + GUNIMAGES + RAMSCAN** | **Fast** | 300, 150, PIO 60 | **26.4** | **37.8** | fewer float calls and the hottest edge scan code in RAM, 41.2 s, log `run19_8.txt` |
+| **9264faf + HOTTEXT + SCANSIZE + GUNIMAGES + RAMSCAN** | **Turbo** | 300, 150, PIO 60 | **31.6** | **31.7** | same build, 34.5 s, log `run19_8.txt` |
 
 Every run is `timedemo demo3`, 1090 frames, read from the display chip's serial log. The logs themselves are not in the repository. Commit IDs are those of this repository.
+
+9264faf against 1765d6b, frame weighted means of the `[time cl] views` lines in each run, ms per view. The two changes were measured together, so the split between them is inferred. Edge scan went from 6.8 to 6.0 in Turbo and 7.1 to 6.3 in Fast, models from 3.5 to 3.3 and 4.0 to 3.7. Spans rose by 0.3 in Turbo and 0.2 in Fast. The client stack had 4,324 B free at its lowest, 5,368 B before.
 
 b585365 phases, ms per view, spans 16.9, lmap 13.9, world 10.4, edgescan 7.2, bmodels 6.9, models 5.1, vmodel 3.4, grad 3.1, parts 1.2, total view 72.2.
 

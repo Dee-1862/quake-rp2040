@@ -4,7 +4,7 @@ Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
 ## 2026-11-26, fewer float calls in three paths, exact (PC and ARM build, registered data)
 
-Nothing ran on hardware.
+Later run on the board together with the RAM change below, 26.4 fps Fast and 31.6 fps Turbo (docs/fps-board.md section 1).
 
 - `QOG_LEADZ_BITS` (r_edge.c R_QogZFrontC). Where the two 1/z sums are positive, not far below the largest term and their bits are more than 2^18 apart or within 2^15, the order follows from the bits with the result of the float code. In timedemo demo3 in Turbo the bits decide 247 of 257 compares a view (164 as within 0.4%), which saves 2 or 4 float calls each.
 - `QOG_FCLIP_SAME` (r_draw.c R_QogClipEdgeFast, Fast and Turbo). A coordinate with the same bits at both ends of a clipped edge is taken as it is, no subtract, multiply and add. 1.9 of the 3 coordinates of 141 clipped points a view.
@@ -14,7 +14,9 @@ Nothing ran on hardware.
 - ARM build (README build line), quake_display `end` 0x2003f77c and quake_main `end` 0x2003f5b4, both unchanged. R_QogLightPointRec 72 B a level of stack (RecursiveLightPoint 88 B), and it recurses only where the ray is split. tools/core1_syms.py passes. tools/xip_sets.py, scan excess 335 to 345 lines, models 8 to 10.
 - Checks, against a build of main (hidden, `-nosound`), `qogtest_hash` `ce86f894f9de` and `qogtest_f_hash` `e92bc9e9650d`. The 113 `qogtest_d_shots` frames and 8 fhash frames are identical in r_fast 0, 1 and 2, on the default PC build and with the board's world flags. Check builds (`QOG_LEADZ_CHECK`, `QOG_FCLIP_CHECK`, `QOG_LIGHTPOINT_CHECK`, the last with 64 extra rays a call) over the shot scripts and timedemos find 0 differences in over 5 million compares, 15 million coordinates and 11 million rays. The split pair was not run.
 
-## 2026-11-26, hottest edge scan functions in RAM, QOG_BOARD_RAMSCAN (ARM build only, not run on hardware)
+## 2026-11-26, hottest edge scan functions in RAM, QOG_BOARD_RAMSCAN (ARM build)
+
+Later run on the board (docs/fps-board.md section 1). The lowest `stack free` in demo3 was 4,324 B.
 
 `QOG_BOARD_RAMSCAN` (off, exact) puts R_GenerateSpans (432 B), R_StepActiveU (108 B) and R_QogVertEntry (112 B) in RAM (`QOG_SCANRAM` in engine/r_local.h). In the Turbo profile they hold 6.9, 1.1 and 2.1 per cent of core 0's samples. Their instructions are the same as without it, with `QOG_BOARD_SCANSIZE` too.
 
