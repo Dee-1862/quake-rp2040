@@ -180,7 +180,8 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_ALIAS_SMALLTRI)             # d_polyse.c: triangles with no pixel or one drawn without gradients
 # Fewer float calls in the paths below, exact, same as pc/CMakeLists.txt
 list(APPEND QOG_ENGINE_DEFS
-    QOG_LEADZ_BITS)                 # r_edge.c R_QogZFrontC: clear 1/z orders from the bits of the two sums
+    QOG_LEADZ_BITS                  # r_edge.c R_QogZFrontC: clear 1/z orders from the bits of the two sums
+    QOG_FCLIP_SAME)                 # r_draw.c R_QogClipEdgeFast: a coordinate both ends share is not interpolated
 # Earlier work, one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)

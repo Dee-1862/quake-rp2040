@@ -300,7 +300,8 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_NODESIDE_BITS)              # with QOG_WORLDNODE_FAST: node side and facing by the float's bits (r_bsp.c)
 # Fewer float calls in the paths below, exact (r_edge.c, r_draw.c, r_light.c)
 target_compile_definitions(quakeog_pc PRIVATE
-    QOG_LEADZ_BITS)                 # with QOG_LEADZ_FLOAT: clear 1/z orders from the bits of the two sums
+    QOG_LEADZ_BITS                  # with QOG_LEADZ_FLOAT: clear 1/z orders from the bits of the two sums
+    QOG_FCLIP_SAME)                 # with QOG_FRONT_FAST: a coordinate both ends of a clipped edge share is not interpolated
 # One app for every episode's data image, qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE

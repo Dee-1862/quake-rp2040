@@ -49,6 +49,7 @@ enum
 	AQ_LEADZHIT,	/*   that found surf's half made for the edge already */
 	AQ_LEADZMID,	/* 1/z compares the bits of the two sums left to float */
 	AQ_LEADZNEAR,	/*   decided as within 0.4% */
+	AQ_CLIPSAME,	/* clipped point coordinates taken from an end (no float) */
 	AQ_N
 };
 

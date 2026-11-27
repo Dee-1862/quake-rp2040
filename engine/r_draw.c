@@ -1322,6 +1322,54 @@ static int R_QogClipDistFx (mvertex_t *pv, int k)
 	return d;
 }
 
+#ifdef QOG_FCLIP_SAME
+/*
+QuakeOG, id's a + f*(b - a) of one coordinate of a clipped point. Where the
+two ends have the same bits, a normal number or +0, b - a is +0, f is from 0
+to 1 and a + f*(+0) is a, so the three float calls are not needed. Most edges
+of a map run along an axis and have two such coordinates.
+*/
+#if defined(__GNUC__)
+typedef unsigned int __attribute__((may_alias))	r_qogcb_t;
+__attribute__((always_inline))
+#else
+typedef unsigned int							r_qogcb_t;
+#endif
+static __inline float R_QogClipLerp (const float *a, const float *b, float f)
+{
+	unsigned int	bits = *(const r_qogcb_t *)a;
+
+	if (bits == *(const r_qogcb_t *)b &&
+		((bits & 0x7F800000) - 0x00800000u < 0x7F000000u || !bits))
+	{
+		QOG_AQ (AQ_CLIPSAME, 1);
+		return *a;
+	}
+	return *a + f * (*b - *a);
+}
+
+#ifdef QOG_FCLIP_CHECK
+// PC check build, both ways on every coordinate, mismatches counted
+static float R_QogClipLerpCheck (const float *a, const float *b, float f)
+{
+	static unsigned	n, bad;
+	float			x = R_QogClipLerp (a, b, f);
+	float			y = *a + f * (*b - *a);
+
+	if (memcmp (&x, &y, sizeof x))
+		bad++;
+	if ((++n & 0x3FFF) == 0)
+		Sys_Printf ("qog_fclipcheck %u coordinates, %u differ\n", n, bad);
+	return y;
+}
+#define QOG_CLIPLERP(i)	R_QogClipLerpCheck (&pv0->position[i], &pv1->position[i], f)
+#else
+#define QOG_CLIPLERP(i)	R_QogClipLerp (&pv0->position[i], &pv1->position[i], f)
+#endif
+#else
+#define QOG_CLIPLERP(i)	(pv0->position[i] + f * (pv1->position[i] - pv0->position[i]))
+#endif
+
 /*
 R_ClipEdge in Fast mode, the plane sides from the integer distances, the
 clipped point by id's float interpolation with their ratio.
@@ -1357,12 +1405,14 @@ static void R_QogClipEdgeFast (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip
 
 				QOG_AQ (AQ_FCLIPVERT, 1);
 				f = (float)d0 / ((float)d0 - (float)d1);
-				clipvert.position[0] = pv0->position[0] +
-						f * (pv1->position[0] - pv0->position[0]);
-				clipvert.position[1] = pv0->position[1] +
-						f * (pv1->position[1] - pv0->position[1]);
-				clipvert.position[2] = pv0->position[2] +
-						f * (pv1->position[2] - pv0->position[2]);
+#ifdef QOG_FCLIP_SAME
+				for (k=0 ; k<3 ; k++)
+					clipvert.position[k] = QOG_CLIPLERP (k);
+#else
+				clipvert.position[0] = QOG_CLIPLERP (0);
+				clipvert.position[1] = QOG_CLIPLERP (1);
+				clipvert.position[2] = QOG_CLIPLERP (2);
+#endif
 
 				if (clip->leftedge)
 				{
@@ -1399,12 +1449,14 @@ static void R_QogClipEdgeFast (mvertex_t *pv0, mvertex_t *pv1, clipplane_t *clip
 
 				QOG_AQ (AQ_FCLIPVERT, 1);
 				f = (float)d0 / ((float)d0 - (float)d1);
-				clipvert.position[0] = pv0->position[0] +
-						f * (pv1->position[0] - pv0->position[0]);
-				clipvert.position[1] = pv0->position[1] +
-						f * (pv1->position[1] - pv0->position[1]);
-				clipvert.position[2] = pv0->position[2] +
-						f * (pv1->position[2] - pv0->position[2]);
+#ifdef QOG_FCLIP_SAME
+				for (k=0 ; k<3 ; k++)
+					clipvert.position[k] = QOG_CLIPLERP (k);
+#else
+				clipvert.position[0] = QOG_CLIPLERP (0);
+				clipvert.position[1] = QOG_CLIPLERP (1);
+				clipvert.position[2] = QOG_CLIPLERP (2);
+#endif
 
 				if (clip->leftedge)
 				{
