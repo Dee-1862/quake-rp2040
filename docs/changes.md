@@ -2,6 +2,20 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-27, BSP data layout in flash studied, nothing built (PC only, registered data)
+
+The question was whether a more compact or better ordered layout of the level data the renderer reads from flash would save XIP misses. It would not save 0.5 ms a frame without a larger change to the engine, so the code and the data images are unchanged. Nothing ran on hardware.
+
+- Method, every read of the mapped flash in 100 views of timedemo demo3 (every 11th frame) in Fast, taken on the PC build with the board client's render flags by page protection and single stepping, then replayed through a model of the cache (16 KB, 2 ways, 8-byte lines, LRU and random replacement), without code fetches and with the ARM code of the functions seen in the trace placed at the addresses of the board build. Addresses are those of the episode 1 image. The tracing code is not in the repository.
+- A view reads about 270 nodes, 60 leafs, 140 planes, 770 surfaces, 480 vertices, 720 edges, 1,070 surfedges and 290 mark surfaces, in 4,320 distinct lines (surfaces 1,090, nodes 920, vertexes 760, surfedges 560, edges 410, planes 310, leafs 130, mark surfaces 80, texinfo 70).
+- The lines are well filled. Of the 4-byte words in a line that was read, vertexes and surfedges use 96%, edges and planes 86%, nodes 83%, leafs and surfaces about 67%.
+- The model gives 5,200 to 6,400 BSP data misses a view over all phases, about 1.0 to 1.7 ms at 0.19 to 0.27 us a miss. That is what removing every one of them would be worth.
+- Order, nodes, surfaces, surfedges, edges, vertexes and planes of episode 1's maps are already in the order a front first walk of the tree meets them, as the map compiler wrote them. Renumbering them that way changes no address. The renumbering of edges and vertices suggested in the entry on the XIP measurement build below therefore saves nothing.
+- The order in which demo3 itself first touches each element, which no data build could know, gives 0.07 ms worse to 0.02 ms better. Even with every byte a view reads packed together afresh for each view, the lines would only fall from 4,320 to 3,590 (about 0.15 to 0.2 ms).
+- Padding nodes to 40 B, planes to 24 B or surfaces to 32 B costs 0.02 to 0.1 ms. Moving one array by 4 B changes nothing.
+- Smaller structures need engine changes. Nodes of 28 B with 16-bit links save 0.05 to 0.15 ms, with 16-bit surfedges as well 0.1 to 0.28, with surfaces of 24 B too 0.15 to 0.41, and with planes of 16 B too 0.18 to 0.49 ms. These are upper figures, since they take no account of the extra instructions that unpack an index or find a plane's type, and whether every field fits was not checked for all maps.
+- Not measured. Nothing on the board, so neither the miss counts nor the cost of a miss. The model's world phase has 6,000 to 8,300 misses where the board counted 11,200 (run before the shared drawing code), since code that reads no flash data and core 1's fetches are only partly in it. A sensitivity run with a cache of half the size put the largest packing at up to 0.7 ms, but its world misses were about four times the board's, so it was not taken. Only demo3 in Fast was traced.
+
 ## 2026-11-27, the benchmark prints its slowest and fastest frame (PC and ARM build)
 
 With `QOG_BOARD_MENU` a timedemo keeps the shortest and longest frame and a second `[bench]` line gives them as fps, so the range can be set beside the one MG24Quake publishes. A 32-bit PC build with the flag printed 37.7 to 68.8 fps for demo3 and `qogtest_hash` stayed `ce86f894f9de`. Not run on the board.
