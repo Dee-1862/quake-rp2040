@@ -70,6 +70,24 @@ XIP cache misses per view in Fast, from the counting build made before the share
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 11172 | 8260 | 12363 | 5146 | 3444 | 17806 | 10160 | 6408 | 501 | 78795 |
 
+### Profile of the Turbo benchmark
+
+Board PC sampling (`QOG_PROF`, 4 kHz a core, 7 windows of 5 s, log `run18_8.txt`), the build of the 30.6 fps run plus the profiler, which ran at 30.3 fps. Share of all samples on that core, waits included.
+
+| Core 0 | share |
+| --- | ---: |
+| boot ROM float routines | 11.6% |
+| not identified | 7.1% |
+| R_GenerateSpans | 6.9% |
+| litq_span_asm | 5.3% |
+| R_QogClipDistFx | 4.5% |
+| R_RenderFace | 4.1% |
+| qog_video_wait | 3.1% |
+| R_QogProjectFast | 2.8% |
+| litq_zruns | 2.7% |
+
+Largest callers of the float routines on core 0 are R_QogZFrontC (1.4%), R_QogClipEdgeFast (0.8%) and RecursiveLightPoint (0.7%), with 4.0% from callers not identified. Core 1 spent 63% in `core1_main`, which holds both the screen send and its waiting, so the samples do not say how much of that is free.
+
 ## 2. Model predictions per commit (demo3, board fps at 300 MHz)
 
 | Commit | Calibration | Fast | Turbo | Board |
