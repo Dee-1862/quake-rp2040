@@ -47,6 +47,8 @@ enum
 	AQ_BFRDIST,		/*   made from the world's normals, dists only */
 	AQ_LEADZ2,		/* 1/z compares inside R_LeadingEdge's search loop */
 	AQ_LEADZHIT,	/*   that found surf's half made for the edge already */
+	AQ_LEADZMID,	/* 1/z compares the bits of the two sums left to float */
+	AQ_LEADZNEAR,	/*   decided as within 0.4% */
 	AQ_N
 };
 

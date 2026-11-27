@@ -298,6 +298,9 @@ target_compile_definitions(quakeog_pc PRIVATE
     QOG_ALIAS_SMALLTRI              # alias triangles with no pixel or one drawn without gradients (d_polyse.c)
     QOG_CLIPDIST_FILL4              # with QOG_FRONT_FAST: a world vertex's four view plane distances at its first need (r_draw.c)
     QOG_NODESIDE_BITS)              # with QOG_WORLDNODE_FAST: node side and facing by the float's bits (r_bsp.c)
+# Fewer float calls in the paths below, exact (r_edge.c, r_draw.c, r_light.c)
+target_compile_definitions(quakeog_pc PRIVATE
+    QOG_LEADZ_BITS)                 # with QOG_LEADZ_FLOAT: clear 1/z orders from the bits of the two sums
 # One app for every episode's data image, qog_boot starts the level
 # qogboot.txt names, a level exit or save of a level not in the packs is handled
 target_compile_definitions(quakeog_pc PRIVATE
