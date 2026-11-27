@@ -580,6 +580,38 @@ static int R_QogZFrontC (surf_t *surf, surf_t *surf2, edge_t *edge, r_qogzc_t *c
 	lim = e > (44u << 23) ? e - (17u << 23) : (27u << 23);	// 2^(e-17), at least 2^-100
 
 	t = a2 + b2;
+#ifdef QOG_LEADZ_BITS
+	/*
+	QuakeOG, most compares are clear from the bits of n and t alone, with
+	the same result as the float code below and never one it would leave to
+	id's doubles. For n and t positive and not below 2^(e-9), bits that
+	differ by more than 2^18 mean the larger value is over 1/64 larger, so
+	n*0.99f - t and n*1.01f - t have the sign of that side by more than
+	2^(e-17). Bits within 2^15 mean the two are within 0.4%, so the first
+	is below -2^(e-17) and the second above 2^(e-17), and id's order is
+	the one of the steps.
+	*/
+	{
+		int				nb = (int)QOG_FBITS (n), tb = (int)QOG_FBITS (t), diff;
+		unsigned int	lo = e - (9u << 23);
+
+		if ((nb | tb) >= 0 && e - (44u << 23) < (156u << 23) &&
+			(unsigned int)nb >= lo && (unsigned int)tb >= lo)
+		{
+			diff = nb - tb;
+			if (diff > 0x40000)
+				return 1;
+			if (diff < -0x40000)
+				return 0;
+			if ((unsigned int)(diff + 0x8000) <= 0x10000u)
+			{
+				QOG_AQ (AQ_LEADZNEAR, 1);
+				return surf->d_zistepu >= surf2->d_zistepu;
+			}
+		}
+		QOG_AQ (AQ_LEADZMID, 1);
+	}
+#endif
 	d = n*0.99f - t;
 	db = QOG_FBITS (d) & 0x7FFFFFFF;
 	if (db > lim)

@@ -2,6 +2,18 @@
 
 Newest first. Each entry says what changed, why, and whether it ran on hardware.
 
+## 2026-11-26, fewer float calls in three paths, exact (PC and ARM build, registered data)
+
+Nothing ran on hardware.
+
+- `QOG_LEADZ_BITS` (r_edge.c R_QogZFrontC). Where the two 1/z sums are positive, not far below the largest term and their bits are more than 2^18 apart or within 2^15, the order follows from the bits with the result of the float code. In timedemo demo3 in Turbo the bits decide 247 of 257 compares a view (164 as within 0.4%), which saves 2 or 4 float calls each.
+- `QOG_FCLIP_SAME` (r_draw.c R_QogClipEdgeFast, Fast and Turbo). A coordinate with the same bits at both ends of a clipped edge is taken as it is, no subtract, multiply and add. 1.9 of the 3 coordinates of 141 clipped points a view.
+- `QOG_LIGHTPOINT_INT` (r_light.c R_QogLightPointRec). id's walk for a model's light with integer side tests on axial planes, x and y of the downward ray not interpolated, texture axes of 0 and 1 without products and t made only where s is inside the surface. A view has about 4 calls, 100 nodes, 17 splits and 65 surfaces.
+- Estimate for the board in demo3 Turbo, from counted calls at about 60 cycles a ROM float call, LEADZ 0.15 to 0.2 ms, FCLIP 0.15 ms, LIGHTPOINT 0.3 ms, about 0.6 ms a frame in all. Not measured. boardbench does not price float calls, so it has no before and after here.
+- `QOG_PROF_ROMSCAN` (port/rp2040/prof_rp2040.c, profiler builds only). 4% of core 0's samples were in the boot ROM with no known caller. The likely reason is that ROM routines call their own helpers, which overwrites LR. The profiler now takes the first return address on the stack in that case. Not run on the board. The profiler also counts ROM memcpy and memset as ROM samples, so not all of the ROM share is float work.
+- ARM build (README build line), quake_display `end` 0x2003f77c and quake_main `end` 0x2003f5b4, both unchanged. R_QogLightPointRec 72 B a level of stack (RecursiveLightPoint 88 B), and it recurses only where the ray is split. tools/core1_syms.py passes. tools/xip_sets.py, scan excess 335 to 345 lines, models 8 to 10.
+- Checks, against a build of main (hidden, `-nosound`), `qogtest_hash` `ce86f894f9de` and `qogtest_f_hash` `e92bc9e9650d`. The 113 `qogtest_d_shots` frames and 8 fhash frames are identical in r_fast 0, 1 and 2, on the default PC build and with the board's world flags. Check builds (`QOG_LEADZ_CHECK`, `QOG_FCLIP_CHECK`, `QOG_LIGHTPOINT_CHECK`, the last with 64 extra rays a call) over the shot scripts and timedemos find 0 differences in over 5 million compares, 15 million coordinates and 11 million rays. The split pair was not run.
+
 ## 2026-11-26, brush models, box sides and one projection a vertex, exact (PC and ARM build, registered data)
 
 Nothing ran on hardware.
