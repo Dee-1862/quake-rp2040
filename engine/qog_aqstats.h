@@ -50,6 +50,10 @@ enum
 	AQ_LEADZMID,	/* 1/z compares the bits of the two sums left to float */
 	AQ_LEADZNEAR,	/*   decided as within 0.4% */
 	AQ_CLIPSAME,	/* clipped point coordinates taken from an end (no float) */
+	AQ_LPNODE,		/* R_LightPoint nodes visited */
+	AQ_LPSPLIT,		/*   split by the ray */
+	AQ_LPSURF,		/* R_LightPoint surfaces tested */
+	AQ_LPMUL,		/*   multiplies of the s and t products */
 	AQ_N
 };
 

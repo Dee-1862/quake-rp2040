@@ -178,10 +178,11 @@ list(APPEND QOG_ENGINE_DEFS
     QOG_SUBDIV_LEAF                 # d_polyse.c: subdivision leaves tested inline, no call (round 3)
     QOG_LEFTEDGE_LOCALS             # d_polyse.c D_PolysetScanLeftEdge: the edge's state in locals
     QOG_ALIAS_SMALLTRI)             # d_polyse.c: triangles with no pixel or one drawn without gradients
-# Fewer float calls in the paths below, exact, same as pc/CMakeLists.txt
+# Fewer float calls in three paths, exact, same as pc/CMakeLists.txt
 list(APPEND QOG_ENGINE_DEFS
     QOG_LEADZ_BITS                  # r_edge.c R_QogZFrontC: clear 1/z orders from the bits of the two sums
-    QOG_FCLIP_SAME)                 # r_draw.c R_QogClipEdgeFast: a coordinate both ends share is not interpolated
+    QOG_FCLIP_SAME                  # r_draw.c R_QogClipEdgeFast: a coordinate both ends share is not interpolated
+    QOG_LIGHTPOINT_INT)             # r_light.c: R_LightPoint with integer sides on axial planes and shorter products
 # Earlier work, one app for every episode's data image. The start level comes
 # from the image (qogboot.txt), a level exit or a save of a level the image
 # does not hold goes to that level or is not loaded (engine/host_cmd.c)

@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "r_local.h"
+#include "qog_aqstats.h"	// QuakeOG, work counts (QOG_AQ_STATS)
 #include "qog_bmodel.h"	// QuakeOG, board cost model counts (QOG_BOARDMODEL)
 
 int	r_dlightframecount;
@@ -594,6 +595,7 @@ LIGHT SAMPLING
 =============================================================================
 */
 
+#if !defined(QOG_LIGHTPOINT_INT) || defined(QOG_LIGHTPOINT_CHECK)
 int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 {
 	int			r;
@@ -690,6 +692,195 @@ int RecursiveLightPoint (mnode_t *node, vec3_t start, vec3_t end)
 // go down back side
 	return RecursiveLightPoint (node->children[!side], mid, end);
 }
+#endif
+
+#ifdef QOG_LIGHTPOINT_INT
+/*
+QuakeOG, RecursiveLightPoint with the same result and fewer float calls.
+Only the returned int leaves it, and every float on the way ends in a
+compare or in a conversion to int, so values must be id's and the sign of a
+zero does not matter.
+- On an axial plane id's DotProduct is the point's coordinate, so the side
+  of each end is a compare of its bits with the plane's dist.
+- A coordinate both ends share (x and y of a ray straight down) is not
+  interpolated, and on a sloped plane their part of the dot product is made
+  once.
+- A texture axis with zero components takes no products for them, and one
+  that is 1 or -1 no multiply.
+- t is made only for a surface that s is inside of.
+*/
+#if defined(__GNUC__)
+typedef unsigned int __attribute__((may_alias))	r_qoglp_t;
+#else
+typedef unsigned int							r_qoglp_t;
+#endif
+#define QOG_LPB(f)	(*(const r_qoglp_t *)&(f))
+
+// zero, or finite and not so small that a difference could flush
+static __inline int R_QogLpPlain (unsigned int b)
+{
+	return !(b << 1) || (b & 0x7F800000) - (27u << 23) < (228u << 23);
+}
+
+static __inline int R_QogLpKey (unsigned int b)
+{
+	return (b & 0x80000000) ? -(int)(b & 0x7FFFFFFF) : (int)b;
+}
+
+static __inline float R_QogLpMul (float x, const float *c)
+{
+	unsigned int	b = QOG_LPB (*c);
+
+	if ((b & 0x7FFFFFFF) == 0x3F800000)
+		return (b & 0x80000000) ? -x : x;
+	QOG_AQ (AQ_LPMUL, 1);
+	return x * *c;
+}
+
+// DotProduct (p, v) + v[3] of a finite point
+static float R_QogLpTex (const float *p, const float *v)
+{
+	unsigned int	b0 = QOG_LPB (v[0]) << 1, b1 = QOG_LPB (v[1]) << 1, b2 = QOG_LPB (v[2]) << 1;
+	float			q;
+
+	if (!b2)
+	{
+		if (!b1)
+			q = R_QogLpMul (p[0], &v[0]);
+		else if (!b0)
+			q = R_QogLpMul (p[1], &v[1]);
+		else
+			q = R_QogLpMul (p[0], &v[0]) + R_QogLpMul (p[1], &v[1]);
+	}
+	else if (!b1)
+	{
+		q = R_QogLpMul (p[2], &v[2]);
+		if (b0)
+			q = R_QogLpMul (p[0], &v[0]) + q;
+	}
+	else if (!b0)
+		q = R_QogLpMul (p[1], &v[1]) + R_QogLpMul (p[2], &v[2]);
+	else
+		q = DotProduct (p, v);
+	return q + v[3];
+}
+
+static int R_QogLightPointRec (mnode_t *node, vec3_t start, vec3_t end)
+{
+	int			r, i, side, backside, k;
+	float		front, back, frac;
+	mplane_t	*plane;
+	vec3_t		mid;
+	msurface_t	*surf;
+	int			s, t, ds, dt;
+	mtexinfo_t	*tex;
+	byte		*lightmap;
+	unsigned	scale;
+	int			maps;
+
+	for (;;)
+	{
+		if (node->contents < 0)
+			return -1;		// didn't hit anything
+		QOG_AQ (AQ_LPNODE, 1);
+		plane = node->plane;
+		k = plane->type;
+		if (k < 3 && R_QogLpPlain (QOG_LPB (plane->dist)) &&
+			R_QogLpPlain (QOG_LPB (start[k])) && R_QogLpPlain (QOG_LPB (end[k])))
+		{
+			int		d = R_QogLpKey (QOG_LPB (plane->dist));
+
+			side = R_QogLpKey (QOG_LPB (start[k])) < d;
+			backside = R_QogLpKey (QOG_LPB (end[k])) < d;
+			if (backside != side)
+			{
+				front = start[k] - plane->dist;
+				back = end[k] - plane->dist;
+				break;
+			}
+		}
+		else
+		{
+			if (k >= 3 && QOG_LPB (start[0]) == QOG_LPB (end[0]) &&
+				QOG_LPB (start[1]) == QOG_LPB (end[1]))
+			{
+				float	xy = start[0]*plane->normal[0] + start[1]*plane->normal[1];
+
+				front = xy + start[2]*plane->normal[2] - plane->dist;
+				back = xy + end[2]*plane->normal[2] - plane->dist;
+			}
+			else
+			{
+				front = DotProduct (start, plane->normal) - plane->dist;
+				back = DotProduct (end, plane->normal) - plane->dist;
+			}
+			side = front < 0;
+			backside = back < 0;
+			if (backside != side)
+				break;
+		}
+		node = node->children[side];
+	}
+
+	QOG_AQ (AQ_LPSPLIT, 1);
+	frac = front / (front-back);
+	for (i=0 ; i<3 ; i++)
+	{
+		if (QOG_LPB (start[i]) == QOG_LPB (end[i]))
+			mid[i] = start[i];
+		else
+			mid[i] = start[i] + (end[i] - start[i])*frac;
+	}
+
+// go down front side
+	r = R_QogLightPointRec (node->children[side], start, mid);
+	if (r >= 0)
+		return r;		// hit something
+
+// check for impact on this node
+	surf = cl.worldmodel->surfaces + node->firstsurface;
+	for (i=0 ; i<node->numsurfaces ; i++, surf++)
+	{
+		if (surf->flags & SURF_DRAWTILED)
+			continue;	// no lightmaps
+
+		QOG_AQ (AQ_LPSURF, 1);
+		tex = SURF_TEXINFO (cl.worldmodel, surf);
+
+		s = R_QogLpTex (mid, tex->vecs[0]);
+		ds = s - surf->texturemins[0];
+		if (s < surf->texturemins[0] || ds > surf->extents[0])
+			continue;
+		t = R_QogLpTex (mid, tex->vecs[1]);
+		dt = t - surf->texturemins[1];
+		if (t < surf->texturemins[1] || dt > surf->extents[1])
+			continue;
+
+		if (!surf->samples)
+			return 0;
+
+		ds >>= 4;
+		dt >>= 4;
+
+		lightmap = surf->samples;
+		lightmap += dt * ((surf->extents[0]>>4)+1) + ds;
+		r = 0;
+		for (maps = 0 ; maps < MAXLIGHTMAPS && surf->styles[maps] != 255 ;
+				maps++)
+		{
+			scale = d_lightstylevalue[surf->styles[maps]];
+			r += *lightmap * scale;
+			lightmap += ((surf->extents[0]>>4)+1) *
+					((surf->extents[1]>>4)+1);
+		}
+
+		return r >> 8;
+	}
+
+// go down back side
+	return R_QogLightPointRec (node->children[!side], mid, end);
+}
+#endif
 
 int R_LightPoint (vec3_t p)
 {
@@ -703,7 +894,39 @@ int R_LightPoint (vec3_t p)
 	end[1] = p[1];
 	end[2] = p[2] - 2048;
 	
+#ifdef QOG_LIGHTPOINT_INT
+	r = R_QogLightPointRec (cl.worldmodel->nodes, p, end);
+#ifdef QOG_LIGHTPOINT_CHECK
+	// PC check build, id's walk too, at this point and 64 points around it,
+	// mismatches counted
+	{
+		static unsigned	n, bad;
+		vec3_t			a, b;
+		int				i;
+
+		for (i=0 ; i<65 ; i++)
+		{
+			a[0] = p[0] + (float)(((i & 3) - (i >> 6)) * 37) + (i & 1) * 0.3f;
+			a[1] = p[1] + (float)((((i >> 2) & 3) - (i >> 6)) * 53);
+			a[2] = p[2] + (float)(((i >> 4) & 3) * 29);
+			if (i == 64)
+				VectorCopy (p, a);
+			VectorCopy (a, b);
+			b[2] = a[2] - 2048;
+			// every fourth ray slanted
+			if ((i & 3) == 3)
+				b[0] += 300, b[1] -= 170;
+			if (R_QogLightPointRec (cl.worldmodel->nodes, a, b) !=
+				RecursiveLightPoint (cl.worldmodel->nodes, a, b))
+				bad++;
+			if ((++n & 0x3FFF) == 0)
+				Sys_Printf ("qog_lightpointcheck %u rays, %u differ\n", n, bad);
+		}
+	}
+#endif
+#else
 	r = RecursiveLightPoint (cl.worldmodel->nodes, p, end);
+#endif
 	
 	if (r == -1)
 		r = 0;
