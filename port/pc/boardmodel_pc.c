@@ -74,7 +74,7 @@ static const char	*const bm_bmname[QOG_BM_N] = { "dlpair_int", "dlcell_int", "dl
 	"bpolybox", "bpolyboxedge" };
 
 /* every count, as pointers, so one loop takes the differences */
-#define BM_MAXCOL	160
+#define BM_MAXCOL	256
 #define BM_RANGES	4
 static unsigned		*bm_col[BM_MAXCOL], *bm_col2[BM_MAXCOL];	/* core 0's sum and core 1's, if any */
 static char			bm_colname[BM_MAXCOL][24];
