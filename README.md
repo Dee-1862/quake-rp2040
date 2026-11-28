@@ -15,13 +15,13 @@
 | ![Hallway fight](docs/img/hall.png) | ![Ogre up close](docs/img/ogre.png) | ![Gibs everywhere](docs/img/gib.png) |
 | ![Blasting a monster](docs/img/shot.png) | ![The Quake sign](docs/img/logo.png) | ![Something flying at me](docs/img/scrag.png) |
 
-<sub>Recorded on my PC, brightened a bit. The clip uses the board's Fast mode settings and the screenshots use Exact mode.</sub>
+<sub>The clip uses the board's Fast mode settings and the screenshots use Exact mode. My photos above show it on the board. Recorded on my PC, brightened a bit.</sub>
 
 The board is the FREE-WILi OG, a handheld with two RP2040s in it. One chip is not enough for Quake, so I split it the way Quake already splits itself for multiplayer. One chip is the **server** and runs the world. The other is the **client** and draws it.
 
 It plays with sound, saves and loads, has its own menus for five buttons and runs episode 1. If you want the long story, read [docs/showcase.md](docs/showcase.md).
 
-**Jump to** [Play it](#play-it) · [Controls](#controls) · [How fast](#how-fast-is-it) · [How it works](#how-it-works) · [Help out](#help-make-it-better)
+**Jump to** [Play it](#play-it) · [Controls](#controls) · [The three modes](#exact-fast-or-turbo) · [How fast](#how-fast-is-it) · [How it works](#how-it-works) · [Help out](#help-make-it-better)
 
 ## Play it
 
@@ -93,6 +93,24 @@ The script writes one chip at a time and stops if it sees two boot drives. Never
 | Left / right | Green / Red |
 | Yes | Gray |
 | Back | Green + blue |
+
+## Exact, Fast or Turbo
+
+Pick one in **Options, Render**.
+
+| Mode | What you get | fps on my board |
+| --- | --- | --- |
+| Exact | The same pixels as the original renderer | 12.8 |
+| Fast (default) | Full detail with small shortcuts, about 3.4% of pixels differ | 26.4 |
+| Turbo | 3D view at half width and a flat gun picture, blockier | 31.6 |
+
+![The same three moments in Exact, Fast and Turbo](docs/img/modes.png)
+
+Up close, where you can see it.
+
+![An enlarged patch in Exact, Fast and Turbo](docs/img/modes-zoom.png)
+
+<sub>Each column is the same moment, drawn with the board's settings. The fps figures are from my board's benchmark. Recorded on my PC, brightened a bit.</sub>
 
 ## How fast is it
 
