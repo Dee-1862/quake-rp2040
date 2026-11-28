@@ -8,6 +8,13 @@
 
 <sub>My own FREE-WILi OG running it. Quake and its art belong to id Software.</sub>
 
+| | | |
+| --- | --- | --- |
+| ![Hallway fight](docs/img/hall.png) | ![Ogre up close](docs/img/ogre.png) | ![Gibs everywhere](docs/img/gib.png) |
+| ![Blasting a monster](docs/img/shot.png) | ![The Quake sign](docs/img/logo.png) | ![Something flying at me](docs/img/scrag.png) |
+
+<sub>The same code on my PC in Exact mode, brightened a bit.</sub>
+
 The board is the FREE-WILi OG, a handheld with two RP2040s in it. One chip is not enough for Quake, so I split it the way Quake already splits itself for multiplayer. One chip is the **server** and runs the world. The other is the **client** and draws it.
 
 It plays with sound, saves and loads, has its own menus for five buttons and runs episode 1. If you want the long story, read [docs/showcase.md](docs/showcase.md).
