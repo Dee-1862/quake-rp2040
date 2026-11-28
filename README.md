@@ -2,23 +2,90 @@
 
 **I got Quake running on two RP2040s.** No floating point unit, no external RAM, just two tiny chips talking to each other.
 
-| | |
+| In the game | Loading a save |
 | --- | --- |
-| ![Hallway fight](docs/img/hall.png) | ![Ogre up close](docs/img/ogre.png) |
-| ![Gibs everywhere](docs/img/gib.png) | ![Blasting a monster](docs/img/shot.png) |
-| ![The Quake sign](docs/img/logo.png) | ![Something flying at me](docs/img/scrag.png) |
+| ![The start level on the FREE-WILi OG](docs/img/board-game.jpg) | ![The load menu on the FREE-WILi OG](docs/img/board-menu.jpg) |
 
-<sub>These are from my PC build of the same code in Exact mode, brightened a bit. They are not photos of the board. Quake and its art belong to id Software.</sub>
+<sub>My own FREE-WILi OG running it. Quake and its art belong to id Software.</sub>
 
-## So what is this
+The board is the FREE-WILi OG, a handheld with two RP2040s in it. One chip is not enough for Quake, so I split it the way Quake already splits itself for multiplayer. One chip is the **server** and runs the world. The other is the **client** and draws it.
 
-The board is the FREE-WILi OG, a handheld with two RP2040s in it. One chip is not enough for Quake, so I split it the way Quake already splits itself for multiplayer. One chip is the **server** and runs the world. The other is the **client** and draws it. The wire between them acts like the network.
+It plays with sound, saves and loads, has its own menus for five buttons and runs episode 1. If you want the long story, read [docs/showcase.md](docs/showcase.md).
 
-It plays with sound, it saves and loads, it has its own menus for five buttons, and episode 1 is on it.
+**Jump to** [Play it](#play-it) · [Controls](#controls) · [How fast](#how-fast-is-it) · [How it works](#how-it-works) · [Help out](#help-make-it-better)
 
-If you want the long story, read [docs/showcase.md](docs/showcase.md).
+## Play it
 
-## The numbers
+I cannot give you a ready made download. The game files belong to id Software and the firmware cannot be shared ([why](#licences)), so you build it yourself. One script does the work.
+
+### What you need
+
+- A FREE-WILi OG and a USB cable
+- Your own copy of Quake from Steam or GOG, the original one and not the 2021 rerelease
+- A Windows PC
+- [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/) with "Desktop development with C++"
+- The Raspberry Pi Pico extension for VS Code. Create or open any Pico project once so it downloads SDK 2.3.0 and its tools
+- [Git](https://git-scm.com/), [Python 3](https://www.python.org/) and CMake 3.21 or newer
+
+### Read this first
+
+This **replaces the firmware on both chips**. It also runs them at **300 MHz and 1.25 V with the flash at 150 MHz**, which is over what the RP2040 is rated for and over the flash chip's 133 MHz. The game checks the flash when it starts and backs off if reads fail, but it is your board and your risk. [docs/lessons.md](docs/lessons.md) has the mistakes I already made for you.
+
+### Build and install
+
+1. Get the code.
+
+   ```powershell
+   git clone https://github.com/Dee-1862/quake-rp2040
+   cd quake-rp2040
+   ```
+
+2. Copy `PAK0.PAK` and `PAK1.PAK` from your Quake `id1` folder into `data\id1\` as `pak0.pak` and `pak1.pak` ([help](docs/game-data.md)).
+
+3. Build everything. The first run takes a while and nothing touches the board.
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools\build.ps1
+   ```
+
+4. Plug in the board. If it never had the FreeWili display bootloader, install that once.
+
+   ```powershell
+   python -m pip install pyserial
+   python third_party\wiliOGbsp\tools\fw.py bootloader
+   ```
+
+5. Install the game.
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools\install_episode.ps1 -Episode 1
+   ```
+
+The script writes one chip at a time and stops if it sees two boot drives. Never copy a display app onto the board by hand ([lessons](docs/lessons.md), L4).
+
+## Controls
+
+| In the game | Button |
+| --- | --- |
+| Fire (tap for one shot, hold to keep firing) | Gray |
+| Walk forward | Yellow |
+| Turn left / right | Green / Blue |
+| Next weapon | Red tapped |
+| Previous weapon | Red + gray |
+| Walk backwards | Red + yellow |
+| Jump, or swim up | Red + green |
+| Swim down (does nothing on dry land) | Red + blue |
+| Menu | Green + blue |
+| Power off | Hold red alone for 6 s |
+
+| In menus | Button |
+| --- | --- |
+| Up / down | Yellow / Blue |
+| Left / right | Green / Red |
+| Yes | Gray |
+| Back | Green + blue |
+
+## How fast is it
 
 The goal I measure myself against is [MG24Quake](https://github.com/next-hack/MG24Quake). My numbers are from the actual board running `timedemo demo3`, and the runs are listed in [docs/fps-board.md](docs/fps-board.md).
 
@@ -36,7 +103,7 @@ Fast takes small shortcuts. On my test frames it changes 3.4% of the pixels on a
 
 There is also a **Turbo** mode at 31.6 fps. It draws the 3D view at half width with a flat gun picture, so it is a lighter job and I do not compare it with anyone.
 
-You switch between them in **Options, Render**.
+You switch between the modes in **Options, Render**, and **Single Player, Benchmark** measures your own board.
 
 ```mermaid
 xychart-beta
@@ -120,101 +187,57 @@ flowchart LR
   S --> SF[("Main chip flash")]
 ```
 
+## Help make it better
+
+You do not need the board for most of the work. The PC version runs the same game code.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build.ps1    # once
+build-pc-dev\Release\quakeog_pc.exe +map e1m1               # play on the PC, F12 gives the board's buttons
+powershell -ExecutionPolicy Bypass -File tools\check.ps1    # before you send a change
+```
+
+Good places to start
+
+- **Speed.** Fast mode is about 3.7 ms a frame short of MG24Quake. [docs/fps-board.md](docs/fps-board.md) has the timings and [docs/changes.md](docs/changes.md) has what was already tried, including the ideas that did not pay off
+- **Testing.** Play episodes 2 and 3 on a board (`-Episode 2` on both scripts) and report what breaks
+- **The depth buffer glitch** listed below
+- **macOS and Linux.** The tool that makes the data images only runs on Windows today
+
+Please follow these
+
+- Never commit game files or anything made from them, and never share built firmware
+- Exact mode must keep drawing the same pixels. Say so when a change alters Fast or Turbo
+- `check.ps1` must pass. It checks the game logic, so compare screenshots for drawing changes
+- Say whether you tried it on a real board
+
+### What is where
+
+```
+engine/       id's WinQuake source, my changes sit behind QOG_ build flags
+port/         what Quake needs from a system (rp2040, pc, common)
+platform/     board drivers for video, input and data
+apps/         the game and some smaller test apps
+pc/           Windows build for testing
+tools/        build, install, check, level prep, speed model
+docs/         notes, start at docs/README.md
+third_party/  the board support package, fetched by build.ps1
+```
+
+These folders appear after building. Git ignores all of them.
+
+| Folder | What is in it | Safe to delete |
+| --- | --- | --- |
+| `build-pc-dev/` | The Windows version | Yes |
+| `build-board/` | Data images made from your pak files | Yes, `build.ps1` makes them again |
+| `build/` | The firmware | Yes |
+
 ## What does not work
 
 - Only one episode fits at a time. The full game is bigger than both flash chips together.
 - Only episode 1 has been run on the board. Episodes 2 and 3 build but I have not tried them on it.
 - No multiplayer, no CD music, no keyboard console.
 - In a few rare views the small depth buffer runs out of room. For that one frame monsters and particles can show through walls.
-
-## Before you flash, read this
-
-I run it at **300 MHz and 1.25 V with the flash at 150 MHz**. That is over what the RP2040 is rated for and over the flash chip's 133 MHz. The game checks the flash when it starts and backs off if reads fail, but it is your board and your risk.
-
-Add `-DQOG_FLASH_MAX_KHZ=133000` to keep the flash in spec, or `-DQOG_SYS_KHZ=0` to keep the stock clock.
-
-## Bring your own game
-
-I do not include any Quake data and you should never commit any. `data/`, `*.pak` and board images are ignored by git.
-
-Use the full game from Steam or GOG and put `id1\pak0.pak` and `id1\pak1.pak` in `data\id1\`. The shareware licence does not allow modified copies and the board images count as that. More in [docs/game-data.md](docs/game-data.md).
-
-## Build it
-
-You need these.
-
-- The toolchain from the Raspberry Pi Pico VS Code extension (SDK 2.3.0, GCC `15_2_Rel1`, ninja 1.13.2, picotool 2.3.0)
-- CMake 3.21 or newer and Python 3
-- Visual Studio Build Tools 2022 for the PC build. That build is Windows only, and you need it to make the data images
-
-```bash
-git clone https://github.com/freewili/wiliOGbsp third_party/wiliOGbsp
-python -m pip install pyserial
-```
-
-If your board never had the BSP's display bootloader, install it once with `fw bootloader` (see their README).
-
-### Flash it
-
-Run these from the repo root and put only one chip in BOOTSEL at a time. **Please read [docs/lessons.md](docs/lessons.md) first.** I learned most of it the hard way.
-
-1. Build the PC version and record the asset lists ([docs/game-data.md](docs/game-data.md)), then make both data images.
-
-   ```powershell
-   python tools\mkboard.py --pak data\id1\pak0.pak --pak data\id1\pak1.pak --manifests build-pc-dev\manifests `
-       --maps start e1m1 e1m2 e1m3 e1m4 e1m5 e1m6 e1m7 e1m8 --exe build-pc-dev\Release\quakeog_pc.exe `
-       --stub-maps --main --display-no-sounds --display-no-progs -o build-board\qb
-   ```
-
-2. Build the game. Pass every option each time because the build folder remembers old ones. On macOS or Linux use `--preset target-posix`.
-
-   ```bash
-   cmake --preset target -DQOG_SPLIT=ON -DQOG_AOT=ON -DQOG_AOT_PAK=<full path to pak0.pak> -DQOG_SPLIT_MAIN_EMBED=quake_display -DQOG_SOUND=ON -DQOG_CL_HUNK_KB=75 -DQOG_CL_STACK_KB=32 -DQOG_SV_HUNK_KB=174 -DQOG_SV_STACK_KB=21 -DQOG_SYS_KHZ=300000 -DQOG_SYS_MV=1250 -DQOG_FLASH_FAST=ON -DQOG_FLASH_MAX_KHZ=150000 -DQOG_FAT_FORMAT_IF_MISSING=ON -DQOG_BOARD_TURBO=ON -DQOG_BOARD_HOTTEXT=ON -DQOG_BOARD_SCANSIZE=ON -DQOG_BOARD_RAMSCAN=ON
-   cmake --build build --target quake_main
-   ```
-
-   For the Turbo number of 31.6 fps the gun is drawn from pictures. Build the PC version with `-DQOG_PC_GUNIMAGES=ON`, add `--gun-images` to the mkboard command in step 1, and add `-DQOG_BOARD_GUNIMAGES=ON` to the command above ([docs/game-data.md](docs/game-data.md)).
-
-   `QOG_FAT_FORMAT_IF_MISSING` formats the save area on the main chip if there is none.
-
-3. Run `python third_party/wiliOGbsp/tools/fw.py bootsel --cpu display` and copy `build-board\qb.uf2` to the RPI-RP2 drive.
-4. Run `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build/apps/quake/quake_main.uf2`
-5. Run `python third_party/wiliOGbsp/tools/fw.py flash quake --uf2 build-board\qb_main.uf2`
-
-Never copy a display app over by hand ([lessons](docs/lessons.md), L4). Both chips print timings over USB serial.
-
-## Controls
-
-| In the game | Button |
-| --- | --- |
-| Fire (tap for one shot, hold to keep firing) | Gray |
-| Forward | Yellow |
-| Turn left / right | Green / Blue |
-| Next / previous weapon | Red tapped / Red + gray |
-| Back | Red + yellow |
-| Jump | Red + green |
-| Swim down | Red + blue |
-| Menu | Green + blue |
-| Power off | Hold red alone for 6 s |
-
-| In menus | Button |
-| --- | --- |
-| Up / down | Yellow / Blue |
-| Left / right | Green / Red |
-| Yes | Gray |
-| Back | Green + blue |
-
-## What is where
-
-```
-engine/      id's WinQuake source, my changes sit behind QOG_ build flags
-port/        what Quake needs from a system (rp2040, pc, common)
-platform/    board drivers for video, input and data
-apps/        the game and some smaller test apps
-pc/          Windows build for testing
-tools/       level prep, tests, speed model
-docs/        notes, start at docs/README.md
-```
 
 ## Licences
 

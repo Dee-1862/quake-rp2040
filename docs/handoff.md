@@ -1,5 +1,7 @@
 # Handoff, where QuakeOG stands
 
+`tools\build.ps1` builds everything and `tools\check.ps1` checks a change. The main README has the steps.
+
 ## On the board today
 - **Demo player** (apps/qogdemo), flashed and playing Quake demo 1 on the FREE-WILi OG at 3 to 7 fps, from an earlier branch. It uses a 1-byte depth buffer.
 - **E1M1 fly-through** (apps/qogfly), ran at 6 to 9 fps before the demo player replaced it.
@@ -46,7 +48,6 @@ The app built with this branch (QOG_BOARD_BOOT on by default) starts the level t
 
 ## Housekeeping
 - Push with GitHub Desktop or `git push`. Silent pushes fail on authentication.
-- Remove finished worktrees (qog-wt-b to qog-wt-u and qog-wt-fly) and their branches, unlink each `third_party` junction first with `cmd /c rmdir`, then `git worktree remove`, then `git branch -d`.
 - Rules, tests always go through tools/pctest.ps1 (hidden, `-nosound`, `-basedir`). Commits have a one-line title, bullet body, no colons, semicolons or em dashes, no mention of any AI.
 - Game data (data/id1, qogbake.bin, any board image) is never committed.
 

@@ -3,7 +3,9 @@
 | If you want to | Read |
 | --- | --- |
 | Understand the project | [showcase.md](showcase.md) |
-| Build and flash it | [handoff.md](handoff.md) and [game-data.md](game-data.md) |
+| Build and play it | [the main README](../README.md#play-it) |
+| Understand the game data | [game-data.md](game-data.md) |
+| Pick up the work | [handoff.md](handoff.md) |
 | Avoid breaking your board | [lessons.md](lessons.md) |
 | See what changed and what was measured | [changes.md](changes.md) |
 | See speed results and the speed model | [fps-board.md](fps-board.md) |
