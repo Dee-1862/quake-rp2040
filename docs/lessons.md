@@ -199,7 +199,6 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 
 **L143. A float truncated to an int is exact in integers when the rounding cannot reach an integer.** `sd = local - s*16` truncates a float difference. Below 4096 the difference's rounding error is at most 2^-13, so when local's fraction is 0 or at least 2^-11 from a whole number the truncation is the exact one, A - 16s or A - 16s + 1 for negative values, and outside that margin id's float loop runs. Bound the error, decide outside it, fall back inside it (L122).
 
-
 **L100. Model the XIP cache on the PC before buying RAM for it.** MG24Quake copies each texture into a 20 KB buffer and keeps the 16 KB colour map in RAM because its external flash is not memory mapped. Here a PC model of the 16 KB two-way cache fed with every texel, colour map and lightmap read of the spans (`QOG_XIPSIM`, engine/d_xipsim.c) gave about 2,100 misses a view in the demos, about 0.55 ms at 125 MHz flash, and the texture and colour map in RAM would save at most that. Neighbouring pixels share 8-byte lines and a surface's texels stay cached while it is drawn.
 
 **L101. On the M0+ the lit spans pay for float work per span, not per pixel.** Count the `bl __wrap___aeabi_f*` calls of a drawer in `objdump -d` and multiply by the spans a view (1,758 in demo3), the earlier Fast drawer made about 40 float calls a span (about 2,150 cycles through the ROM routines), more than its 48,000 pixels cost. Integers per span (64-bit sums, one hardware divide per sub-span end) took it to about 560 cycles.
@@ -312,7 +311,6 @@ Read this before touching the build, flash layout or hardware. Each entry is som
 **L244. A drawer may name the frame's row length twice.** The lit spans step rows by `screenwidth`, D_PolysetDrawFinalVerts and the tiny triangle path by `d_scanrowbytes` (D_SCANTABLE). An emulator setup that set only one drew the other's pixels into row 0. Set every global a function reads, found from its disassembly, before trusting a replay.
 
 **L245. Assembly must not name a C file's state when that file is compiled twice.** The earlier pipeline compiles d_scanlit.c a second time for core 1 with its own statics and c1_ names (d_core1.h). The span assembly read `litq_surf` by name, which on core 1 would have been core 0's surface. Pass such state through a pointer, give only values written once before both cores run a shared name, and check with tools/core1_syms.py.
-
 
 **L220. With -fno-strict-aliasing every store reloads the globals.** The engine library is built with -fno-strict-aliasing, so in R_GenerateSpans and R_StepActiveU each store to an edge or surface made GCC load r_edgebase, surfaces, span_p and the sentinel pointers again, and the per edge calls saved and restored registers on top. Copying those globals into locals for the scan line (and writing span_p back before the next function that reads it) gives the same spans with fewer instructions. Look for `ldr rX, [rY, #0]` of a global inside a hot loop's disassembly (L110 found the same in the alias spans).
 

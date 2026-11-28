@@ -99,7 +99,7 @@ The goal I measure myself against is [MG24Quake](https://github.com/next-hack/MG
 
 Both draw the full 320x200 screen with a 320x152 3D view and the status bar, with sound on, and count all frames over total time. The hardware is not equal. I use two chips overclocked to 300 MHz and they use one chip at a bit over 136 MHz.
 
-Fast takes small shortcuts. On my test frames it changes 3.4% of the pixels on average and 10.5% in the worst frame. MG24Quake is not identical to the original either, but I have not measured by how much. My Fast number is one run and the Exact number is from an older build.
+Fast takes small shortcuts. On my test frames it changes 3.4% of the pixels on average and 10.5% in the worst frame. MG24Quake is not identical to the original either. Its [d_scan.c](https://github.com/next-hack/MG24Quake/blob/main/QuakeMG24/Quake/d_scan.c) corrects perspective every 32 pixels where id used 8, and the author's comment there says going back to 8 costs about 2 fps and would give 26.1 on demo3. The comment is older than their 29.2, so 26.1 is not their current number with 8. I have not measured their picture differences. My Fast number is one run and the Exact number is from an older build.
 
 There is also a **Turbo** mode at 31.6 fps. It draws the 3D view at half width with a flat gun picture, so it is a lighter job and I do not compare it with anyone.
 

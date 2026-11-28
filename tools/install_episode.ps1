@@ -1,4 +1,4 @@
-# Install one episode of the split game on the FREE-WILi OG, the lead's three
+# Install one episode of the split game on the FREE-WILi OG, in three
 # steps (docs/handoff.md), one CPU in BOOTSEL at a time.
 #
 #   1. display data, fw.py bootsel --cpu display, then copy qb_ep<N>.uf2 to

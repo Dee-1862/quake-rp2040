@@ -2,9 +2,7 @@
 
 QuakeOG runs id Software's WinQuake on the FREE-WILi OG, a handheld multitool built around two Raspberry Pi RP2040 microcontrollers. Neither chip has a floating point unit or external RAM. The game is split the way id split it for networked play, the main chip runs the server, the display chip runs the client and the renderer, and the board's inter-chip UART stands in for the network.
 
-This page is the story for people who know microcontrollers but not this repo. Every number comes from the project's own measurements in [changes.md](changes.md), [lessons.md](lessons.md) and [handoff.md](handoff.md), or from the project lead's board runs. Where a number is an estimate or was measured only on the PC, it says so.
-
-<!-- Photo or short video of the board running E1M1 goes here -->
+This page is the story for people who know microcontrollers but not this repo. Every number comes from the project's own measurements in [changes.md](changes.md), [lessons.md](lessons.md) and [handoff.md](handoff.md), or from runs on the board. Where a number is an estimate or was measured only on the PC, it says so.
 
 ## At a glance
 
@@ -82,7 +80,7 @@ Some clock and timing figures below were measured during earlier stages at 200 o
 
 **Edges in the z-buffer.** id's edge sorting renderer keeps its edge table on the stack, 84,768 bytes on the ARM build. Spans are made top to bottom and each one writes z only in its own row, so the rows of the z-buffer below the current scan line are free. The edge table lives at the end of the z-buffer during edge drawing and is moved down as edges die, and the world's edge cache lives at its start. The stack frame fell to 36,184 bytes and the hunk lost 27,312 bytes on E1M1, with byte-identical pictures. Between views the same buffer holds the status bar rows, the link's receive buffer and other short-lived data, each with a stated owner and a run-time check (lessons L65).
 
-**A one-byte depth buffer.** A 16-bit z-buffer for the 320x152 view is 97,280 bytes. Storing depth in one byte, with finer steps close to the viewer, saves 48,640 bytes. The user approved this for the board client only, because it is the one change that is not exact by construction, in rare views the edge table cannot fit beside the waiting spans and needs a fallback table on the stack that the board cannot afford. That case used to stop the game with an error (4 times in a PC fight tour of episode 1). Now, when the stack cannot hold the table, the waiting spans are drawn without z for that one view, so the world stays exact and only models and particles in those rows can show through it ([changes.md](changes.md)). Why the edges and spans meet there is still open.
+**A one-byte depth buffer.** A 16-bit z-buffer for the 320x152 view is 97,280 bytes. Storing depth in one byte, with finer steps close to the viewer, saves 48,640 bytes. This is on for the board client only, because it is the one change that is not exact by construction. In rare views the edge table cannot fit beside the waiting spans and needs a fallback table on the stack that the board cannot afford. That case used to stop the game with an error (4 times in a PC fight tour of episode 1). Now, when the stack cannot hold the table, the waiting spans are drawn without z for that one view, so the world stays exact and only models and particles in those rows can show through it ([changes.md](changes.md)). Why the edges and spans meet there is still open.
 
 **Sound mixed on the other chip.** id's mixer wants about 45 KB of tables and buffers (channels, a paint buffer, 34,816 bytes of sound names). The display chip had a few hundred bytes free. The speaker is on the display chip, but the mixer runs on main, the client's sound calls cross the link as small items, main mixes with id's own code, and the 8-bit samples come back at 11 KB/s on a 1.25 MB/s link. On the display a PIO program drives the I2S amplifier, one DMA channel feeds it from a 2 KB ring, and a second DMA channel chained to the first rewinds the ring, so playback needs no interrupt and no CPU time. On the PC the split pair mixes exactly the samples the one-process game mixes.
 
@@ -105,7 +103,7 @@ The board's default render mode trades a small picture difference for speed, in 
 | Integer reciprocal | 1/z from the integer divider, about 16 good bits | 0.06% |
 | All three (first measurement) | | about 2.8% average, about 9% in the worst frame |
 | Fast mode as it is now (measured 26 November 2026) | | 3.4% average, 10.5% in the worst frame |
-| For comparison, fixed 32-pixel steps, as MG24Quake | | 14.3% average, 38% worst frame |
+| For comparison, our test frames drawn with fixed 32-pixel steps as MG24Quake uses (not a run of their port) | | 14.3% average, 38% worst frame |
 
 On the board Fast mode took E1M1 from 10.4 to 10.9 fps.
 
@@ -158,7 +156,7 @@ A web search in November 2026 found no other Quake port on the RP2040, and none 
 | esp32-quake (Espressif) | ESP32-P4, dual RISC-V | yes | | 32 MB PSRAM | about 20 to 25 fps at 512x300 | | [github.com/espressif/esp32-quake](https://github.com/espressif/esp32-quake) |
 | rp2040-doom (Graham Sanderson), Doom not Quake | one RP2040, 270 MHz | no | 264 KB | none | 30 to 35+ fps | full shareware DOOM1.WAD | [github.com/kilograham/rp2040-doom](https://github.com/kilograham/rp2040-doom), [design notes](https://kilograham.github.io/rp2040-doom/) |
 
-Empty cells are figures we did not find. MG24Quake's speed comes partly from its FPU and from approximations such as a perspective divide every 32 pixels, which on our test shots changes 14% of the pixels. rp2040-doom is the closest relative in hardware and the best study of fitting an id engine into RP2040 RAM, and it influenced several techniques here. More detail on each port is in [research-open-source-quake-bases.md](research/research-open-source-quake-bases.md) and [phase1-mg24quake-notes.md](research/phase1-mg24quake-notes.md).
+Empty cells are figures we did not find. MG24Quake's speed comes partly from its FPU and from approximations such as a perspective divide every 32 pixels. Estimated by drawing our test frames with 32-pixel steps, not by running their port, that step changes 14% of the pixels. rp2040-doom is the closest relative in hardware and the best study of fitting an id engine into RP2040 RAM, and it influenced several techniques here. More detail on each port is in [research-open-source-quake-bases.md](research/research-open-source-quake-bases.md) and [phase1-mg24quake-notes.md](research/phase1-mg24quake-notes.md).
 
 ## Honest limits
 

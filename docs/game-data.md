@@ -136,7 +136,7 @@ Measured with stubs (registered data, the same manifests).
 
 The episode's maps take 10.27 MB in a pak and 9.61 MB in the image (3.16 MB of baked structures, 2.28 MB of distinct texture pixels, and the light, vis, entity and geometry lumps). Without sharing, the texture pixels would take 1,794,520 bytes (1.71 MB) more. Per map in the image. `start` 1.56 MB, `e1m1` 1.27, `e1m2` 1.35, `e1m3` 1.07, `e1m4` 1.26, `e1m5` 1.27, `e1m6` 1.02, `e1m7` 0.41, `e1m8` 0.80 (a shared texture counts for the first map that uses it). What is left of the pak is alias models 2.65 MB, sounds 2.47 MB, pics 0.61 MB, `progs.dat` 0.39 MB, `gfx.wad` 0.11 MB and 19 stubs of 132 bytes.
 
-The whole episode still needs a decision by the user (none of these is implemented).
+The whole episode still needs a decision (none of these is implemented).
 
 | Option | Gain | Cost |
 | --- | ---: | --- |
