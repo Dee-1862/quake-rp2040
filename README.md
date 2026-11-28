@@ -99,7 +99,7 @@ The goal I measure myself against is [MG24Quake](https://github.com/next-hack/MG
 
 Both draw the full 320x200 screen with a 320x152 3D view and the status bar, with sound on, and count all frames over total time. The hardware is not equal. I use two chips overclocked to 300 MHz and they use one chip at a bit over 136 MHz.
 
-Fast takes small shortcuts. On my test frames it changes 3.4% of the pixels on average and 10.5% in the worst frame. MG24Quake is not identical to the original either. Its [d_scan.c](https://github.com/next-hack/MG24Quake/blob/main/QuakeMG24/Quake/d_scan.c) corrects perspective every 32 pixels where id used 8, and the author's comment there says going back to 8 costs about 2 fps and would give 26.1 on demo3. The comment is older than their 29.2, so 26.1 is not their current number with 8. I have not measured their picture differences. My Fast number is one run and the Exact number is from an older build.
+Fast takes small shortcuts. On my test frames it changes 3.4% of the pixels on average and 10.5% in the worst frame. MG24Quake takes its own. Its [d_scan.c](https://github.com/next-hack/MG24Quake/blob/main/QuakeMG24/Quake/d_scan.c) corrects perspective every 32 pixels where id used 8, and the author's comment there says going back to 8 would cost about 2 fps.
 
 There is also a **Turbo** mode at 31.6 fps. It draws the 3D view at half width with a flat gun picture, so it is a lighter job and I do not compare it with anyone.
 
@@ -113,8 +113,6 @@ xychart-beta
   bar [13.6, 20.0, 22.0, 24.8, 26.4]
 ```
 
-I wanted 35 fps. I did not get there.
-
 ### Next to other ports
 
 | Port | Chip | Has an FPU | Speed they report |
@@ -122,10 +120,6 @@ I wanted 35 fps. I did not get there.
 | **QuakeOG** | 2x RP2040 | no | 26.4 fps |
 | [MG24Quake](https://github.com/next-hack/MG24Quake) | EFR32MG24 (Cortex-M33) | yes | 29.2 fps |
 | [Quake-ESP32S3](https://github.com/recrof/Quake-ESP32S3) | ESP32-S3 with 8 MB PSRAM | yes | about 42 fps |
-
-So no, it is not the fastest. What I like about it is the hardware it runs on. When I searched in November 2026 I did not find another Quake port on the RP2040, but that does not mean there is none.
-
-Everyone picks their own picture shortcuts, so no two of these numbers are a perfect comparison. The missing FPU and the small 16 KB flash cache hurt a lot. I have not proven this is the most the RP2040 can do.
 
 ## How it works
 

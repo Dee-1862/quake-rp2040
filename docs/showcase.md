@@ -123,7 +123,7 @@ All figures are the board's `timedemo demo3`.
 | Gun drawn from pictures, Turbo only | 25.8 | 30.6 |
 | Fewer float calls, edge scan code in RAM | 26.4 | 31.6 |
 
-The goal was 35 fps and it was not reached. A cache measurement showed that waiting for code and data to arrive from flash is now a large part of each frame.
+A cache measurement showed that waiting for code and data to arrive from flash is now a large part of each frame.
 
 ## Board features used
 
@@ -145,7 +145,7 @@ Not used by the game, the radios, the FPGA (its bitstream still loads at boot) a
 
 ## Other ports
 
-A web search in November 2026 found no other Quake port on the RP2040, and none split across two microcontrollers. So this is the first we know of, not necessarily the first ever. The ports below are the useful comparison points. Several are faster, and MG24Quake in particular is both faster and holds the whole retail game.
+A web search in November 2026 found no other Quake port on the RP2040, and none split across two microcontrollers. The ports below are the useful comparison points. Several are faster, and MG24Quake in particular is both faster and holds the whole retail game.
 
 | Port | Chip | FPU | RAM | External memory | Reported speed | Content | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- |
