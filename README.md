@@ -101,7 +101,7 @@ Pick one in **Options, Render**.
 | Mode | What you get | fps on my board |
 | --- | --- | --- |
 | Exact | The same pixels as the original renderer | 12.8 |
-| Fast (default) | Full detail with small shortcuts, about 3.4% of pixels differ | 26.4 |
+| Fast (default) | Full resolution. Corrects perspective every 8 to 32 pixels as the surface needs, where MG24Quake uses 32 everywhere | 26.4 |
 | Turbo | 3D view at half width and a flat gun picture, blockier | 31.6 |
 
 ![The same three moments in Exact, Fast and Turbo](docs/img/modes.png)
